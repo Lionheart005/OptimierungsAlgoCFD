@@ -1,0 +1,255 @@
+================================================================================
+PicoGK AUTOMATED CFD EVOLUTION FRAMEWORK - SERVER OPERATIONS MANUAL
+================================================================================
+Dieses Dokument enthält alle Befehle, um das Framework auf einem nackten 
+Linux-Server (ohne Sudo/Admin-Rechte) von Grund auf aufzusetzen, zu betreiben,
+zu überwachen und zu debuggen.
+
+================================================================================
+TEIL 1: ERST-SETUP AUF EINEM NEUEN SERVER (OHNE SUDO)
+================================================================================
+Führe diese Befehle genau in dieser Reihenfolge aus, wenn du auf einen 
+komplett neuen Server umziehst.
+
+1. ORDNERSTRUKTUR & MINICONDA (Der Sudo-Ersatz)
+# ---------------------------------------------------------
+# Erstellt Basis-Ordner und installiert einen privaten Paketmanager
+mkdir -p ~/software ~/Documents/Automatisierung_v2
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+bash ~/miniconda.sh -b -u -p ~/miniconda
+~/miniconda/bin/conda init bash
+source ~/.bashrc
+rm ~/miniconda.sh
+
+2. SYSTEM-BIBLIOTHEKEN, XVFB & TMUX ÜBER CONDA INSTALLIEREN
+# ---------------------------------------------------------
+# Lädt alle fehlenden C++ Bibliotheken, den virtuellen X11-Server (Xvfb) 
+# und den Terminal-Multiplexer (tmux) für sichere Hintergrundprozesse.
+conda install -y -c conda-forge git boost-cpp tbb-devel blosc pkg-config \
+xorg-libxrandr xorg-libxinerama xorg-libxcursor xorg-libxi xorg-server tmux
+
+3. WERKZEUGE HERUNTERLADEN (CMake, SU2, Gmsh)
+# ---------------------------------------------------------
+cd ~/software
+
+# Modernes CMake (3.29.3)
+wget https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-linux-x86_64.tar.gz
+tar -zxvf cmake-3.29.3-linux-x86_64.tar.gz
+rm cmake-3.29.3-linux-x86_64.tar.gz
+
+# SU2 CFD (7.5.1 - MPI Version für Multi-Core)
+wget https://github.com/su2code/SU2/releases/download/v7.5.1/SU2-v7.5.1-linux64-mpi.zip -O su2.zip
+unzip su2.zip
+mv SU2-v7.5.1-linux64-mpi SU2-7.5.1 || mv SU2-v7.5.1-linux64 SU2-7.5.1
+[oder: mv bin SU2-7.5.1]
+rm su2.zip
+
+# Gmsh (4.11.1)
+wget https://gmsh.info/bin/Linux/gmsh-4.11.1-Linux64.tgz
+tar -zxvf gmsh-4.11.1-Linux64.tgz
+rm gmsh-4.11.1-Linux64.tgz
+
+4. PICOGK KOMPILIEREN (Headless-Modus)
+# ---------------------------------------------------------
+# Klonen inkl. Submodule (OpenVDB etc.)
+cd ~/software
+git clone --recursive https://github.com/leap71/PicoGKRuntime.git ~/software/PicoGK
+
+# MANUELLER FIX VOR DEM BUILD:
+
+find ~/software/PicoGK -name "PicoGKTrace.h"
+nano /home/lpleissner/software/PicoGK/Source/PicoGKTrace.h
+
+#  ändere in Zeile 48:
+# VON: std::cerr << oMS << " elapsed\n";
+# ZU:  std::cerr << oMS.count() << " elapsed\n";
+STRG + O, Enter
+
+
+# Build-Ordner anlegen und kompilieren
+conda install -y -c conda-forge xorg-libxext
+export PKG_CONFIG_PATH=$HOME/miniconda/lib/pkgconfig:$PKG_CONFIG_PATH
+conda install -y -c conda-forge xorg-randrproto xorg-renderproto xorg-libxrender
+conda install -y -c conda-forge xorg-xorgproto
+export CFLAGS="-I$HOME/miniconda/include"
+export CXXFLAGS="-I$HOME/miniconda/include"
+export LDFLAGS="-L$HOME/miniconda/lib"
+conda install -y -c conda-forge gcc_linux-64 gxx_linux-64
+rm -rf ~/software/PicoGK/build/*
+
+cd ~/software/PicoGK
+mkdir -p build && cd build
+~/software/cmake-3.29.3-linux-x86_64/bin/cmake -DCMAKE_PREFIX_PATH=$HOME/miniconda -DBoost_ROOT=$HOME/miniconda -DBoost_NO_SYSTEM_PATHS=ON -DPICOGK_NO_VIEWER=ON -DGLFW_BUILD_WAYLAND=OFF -DGLFW_BUILD_X11=OFF -DCMAKE_POLICY_DEFAULT_CMP0144=NEW -DPKG_CONFIG_EXECUTABLE=$HOME/miniconda/bin/pkg-config ..make -j $(nproc)
+
+# Wenn das erledigt ist, musst du deinen C#-Code nach ~/Documents/Automatisierung_v2 kopieren 
+
+mkdir -p ~/Documents/Automatisierung_v2/bin/Debug/net9.0/
+cp ~/software/PicoGK/build/libpicogk.so ~/Documents/Automatisierung_v2/bin/Debug/net9.0/
+
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x ./dotnet-install.sh
+./dotnet-install.sh --channel 9.0
+env LD_LIBRARY_PATH="" ./dotnet-install.sh --channel 9.0
+export PATH=$HOME/.dotnet:$PATH
+rm dotnet-install.sh
+
+
+================================================================================
+TEIL 2: BEI JEDEM NEUEN LOGIN (SSH WURDE UNTERBROCHEN)
+================================================================================
+Wenn du dich per SSH neu anmeldest, hat Linux vergessen, wo deine privaten 
+Programme liegen. Führe diese zwei Befehle aus, wenn du Befehle außerhalb von
+Tmux testen willst (innerhalb von Tmux machst du das separat im Start-Skript):
+
+export PATH=$HOME/miniconda/bin:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
+export LD_LIBRARY_PATH=$HOME/miniconda/lib:$LD_LIBRARY_PATH
+
+
+================================================================================
+TEIL 3: CODE ÄNDERN & NEU KOMPILIEREN (BUILD)
+================================================================================
+Wenn du via SFTP/SSH C#-Dateien (z.B. Config oder Logik) geändert hast:
+
+cd ~/Documents/Automatisierung_v2
+dotnet build
+
+# HINWEIS ZUR SICHERHEIT: 
+# Stelle sicher, dass die libpicogk.so nach einem Build noch im Ordner
+# bin/Debug/net9.0/ liegt. Manchmal überschreibt 'dotnet build' den Ordner.
+
+
+================================================================================
+TEIL 4: SIMULATION STARTEN (BACKGROUND RUN MIT TMUX)
+================================================================================
+Da Prozesse beim Schließen der SSH-Verbindung oft radikal beendet werden, nutzen 
+wir 'tmux'. Es erstellt ein virtuelles, unsterbliches Fenster auf dem Server.
+
+SCHRITT 1: ALTE PROZESSE AUFRÄUMEN (Wichtig für sauberen Start)
+# ---------------------------------------------------------
+pkill -9 -f Xvfb
+pkill -9 -f xvfb-run
+pkill -9 -f dotnet
+pkill -9 -f SU2_CFD
+pkill -9 -f mpirun
+
+SCHRITT 2: TMUX-SITZUNG STARTEN
+# ---------------------------------------------------------
+~/miniconda/bin/tmux new -s sim
+
+(Dein Terminal lädt jetzt neu. Unten siehst du einen grünen Balken. Du bist 
+nun IN der sicheren Tmux-Sitzung.)
+
+SCHRITT 3: SIMULATION INNERHALB VON TMUX STARTEN
+# ---------------------------------------------------------
+Kopiere diesen gesamten Block in das neue Tmux-Fenster:
+
+cd ~/Documents/Automatisierung_v2
+export PATH=$HOME/miniconda/bin:$HOME/software/bin:$PATH
+export LD_LIBRARY_PATH=$HOME/miniconda/lib:$LD_LIBRARY_PATH
+export HWLOC_HIDE_ERRORS=1
+
+dotnet build
+xvfb-run -a dotnet run > simulation.log 2>&1
+
+SCHRITT 4: SICHER ABKOPPELN (DETACH) - DER WICHTIGSTE SCHRITT
+# ---------------------------------------------------------
+Lass die Simulation im Fenster laufen und drücke auf deiner Tastatur:
+1. STRG + B (gleichzeitig drücken, dann loslassen)
+2. D (für Detach)
+
+Der grüne Balken verschwindet. Du bist zurück im normalen Terminal und 
+kannst die SSH-Verbindung jetzt sicher schließen! Das Programm rechnet weiter.
+
+
+================================================================================
+TEIL 5: SIMULATION ÜBERWACHEN (MONITORING)
+================================================================================
+
+# 1. LIVE-ANSICHT (IN DIE TMUX SITZUNG ZURÜCKKEHREN)
+# Holt das Fenster mit der Simulation wieder nach vorne:
+~/miniconda/bin/tmux attach -t sim
+(Um wieder sicher rauszugehen: STRG + B, dann D)
+
+# 2. LOG-DATEI VON AUßEN LESEN (Ohne in Tmux reinzugehen)
+tail -f ~/Documents/Automatisierung_v2/simulation.log
+
+# 3. AUSLASTUNG PRÜFEN
+top -u $USER
+
+# 4. ERGEBNISSE LIVE AUSLESEN (Die letzten 10 Varianten)
+tail -n 10 ~/Documents/Automatisierung_v2/Ergebnisse/Simulation_Results.csv
+
+
+================================================================================
+TEIL 6: SIMULATION HART ABBRECHEN (KILL / PANIC BUTTON)
+================================================================================
+Wenn sich etwas aufgehängt hat oder du komplett neu starten willst:
+
+# 1. Die Tmux-Sitzung (und damit das Terminal-Fenster) zerstören
+~/miniconda/bin/tmux kill-session -t sim
+
+# 2. Zur Sicherheit alle hängenden Rechenprozesse gnadenlos abschießen
+pkill -9 -f dotnet
+pkill -9 -f xvfb-run
+pkill -9 -f SU2_CFD
+pkill -9 -f mpirun
+pkill -9 -f Xvfb
+
+# 3. Zur Kontrolle prüfen, ob noch etwas rechnet (sollte leer sein):
+ps aux | grep dotnet
+
+
+================================================================================
+DIE "GOLDENE REGEL" FÜR SU2 & MPI (PATH & VALIDIERUNG)
+================================================================================
+Fehlermeldungen wie "Executable not found" oder "Symbol lookup error" entstehen
+fast immer durch falsche Pfade oder Version-Konflikte mit der System-MPI.
+
+1. IMMER VOR JEDEM START: DIE VALIDIERUNG
+Führe diesen Block im normalen Terminal aus. Wenn er fehlschlägt, darfst du 
+die Simulation NICHT in Tmux starten, sondern musst die Pfade korrigieren.
+
+export CONDA_DIR=$HOME/miniconda
+export SU2_DIR=$HOME/software/bin
+export SU2_EXE=$SU2_DIR/SU2_CFD
+export MPI_RUN=$CONDA_DIR/bin/mpirun
+
+if [ -x "$SU2_EXE" ] && [ -x "$MPI_RUN" ]; then
+    echo "✅ VALIDIERUNG ERFOLGREICH: SU2 und MPI sind bereit."
+else
+    echo "❌ FEHLER: SU2 oder MPI nicht unter den definierten Pfaden gefunden!"
+    echo "-> Prüfe: ls -l $SU2_EXE"
+    echo "-> Prüfe: ls -l $MPI_RUN"
+fi
+
+2. FESTE KONFIGURATION IN FluidDynamicsAnalyzer.cs
+Hartcodiere KEINE relativen Pfade. Nutze IMMER die absoluten Pfade:
+
+// EINSTELLUNG FÜR MULTI-CORE (12 KERNE)
+su2Process.StartInfo.FileName = "/home/lpleissner/miniconda/bin/mpirun";
+su2Process.StartInfo.Arguments = "-n 12 /home/lpleissner/software/bin/SU2_CFD current_config.cfg";
+
+
+================================================================================
+CHECKLISTE BEI FEHLERN (TROUBLESHOOTING)
+================================================================================
+
+- FEHLER "prterun was unable to launch":
+  -> Die Datei unter dem Pfad in 'Arguments' existiert nicht.
+  -> Lösung: Führe 'ls -l /home/lpleissner/software/bin/SU2_CFD' aus. 
+     Ist die Datei da? Wenn nein, Pfad korrigieren.
+
+- FEHLER "symbol lookup error" (OpenMPI):
+  -> Dein System nutzt das falsche OpenMPI (systemweit statt Conda).
+  -> Lösung: Prüfe mit 'which mpirun'. Muss '/home/lpleissner/miniconda/bin/mpirun' 
+     sein. Wenn nicht, ist der PATH falsch gesetzt.
+
+- CPU AUSLASTUNG NUR 100% (Single Core):
+  -> MPI wird nicht genutzt.
+  -> Lösung: Prüfe, ob 'mpirun' tatsächlich verwendet wird oder ob 
+     dein Code weiterhin direkt 'SU2_CFD' ohne Argumente aufruft.
+
+- FEHLER "Xvfb failed to start" / "X connection to :99 broken":
+  -> Ein altes, unsichtbares Display blockiert den Platz.
+  -> Lösung: Führe 'pkill -9 -f Xvfb' aus und nutze im Startbefehl das Flag '-a'
+     (xvfb-run -a dotnet run ...).
