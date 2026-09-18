@@ -36,12 +36,16 @@ namespace AutomatisierungCleanVersion.Tests
             var defaults = new GmshMesherOptions();
             var loaded = JsonConfigLoader.LoadSolverOptions<GmshMesherOptions>("gmsh");
 
+            Assert.Equal(defaults.TunnelShape, loaded.TunnelShape);
             Assert.Equal(defaults.TunnelSizeX, loaded.TunnelSizeX);
             Assert.Equal(defaults.TunnelSizeY, loaded.TunnelSizeY);
             Assert.Equal(defaults.TunnelSizeZ, loaded.TunnelSizeZ);
             Assert.Equal(defaults.TunnelCenterX, loaded.TunnelCenterX);
             Assert.Equal(defaults.TunnelCenterY, loaded.TunnelCenterY);
             Assert.Equal(defaults.TunnelCenterZ, loaded.TunnelCenterZ);
+            Assert.Equal(defaults.TunnelDiameter, loaded.TunnelDiameter);
+            Assert.Equal(defaults.TunnelLength, loaded.TunnelLength);
+            Assert.Equal(defaults.TunnelSegments, loaded.TunnelSegments);
             Assert.Equal(defaults.BoundaryLayerSizeMin, loaded.BoundaryLayerSizeMin);
             Assert.Equal(defaults.BoundaryLayerSizeMax, loaded.BoundaryLayerSizeMax);
             Assert.Equal(defaults.BoundaryLayerDistMin, loaded.BoundaryLayerDistMin);

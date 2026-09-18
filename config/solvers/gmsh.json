@@ -4,12 +4,20 @@
   // Die Anzahl der Threads (GmshCores) und der Programmpfad stehen in simulation.json.
 
   // --- Windkanal (Simulationsdomäne) in mm ---
+  // "Box" = Quader aus TunnelSize*, "Cylinder" = Zylinder mit Achse entlang X
+  // aus TunnelDiameter/TunnelLength/TunnelSegments. Beide sitzen auf TunnelCenter*.
+  "TunnelShape": "Box",
   "TunnelSizeX": 600.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
   "TunnelCenterX": 0.0,
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
+
+  // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
+  "TunnelDiameter": 300.0,
+  "TunnelLength": 600.0,
+  "TunnelSegments": 64,
 
   // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
   "BoundaryLayerSizeMin": 1.2,

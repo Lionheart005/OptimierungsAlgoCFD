@@ -1,9 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using PicoGK;
 
 namespace MyPicoGkProject
 {
@@ -24,22 +24,51 @@ namespace MyPicoGkProject
 
         /// <summary>
         /// Erzeugt den statischen Referenz-Windkanal (gehört zum CFD-Setup, nicht zur Geometrie).
+        /// Die Hülle wird selbst trianguliert und als binäres STL geschrieben — ohne
+        /// Geometrie-Kernel, damit die CFD-Schicht unabhängig von PicoGK bleibt (TODO-11).
         /// </summary>
         public string EnsureTunnel(string workingDirectory)
         {
             if (_cachedTunnelPath != null && File.Exists(_cachedTunnelPath))
                 return _cachedTunnelPath;
 
-            Console.WriteLine("[SYSTEM] Generiere statischen Referenz-Windkanal...");
+            IReadOnlyList<StlTriangle> tunnel = BuildTunnel();
 
-            Vector3 vecScale = new Vector3(_options.TunnelSizeX, _options.TunnelSizeY, _options.TunnelSizeZ);
-            Vector3 vecOffset = new Vector3(_options.TunnelCenterX, _options.TunnelCenterY, _options.TunnelCenterZ);
+            Console.WriteLine($"[SYSTEM] Generiere statischen Referenz-Windkanal ({tunnel.Count} Dreiecke)...");
 
-            Mesh exportTunnel = Utils.mshCreateCube(vecScale, vecOffset);
             _cachedTunnelPath = Path.Combine(workingDirectory, "Static_Windtunnel.stl");
-            exportTunnel.SaveToStlFile(_cachedTunnelPath);
-            
+            StlWriter.WriteBinary(_cachedTunnelPath, tunnel);
+
             return _cachedTunnelPath;
+        }
+
+        /// <summary>
+        /// Baut die Tunnelhülle nach <see cref="GmshMesherOptions.TunnelShape"/>.
+        /// Unbekannter Name → Warnung und Rückfall auf den Quader, wie bei der
+        /// Algorithmuswahl: ein Tippfehler in der JSON soll den Lauf nicht abbrechen.
+        /// </summary>
+        private IReadOnlyList<StlTriangle> BuildTunnel()
+        {
+            Vector3 center = new Vector3(_options.TunnelCenterX, _options.TunnelCenterY, _options.TunnelCenterZ);
+            string shape = (_options.TunnelShape ?? string.Empty).Replace(" ", string.Empty).Trim();
+
+            if (shape.Equals("Cylinder", StringComparison.OrdinalIgnoreCase))
+            {
+                return TunnelGeometry.CreateCylinder(
+                    _options.TunnelDiameter,
+                    _options.TunnelLength,
+                    center,
+                    _options.TunnelSegments);
+            }
+
+            if (shape.Length > 0 && !shape.Equals("Box", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"[WARNUNG] Unbekannte Windkanal-Form '{_options.TunnelShape}' — nutze 'Box'.");
+            }
+
+            return TunnelGeometry.CreateBox(
+                new Vector3(_options.TunnelSizeX, _options.TunnelSizeY, _options.TunnelSizeZ),
+                center);
         }
 
         public string GenerateMesh(
