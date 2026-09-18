@@ -84,10 +84,47 @@ Anderer Rechner oder anderes Projekt:
 Nach `run` kann die Konsole zu — der Lauf hängt in einer tmux-Sitzung und
 überlebt das Ende der SSH-Verbindung.
 
+## Auslastung auf dem Server ansehen
+
+Das läuft bewusst außerhalb der Skripte, direkt per SSH. Wichtig ist `-t`:
+`top` und `htop` sind interaktiv und brauchen ein Terminal, das ssh ohne dieses
+Flag gar nicht erst anfordert.
+
+```powershell
+ssh -t BIC_12 'top -u $USER'      # beenden mit  q
+ssh -t BIC_12 'htop -u $USER'     # bunter, beenden mit  q  oder  F10
+```
+
+Die **einfachen** Anführungszeichen sind nötig: in doppelten würde PowerShell
+`$USER` schon lokal ersetzen (zu einem leeren Wert), statt es dem Server zu überlassen.
+
+Nur ein kurzer Blick, ohne interaktives Fenster — geht auch ohne `-t`:
+
+```powershell
+ssh BIC_12 'top -b -n 1 -u $USER | head -n 12'
+ssh BIC_12 'echo "Kerne: $(nproc)"; uptime'
+```
+
+So sieht ein gesunder Lauf aus:
+
+```
+    PID USER      ...  %CPU  COMMAND
+ 733193 lpleiss+  ... 554.5  dotnet      <- das Framework, treibt die Solver
+ 733310 lpleiss+  ... 100.0  SU2_CFD     <- ein Prozess je MPI-Rang,
+ 733311 lpleiss+  ... 100.0  SU2_CFD        Anzahl = "MpiCores" in simulation.json
+```
+
+Steht `dotnet` bei ~100 % und es ist **kein** `SU2_CFD` zu sehen, rechnet gerade
+die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung nur
+100 %" in `ServerHochschuleEinrichten2.txt`).
+
 ## Was beim Deploy passiert
 
-1. `src/`, `config/` und `scripts/` werden gepackt — **ohne** `bin/`, `obj/` und
-   **ohne** `*.local.json`.
+1. `src/`, `config/` und `scripts/` werden gepackt — **ohne** `bin/`, `obj/`,
+   `*.local.json` sowie `*.md` und `*.ps1`. Auf dem Server landet aus `scripts/`
+   also nur `sim-runner.sh`; alles andere braucht er nicht. Das ist kein Detail:
+   der Fingerabdruck wird genau über diese Liste gebildet, sonst würde schon eine
+   Korrektur in dieser README einen laufenden Lauf neu starten.
 2. Über Pfade und Dateiinhalte wird ein Fingerabdruck gebildet und mit dem
    verglichen, der auf dem Server liegt (`.deploy_hash`).
 3. **Unverändert** → kein Upload, ein laufender Lauf bleibt unangetastet.

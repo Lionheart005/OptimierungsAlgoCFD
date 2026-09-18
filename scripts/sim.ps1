@@ -98,9 +98,15 @@ function Write-Warn([string]$Text) {
     Write-Host "    $Text" -ForegroundColor Yellow
 }
 
-# Alle Dateien, die deployt werden. bin/ und obj/ fliegen raus (Build-Artefakte),
-# *.local.json ebenfalls: das sind maschinenspezifische Ueberlagerungen. Eine
-# simulation.local.json auf dem Server ueberlebt dadurch jedes Deploy.
+# Alle Dateien, die deployt werden:
+#   - bin/ und obj/     Build-Artefakte, werden drueben neu erzeugt
+#   - *.local.json      maschinenspezifische Ueberlagerungen. Eine
+#                       simulation.local.json auf dem Server ueberlebt dadurch
+#                       jedes Deploy.
+#   - *.md und *.ps1    Dokumentation und die Windows-Seite selbst. Der Server
+#                       braucht beides nicht -- und weil der Fingerabdruck genau
+#                       ueber diese Liste gebildet wird, wuerde sonst schon eine
+#                       Korrektur in dieser README einen laufenden Lauf neu starten.
 function Get-DeployFiles {
     $files = @()
     foreach ($root in $DeployRoots) {
@@ -110,7 +116,9 @@ function Get-DeployFiles {
     }
 
     $files | Where-Object {
-        $_.FullName -notmatch '\\(bin|obj)\\' -and $_.Name -notlike '*.local.json'
+        $_.FullName -notmatch '\\(bin|obj)\\' -and
+        $_.Name -notlike '*.local.json' -and
+        $_.Extension -notin @('.md', '.ps1')
     } | Sort-Object FullName
 }
 
