@@ -1,0 +1,19 @@
+{
+  // Vorgabedaten für den Gmsh-CFD-Vernetzer. Was hier fehlt, kommt aus den
+  // Standardwerten in Solvers/Cfd/GmshMesherOptions.cs.
+  // Die Anzahl der Threads (GmshCores) und der Programmpfad stehen in simulation.json.
+
+  // --- Windkanal (Simulationsdomäne) in mm ---
+  "TunnelSizeX": 600.0,
+  "TunnelSizeY": 300.0,
+  "TunnelSizeZ": 300.0,
+  "TunnelCenterX": 0.0,
+  "TunnelCenterY": 0.0,
+  "TunnelCenterZ": 0.0,
+
+  // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
+  "BoundaryLayerSizeMin": 1.2,
+  "BoundaryLayerSizeMax": 120.0,
+  "BoundaryLayerDistMin": 3.0,
+  "BoundaryLayerDistMax": 40.0
+}

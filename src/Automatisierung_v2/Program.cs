@@ -46,10 +46,14 @@ namespace MyPicoGkProject
                 // nicht eine projektspezifische Metrik.
                 IModelValidator validator = new ChampionValidator(fitness);
 
-                var cfdMesher = new GmshCfdMesher();
+                var cfdMesher = new GmshCfdMesher(
+                    JsonConfigLoader.LoadSolverOptions<GmshMesherOptions>("gmsh", configDirectory));
+                var su2Solver = new Su2Solver(
+                    JsonConfigLoader.LoadSolverOptions<Su2SolverOptions>("su2", configDirectory));
+
                 var stages = new[]
                 {
-                    new SolverStage(cfdMesher, new Su2Solver())
+                    new SolverStage(cfdMesher, su2Solver)
                 };
 
                 // Optimierungsalgorithmus wählen (Rsm oder Evolution)

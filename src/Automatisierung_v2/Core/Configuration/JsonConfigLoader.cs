@@ -87,6 +87,24 @@ namespace MyPicoGkProject
         }
 
         /// <summary>
+        /// Lädt Optionen einer Solver-/Mesher-Komponente aus <c>solvers/&lt;name&gt;.json</c>,
+        /// überlagert von <c>solvers/&lt;name&gt;.local.json</c>. Fehlt das
+        /// Konfigurationsverzeichnis, gelten die Standardwerte des Options-Objekts.
+        /// </summary>
+        public static T LoadSolverOptions<T>(string name, string? configDirectory = null) where T : class, new()
+        {
+            string? directory = ResolveConfigDirectory(configDirectory);
+            if (directory == null) return new T();
+
+            string solverDirectory = Path.Combine(directory, "solvers");
+
+            return Load(
+                new T(),
+                Path.Combine(solverDirectory, $"{name}.json"),
+                Path.Combine(solverDirectory, $"{name}.local.json"));
+        }
+
+        /// <summary>
         /// Legt die angegebenen JSON-Dateien der Reihe nach über <paramref name="defaults"/>.
         /// Nicht vorhandene Dateien werden übersprungen.
         /// </summary>

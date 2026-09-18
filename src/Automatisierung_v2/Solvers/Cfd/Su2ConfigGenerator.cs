@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Linq;
 
 namespace MyPicoGkProject
 {
@@ -9,36 +10,46 @@ namespace MyPicoGkProject
     /// </summary>
     public static class Su2ConfigGenerator
     {
-        public static void Generate(string configPath, string meshPath, float refArea, SimulationConfig config)
+        public static void Generate(string configPath, string meshPath, float refArea, SimulationConfig config, Su2SolverOptions options)
         {
             string refAreaString = refArea.ToString(CultureInfo.InvariantCulture);
-            
+
             // Umrechnung: Mach zu Geschwindigkeit in m/s (Schallgeschwindigkeit ca. 343.2 m/s bei 20°C)
-            float velocity = config.MachNumber * 343.2f;
+            float velocity = config.MachNumber * options.SpeedOfSound;
             string velocityString = velocity.ToString(CultureInfo.InvariantCulture);
+
+            string densityString = options.Density.ToString(CultureInfo.InvariantCulture);
+            string viscosityString = options.DynamicViscosity.ToString(CultureInfo.InvariantCulture);
+            string cflAdaptParams = string.Join(", ", new[]
+            {
+                options.CflAdaptFactorDown,
+                options.CflAdaptFactorUp,
+                options.CflAdaptMin,
+                options.CflAdaptMax
+            }.Select(value => value.ToString(CultureInfo.InvariantCulture)));
 
             string[] cfgContent = {
                 "%",
                 "% --- SOLVER & PHYSIK ---",
                 "SOLVER= INC_RANS",
-                "KIND_TURB_MODEL= SA",
+                $"KIND_TURB_MODEL= {options.TurbulenceModel}",
                 "MATH_PROBLEM= DIRECT",
                 "INC_DENSITY_MODEL= CONSTANT",
                 "INC_ENERGY_EQUATION= NO",
                 "%",
                 "% --- FLUID EIGENSCHAFTEN (Luft auf Meereshöhe) ---",
                 $"FREESTREAM_VELOCITY= ( {velocityString}, 0.0, 0.0 )",
-                "FREESTREAM_DENSITY= 1025.0",
+                $"FREESTREAM_DENSITY= {densityString}",
                 "VISCOSITY_MODEL= CONSTANT_VISCOSITY",
-                "MU_CONSTANT= 1.001e-3",
+                $"MU_CONSTANT= {viscosityString}",
                 "%",
                 "% --- INITIALISIERUNG (Zwingend für INC_RANS in SU2 7.5.1) ---",
-                "INC_DENSITY_INIT= 1025.0",
+                $"INC_DENSITY_INIT= {densityString}",
                 $"INC_VELOCITY_INIT= ( {velocityString}, 0.0, 0.0 )",
                 "%",
                 "% --- REFERENZWERTE ---",
                 $"REF_AREA= {refAreaString}", 
-                "REF_LENGTH= 0.01",
+                $"REF_LENGTH= {options.ReferenceLength.ToString(CultureInfo.InvariantCulture)}",
                 "REF_ORIGIN_MOMENT_X = 0.00",
                 "REF_ORIGIN_MOMENT_Y = 0.00",
                 "REF_ORIGIN_MOMENT_Z = 0.00",
@@ -55,9 +66,9 @@ namespace MyPicoGkProject
                 "SLOPE_LIMITER_FLOW= VENKATAKRISHNAN",     
                 "VENKAT_LIMITER_COEFF= 0.05",              
                 "TIME_DISCRE_FLOW= EULER_IMPLICIT",
-                "CFL_NUMBER= 5.0",                         
-                "CFL_ADAPT= YES",
-                "CFL_ADAPT_PARAM= ( 0.5, 1.2, 1.0, 50.0 )",
+                $"CFL_NUMBER= {options.CflNumber.ToString(CultureInfo.InvariantCulture)}",
+                $"CFL_ADAPT= {(options.CflAdapt ? "YES" : "NO")}",
+                $"CFL_ADAPT_PARAM= ( {cflAdaptParams} )",
                 "%",                       
                 "%",
                 "% --- TURBULENZ NUMERIK ---",

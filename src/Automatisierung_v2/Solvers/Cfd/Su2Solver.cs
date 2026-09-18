@@ -12,6 +12,14 @@ namespace MyPicoGkProject
     /// </summary>
     public class Su2Solver : ISimulationSolver
     {
+        private readonly Su2SolverOptions _options;
+
+        /// <param name="options">Vorgabedaten aus config/solvers/su2.json; ohne Angabe gelten die Standardwerte.</param>
+        public Su2Solver(Su2SolverOptions? options = null)
+        {
+            _options = options ?? new Su2SolverOptions();
+        }
+
         public string Name => "SU2 CFD Solver";
 
         public void Solve(
@@ -33,7 +41,7 @@ namespace MyPicoGkProject
 
             if (File.Exists(historyPath)) File.Delete(historyPath);
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config);
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options);
 
             try
             {

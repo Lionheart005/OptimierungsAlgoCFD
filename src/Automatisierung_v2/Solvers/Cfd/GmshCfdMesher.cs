@@ -13,7 +13,14 @@ namespace MyPicoGkProject
     /// </summary>
     public class GmshCfdMesher : IMeshGenerator
     {
+        private readonly GmshMesherOptions _options;
         private string? _cachedTunnelPath;
+
+        /// <param name="options">Vorgabedaten aus config/solvers/gmsh.json; ohne Angabe gelten die Standardwerte.</param>
+        public GmshCfdMesher(GmshMesherOptions? options = null)
+        {
+            _options = options ?? new GmshMesherOptions();
+        }
 
         /// <summary>
         /// Erzeugt den statischen Referenz-Windkanal (gehört zum CFD-Setup, nicht zur Geometrie).
@@ -24,11 +31,9 @@ namespace MyPicoGkProject
                 return _cachedTunnelPath;
 
             Console.WriteLine("[SYSTEM] Generiere statischen Referenz-Windkanal...");
-            Vector3 minBounds = new Vector3(-300, -150, -150);
-            Vector3 maxBounds = new Vector3(300, 150, 150);
-            
-            Vector3 vecScale = maxBounds - minBounds;
-            Vector3 vecOffset = (minBounds + maxBounds) * 0.5f;
+
+            Vector3 vecScale = new Vector3(_options.TunnelSizeX, _options.TunnelSizeY, _options.TunnelSizeZ);
+            Vector3 vecOffset = new Vector3(_options.TunnelCenterX, _options.TunnelCenterY, _options.TunnelCenterZ);
 
             Mesh exportTunnel = Utils.mshCreateCube(vecScale, vecOffset);
             _cachedTunnelPath = Path.Combine(workingDirectory, "Static_Windtunnel.stl");
@@ -86,10 +91,10 @@ namespace MyPicoGkProject
                 
                 "Field[2] = Threshold;",
                 "Field[2].InField = 1;",
-                "Field[2].SizeMin = 1.2;",
-                "Field[2].SizeMax = 120.0;",
-                "Field[2].DistMin = 3.0;",
-                "Field[2].DistMax = 40.0;",
+                $"Field[2].SizeMin = {Format(_options.BoundaryLayerSizeMin)};",
+                $"Field[2].SizeMax = {Format(_options.BoundaryLayerSizeMax)};",
+                $"Field[2].DistMin = {Format(_options.BoundaryLayerDistMin)};",
+                $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};",
                 
                 /*
                 "// ==========================================",
@@ -145,5 +150,8 @@ namespace MyPicoGkProject
             Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
             return outputMeshPath;
         }
+
+        /// <summary>Zahlen fürs .geo-Skript immer mit Punkt als Dezimaltrenner.</summary>
+        private static string Format(float value) => value.ToString(CultureInfo.InvariantCulture);
     }
 }
