@@ -20,8 +20,48 @@ bash scripts/sim-runner.sh status
 
 - **Auf dem Server:** einmalig `setup_server.sh` (Miniconda, SU2, Gmsh, PicoGK, .NET).
   Das erledigen diese Skripte *nicht* — sie setzen die fertige Umgebung voraus.
-- **Auf Windows:** `ssh`, `scp` und `tar` (in Windows 11 enthalten) sowie ein
-  Eintrag in `~/.ssh/config` mit hinterlegtem Schlüssel. `BIC_12` ist die Vorgabe.
+- **Auf Windows:** `ssh`, `scp` und `tar` (in Windows 11 enthalten), ein Eintrag in
+  `~/.ssh/config` und ein dort hinterlegter SSH-Schlüssel — siehe nächster Abschnitt.
+  `BIC_12` ist die Vorgabe.
+
+### SSH-Schlüssel
+
+Ein einzelnes `sim.ps1 run` setzt fünf bis sechs ssh/scp-Aufrufe ab. Ohne Schlüssel
+müsstest du jedes Mal das Passwort eingeben, und die stillen Abfragen (`running`,
+`hash`) unterdrücken stderr — eine Passwortabfrage sähe dort aus wie ein Hänger.
+Anmeldung per Schlüssel ist deshalb praktisch Voraussetzung.
+
+**Was gebraucht wird:** ein Schlüsselpaar unter `%USERPROFILE%\.ssh\` (Standardname,
+z.B. `id_ed25519` + `id_ed25519.pub`). Weil es ein Standardname ist, findet ssh ihn
+von allein — eine `IdentityFile`-Zeile in der `config` ist nicht nötig. Der
+**öffentliche** Teil muss auf dem Server in `~/.ssh/authorized_keys` stehen.
+
+**Prüfen, ob das schon der Fall ist:**
+
+```powershell
+ssh -o BatchMode=yes BIC_12 "echo ok"
+```
+
+`BatchMode=yes` schaltet jede Passwortabfrage ab. `ok` = Schlüssel funktioniert.
+`Permission denied (publickey,password)` = er liegt noch nicht auf dem Server.
+
+**Schlüssel erzeugen, falls noch keiner existiert:**
+
+```powershell
+ssh-keygen -t ed25519
+```
+
+**Öffentlichen Teil auf den Server bringen** (einmalig, fragt nach dem Passwort).
+`ssh-copy-id` gibt es unter Windows nicht:
+
+```powershell
+$key = (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw).Trim()
+ssh BIC_12 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && grep -qxF '$key' ~/.ssh/authorized_keys 2>/dev/null || echo '$key' >> ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys"
+```
+
+Bewusst nicht `type …pub | ssh …`: PowerShell macht aus dem durchgereichten Text
+CRLF-Zeilenenden, und ein `\r` in `authorized_keys` macht den Eintrag unbrauchbar.
+Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 
 ## Alltag
 
