@@ -1,0 +1,4 @@
+# Shell-Skripte laufen auf dem Linux-Server und MUESSEN LF-Zeilenenden haben.
+# Ohne diese Zeile macht core.autocrlf=true beim Checkout unter Windows CRLF daraus,
+# und bash bricht mit "$'\r': command not found" ab.
+*.sh text eol=lf
