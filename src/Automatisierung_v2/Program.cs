@@ -23,7 +23,9 @@ namespace MyPicoGkProject
                 switch (projectName)
                 {
                     case "MantaAuv":
-                        projectConfig = MantaProjectConfig.Create();
+                        // Zahlen aus config/projects/MantaAuv.json, Code-Vorgaben als Fallback
+                        projectConfig = JsonConfigLoader.LoadProjectConfig(
+                            projectName, MantaProjectConfig.Create(), configDirectory);
                         geometry = new MantaGeometryGenerator();
                         fitness = new MantaFitnessCalculator(projectConfig);
                         break;

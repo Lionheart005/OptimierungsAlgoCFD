@@ -58,6 +58,35 @@ namespace MyPicoGkProject
         }
 
         /// <summary>
+        /// Lädt die Projekt-Konfiguration aus <c>projects/&lt;Projektname&gt;.json</c>,
+        /// überlagert von <c>projects/&lt;Projektname&gt;.local.json</c>.
+        ///
+        /// <paramref name="defaults"/> ist die im Code hinterlegte Vorgabe des Projekts;
+        /// die Datei überschreibt daraus nur, was sie selbst nennt. Ein Parameter, den die
+        /// Datei nicht erwähnt, bleibt also auf dem Code-Standard — zum Entfernen eines
+        /// Parameters muss die Code-Vorgabe angepasst werden.
+        /// </summary>
+        public static ProjectConfig LoadProjectConfig(string projectName, ProjectConfig defaults, string? configDirectory = null)
+        {
+            string? directory = ResolveConfigDirectory(configDirectory);
+
+            if (directory == null)
+            {
+                Console.WriteLine($"[CONFIG] Kein Konfigurationsverzeichnis gefunden — nutze Code-Vorgaben für Projekt '{projectName}'.");
+                return defaults;
+            }
+
+            string projectDirectory = Path.Combine(directory, "projects");
+
+            var dto = Load(
+                ProjectConfigDto.FromProjectConfig(defaults),
+                Path.Combine(projectDirectory, $"{projectName}.json"),
+                Path.Combine(projectDirectory, $"{projectName}.local.json"));
+
+            return dto.ToProjectConfig();
+        }
+
+        /// <summary>
         /// Legt die angegebenen JSON-Dateien der Reihe nach über <paramref name="defaults"/>.
         /// Nicht vorhandene Dateien werden übersprungen.
         /// </summary>
