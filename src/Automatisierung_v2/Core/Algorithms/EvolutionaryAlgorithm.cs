@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Evolutionärer Algorithmus mit Box-Muller Mutation und Rollenverteilung.

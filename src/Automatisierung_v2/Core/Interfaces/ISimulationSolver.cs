@@ -1,4 +1,4 @@
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Führt eine Simulation (CFD, FEM, etc.) auf einem Mesh aus.

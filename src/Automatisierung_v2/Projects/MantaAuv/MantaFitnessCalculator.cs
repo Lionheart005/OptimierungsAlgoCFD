@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Projects.MantaAuv
 {
     /// <summary>
     /// Manta-Ray AUV Fitness-Berechnung.

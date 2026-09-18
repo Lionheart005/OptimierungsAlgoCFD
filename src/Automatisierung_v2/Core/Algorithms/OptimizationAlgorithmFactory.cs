@@ -1,6 +1,6 @@
 using System;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Erzeugt den Optimierungsalgorithmus anhand des Namens aus der Framework-Konfiguration

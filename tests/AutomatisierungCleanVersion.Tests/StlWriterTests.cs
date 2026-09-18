@@ -4,7 +4,9 @@ using System.IO;
 using System.Numerics;
 using System.Text;
 using Xunit;
-using MyPicoGkProject;
+using MyPicoGkProject.Core;
+using MyPicoGkProject.Projects.MantaAuv;
+using MyPicoGkProject.Solvers.Cfd;
 
 namespace AutomatisierungCleanVersion.Tests
 {

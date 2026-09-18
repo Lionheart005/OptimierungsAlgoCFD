@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     public static class StlSmoother
     {

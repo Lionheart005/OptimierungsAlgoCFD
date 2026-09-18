@@ -1,6 +1,6 @@
 using System;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Laufzeitumgebung des Geometrie-Kernels (Entscheidung 2).

@@ -2,7 +2,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// Generiert SU2 Konfigurationsdateien für CFD-Simulationen.

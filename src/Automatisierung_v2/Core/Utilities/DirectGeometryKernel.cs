@@ -1,6 +1,6 @@
 using System;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Kernel ohne eigene Laufzeitumgebung: führt den Programmablauf direkt aus.

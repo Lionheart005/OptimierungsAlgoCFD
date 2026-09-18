@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Projektspezifische Konfiguration. Ersetzt die hardcodierten AUV-Parameter im SimulationData-Konstruktor.

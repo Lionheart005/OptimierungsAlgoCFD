@@ -1,5 +1,10 @@
 using System;
 
+using MyPicoGkProject.Core;
+using MyPicoGkProject.Kernels.PicoGk;
+using MyPicoGkProject.Projects.MantaAuv;
+using MyPicoGkProject.Solvers.Cfd;
+
 namespace MyPicoGkProject
 {
     class Program

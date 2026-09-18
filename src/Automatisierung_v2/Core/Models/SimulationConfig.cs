@@ -1,4 +1,4 @@
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Framework-weite Konfiguration (ehemals GlobalConfig innerhalb von SimulationData).

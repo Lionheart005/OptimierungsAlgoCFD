@@ -1,4 +1,4 @@
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Berechnet die Fitness eines Modells basierend auf seinen Metriken.

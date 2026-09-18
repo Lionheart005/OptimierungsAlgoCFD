@@ -1,4 +1,6 @@
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// Vorgabedaten für den SU2-Solver: Fluideigenschaften, Referenzwerte und CFL-Steuerung.

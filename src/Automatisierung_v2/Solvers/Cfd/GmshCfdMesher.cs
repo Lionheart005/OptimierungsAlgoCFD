@@ -5,7 +5,9 @@ using System.Globalization;
 using System.IO;
 using System.Numerics;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// CFD-Mesher basierend auf Gmsh. Erzeugt ein Volumen-Mesh für CFD-Simulationen.

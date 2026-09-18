@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Skaliert Geometrie-Parameter auf PicoGK-Arbeitsgröße und zurück.

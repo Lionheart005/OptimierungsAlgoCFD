@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Ein Dreieck in Weltkoordinaten (mm). Die Reihenfolge der Ecken bestimmt über die

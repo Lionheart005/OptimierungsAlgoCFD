@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Projects.MantaAuv
 {
     /// <summary>
     /// Projektspezifische Konfiguration für das Manta-Ray AUV.

@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// SU2 CFD Solver. Führt eine inkompressible RANS-Simulation durch.

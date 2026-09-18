@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// RSM (Response Surface Methodology) Optimierungsalgorithmus.
@@ -124,7 +124,7 @@ namespace MyPicoGkProject
         ///
         /// Öffentlich und statisch, damit die Antwortfläche mit bekannten Stützstellen
         /// geprüft werden kann, ohne einen kompletten Lauf zu fahren (TODO-19) —
-        /// wie bei <see cref="Su2Solver.ResolveReferenceArea"/>.
+        /// nach demselben Muster wie <c>Su2Solver.ResolveReferenceArea</c>.
         /// </summary>
         public static float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
         {

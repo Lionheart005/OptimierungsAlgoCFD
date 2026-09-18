@@ -1,4 +1,4 @@
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Eine Stufe der Simulationskette: ein Solver mit dem Vernetzer, der sein Netz erzeugt.

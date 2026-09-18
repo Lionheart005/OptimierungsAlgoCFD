@@ -4,7 +4,9 @@ using System.IO;
 using System.Numerics;
 using PicoGK;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Projects.MantaAuv
 {
     /// <summary>
     /// Manta-Ray AUV Geometrie-Generator.

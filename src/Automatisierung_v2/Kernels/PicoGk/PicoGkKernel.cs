@@ -2,7 +2,9 @@ using System;
 using System.Threading;
 using PicoGK;
 
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Kernels.PicoGk
 {
     /// <summary>
     /// PicoGK als Geometrie-Kernel.

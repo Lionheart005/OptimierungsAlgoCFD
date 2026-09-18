@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Prüft ob ein Champion physikalisch stabil ist.

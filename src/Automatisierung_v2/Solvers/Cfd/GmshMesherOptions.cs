@@ -1,4 +1,6 @@
-namespace MyPicoGkProject
+using MyPicoGkProject.Core;
+
+namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// Vorgabedaten für den Gmsh-CFD-Vernetzer: Abmessungen des Windkanals und

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using MyPicoGkProject;
+using MyPicoGkProject.Core;
+using MyPicoGkProject.Projects.MantaAuv;
+using MyPicoGkProject.Solvers.Cfd;
 using Xunit;
 
 namespace AutomatisierungCleanVersion.Tests

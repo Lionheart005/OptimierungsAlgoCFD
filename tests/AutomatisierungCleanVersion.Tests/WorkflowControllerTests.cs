@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Moq;
-using MyPicoGkProject;
+using MyPicoGkProject.Core;
+using MyPicoGkProject.Projects.MantaAuv;
+using MyPicoGkProject.Solvers.Cfd;
 using Xunit;
 
 namespace AutomatisierungCleanVersion.Tests

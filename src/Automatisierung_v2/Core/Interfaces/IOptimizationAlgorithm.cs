@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Interface für Optimierungsalgorithmen.

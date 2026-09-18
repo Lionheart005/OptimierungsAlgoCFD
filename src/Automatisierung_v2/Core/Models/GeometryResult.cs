@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Wie eine Geometrie-Metrik von der PicoGK-Arbeitsgröße auf die reale Größe

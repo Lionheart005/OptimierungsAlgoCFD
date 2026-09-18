@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Erzeugt die 3D-Geometrie für ein Projekt und gibt eine STL + Metriken zurück.

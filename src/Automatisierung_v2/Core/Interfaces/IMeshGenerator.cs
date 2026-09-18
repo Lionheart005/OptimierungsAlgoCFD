@@ -1,4 +1,4 @@
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Erzeugt ein Simulationsnetz (CFD, FEM) aus einer STL-Datei.

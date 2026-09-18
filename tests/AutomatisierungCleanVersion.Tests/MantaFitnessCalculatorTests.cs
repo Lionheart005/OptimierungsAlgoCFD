@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Xunit;
-using MyPicoGkProject;
+using MyPicoGkProject.Core;
+using MyPicoGkProject.Projects.MantaAuv;
+using MyPicoGkProject.Solvers.Cfd;
 
 namespace AutomatisierungCleanVersion.Tests
 {

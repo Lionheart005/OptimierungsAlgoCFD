@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Der "Türsteher" des Frameworks: prüft, ob der Gewinner einer Iteration stabil ist.

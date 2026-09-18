@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MyPicoGkProject
+namespace MyPicoGkProject.Core
 {
     /// <summary>
     /// Datenmodell für ein einzelnes Modell (Variante).
