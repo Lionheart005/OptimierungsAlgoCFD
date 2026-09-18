@@ -1,454 +1,347 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
+> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `8141071 TODO-13`.
+> **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
+> projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die
+> Fitness, Mesher hängen pro Solver-Stufe.
+> **Offen:** Block B (JSON-Konfiguration), Block C (PicoGK austauschbar) und der Rest von
+> Block D. Die TODO-Liste am Ende ist die Arbeitsgrundlage zum Fertigstellen.
+
 ## Ziel
 
 Das Framework soll so umgebaut werden, dass **verschiedene Projekte** (z.B. AUV-Manta, Drohnen-Propeller, Wärmetauscher) jeweils eigene Geometrie-Erzeugung, Fitness-Funktion, Solver-Konfiguration und Parameter mitbringen können — **ohne das Hauptprogramm zu verändern**. Gleichzeitig soll der Code testbar (Unit Tests) und nach Clean-Architecture-Prinzipien aufgebaut sein, ohne unnötig aufgebläht zu werden.
 
 ---
 
-## Status Quo: Probleme
+## Design-Entscheidungen (verbindlich)
 
-### Harte Kopplungen (die wir aufbrechen müssen)
+Diese Punkte sind entschieden und ersetzen die ursprünglichen "Offenen Fragen":
 
-| Problem | Wo genau | Warum kritisch |
+| # | Entscheidung | Konsequenz |
 |---|---|---|
-| **Geometrie ist Manta-Ray-hardcoded** | `PicoGkGenerator.cs` L29-137: 30 Fin-Rays, 3 Sensorblisters, Torpedo-Rumpf | Neues Projekt = kompletter Rewrite dieser Datei |
-| **Fitness-Formel ist hardcoded** | `FitnessCalculator.cs` (static class): `Volume * SensorDistance / Drag³` | Jedes Projekt braucht eine andere Zielfunktion |
-| **SU2-Konfiguration ist hardcoded** | `FluidDynamicsAnalyzer.cs` L109-168: Spalart-Allmaras, Wasser ρ=1025 | Kein anderer Solver oder Fluid möglich |
-| **Gmsh-Geo ist hardcoded** | `GmshConverter.cs` L21-103: Boolean-Subtraktion, SU2-Format, Boundary-Marker | Kein FEM-Netz, kein anderes Format möglich |
-| **AUV-Parameter im Konstruktor** | `SimulationData.cs` L104-122: Length, Width, MainRadius, WingRadius, TailTaper | Neues Projekt = Konstruktor umschreiben |
-| **WorkflowController kennt konkrete Klassen** | `WorkflowController.cs` L20-22: `new PicoGkGenerator()`, `new GmshConverter()`, `new FluidDynamicsAnalyzer()` | Kein Austausch möglich |
-| **FitnessCalculator ist `static`** | `EvolutionaryAlgorithm.cs` L74, `RsmOptimizationAlgorithm.cs` L45 | Nicht mockbar, nicht austauschbar |
-| **Validation ("Bouncer") nimmt `Drag` an** | `WorkflowController.cs` L159: `candidate.PassiveParameters["Drag"]` | Funktioniert nur für CFD-Drag |
-| **Windkanal in der Geometrie-Klasse** | `PicoGkGenerator.cs` L13-27: 600×300×300 mm Box | Gehört zum CFD-Setup, nicht zur Geometrie |
-| **File-System-Effekte im Konstruktor** | `SimulationData.cs` L98-101: `Directory.CreateDirectory(...)` | Unit Tests erzeugen Ordner auf der Platte |
+| **1** | **Mesher austauschbar pro Solver.** Externe Programme können Netz-Ansprüche haben, die Gmsh nicht erfüllt. Es muss aber auch möglich sein, alles über Gmsh laufen zu lassen. | Der Controller braucht eine Solver↔Mesher-Zuordnung, kein einzelnes `IMeshGenerator`-Feld. |
+| **2** | **PicoGK austauschbar.** Andere Geometrie-Kernel müssen möglich sein. `Library.Go()` ist aber Voraussetzung für den Start von PicoGK. | Der Start-Mechanismus muss vom `IGeometryGenerator` kommen, nicht hart in `Program.cs` stehen. Kein Framework-Kern-Code darf `using PicoGK` haben. |
+| **3** | **Konfiguration zweigeteilt.** Reine Vorgabedaten, Zahlen und Pfade zu externen Programmen → **JSON-Datei**. Logik (Fitness-Berechnung, PicoGK-Geometrieerzeugung) → **C#-Code**. | `SimulationConfig`, `ProjectConfig` und die Solver-/Mesher-Parameter werden aus JSON geladen. Fitness/Geometrie bleiben Klassen. |
+| **4** | **RubberBandScaler und StlSmoother bleiben im Framework**, müssen aber **ein- und ausschaltbar** sein. | Zwei Schalter in der Konfiguration; Aufrufer müssen den Aus-Fall sauber behandeln. |
+| **5** | **Monorepo.** | Eine Solution, `src/` + `tests/`. ✅ umgesetzt. |
+| **6** | **Der Bouncer ist NICHT mehr projektspezifisch**, sondern fester Framework-Bestandteil. Er lässt mit dem Gewinner-Modell einer Generation **die komplette Schleife nochmal ablaufen** zur Überprüfung — ohne projektspezifische Anpassung. | `MantaModelValidator` muss durch einen generischen `ChampionValidator` im Kern ersetzt werden, der nicht auf `"Drag"` prüft, sondern auf die **Fitness**. |
 
 ---
 
-## Kern-Idee: Projektordner-Architektur
+## Verifikationsstand (18.09.2026)
+
+```
+dotnet build Automatisierung.sln   →  Build succeeded. 0 Warnings, 0 Errors
+dotnet test  Automatisierung.sln   →  Passed: 4, Failed: 0, Skipped: 0
+```
+(Sollstand nach Block A unverändert: 0/0/4 — es sind noch keine Tests dazugekommen, siehe TODO-19.)
+
+Der Code kompiliert und die vorhandenen Tests laufen. **Die Pipeline wurde nicht end-to-end
+ausgeführt** (braucht Linux + SU2 + Gmsh + MPI), Laufzeitfehler sind also nicht ausgeschlossen.
+
+**Funktionaler Vergleich gegen `main`:** Geometrie-Erzeugung, Fitness-Formel, Gmsh-Geo-Skript,
+SU2-Config und Drag-Auslesen wurden 1:1 übernommen — kein Funktionsverlust festgestellt.
+
+**Bewusste Verhaltensänderungen gegenüber `main`** (alles andere rechnet identisch):
+1. Der Viewer-Zweig (`showInViewer`) ist entfallen (wurde in `main` immer mit `false` aufgerufen).
+2. Der `TailTaper`-Skalierungsbug ist behoben — `TailTaper` wird nicht mehr mitskaliert.
+3. **Bouncer prüft Fitness statt Drag** (Entscheidung 6, TODO-3). Bei gleicher Toleranz
+   (0.20) ist er dadurch **strenger**: die Fitness reagiert über `drag^DragBalanceFactor`
+   und das Volumen empfindlicher auf den Jitter als der Drag allein. Der Wert
+   `SimulationConfig.BouncerTolerance` muss beim ersten echten Lauf nachjustiert werden.
+4. **RSM ignoriert fehlgeschlagene Simulationen** (TODO-2, vom Nutzer beauftragt): sie sind
+   keine IDW-Stützstellen mehr und zählen nicht für die DoE-Mindestanzahl; stattdessen läuft
+   eine Variante mehr. Ohne fehlgeschlagene Simulationen identisch zu vorher.
+5. **CSV-Export**: Spaltennamen sind jetzt die Vereinigung über alle Records (vorher nur
+   `History[0]`), zusätzlich gibt es die Spalte `SimulationFailed` (0/1) am Zeilenende.
+
+---
+
+## Ist-Struktur (existiert so im Branch)
 
 ```
 AutomatisierungCleanVersion/
-│
-├── Core/                          ← Framework-Kern (ändert sich NIE pro Projekt)
-│   ├── Interfaces/                ← Verträge / Abstraktionen
-│   │   ├── IGeometryGenerator.cs
-│   │   ├── IFitnessCalculator.cs
-│   │   ├── ISimulationSolver.cs
-│   │   ├── IMeshGenerator.cs
-│   │   ├── IModelValidator.cs
-│   │   └── IOptimizationAlgorithm.cs  (existiert schon, wird leicht angepasst)
-│   │
-│   ├── Models/                    ← Datenklassen (Projekt-unabhängig)
-│   │   ├── ModelRecord.cs
-│   │   ├── SimulationConfig.cs    (ehemals GlobalConfig, OHNE AUV-Parameter)
-│   │   ├── SimulationContext.cs   (ehemals SimulationData, OHNE Projekt-Logik)
-│   │   └── GeometryResult.cs     (ersetzt das feste Tuple)
-│   │
-│   ├── Pipeline/                  ← Orchestrierung
-│   │   └── WorkflowController.cs  (arbeitet NUR mit Interfaces)
-│   │
-│   ├── Algorithms/                ← Optimierungsalgorithmen (Projekt-unabhängig)
-│   │   ├── EvolutionaryAlgorithm.cs
-│   │   └── RsmOptimizationAlgorithm.cs
-│   │
-│   └── Utilities/                 ← Allgemeine Helfer
-│       ├── StlSmoother.cs
-│       └── RubberBandScaler.cs
-│
-├── Projects/                      ← HIER lebt die Projektspezifik
-│   ├── MantaAuv/                  ← Das aktuelle AUV-Projekt
-│   │   ├── MantaGeometryGenerator.cs     (= heutiger PicoGkGenerator)
-│   │   ├── MantaFitnessCalculator.cs     (= heutiger FitnessCalculator)
-│   │   ├── MantaProjectConfig.cs         (Parameter, Bounds, Deviations)
-│   │   └── MantaModelValidator.cs        (= heutiger Bouncer mit Drag-Check)
-│   │
-│   └── NeuesProjekt/              ← Zukünftiges Projekt (Beispiel)
-│       ├── XyzGeometryGenerator.cs
-│       ├── XyzFitnessCalculator.cs
-│       ├── XyzProjectConfig.cs
-│       └── XyzModelValidator.cs
-│
-├── Solvers/                       ← Austauschbare Solver-Implementierungen
-│   ├── Cfd/
-│   │   ├── Su2Solver.cs           (= heutiger FluidDynamicsAnalyzer)
-│   │   ├── Su2ConfigGenerator.cs  (extrahiert aus FluidDynamicsAnalyzer)
-│   │   └── GmshCfdMesher.cs      (= heutiger GmshConverter, CFD-Variante)
-│   │
-│   └── Fem/                       ← Zukünftig: FEM-Pipeline
-│       ├── CalculixSolver.cs
-│       └── GmshFemMesher.cs
-│
-├── Tests/                         ← Unit Tests (eigenes Projekt, separates .csproj)
-│   ├── FitnessCalculatorTests.cs
-│   ├── EvolutionaryAlgorithmTests.cs
-│   ├── RubberBandScalerTests.cs
-│   └── WorkflowControllerTests.cs
-│
-├── Program.cs                     ← Einstiegspunkt: Projekt auswählen & verdrahten
-└── Automatisierung_v2.csproj
+├── Automatisierung.sln
+├── .gitignore                            ← liegt jetzt im Root (TODO-18 ✅)
+├── .plans/architektur_refactoring.md
+├── src/Automatisierung_v2/
+│   ├── Automatisierung_v2.csproj
+│   ├── Program.cs                        ← Composition Root, switch über Projektname
+│   ├── Core/
+│   │   ├── Interfaces/   IGeometryGenerator, IFitnessCalculator, ISimulationSolver,
+│   │   │                 IMeshGenerator, IModelValidator, IOptimizationAlgorithm
+│   │   ├── Models/       GeometryResult (+ MetricScaling), ModelRecord, ProjectConfig,
+│   │   │                 SimulationConfig, SimulationContext, SolverStage
+│   │   ├── Pipeline/     WorkflowController.cs, ChampionValidator.cs
+│   │   ├── Algorithms/   EvolutionaryAlgorithm.cs, RsmOptimizationAlgorithm.cs
+│   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs
+│   ├── Projects/MantaAuv/
+│   │   ├── MantaGeometryGenerator.cs
+│   │   ├── MantaFitnessCalculator.cs
+│   │   └── MantaProjectConfig.cs
+│   └── Solvers/Cfd/
+│       ├── GmshCfdMesher.cs
+│       ├── Su2Solver.cs
+│       └── Su2ConfigGenerator.cs
+└── tests/AutomatisierungCleanVersion.Tests/
+    ├── AutomatisierungCleanVersion.Tests.csproj   (xUnit + Moq)
+    ├── RubberBandScalerTests.cs          (1 Test)
+    ├── EvolutionaryAlgorithmTests.cs     (1 Test)
+    └── MantaFitnessCalculatorTests.cs    (2 Tests)
 ```
+
+**Fehlt gegenüber der Zielstruktur:** die JSON-Konfigurationsdateien, `Solvers/Fem/`,
+`WorkflowControllerTests.cs` (und die übrigen Tests aus TODO-19).
 
 ---
 
-## Die 6 neuen Interfaces
+## Phasenstatus
 
-### 1. `IGeometryGenerator`
+### Phase 1: Interfaces definieren & Datenmodell aufräumen — ✅ fertig
+- [x] Alle 6 Interfaces angelegt
+- [x] `GeometryResult`, `ProjectConfig`, `SimulationConfig` angelegt
+- [x] `SimulationData` → `SimulationContext`, AUV-Parameter raus
+- [x] `Directory.CreateDirectory` aus dem Konstruktor → `EnsureDirectories()`
 
-```csharp
-public interface IGeometryGenerator
-{
-    /// Erzeugt die 3D-Geometrie und gibt eine STL + Metriken zurück.
-    GeometryResult GenerateAndExport(
-        int iteration, int variant,
-        Dictionary<string, float> parameters,
-        string outputDirectory,
-        float voxelSmoothingIterations,
-        int smoothingPremeltingSteps);
-}
-```
+### Phase 2: Bestehende Klassen auf Interfaces umstellen — ✅ fertig
+- [x] `PicoGkGenerator` → `MantaGeometryGenerator : IGeometryGenerator`
+- [x] `FitnessCalculator` (static) → `MantaFitnessCalculator : IFitnessCalculator`
+- [x] `FluidDynamicsAnalyzer` → `Su2Solver : ISimulationSolver` + `Su2ConfigGenerator`
+- [x] `GmshConverter` → `GmshCfdMesher : IMeshGenerator`, Windkanal wandert mit
+- [x] `ValidateChampion()` → eigene Klasse
+- [x] Dateien nach `Projects/MantaAuv/` und `Solvers/Cfd/` verschoben
+- [x] `RubberBandScaler`-Bug behoben (nur dimensionale Parameter werden skaliert)
 
-**Was ändert sich?**
-- `PicoGkGenerator` wird zu `MantaGeometryGenerator` und implementiert dieses Interface
-- Das feste Return-Tuple `(StlPath, Volume, FrontalArea, SensorDistance)` wird zu `GeometryResult` mit flexiblem `Dictionary<string, float> Metrics` — damit jedes Projekt seine eigenen Metriken (SensorDistance, Oberfläche, Wandstärke, etc.) zurückgeben kann
-- `GenerateStaticTunnel()` wird **raus** aus dem Geometry-Generator → wandert in den CFD-Mesher
+### Phase 3: WorkflowController entkoppeln — ✅ fertig
+- [x] Konstruktor nimmt nur Interfaces
+- [x] `new PicoGkGenerator()` etc. entfernt
+- [x] Solver-Kette läuft, jetzt als `SolverStage[]` (Mesher + Solver pro Stufe)
+- [x] Bouncer-Logik hinter `IModelValidator` + Resimulations-Callback
+- [x] Hardcodierte Parameter-Keys raus (TODO-1, TODO-2)
+- [x] Doppelter Pipeline-Block zusammengeführt (`RunPipeline`, TODO-5)
 
-### 2. `IFitnessCalculator`
+### Phase 4: Program.cs als Composition Root — ⚠️ teilweise
+- [x] Projektauswahl via CLI-Argument, `switch` über Projektnamen
+- [x] Verdrahtung der konkreten Implementierungen
+- [x] Ordnerstruktur angelegt
+- [ ] **Keine JSON-Konfiguration** (Entscheidung 3) — siehe TODO-6 bis TODO-9
+- [ ] Algorithmuswahl nur auskommentiert statt konfigurierbar — siehe TODO-10
 
-```csharp
-public interface IFitnessCalculator
-{
-    void CalculateFitness(ModelRecord record, SimulationConfig config);
-}
-```
-
-**Was ändert sich?**
-- `FitnessCalculator` wird von `static class` zur normalen Klasse `MantaFitnessCalculator : IFitnessCalculator`
-- Optimierer bekommen ein `IFitnessCalculator` per Konstruktor injiziert statt static-Aufruf
-- Jedes Projekt definiert seine eigene Formel
-
-### 3. `ISimulationSolver`
-
-```csharp
-public interface ISimulationSolver
-{
-    string Name { get; }
-
-    /// Führt eine Simulation auf dem Mesh aus und schreibt Ergebnisse in den Record.
-    void Solve(
-        string meshPath,
-        ModelRecord record,
-        SimulationConfig config,
-        string workingDirectory);
-}
-```
-
-**Was ändert sich?**
-- `FluidDynamicsAnalyzer` wird zu `Su2Solver : ISimulationSolver`
-- Return-Wert ist nicht mehr nur ein einzelner `float drag`, sondern der Solver schreibt seine Ergebnisse direkt in `record.PassiveParameters` (z.B. `"Drag"`, `"Lift"`, `"Pressure"`, oder bei FEM: `"MaxStress"`, `"Displacement"`)
-- Der `WorkflowController` kann eine **Liste** von Solvern durchlaufen: erst CFD, dann FEM — oder nur eines davon
-
-### 4. `IMeshGenerator`
-
-```csharp
-public interface IMeshGenerator
-{
-    string GenerateMesh(
-        string modelStlPath,
-        int iteration, int variant,
-        SimulationConfig config,
-        float scaleFactor,
-        string workingDirectory);
-}
-```
-
-**Was ändert sich?**
-- `GmshConverter` wird zu `GmshCfdMesher : IMeshGenerator`
-- Der Windkanal (`GenerateStaticTunnel`) wird Teil des CFD-Meshers — er gehört zur Simulationsdomäne, nicht zur Geometrie
-- Ein zukünftiger `GmshFemMesher` kann das Solid-Volumen vernetzen statt den Fluidraum
-- Mesh-Format (SU2, OpenFOAM, Abaqus .inp) wird pro Solver konfigurierbar
-
-### 5. `IModelValidator`
-
-```csharp
-public interface IModelValidator
-{
-    /// Prüft, ob ein Champion physikalisch stabil ist.
-    /// Gibt den validierten (oder disqualifizierten) Champion zurück.
-    ModelRecord ValidateChampion(
-        List<ModelRecord> candidates,
-        SimulationConfig config,
-        // Callback für Re-Simulation:
-        Func<Dictionary<string, float>, ModelRecord> resimulate);
-}
-```
-
-**Was ändert sich?**
-- Der "Bouncer" wird aus dem `WorkflowController` extrahiert
-- `MantaModelValidator` prüft Drag-Stabilität (wie bisher)
-- Ein anderes Projekt könnte Stress-Stabilität oder gar nichts prüfen
-- Der `WorkflowController` kennt den Validierungsmetrik-Namen nicht mehr
-
-### 6. `IOptimizationAlgorithm` (Anpassung)
-
-```csharp
-public interface IOptimizationAlgorithm
-{
-    string Name { get; }
-    Dictionary<string, float> GenerateParameters(SimulationContext context, int iteration, int variant, int maxVariants);
-    ModelRecord EvaluateAndSelectBest(List<ModelRecord> records, SimulationContext context);
-    void PrepareNextIteration(SimulationContext context, List<ModelRecord> currentRecords, ModelRecord bestRecord);
-}
-```
-
-**Was ändert sich?**
-- `SimulationData` → `SimulationContext` (entkoppelt von konkreten AUV-Parametern)
-- `IFitnessCalculator` wird per Konstruktor in die Algorithmen injiziert
+### Phase 5: Tests & FEM-Vorbereitung — ⚠️ angefangen
+- [x] Test-Projekt mit xUnit + Moq angelegt und in der Solution
+- [x] 4 Tests: Scaler (1), EA-Fitness-Delegation (1), Manta-Fitness (2)
+- [x] Mesher-Zuordnung pro Solver über `SolverStage` (Entscheidung 1) — TODO-4
+- [ ] Kein `WorkflowControllerTests.cs`, kein RSM-Test, kein Validator-Test, kein Smoother-Test
 
 ---
 
-## Datenmodell-Änderungen
+## TODOs
 
-### `GeometryResult` (NEU)
+Reihenfolge = empfohlene Abarbeitung. Die Blöcke A–C bauen aufeinander auf,
+Block D ist unabhängig und kann jederzeit dazwischen erledigt werden.
 
-```csharp
-public class GeometryResult
-{
-    public string StlPath { get; set; } = "";
-    public Dictionary<string, float> Metrics { get; set; } = new();
-    // z.B. {"Volume": 4200, "FrontalArea": 850, "SensorDistance": 120}
-    // oder {"Volume": 3000, "SurfaceArea": 1200, "WallThickness": 2.5}
-}
-```
+### Block A — Die Framework-Kern-Entkopplung fertigstellen ✅ ERLEDIGT
 
-Ersetzt das starre Tuple `(string StlPath, float Volume, float FrontalArea, float SensorDistance)`. Jedes Projekt gibt die Metriken zurück, die es braucht.
+Nach diesem Block enthält `Core/` kein projektspezifisches Wissen mehr.
+Abgearbeitet in der Reihenfolge 1 → 2 → 5 → 4 → 3 (TODO-5 vorgezogen, damit
+TODO-3 und TODO-4 nicht doppelt gepflegt werden mussten).
 
-### `SimulationContext` (ehemals `SimulationData`)
+- [x] **TODO-1 — Metrik-Rückskalierung entkoppeln** *(erledigt, Commit `103ee90`)*
+  Umgesetzt wie beschrieben: `enum MetricScaling { None, Linear, Area, Volume }`,
+  `GeometryResult.AddMetric(name, value, scaling)` / `ScalingFor(name)`,
+  neue `RubberBandScaler.RestoreLength()`. Der Controller wendet in
+  `ApplyGeometryMetrics(...)` nur noch an, was das Projekt deklariert hat; fehlt eine
+  Deklaration, wird der Wert unverändert übernommen (`None`).
+  Manta deklariert `Volume`→Volume, `FrontalArea`→Area, **`SensorDistance`→Area**
+  (Kreuzprodukt/2) — die Fitness bleibt damit identisch.
 
-```csharp
-public class SimulationContext
-{
-    public SimulationConfig Config { get; set; }       // Allgemeine Einstellungen
-    public ProjectConfig Project { get; set; }         // Projekt-spezifisch (Parameter, Bounds)
-    public string WorkingDirectory { get; set; }
-    public List<ModelRecord> History { get; set; } = new();
+- [x] **TODO-2 — Hardcodierten `"Drag"`-Fallback aus dem Controller entfernen** *(Commit `04a00d6`)*
+  Neues `ModelRecord.SimulationFailed`; der Controller setzt im `catch` nur noch dieses Flag.
+  `MantaFitnessCalculator` wertet es aus (Fitness `0.0001`), die alte `drag == float.MaxValue`-
+  Prüfung bleibt als Fallback stehen.
+  **Zusätzlich im selben Commit** (Folgen des entfallenen `Drag`-Eintrags, mit dem Nutzer abgestimmt):
+  - `SimulationContext.ExportToCsv()` bildet die Spalten jetzt als Vereinigung über **alle**
+    Records statt nur über `History[0]` — sonst fehlt eine Metrik im ganzen Export, sobald
+    sie im ersten Record fehlt. Neue Spalte `SimulationFailed` (0/1) am Zeilenende.
+  - `RsmOptimizationAlgorithm`: fehlgeschlagene Modelle sind keine IDW-Stützstellen mehr
+    und zählen nicht für die DoE-Mindestanzahl (`usableSamples`); es läuft stattdessen eine
+    Variante mehr. Bewusste Verhaltensänderung, siehe Verifikationsstand oben.
 
-    public void ExportToCsv() { ... }  // Bleibt, aber Directory-Erstellung wird rausgezogen
-}
-```
+- [x] **TODO-3 — Generischen `ChampionValidator` bauen (Entscheidung 6)** *(Commit `d2d2c16`)*
+  `Core/Pipeline/ChampionValidator : IModelValidator` vergleicht die **Fitness** des
+  Re-Simulats mit der des Kandidaten. `IFitnessCalculator` wird per Konstruktor injiziert,
+  eine `Random`-Instanz optional (für TODO-19). Der Resimulations-Callback fährt über
+  `RunPipeline` die ganze Schleife. Toleranz und Jitter kommen aus
+  `SimulationConfig.BouncerTolerance` / `.BouncerJitter`; `BouncerTolerance` ist aus
+  `MantaProjectConfig.OptimizationTargets` entfernt. `MantaModelValidator.cs` gelöscht.
+  ⚠ Der Bouncer ist bei gleicher Toleranz strenger als vorher — siehe Verifikationsstand.
 
-### `ProjectConfig` (NEU — ersetzt den hardcodierten Konstruktor)
+- [x] **TODO-4 — Mesher pro Solver zuordnen (Entscheidung 1)** *(Commit `f5e60ee`)*
+  `record SolverStage(IMeshGenerator Mesher, ISimulationSolver Solver)`; der Controller
+  nimmt `SolverStage[]` statt `IMeshGenerator` + `ISimulationSolver[]`. Stufen, die sich
+  eine Mesher-**Instanz** teilen, vernetzen nur einmal (Cache über Referenzgleichheit).
+  `ModelRecord.MeshPath` führt weiterhin genau einen Pfad — den der ersten Stufe;
+  wer mehrere Netze protokollieren will, braucht dort eine Liste (offener Punkt).
 
-```csharp
-public class ProjectConfig
-{
-    public string ProjectName { get; set; } = "";
-    public Dictionary<string, float> BaseParameters { get; set; } = new();
-    public Dictionary<string, float> MaxDeviations { get; set; } = new();
-    public Dictionary<string, (float Min, float Max)> ParameterBounds { get; set; } = new();
-    public Dictionary<string, float> OptimizationTargets { get; set; } = new();
-}
-```
+- [x] **TODO-5 — Doppelten Pipeline-Block zusammenführen** *(Commit `b31048c`)*
+  Private `RunPipeline(parameters, iteration, variant)` liefert den fertigen `ModelRecord`;
+  `RunOptimization` und `ResimulateForValidation` nutzen sie beide. Der Validierungslauf
+  setzt dadurch jetzt ebenfalls `ScaleFactor` und hat ein `try/catch` um Vernetzung und
+  Solver-Kette (Abbruch → `SimulationFailed` statt durchgereichter Exception).
+  Die Variantennummer 99 für Validierungsläufe steht als Konstante `ValidationVariantNumber`.
 
-Jedes Projekt füllt diese Klasse — entweder im Code (`MantaProjectConfig.cs`) oder perspektivisch aus einer JSON-Datei.
+### Block B — Konfiguration nach JSON (Entscheidung 3)
 
----
+- [ ] **TODO-6 — `SimulationConfig` aus JSON laden**
+  `Core/Models/SimulationConfig.cs` ist komplett hardcodiert, inklusive der Linux-Pfade
+  zu mpirun/SU2/Gmsh (`:10-12`). Genau das sollte laut Entscheidung 3 in eine JSON-Datei.
+  **Lösung:** `config/simulation.json` + Loader (`System.Text.Json`).
+  `CreateDefault()` bleibt als Fallback, wenn keine Datei da ist.
+  Die Pfade müssen pro Maschine überschreibbar sein (Windows-Entwicklung vs. Linux-Server)
+  — z.B. `simulation.local.json`, das die Basisdatei überlagert und in `.gitignore` steht.
 
-## Pipeline-Änderung im WorkflowController
+- [ ] **TODO-7 — `MantaProjectConfig` nach JSON**
+  `Projects/MantaAuv/MantaProjectConfig.cs` enthält nur Zahlen (BaseParameters,
+  MaxDeviations, ParameterBounds, OptimizationTargets, DimensionalParameters) — also
+  reine Vorgabedaten. **Lösung:** `Projects/MantaAuv/project.json`.
+  *Stolperstein:* `ParameterBounds` ist ein `Dictionary<string, (float Min, float Max)>`;
+  ValueTuples serialisiert `System.Text.Json` nicht. Ein kleines DTO
+  (`{ "Length": { "min": 30, "max": 100 } }`) einführen und beim Laden umwandeln.
+  Die **Geometrie- und Fitness-Klassen bleiben C#** — nur die Zahlen wandern.
 
-### Vorher (fest verdrahtet):
+- [ ] **TODO-8 — Solver- und Mesher-Zahlen nach JSON**
+  Hardcodierte Werte, die laut Entscheidung 3 Vorgabedaten sind:
+  - `Solvers/Cfd/Su2ConfigGenerator.cs:31-33` — Dichte 1025.0, `MU_CONSTANT` 1.001e-3,
+    Turbulenzmodell `SA`, Schallgeschwindigkeit 343.2 (`:17`), `REF_LENGTH` 0.01 (`:41`),
+    CFL-Parameter (`:58-60`).
+  - `Solvers/Cfd/GmshCfdMesher.cs:27-28` — Windkanal-Abmessungen (600×300×300 mm).
+  - `Solvers/Cfd/GmshCfdMesher.cs:88-92` — Grenzschicht-Feld (SizeMin 1.2, SizeMax 120.0,
+    DistMin 3.0, DistMax 40.0).
+  **Lösung:** `Su2SolverOptions` / `GmshMesherOptions` als Klassen, aus JSON geladen,
+  per Konstruktor injiziert.
 
-```
-Geometrie (PicoGK) → Gmsh (CFD-Mesh) → SU2 (CFD) → Fitness
-```
+- [ ] **TODO-9 — Schalter für Scaler und Smoother (Entscheidung 4)**
+  Beide laufen aktuell immer:
+  - `RubberBandScaler` wird in `WorkflowController.cs:76` und `:179` bedingungslos erzeugt.
+  - `StlSmoother.SmoothStl(...)` wird in `MantaGeometryGenerator.cs:97` bedingungslos gerufen.
+  **Lösung:** `UseRubberBandScaler` und `UseStlSmoothing` in `SimulationConfig` (aus JSON).
+  - Scaler aus → `ShrinkFactor = 1.0`, Parameter unverändert durchreichen, Restore-Methoden
+    werden zu Identität. Am saubersten über eine Neutral-Instanz, dann braucht der
+    Controller kein `if` an vier Stellen.
+  - Smoother aus → Aufruf überspringen. Der Schalter muss den `IGeometryGenerator`
+    erreichen; passt gut zu TODO-14 (Signatur aufräumen).
 
-### Nachher (flexibel):
+### Block C — PicoGK austauschbar machen (Entscheidung 2)
 
-```csharp
-// WorkflowController arbeitet nur noch mit Interfaces:
-public class WorkflowController
-{
-    private readonly IGeometryGenerator _geometry;
-    private readonly IMeshGenerator _mesher;
-    private readonly ISimulationSolver[] _solvers;   // ← Mehrere Solver möglich!
-    private readonly IFitnessCalculator _fitness;
-    private readonly IModelValidator _validator;
-    private readonly IOptimizationAlgorithm _optimizer;
+- [ ] **TODO-10 — `Library.Go()` hinter die Geometrie-Abstraktion**
+  `Program.cs:62` ruft `Library.Go(...)` direkt — auch ein Projekt ohne PicoGK müsste da durch.
+  **Lösung:** `IGeometryGenerator` (oder ein separates `IGeometryKernel`) bekommt eine
+  Methode wie `void RunHosted(float voxelResolution, Action body)`. Der PicoGK-Kernel
+  implementiert sie als `Library.Go(res, body)`, ein anderer Kernel ruft `body()` direkt auf.
+  `Program.cs` ruft nur noch `kernel.RunHosted(...)`.
+  Beim gleichen Durchgang: die Algorithmuswahl (`Program.cs:43-44`, aktuell auskommentiert)
+  über die JSON-Config statt über Auskommentieren steuerbar machen.
 
-    public WorkflowController(
-        IGeometryGenerator geometry,
-        IMeshGenerator mesher,
-        ISimulationSolver[] solvers,      // CFD, FEM, oder beides
-        IFitnessCalculator fitness,
-        IModelValidator validator,
-        IOptimizationAlgorithm optimizer,
-        SimulationContext context) { ... }
-}
-```
+- [ ] **TODO-11 — PicoGK-Abhängigkeit aus `Solvers/` entfernen**
+  `Solvers/Cfd/GmshCfdMesher.cs:6,33` nutzt `using PicoGK` und `Utils.mshCreateCube`,
+  nur um den Windkanal-Quader als STL zu schreiben. Damit hängt die CFD-Schicht am
+  Geometrie-Kernel. **Lösung:** den Quader direkt als ASCII- oder Binär-STL schreiben
+  (12 Dreiecke, ~40 Zeilen Code) oder den Tunnel in Gmsh selbst per `Box{...}` erzeugen.
+  Danach hat außer `Projects/MantaAuv/` keine Datei mehr `using PicoGK`.
 
-**Damit kann der inner Loop so aussehen:**
+- [ ] **TODO-12 — Referenzflächen-Metrik im Solver konfigurierbar**
+  `Solvers/Cfd/Su2Solver.cs:24-26` liest fest `PassiveParameters["FrontalArea"]`.
+  Ein Projekt, das die Metrik anders nennt, bekommt still `refArea = 1.0` — der Drag-Wert
+  wäre dann um Größenordnungen falsch, ohne Fehlermeldung.
+  **Lösung:** Metrikname in `Su2SolverOptions` (TODO-8), und wenn der Key fehlt:
+  Warnung ausgeben statt still weiterzurechnen.
 
-```
-1. Parameter generieren (Optimizer)
-2. Skalieren (RubberBandScaler)
-3. Geometrie erzeugen (IGeometryGenerator)  → GeometryResult
-4. Mesh generieren (IMeshGenerator)
-5. FÜR JEDEN Solver in _solvers:            ← NEU: Solver-Kette
-     solver.Solve(meshPath, record, ...)
-6. Fitness berechnen (IFitnessCalculator)
-7. Speichern
-```
+### Block D — Korrektheit, Aufräumen, Tests
 
-Ein reines CFD-Projekt hat `_solvers = [su2Solver]`.
-Ein CFD+FEM-Projekt hat `_solvers = [su2Solver, calculixSolver]` — wobei jeder seine eigenen PassiveParameters schreibt.
+Unabhängig von A–C, jederzeit erledigbar.
 
-> **Offene Frage:** Braucht ein FEM-Solver ein anderes Mesh als der CFD-Solver? Falls ja, brauchen wir eine `IMeshGenerator[]` analog zu `ISimulationSolver[]`, oder eine Zuordnung Solver↔Mesher. Für den Anfang schlage ich vor, dass jeder `ISimulationSolver` bei Bedarf seinen eigenen Mesher mitbringen kann (z.B. als Property oder über eine Factory).
+- [x] **TODO-13 — `_fitness` im Controller ist toter Code** *(Commit `8141071`)*
+  Ersatzlos gestrichen, samt Konstruktor-Parameter. Nach TODO-3 braucht der Controller
+  den `IFitnessCalculator` nicht: die Bewertung läuft über
+  `IOptimizationAlgorithm.EvaluateAndSelectBest`, den Re-Sim-Record bewertet der
+  `ChampionValidator` selbst.
 
----
+- [ ] **TODO-14 — `IGeometryGenerator`-Signatur aufräumen**
+  `Core/Interfaces/IGeometryGenerator.cs:14` deklariert `float voxelSmoothingIterations`,
+  obwohl der Wert in `SimulationConfig` ein `int` ist und der Generator ihn mit
+  `(int)` zurückcastet (`MantaGeometryGenerator.cs:97`). Außerdem sind zwei
+  STL-Glättungsparameter in einem allgemeinen Geometrie-Interface fehl am Platz.
+  **Lösung:** stattdessen `SimulationConfig` (oder ein `GeometryOptions`-Objekt) übergeben.
+  Passt zusammen mit dem Smoother-Schalter aus TODO-9.
 
-## Program.cs: Projektauswahl & Verdrahtung
+- [ ] **TODO-15 — "ABSOLUTER CHAMPION" ist der letzte, nicht der beste**
+  `Core/Pipeline/WorkflowController.cs:157` überschreibt `previousWinner` in jeder Iteration;
+  `FinishOptimization(previousWinner)` (`:171`) zeigt daher den Champion der **letzten**
+  Iteration. Beim EA ist das meist, aber nicht zwingend der beste — beim RSM mit seiner
+  zufälligen DoE-Phase deutlich öfter nicht.
+  *(Der Fehler steckt schon in `main`, ist also kein Refactoring-Regress.)*
+  **Lösung:** besten Record über `_context.History` per Fitness bestimmen.
 
-```csharp
-static void Main(string[] args)
-{
-    // 1. Projekt aus args oder Konvention auswählen
-    string projectName = args.Length > 0 ? args[0] : "MantaAuv";
+- [ ] **TODO-16 — Inkonsistenter Dictionary-Zugriff auf `OptimizationTargets`**
+  `Projects/MantaAuv/MantaFitnessCalculator.cs:30-32` greift mit dem Indexer zu
+  (`KeyNotFoundException`, wenn ein Projekt den Key vergisst), `MantaModelValidator.cs:30-32`
+  benutzt `ContainsKey` mit Default. Einheitlich machen — bei fehlendem Pflicht-Key lieber
+  früh und mit klarer Meldung abbrechen als mitten im Lauf.
 
-    // 2. Projekt-spezifische Komponenten zusammenbauen
-    var (geometry, fitness, validator, projectConfig) = projectName switch
-    {
-        "MantaAuv" => (
-            new MantaGeometryGenerator() as IGeometryGenerator,
-            new MantaFitnessCalculator() as IFitnessCalculator,
-            new MantaModelValidator() as IModelValidator,
-            MantaProjectConfig.Create()
-        ),
-        _ => throw new ArgumentException($"Unbekanntes Projekt: {projectName}")
-    };
+- [ ] **TODO-17 — Laufzeitzustand aus der `ProjectConfig` herausziehen**
+  `Core/Algorithms/EvolutionaryAlgorithm.cs:95-123` schreibt während des Laufs in
+  `context.Project.BaseParameters` und `context.Project.MaxDeviations` — die Konfiguration
+  wird also mutiert. Sobald sie aus JSON kommt (TODO-7), vermischt das geladene Vorgabe
+  mit Laufzeitzustand, und ein zweiter Lauf im selben Prozess startet mit den Werten des
+  ersten. **Lösung:** veränderliche Werte in den `SimulationContext` (z.B.
+  `CurrentBaseParameters`, `CurrentDeviations`), initial aus der `ProjectConfig` kopiert.
 
-    // 3. Framework-Kern (identisch für alle Projekte)
-    var config = SimulationConfig.CreateDefault();
-    var context = new SimulationContext(config, projectConfig);
-    var mesher = new GmshCfdMesher();
-    var solver = new Su2Solver();
-    var optimizer = new RsmOptimizationAlgorithm(fitness);
+- [x] **TODO-18 — `.gitignore` liegt im falschen Verzeichnis** *(Commit `4c8f103`)*
+  `.gitignore` per `git mv` ins Repo-Root verschoben, 141 Dateien unter
+  `tests/AutomatisierungCleanVersion.Tests/bin|obj` mit `git rm -r --cached` aus der
+  Versionskontrolle genommen (Dateien bleiben auf der Platte). `git status` ist wieder leer.
+  Anmerkung für Block B: die geplante `simulation.local.json` muss noch in die `.gitignore`.
 
-    var controller = new WorkflowController(
-        geometry, mesher, new[] { solver }, fitness, validator, optimizer, context);
+- [ ] **TODO-19 — Tests nachziehen**
+  Vorhanden: 4 Tests (Scaler 1, EA-Delegation 1, Manta-Fitness 2). Es fehlen:
+  - `WorkflowControllerTests.cs` — alle Interfaces mocken, Orchestrierung prüfen:
+    Solver-Kette läuft in Reihenfolge, Metriken landen im Record, Fehler im Mesher
+    bricht den Lauf nicht ab. (War in Phase 5 explizit vorgesehen.)
+  - `ChampionValidatorTests.cs` — nach TODO-3: Disqualifikation bei zu großer
+    Fitness-Abweichung, Fallback wenn kein Kandidat stabil ist.
+  - `RsmOptimizationAlgorithmTests.cs` — IDW-Surrogat mit bekannten Stützstellen.
+  - `StlSmootherTests.cs` — kleine Test-STL, Bounding Box bleibt erhalten.
+  **Voraussetzung:** `Random` in `EvolutionaryAlgorithm.cs:14`, `RsmOptimizationAlgorithm.cs:15`
+  und `MantaModelValidator.cs:28` ist ungeseedet — für reproduzierbare Tests einen
+  optionalen Seed bzw. eine injizierbare `Random`-Instanz vorsehen.
 
-    Library.Go(config.BaseVoxelResolution, controller.RunOptimization);
-}
-```
+- [ ] **TODO-20 — Namespaces an die Ordnerstruktur angleichen** *(optional, kosmetisch)*
+  Alle Dateien liegen in `namespace MyPicoGkProject`, obwohl die Ordner `Core`,
+  `Projects`, `Solvers` trennen. Der Compiler erzwingt dadurch keine Schichtentrennung —
+  ein Projekt-Namespace könnte munter Kern-Interna benutzen.
+  Mit `MyPicoGkProject.Core`, `.Projects.MantaAuv`, `.Solvers.Cfd` wird der Bruch sichtbar.
+  Nur anfassen, wenn Blöcke A–C durch sind; sonst produziert es unnötige Merge-Konflikte.
 
-> **Perspektivisch** könnte man das `switch` durch Reflection oder eine JSON-Konfiguration ersetzen — aber für 2-5 Projekte ist ein simpler switch ausreichend und nicht über-engineered.
-
----
-
-## Testbarkeit
-
-### Was wird durch die Interfaces testbar?
-
-| Komponente | Wie testen? |
-|---|---|
-| `EvolutionaryAlgorithm` | Mock-`IFitnessCalculator` injizieren, seeded `Random`, ohne PicoGK/SU2 |
-| `RsmOptimizationAlgorithm` | Mock-`IFitnessCalculator`, Surrogatmodell mit bekannten Datenpunkten prüfen |
-| `MantaFitnessCalculator` | Direkt mit konstruiertem `ModelRecord` testen, keine I/O |
-| `WorkflowController` | Alle Interfaces mocken → testet Orchestrierungs-Logik ohne Solver/Geometrie |
-| `RubberBandScaler` | Rein mathematisch, schon heute testbar |
-| `StlSmoother` | Mit kleiner Test-STL-Datei, prüfen dass Bounding Box erhalten bleibt |
-| `MantaModelValidator` | Mock-Resimulation-Callback, prüft Disqualifizierung |
-
-### Test-Projekt-Setup
-
-```
-AutomatisierungCleanVersion.Tests/        ← Separates .csproj
-├── AutomatisierungCleanVersion.Tests.csproj
-│   (referenziert Automatisierung_v2.csproj, xUnit, Moq oder NSubstitute)
-├── FitnessCalculatorTests.cs
-├── EvolutionaryAlgorithmTests.cs
-├── RubberBandScalerTests.cs
-└── WorkflowControllerTests.cs
-```
-
----
-
-## RubberBandScaler: Bekannter Bug
-
-Der aktuelle Scaler skaliert **alle** Parameter-Werte blind — auch dimensionslose wie `TailTaper`. Das verfälscht das Ergebnis:
-
-```
-TailTaper = 1.0  →  * ShrinkFactor  →  0.02  (Unsinn!)
-```
-
-**Lösung:** Der Scaler bekommt eine explizite Liste, welche Parameter Längen-Dimensionen sind und skaliert werden sollen:
-
-```csharp
-public RubberBandScaler(
-    Dictionary<string, float> realParameters,
-    HashSet<string> dimensionalParameters,  // z.B. {"Length", "Width", "MainRadius", "WingRadius"}
-    float targetSize)
-```
-
-Diese Info kommt aus der `ProjectConfig`, weil nur das Projekt weiß, welche Parameter Millimeter sind.
-
----
-
-## Umsetzungs-Reihenfolge (5 Phasen)
-
-### Phase 1: Interfaces definieren & Datenmodell aufräumen
-- `IGeometryGenerator`, `IFitnessCalculator`, `ISimulationSolver`, `IMeshGenerator`, `IModelValidator` anlegen
-- `GeometryResult`, `ProjectConfig`, `SimulationConfig` anlegen
-- `SimulationData` → `SimulationContext` umbauen (AUV-Parameter raus)
-- **Nichts geht kaputt** — die alten Klassen existieren noch
-
-### Phase 2: Bestehende Klassen auf Interfaces umstellen
-- `PicoGkGenerator` → `MantaGeometryGenerator : IGeometryGenerator`
-- `FitnessCalculator` → `MantaFitnessCalculator : IFitnessCalculator`
-- `FluidDynamicsAnalyzer` → `Su2Solver : ISimulationSolver`
-- `GmshConverter` → `GmshCfdMesher : IMeshGenerator`
-- `ValidateChampion()` → `MantaModelValidator : IModelValidator`
-- Alles nach `Projects/MantaAuv/` und `Solvers/Cfd/` verschieben
-
-### Phase 3: WorkflowController entkoppeln
-- Konstruktor nimmt nur noch Interfaces
-- `new PicoGkGenerator()`, `new GmshConverter()`, `new FluidDynamicsAnalyzer()` raus
-- Bouncer-Logik durch `IModelValidator` ersetzen
-- Hardcodierte Parameter-Keys (`"Drag"`, `"Volume"`, `"SensorDistance"`) aus dem Controller entfernen
-
-### Phase 4: Program.cs als Composition Root
-- Projektauswahl via CLI-Argument
-- Verdrahtung der konkreten Implementierungen
-- Ordnerstruktur anlegen
-
-### Phase 5: Tests & FEM-Vorbereitung
-- Test-Projekt mit xUnit anlegen
-- Erste Tests für FitnessCalculator, Scaler, Algorithmen
-- `ISimulationSolver[]` Array im Controller vorbereiten für Mehrfach-Solver
-
----
-
-## Offene Fragen
-
-> [!IMPORTANT]
-> **1. Solver-Mesh-Zuordnung:** Wenn ein FEM-Solver ein anderes Mesh braucht als der CFD-Solver — soll jeder Solver seinen eigenen Mesher mitbringen, oder soll der WorkflowController ein Mesh-pro-Solver-Mapping haben?
->
-> **2. PicoGK-Abhängigkeit:** Soll `Library.Go()` weiterhin den gesamten Programmablauf umschließen? Wenn ja, sind Projekte ohne PicoGK-Geometrie (z.B. reine Mesh-Optimierung) schwierig. Wollen wir das erstmal so lassen?
->
-> **3. Konfigurationsformat:** Sollen die Projektparameter vorerst im C#-Code bleiben (z.B. `MantaProjectConfig.Create()`) oder direkt als JSON/YAML-Dateien im Projektordner? Code ist einfacher, JSON ist flexibler für Nicht-Programmierer.
->
-> **4. RubberBandScaler Scope:** Soll der Scaler Teil des Frameworks bleiben (in `Core/Utilities/`), oder soll jedes Projekt seine eigene Skalierungs-Strategie mitbringen können (`IModelScaler`)?
->
-> **5. Monorepo vs. Multi-Projekt:** Soll alles in einer `.csproj` bleiben (einfacher), oder sollen `Core`, `Tests` und Projekte separate `.csproj`-Dateien bekommen (sauberer Dependency-Graph)?
+- [ ] **TODO-21 — End-to-End-Lauf gegen `main` verifizieren**
+  Der Refactoring-Branch ist nur statisch geprüft (Build + Unit Tests). Vor dem Merge
+  einen echten Lauf auf dem Linux-Server fahren (klein: `MaxIterations=1`,
+  `VariantsPerIteration=2`) und die `Simulation_Results.csv` gegen einen `main`-Lauf mit
+  denselben Startparametern vergleichen. Volumen, FrontalArea und Drag müssen in derselben
+  Größenordnung liegen. **Erwartete Abweichung:** `TailTaper` wird jetzt korrekt *nicht*
+  mehr skaliert (Bugfix), die Geometrie ist also bewusst eine andere — das ist die einzige
+  Differenz, die auftreten darf.
 
 ---
 
 ## Was sich NICHT ändert
 
-- **Optimierungsalgorithmen** (EA, RSM) bleiben im Kern — sie sind schon heute projektunabhängig
-- **StlSmoother** bleibt ein Utility — funktioniert für jede STL
-- **ModelRecord** bleibt das zentrale Datenmodell — nur mit flexibleren `PassiveParameters`
+- **Optimierungsalgorithmen** (EA, RSM) bleiben im Kern — sie sind projektunabhängig
+- **StlSmoother** bleibt ein Utility im Framework (nur abschaltbar, TODO-9)
+- **RubberBandScaler** bleibt im Framework (nur abschaltbar, TODO-9)
+- **ModelRecord** bleibt das zentrale Datenmodell
 - **CSV-Export** bleibt in `SimulationContext` — ist schon dynamisch
-- **Die gesamte Optimierungsschleife** im WorkflowController bleibt strukturell gleich — nur die konkreten Aufrufe gehen durch Interfaces
+- **Die Struktur der Optimierungsschleife** im WorkflowController bleibt gleich
+- **Fitness-Formel und Geometrie-Erzeugung bleiben C#-Code** (Entscheidung 3)
 
 ---
 
@@ -458,14 +351,18 @@ Diese Info kommt aus der `ProjectConfig`, weil nur das Projekt weiß, welche Par
 VORHER:  Program → WorkflowController → [PicoGkGenerator, GmshConverter, SU2, FitnessCalc]
                                           ↑ alles hardcoded, alles Manta-Ray
 
-NACHHER: Program → wählt Projekt → verdrahtet Interfaces → WorkflowController
+JETZT:   Program → wählt Projekt → verdrahtet Interfaces → WorkflowController
                                                               ↓
-                                                    [IGeometryGenerator]  ← Projekt liefert
-                                                    [IMeshGenerator]      ← Solver liefert
-                                                    [ISimulationSolver]   ← Solver liefert
-                                                    [IFitnessCalculator]  ← Projekt liefert
-                                                    [IModelValidator]     ← Projekt liefert
+                                                    [IGeometryGenerator]  ✅ Projekt liefert
+                                                    [SolverStage[]]       ✅ Mesher+Solver pro Stufe
+                                                    [IFitnessCalculator]  ✅ Projekt liefert
+                                                    [IModelValidator]     ✅ ChampionValidator im Kern
+
+ZIEL (offen):
+         + JSON-Konfiguration für alle Zahlen und Pfade   (Block B)
+         + Scaler und Smoother abschaltbar                (TODO-9)
+         + PicoGK hinter einer Kernel-Abstraktion         (Block C)
 ```
 
-**Ergebnis:** Neues Projekt anlegen = 3-4 Dateien in `Projects/MeinProjekt/` schreiben. Framework-Code bleibt unberührt.
-
+**Ergebnis nach Abschluss:** Neues Projekt anlegen = 2 C#-Dateien (Geometrie + Fitness)
+plus eine `project.json` in `Projects/MeinProjekt/`. Framework-Code bleibt unberührt.
