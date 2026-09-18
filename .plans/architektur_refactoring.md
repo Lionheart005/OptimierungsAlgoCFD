@@ -1,12 +1,14 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
-> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `3fd9140 TODO-9 + TODO-14`.
+> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `9c5b7b3 TODO-10`.
 > **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
 > projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die
 > Fitness, Mesher hängen pro Solver-Stufe.
 > **Block B ist fertig** (TODO-6 bis TODO-9 + TODO-14): alle Zahlen und Pfade kommen aus
 > `config/*.json`, Scaler und Smoother sind abschaltbar.
-> **Offen:** Block C (PicoGK austauschbar) und der Rest von Block D
+> **Block C ist angefangen** (TODO-10): `Program.cs` hat kein `using PicoGK` mehr,
+> der Kernel-Start läuft über `IGeometryKernel`, die Algorithmuswahl über die Projekt-JSON.
+> **Offen:** TODO-11 und TODO-12 aus Block C, der Rest von Block D
 > (TODO-15, 16, 17, 19, 20, 21).
 
 ## Ziel
@@ -34,12 +36,14 @@ Diese Punkte sind entschieden und ersetzen die ursprünglichen "Offenen Fragen":
 
 ```
 dotnet build Automatisierung.sln   →  Build succeeded. 0 Warnings, 0 Errors
-dotnet test  Automatisierung.sln   →  Passed: 19, Failed: 0, Skipped: 0
+dotnet test  Automatisierung.sln   →  Passed: 29, Failed: 0, Skipped: 0
 ```
-**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 19/19 Tests.**
+**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 29/29 Tests.**
 Block A hat keine Tests gebraucht (4/4), Block B hat 15 dazugebracht: Loader (6),
-Projekt-JSON (3), Solver-Optionen (4), Scaler-Schalter (2). Die JSON-Tests vergleichen
-jede mitgelieferte Datei gegen die Code-Vorgaben — dort würde ein Zahlendreher auffallen.
+Projekt-JSON (3), Solver-Optionen (4), Scaler-Schalter (2). TODO-10 hat 10 dazugebracht
+(Algorithmus-Fabrik, inkl. Groß-/Kleinschreibung, Fallback und Manta-Vorgabe).
+Die JSON-Tests vergleichen jede mitgelieferte Datei gegen die Code-Vorgaben — dort
+würde ein Zahlendreher auffallen.
 
 Der Code kompiliert und die vorhandenen Tests laufen. **Die Pipeline wurde nicht end-to-end
 ausgeführt** (braucht Linux + SU2 + Gmsh + MPI), Laufzeitfehler sind also nicht ausgeschlossen.
@@ -82,20 +86,25 @@ AutomatisierungCleanVersion/
 │   ├── Automatisierung_v2.csproj
 │   ├── Program.cs                        ← Composition Root, switch über Projektname
 │   ├── Core/
-│   │   ├── Interfaces/   IGeometryGenerator, IFitnessCalculator, ISimulationSolver,
-│   │   │                 IMeshGenerator, IModelValidator, IOptimizationAlgorithm
+│   │   ├── Interfaces/   IGeometryGenerator, IGeometryKernel, IFitnessCalculator,
+│   │   │                 ISimulationSolver, IMeshGenerator, IModelValidator,
+│   │   │                 IOptimizationAlgorithm
 │   │   ├── Models/       GeometryResult (+ MetricScaling), ModelRecord, ProjectConfig,
 │   │   │                 SimulationConfig, SimulationContext, SolverStage
 │   │   ├── Configuration/ JsonConfigLoader.cs, ProjectConfigDto.cs
 │   │   ├── Pipeline/     WorkflowController.cs, ChampionValidator.cs
-│   │   ├── Algorithms/   EvolutionaryAlgorithm.cs, RsmOptimizationAlgorithm.cs
-│   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs
+│   │   ├── Algorithms/   EvolutionaryAlgorithm.cs, RsmOptimizationAlgorithm.cs,
+│   │   │                 OptimizationAlgorithmFactory.cs
+│   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs, DirectGeometryKernel.cs
+│   ├── Kernels/PicoGk/
+│   │   └── PicoGkKernel.cs               ← einzige Datei außerhalb von Projects/
+│   │                                       mit `using PicoGK` (TODO-10 ✅)
 │   ├── Projects/MantaAuv/
 │   │   ├── MantaGeometryGenerator.cs
 │   │   ├── MantaFitnessCalculator.cs
 │   │   └── MantaProjectConfig.cs         ← nur noch Fallback-Vorgaben
 │   └── Solvers/Cfd/
-│       ├── GmshCfdMesher.cs, GmshMesherOptions.cs
+│       ├── GmshCfdMesher.cs, GmshMesherOptions.cs   ← hat noch `using PicoGK` (TODO-11)
 │       ├── Su2Solver.cs, Su2SolverOptions.cs
 │       └── Su2ConfigGenerator.cs
 └── tests/AutomatisierungCleanVersion.Tests/
@@ -105,7 +114,8 @@ AutomatisierungCleanVersion/
     ├── MantaFitnessCalculatorTests.cs    (2 Tests)
     ├── JsonConfigLoaderTests.cs          (6 Tests)
     ├── ProjectConfigJsonTests.cs         (3 Tests)
-    └── SolverOptionsTests.cs             (4 Tests)
+    ├── SolverOptionsTests.cs             (4 Tests)
+    └── OptimizationAlgorithmFactoryTests.cs  (10 Tests)
 ```
 
 **Fehlt gegenüber der Zielstruktur:** `Solvers/Fem/`, `WorkflowControllerTests.cs`
@@ -143,13 +153,13 @@ sechs Ebenen darüber, weil `dotnet run` im Projektordner startet.
 - [x] Hardcodierte Parameter-Keys raus (TODO-1, TODO-2)
 - [x] Doppelter Pipeline-Block zusammengeführt (`RunPipeline`, TODO-5)
 
-### Phase 4: Program.cs als Composition Root — ⚠️ teilweise
+### Phase 4: Program.cs als Composition Root — ✅ fertig
 - [x] Projektauswahl via CLI-Argument, `switch` über Projektnamen
 - [x] Verdrahtung der konkreten Implementierungen
 - [x] Ordnerstruktur angelegt
 - [x] JSON-Konfiguration (Entscheidung 3) — TODO-6 bis TODO-9
-- [ ] Algorithmuswahl nur auskommentiert statt konfigurierbar — siehe TODO-10
-- [ ] `Library.Go(...)` steht noch direkt in `Program.cs` — siehe TODO-10
+- [x] Algorithmuswahl über `config/projects/<Projekt>.json` — TODO-10
+- [x] `Library.Go(...)` hinter `IGeometryKernel` — TODO-10
 
 ### Phase 5: Tests & FEM-Vorbereitung — ⚠️ angefangen
 - [x] Test-Projekt mit xUnit + Moq angelegt und in der Solution
@@ -251,14 +261,34 @@ CLI-Argument überschreibbar.
 
 ### Block C — PicoGK austauschbar machen (Entscheidung 2)
 
-- [ ] **TODO-10 — `Library.Go()` hinter die Geometrie-Abstraktion**
-  `Program.cs:62` ruft `Library.Go(...)` direkt — auch ein Projekt ohne PicoGK müsste da durch.
-  **Lösung:** `IGeometryGenerator` (oder ein separates `IGeometryKernel`) bekommt eine
-  Methode wie `void RunHosted(float voxelResolution, Action body)`. Der PicoGK-Kernel
-  implementiert sie als `Library.Go(res, body)`, ein anderer Kernel ruft `body()` direkt auf.
-  `Program.cs` ruft nur noch `kernel.RunHosted(...)`.
-  Beim gleichen Durchgang: die Algorithmuswahl (`Program.cs:43-44`, aktuell auskommentiert)
-  über die JSON-Config statt über Auskommentieren steuerbar machen.
+- [x] **TODO-10 — `Library.Go()` hinter die Geometrie-Abstraktion** *(Commit `9c5b7b3`)*
+  **Entscheidung (vom Nutzer, 18.09.2026):** ein **separates `IGeometryKernel`**, nicht
+  eine Methode auf `IGeometryGenerator` — der Kernel ist projektunabhängig, mehrere
+  Projekte teilen sich PicoGK, und ein Projekt ohne Voxel-Kernel muss keine
+  Hosting-Methode mitschleppen.
+  - `Core/Interfaces/IGeometryKernel`: `Name` + `void RunHosted(float voxelResolution, Action body)`.
+  - `Kernels/PicoGk/PicoGkKernel`: ruft `Library.Go`. `Library.Go` erwartet einen
+    `ThreadStart`; die Umwandlung aus dem neutralen `Action` steckt in dieser Klasse,
+    damit der Kern nichts davon weiß.
+  - `Core/Utilities/DirectGeometryKernel`: ruft `body()` direkt — für Kernel ohne eigene
+    Laufzeitumgebung und für Tests, die den Controller ohne PicoGK durchlaufen lassen.
+  - `Program.cs` hat kein `using PicoGK` mehr; der `switch` wählt pro Projekt Generator
+    **und** Kernel.
+
+  **Algorithmuswahl:** neues `ProjectConfig.OptimizationAlgorithm` (+ `ProjectConfigDto`),
+  gesetzt in `config/projects/MantaAuv.json`. **Ablageort vom Nutzer entschieden:**
+  Projekt-JSON statt `simulation.json`, damit verschiedene Projekte dauerhaft
+  verschiedene Verfahren fahren können. Aufgelöst über
+  `Core/Algorithms/OptimizationAlgorithmFactory.Create(name, fitness)`:
+  `"Rsm"` | `"Evolution"`, Groß-/Kleinschreibung und Leerzeichen egal.
+  **Fehlerfall vom Nutzer entschieden:** unbekannter Name → Warnung auf der Konsole und
+  Rückfall auf `"Rsm"`, kein Abbruch. Leerer Name = nicht konfiguriert, Rückfall ohne
+  Warnung. Vorgabe ist `"Rsm"` — das bisher fest verdrahtete Verfahren, der Lauf rechnet
+  also unverändert.
+
+  **Tests: 19 → 29.** `OptimizationAlgorithmFactoryTests` (10 Fälle: Schreibweisen,
+  beide Verfahren, Fallback bei Tippfehler/leer/null, Manta-Vorgabe `"Rsm"`);
+  `ProjectConfigJsonTests` prüft den neuen Schlüssel mit.
 
 - [ ] **TODO-11 — PicoGK-Abhängigkeit aus `Solvers/` entfernen**
   `Solvers/Cfd/GmshCfdMesher.cs` nutzt `using PicoGK` und `Utils.mshCreateCube`
@@ -321,9 +351,12 @@ Unabhängig von A–C, jederzeit erledigbar.
 
 - [ ] **TODO-16 — Inkonsistenter Dictionary-Zugriff auf `OptimizationTargets`**
   `Projects/MantaAuv/MantaFitnessCalculator.cs:30-32` greift mit dem Indexer zu
-  (`KeyNotFoundException`, wenn ein Projekt den Key vergisst), `MantaModelValidator.cs:30-32`
-  benutzt `ContainsKey` mit Default. Einheitlich machen — bei fehlendem Pflicht-Key lieber
-  früh und mit klarer Meldung abbrechen als mitten im Lauf.
+  (`KeyNotFoundException`, wenn ein Projekt den Key vergisst); der frühere
+  `MantaModelValidator` benutzte an derselben Stelle `ContainsKey` mit Default.
+  *Anmerkung (18.09.2026): Die zweite Fundstelle ist mit TODO-3 entfallen — der
+  `MantaModelValidator` ist gelöscht. Übrig bleibt die eigentliche Frage:* bei fehlendem
+  Pflicht-Key früh und mit klarer Meldung abbrechen statt mitten im Lauf mit
+  `KeyNotFoundException`. Betrifft jetzt nur noch den Fitness-Rechner.
 
 - [ ] **TODO-17 — Laufzeitzustand aus der `ProjectConfig` herausziehen**
   `Core/Algorithms/EvolutionaryAlgorithm.cs:95-123` schreibt während des Laufs in
@@ -348,9 +381,11 @@ Unabhängig von A–C, jederzeit erledigbar.
     Fitness-Abweichung, Fallback wenn kein Kandidat stabil ist.
   - `RsmOptimizationAlgorithmTests.cs` — IDW-Surrogat mit bekannten Stützstellen.
   - `StlSmootherTests.cs` — kleine Test-STL, Bounding Box bleibt erhalten.
-  **Voraussetzung:** `Random` in `EvolutionaryAlgorithm.cs:14`, `RsmOptimizationAlgorithm.cs:15`
-  und `MantaModelValidator.cs:28` ist ungeseedet — für reproduzierbare Tests einen
-  optionalen Seed bzw. eine injizierbare `Random`-Instanz vorsehen.
+  **Voraussetzung:** `Random` in `EvolutionaryAlgorithm.cs:14` und
+  `RsmOptimizationAlgorithm.cs:15` ist ungeseedet — für reproduzierbare Tests einen
+  optionalen Seed bzw. eine injizierbare `Random`-Instanz vorsehen. Der
+  `ChampionValidator` hat das seit TODO-3 schon.
+  Für Controller-Tests ohne PicoGK gibt es seit TODO-10 den `DirectGeometryKernel`.
 
 - [ ] **TODO-20 — Namespaces an die Ordnerstruktur angleichen** *(optional, kosmetisch)*
   Alle Dateien liegen in `namespace MyPicoGkProject`, obwohl die Ordner `Core`,
@@ -398,8 +433,12 @@ JETZT:   Program → wählt Projekt → verdrahtet Interfaces → WorkflowContro
          + JSON-Konfiguration für alle Zahlen und Pfade   ✅ Block B
          + Scaler und Smoother abschaltbar                ✅ TODO-9
 
+         + Algorithmuswahl + Kernel-Start aus der Config  ✅ TODO-10
+           [IGeometryKernel]     ✅ PicoGkKernel / DirectGeometryKernel
+
 ZIEL (offen):
-         + PicoGK hinter einer Kernel-Abstraktion         (Block C: TODO-10, 11, 12)
+         + PicoGK raus aus Solvers/, Tunnel-Form wählbar  (TODO-11)
+         + Referenzflächen-Metrik konfigurierbar          (TODO-12)
          + Korrektheit und Tests                          (Block D: TODO-15, 16, 17, 19, 20, 21)
 ```
 
