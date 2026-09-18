@@ -23,7 +23,9 @@ namespace MyPicoGkProject
 
         public Dictionary<string, float> GenerateParameters(SimulationContext context, int iteration, int variant, int maxVariants)
         {
-            if (variant == 1) return new Dictionary<string, float>(context.Project.BaseParameters);
+            // Arbeitspunkt und Sigma sind Laufzeitzustand (TODO-17) und stehen im Context,
+            // nicht in der Projekt-Konfiguration.
+            if (variant == 1) return new Dictionary<string, float>(context.CurrentBaseParameters);
 
             int totalMutants = maxVariants - 1;
             int mutatedIndex = variant - 2; 
@@ -37,7 +39,7 @@ namespace MyPicoGkProject
             else if (percentile <= context.Config.RoleNormal)    { spreadFactor = 1.0f; mutationChance = 1.0f; }
             else                                                 { spreadFactor = 2.0f; mutationChance = 1.0f; }
 
-            int guaranteedIndex = _random.Next(context.Project.BaseParameters.Count);
+            int guaranteedIndex = _random.Next(context.CurrentBaseParameters.Count);
             Dictionary<string, float> mutant = new Dictionary<string, float>();
 
             for (int attempt = 0; attempt < 50; attempt++)
@@ -45,14 +47,14 @@ namespace MyPicoGkProject
                 mutant.Clear();
                 int currentIndex = 0;
 
-                foreach (var kvp in context.Project.BaseParameters)
+                foreach (var kvp in context.CurrentBaseParameters)
                 {
                     string paramName = kvp.Key;
                     float mutatedValue = kvp.Value;
 
                     if (currentIndex == guaranteedIndex || _random.NextDouble() < mutationChance)
                     {
-                        float sigma = context.Project.MaxDeviations.ContainsKey(paramName) ? context.Project.MaxDeviations[paramName] : 0f;
+                        float sigma = context.CurrentDeviations.ContainsKey(paramName) ? context.CurrentDeviations[paramName] : 0f;
                         mutatedValue += (float)(NextGaussian() * sigma * spreadFactor);
                     }
 
@@ -94,7 +96,7 @@ namespace MyPicoGkProject
             
             foreach (var kvp in bestRecord.ActiveParameters)
             {
-                context.Project.BaseParameters[kvp.Key] = kvp.Value;
+                context.CurrentBaseParameters[kvp.Key] = kvp.Value;
                 Console.WriteLine($"       -> Neues Basis-Gen [{kvp.Key}]: {kvp.Value:F3}");
             }
 
@@ -115,9 +117,9 @@ namespace MyPicoGkProject
                 
                 if (adjustmentFactor != 1.0f)
                 {
-                    foreach (var key in context.Project.MaxDeviations.Keys.ToList())
+                    foreach (var key in context.CurrentDeviations.Keys.ToList())
                     {
-                        context.Project.MaxDeviations[key] *= adjustmentFactor;
+                        context.CurrentDeviations[key] *= adjustmentFactor;
                     }
                     Console.WriteLine($"       -> Mutations-Stärke (Sigma) angepasst (Faktor {adjustmentFactor:F2}).");
                 }

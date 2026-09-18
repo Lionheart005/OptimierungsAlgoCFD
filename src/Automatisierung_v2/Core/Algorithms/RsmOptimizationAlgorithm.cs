@@ -32,9 +32,10 @@ namespace MyPicoGkProject
 
             Dictionary<string, float> candidate = new Dictionary<string, float>();
             
-            if (iteration == 1 && variant == 1) return new Dictionary<string, float>(context.Project.BaseParameters);
+            // Arbeitspunkt = Laufzeitzustand im Context (TODO-17), nicht die Projekt-Vorgabe.
+            if (iteration == 1 && variant == 1) return new Dictionary<string, float>(context.CurrentBaseParameters);
 
-            foreach (var kvp in context.Project.BaseParameters)
+            foreach (var kvp in context.CurrentBaseParameters)
             {
                 string paramName = kvp.Key;
                 float min = context.Project.ParameterBounds.ContainsKey(paramName) ? context.Project.ParameterBounds[paramName].Min : kvp.Value * 0.5f;
@@ -64,7 +65,7 @@ namespace MyPicoGkProject
         {
             _nextVirtualCandidates.Clear();
 
-            int k = context.Project.BaseParameters.Count;
+            int k = context.CurrentBaseParameters.Count;
             int minRequiredSamples = ((k + 1) * (k + 2)) / 2 + 2;
 
             // Nur gelungene Simulationen taugen als Stützstellen. Fehlgeschlagene Modelle
@@ -153,7 +154,7 @@ namespace MyPicoGkProject
         {
             Dictionary<string, float> candidate = new Dictionary<string, float>();
 
-            foreach (var kvp in context.Project.BaseParameters)
+            foreach (var kvp in context.CurrentBaseParameters)
             {
                 string key = kvp.Key;
                 float min = context.Project.ParameterBounds[key].Min;

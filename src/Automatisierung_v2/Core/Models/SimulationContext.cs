@@ -18,11 +18,43 @@ namespace MyPicoGkProject
         public string WorkingDirectory { get; set; }
         public List<ModelRecord> History { get; set; } = new();
 
+        /// <summary>
+        /// Aktueller Arbeitspunkt der Optimierung — der Satz, um den herum mutiert bzw.
+        /// gesampelt wird. Startet als Kopie von <see cref="ProjectConfig.BaseParameters"/>
+        /// und wird vom Algorithmus fortgeschrieben.
+        ///
+        /// Bewusst hier und nicht in der <see cref="ProjectConfig"/>: die Konfiguration
+        /// kommt aus JSON und ist Vorgabe, kein Laufzeitzustand. Vor TODO-17 überschrieb
+        /// der Algorithmus sie, wodurch ein zweiter Lauf im selben Prozess mit den
+        /// Endwerten des ersten gestartet wäre.
+        /// </summary>
+        public Dictionary<string, float> CurrentBaseParameters { get; set; } = new();
+
+        /// <summary>
+        /// Aktuelle Mutationsstärke (Sigma) je Parameter. Startet als Kopie von
+        /// <see cref="ProjectConfig.MaxDeviations"/>; der evolutionäre Algorithmus
+        /// zieht sie über die Iterationen enger oder weiter.
+        /// </summary>
+        public Dictionary<string, float> CurrentDeviations { get; set; } = new();
+
         public SimulationContext(SimulationConfig config, ProjectConfig project, string? workingDirectory = null)
         {
             Config = config;
             Project = project;
             WorkingDirectory = workingDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "Ergebnisse");
+
+            ResetRuntimeState();
+        }
+
+        /// <summary>
+        /// Setzt den Laufzeitzustand zurück auf die Projektvorgabe. Wird im Konstruktor
+        /// aufgerufen; ein zweiter Lauf im selben Prozess startet dadurch wieder bei den
+        /// konfigurierten Werten.
+        /// </summary>
+        public void ResetRuntimeState()
+        {
+            CurrentBaseParameters = new Dictionary<string, float>(Project.BaseParameters);
+            CurrentDeviations = new Dictionary<string, float>(Project.MaxDeviations);
         }
 
         /// <summary>
