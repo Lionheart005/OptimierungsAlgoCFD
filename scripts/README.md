@@ -75,6 +75,83 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
 ```
 
+## Ergebnisse herunterladen
+
+Alles landet unter `.\Serverergebnisse\<Server>_<Zeitstempel>\` — der Zeitstempel
+verhindert, dass ein späterer Abruf einen früheren überschreibt. Der Ordner ist
+gitignored.
+
+### Nur das Ergebnis (Standard)
+
+```powershell
+.\scripts\sim.ps1 fetch
+```
+
+Holt `Simulation_Results.csv` und `simulation.log` — zusammen wenige KB.
+Das ist der Normalfall: die CSV *ist* das Ergebnis der Optimierung.
+
+### Der komplette Ergebnisse-Ordner
+
+```powershell
+.\scripts\sim.ps1 fetch -All
+```
+
+Kopiert alles: Geometrien, Netze, ParaView-Dateien, SU2-Arbeitsdateien.
+
+> **Größe beachten.** Pro Variante fallen rund 15–20 MB an (STL 1–3 MB,
+> SU2-Netz 4–8 MB, zwei `.vtu` 4–9 MB). Ein Probelauf mit 2 Varianten liegt bei
+> ~54 MB, ein voller Lauf mit 10 × 10 Varianten bei **1,5–2 GB**.
+
+### Einzelne Modelle gezielt holen
+
+Dafür braucht es kein Skript — `scp` expandiert Platzhalter auf dem Server.
+Der Pfad ist immer `Documents/AutomatisierungCleanVersion/Ergebnisse/…`:
+
+```powershell
+# Alle Dateien einer bestimmten Variante (Geometrie, Netz, Gmsh-Skript)
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/*Gen1_Var2* .\Serverergebnisse\
+
+# Nur die Geometrie zum Anschauen im CAD/Slicer
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Model_Gen1_Var2.stl .\Serverergebnisse\
+
+# Nur die ParaView-Dateien einer Variante (Oberfläche + Strömungsfeld)
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Analyseergebnisse/*Gen1_Var2* .\Serverergebnisse\
+
+# Alle ParaView-Oberflächen aller Varianten, ohne die großen Volumendateien
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Analyseergebnisse/Surface_* .\Serverergebnisse\
+
+# Fehlerprotokolle, wenn eine Simulation abgebrochen ist
+scp -r BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/FehlerLogs .\Serverergebnisse\
+```
+
+Welche Variante die interessante ist, steht in der CSV (höchste `Fitness`) oder
+am Ende von `simulation.log` unter „ABSOLUTER CHAMPION".
+
+Erst nachsehen, was überhaupt da ist:
+
+```powershell
+ssh BIC_12 'ls -lhS Documents/AutomatisierungCleanVersion/Ergebnisse'
+ssh BIC_12 'du -sh Documents/AutomatisierungCleanVersion/Ergebnisse'
+```
+
+### Was im Ergebnisse-Ordner liegt
+
+| Datei | Bedeutung |
+|---|---|
+| `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
+| `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
+| `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
+| `Model_GenX_VarY.stl` | erzeugte Geometrie |
+| `Model_GenX_VarY.su2` | Rechennetz |
+| `Meshing_GenX_VarY.geo` | Gmsh-Skript, mit dem das Netz entstanden ist |
+| `FehlerLogs/` | SU2-Konsolenausgabe abgebrochener Simulationen |
+| `restart.dat`, `surface.vtu`, `vol_solution.vtu`, `current_config.cfg`, `history.csv` | SU2-Arbeitsdateien, werden bei **jeder** Variante überschrieben |
+
+Herunterladen während eines laufenden Laufs ist unbedenklich (es wird nur
+gelesen), liefert aber eine Momentaufnahme: eine Datei, die gerade geschrieben
+wird, kann unvollständig ankommen. Für das Endergebnis also erst abholen, wenn
+`status` „gestoppt" meldet.
+
 Anderer Rechner oder anderes Projekt:
 
 ```powershell
