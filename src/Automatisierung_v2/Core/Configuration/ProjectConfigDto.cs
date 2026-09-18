@@ -14,7 +14,6 @@ namespace MyPicoGkProject
     public class ProjectConfigDto
     {
         public string ProjectName { get; set; } = "";
-        public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
         public Dictionary<string, float> BaseParameters { get; set; } = new();
         public Dictionary<string, float> MaxDeviations { get; set; } = new();
         public Dictionary<string, ParameterBoundsDto> ParameterBounds { get; set; } = new();
@@ -24,7 +23,6 @@ namespace MyPicoGkProject
         public static ProjectConfigDto FromProjectConfig(ProjectConfig config) => new ProjectConfigDto
         {
             ProjectName = config.ProjectName,
-            OptimizationAlgorithm = config.OptimizationAlgorithm,
             BaseParameters = new Dictionary<string, float>(config.BaseParameters),
             MaxDeviations = new Dictionary<string, float>(config.MaxDeviations),
             ParameterBounds = config.ParameterBounds.ToDictionary(
@@ -37,7 +35,6 @@ namespace MyPicoGkProject
         public ProjectConfig ToProjectConfig() => new ProjectConfig
         {
             ProjectName = ProjectName,
-            OptimizationAlgorithm = OptimizationAlgorithm,
             BaseParameters = new Dictionary<string, float>(BaseParameters),
             MaxDeviations = new Dictionary<string, float>(MaxDeviations),
             ParameterBounds = ParameterBounds.ToDictionary(

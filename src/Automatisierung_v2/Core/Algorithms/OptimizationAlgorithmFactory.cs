@@ -3,9 +3,9 @@ using System;
 namespace MyPicoGkProject
 {
     /// <summary>
-    /// Erzeugt den Optimierungsalgorithmus anhand des Namens aus der Projekt-Konfiguration
-    /// (<see cref="ProjectConfig.OptimizationAlgorithm"/>, gesetzt in
-    /// <c>config/projects/&lt;Projekt&gt;.json</c>). Vorher stand die Wahl auskommentiert
+    /// Erzeugt den Optimierungsalgorithmus anhand des Namens aus der Framework-Konfiguration
+    /// (<see cref="SimulationConfig.OptimizationAlgorithm"/>, gesetzt in
+    /// <c>config/simulation.json</c>). Vorher stand die Wahl auskommentiert
     /// in <c>Program.cs</c>.
     /// </summary>
     public static class OptimizationAlgorithmFactory

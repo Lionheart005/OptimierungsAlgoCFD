@@ -38,7 +38,15 @@ namespace MyPicoGkProject
         public int MpiCores { get; set; } = 12;
         public int GmshCores { get; set; } = 12;
 
-        // 3. Algorithmus-Spezifische Einstellungen (Evolution)
+        // 3. Wahl des Optimierungsverfahrens
+        /// <summary>
+        /// Welches Optimierungsverfahren gefahren wird: <c>"Rsm"</c> oder <c>"Evolution"</c>.
+        /// Aufgelöst über <see cref="OptimizationAlgorithmFactory"/>; ein unbekannter Name
+        /// führt zu einer Warnung und dem Standardverfahren.
+        /// </summary>
+        public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
+
+        // 3a. Algorithmus-Spezifische Einstellungen (Evolution)
         public float MinimalDeviationExploration { get; set; } = 1.0f;
         public float MinimalDeviationExploitation { get; set; } = 0.05f;
         public float RoleFineTuner { get; set; } = 0.20f;

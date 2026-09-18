@@ -31,6 +31,10 @@
   "MpiCores": 12,
   "GmshCores": 12,
 
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
+  "OptimizationAlgorithm": "Rsm",
+
   // --- Evolutionärer Algorithmus ---
   "MinimalDeviationExploration": 1.0,
   "MinimalDeviationExploitation": 0.05,

@@ -94,6 +94,7 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.Su2Path, fromFile.Su2Path);
             Assert.Equal(defaults.BouncerTolerance, fromFile.BouncerTolerance, 5);
             Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
+            Assert.Equal(defaults.OptimizationAlgorithm, fromFile.OptimizationAlgorithm);
         }
 
         [Fact]

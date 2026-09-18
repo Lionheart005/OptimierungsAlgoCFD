@@ -61,9 +61,9 @@ namespace MyPicoGkProject
                 };
 
                 // Optimierungsalgorithmus: steht als "OptimizationAlgorithm" in
-                // config/projects/<Projekt>.json ("Rsm" oder "Evolution").
+                // config/simulation.json ("Rsm" oder "Evolution").
                 IOptimizationAlgorithm optimizer =
-                    OptimizationAlgorithmFactory.Create(projectConfig.OptimizationAlgorithm, fitness);
+                    OptimizationAlgorithmFactory.Create(config.OptimizationAlgorithm, fitness);
 
                 // 4. Workflow-Controller mit injizierten Abhängigkeiten erstellen
                 var controller = new WorkflowController(

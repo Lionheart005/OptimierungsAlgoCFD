@@ -5,8 +5,8 @@ using Xunit;
 namespace AutomatisierungCleanVersion.Tests
 {
     /// <summary>
-    /// TODO-10: die Algorithmuswahl kommt aus der Projekt-Konfiguration statt aus
-    /// auskommentiertem Code in Program.cs.
+    /// TODO-10: die Algorithmuswahl kommt aus der Framework-Konfiguration
+    /// (config/simulation.json) statt aus auskommentiertem Code in Program.cs.
     /// </summary>
     public class OptimizationAlgorithmFactoryTests
     {
@@ -47,13 +47,24 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Die Code-Vorgabe des Projekts muss das Verfahren benennen, das vor TODO-10
-        /// fest in Program.cs stand — sonst rechnet der nächste Lauf anders als bisher.
+        /// Die Code-Vorgabe muss das Verfahren benennen, das vor TODO-10 fest in
+        /// Program.cs stand — sonst rechnet der nächste Lauf anders als bisher.
         /// </summary>
         [Fact]
-        public void MantaAuv_Defaults_To_Rsm()
+        public void Framework_Defaults_To_Rsm()
         {
-            Assert.Equal("Rsm", MantaProjectConfig.Create().OptimizationAlgorithm);
+            Assert.Equal("Rsm", SimulationConfig.CreateDefault().OptimizationAlgorithm);
+        }
+
+        /// <summary>
+        /// Die mitgelieferte config/simulation.json muss dieselbe Wahl treffen wie die
+        /// Code-Vorgabe — der Schlüssel liegt seit der Korrektur dort und nicht mehr
+        /// in der Projekt-JSON.
+        /// </summary>
+        [Fact]
+        public void Repository_Simulation_Json_Selects_Rsm()
+        {
+            Assert.Equal("Rsm", JsonConfigLoader.LoadSimulationConfig().OptimizationAlgorithm);
         }
     }
 }
