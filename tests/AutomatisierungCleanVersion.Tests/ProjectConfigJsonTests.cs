@@ -24,6 +24,7 @@ namespace AutomatisierungCleanVersion.Tests
             var actual = JsonConfigLoader.LoadProjectConfig("MantaAuv", expected);
 
             Assert.Equal(expected.ProjectName, actual.ProjectName);
+            Assert.Equal(expected.OptimizationAlgorithm, actual.OptimizationAlgorithm);
             Assert.Equal(expected.BaseParameters, actual.BaseParameters);
             Assert.Equal(expected.MaxDeviations, actual.MaxDeviations);
             Assert.Equal(expected.OptimizationTargets, actual.OptimizationTargets);

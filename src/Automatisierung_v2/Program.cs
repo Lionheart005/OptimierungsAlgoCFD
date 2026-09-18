@@ -1,5 +1,4 @@
 using System;
-using PicoGK;
 
 namespace MyPicoGkProject
 {
@@ -18,6 +17,7 @@ namespace MyPicoGkProject
                 // 2. Projekt-spezifische Konfiguration laden
                 ProjectConfig projectConfig;
                 IGeometryGenerator geometry;
+                IGeometryKernel kernel;
                 IFitnessCalculator fitness;
 
                 switch (projectName)
@@ -27,6 +27,10 @@ namespace MyPicoGkProject
                         projectConfig = JsonConfigLoader.LoadProjectConfig(
                             projectName, MantaProjectConfig.Create(), configDirectory);
                         geometry = new MantaGeometryGenerator();
+                        // Die Manta-Geometrie entsteht aus PicoGK-Lattices, braucht also
+                        // dessen Laufzeitumgebung. Ein Projekt ohne Voxel-Kernel wählt hier
+                        // stattdessen den DirectGeometryKernel.
+                        kernel = new PicoGkKernel();
                         fitness = new MantaFitnessCalculator(projectConfig);
                         break;
                     default:
@@ -56,9 +60,10 @@ namespace MyPicoGkProject
                     new SolverStage(cfdMesher, su2Solver)
                 };
 
-                // Optimierungsalgorithmus wählen (Rsm oder Evolution)
-                IOptimizationAlgorithm optimizer = new RsmOptimizationAlgorithm(fitness);
-                // Alternativ: IOptimizationAlgorithm optimizer = new EvolutionaryAlgorithm(fitness);
+                // Optimierungsalgorithmus: steht als "OptimizationAlgorithm" in
+                // config/projects/<Projekt>.json ("Rsm" oder "Evolution").
+                IOptimizationAlgorithm optimizer =
+                    OptimizationAlgorithmFactory.Create(projectConfig.OptimizationAlgorithm, fitness);
 
                 // 4. Workflow-Controller mit injizierten Abhängigkeiten erstellen
                 var controller = new WorkflowController(
@@ -69,12 +74,14 @@ namespace MyPicoGkProject
                     context
                 );
                 
-                // 5. PicoGK Framework starten
+                // 5. Geometrie-Kernel starten; der Optimierungslauf läuft in dessen
+                //    Laufzeitumgebung. Program.cs kennt PicoGK dadurch nicht mehr.
                 Console.WriteLine("==================================================");
-                Console.WriteLine("  PicoGK AUTOMATED CFD OPTIMIZATION FRAMEWORK");
+                Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
+                Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
                 Console.WriteLine("==================================================");
 
-                Library.Go(config.BaseVoxelResolution, controller.RunOptimization);
+                kernel.RunHosted(config.BaseVoxelResolution, controller.RunOptimization);
             }
             catch (Exception e)
             {

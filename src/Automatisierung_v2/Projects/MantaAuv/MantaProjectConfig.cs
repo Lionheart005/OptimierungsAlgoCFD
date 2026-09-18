@@ -14,6 +14,10 @@ namespace MyPicoGkProject
             {
                 ProjectName = "MantaAuv",
 
+                // --- OPTIMIERUNGSVERFAHREN ---
+                // "Rsm" war bisher die in Program.cs fest verdrahtete Wahl.
+                OptimizationAlgorithm = "Rsm",
+
                 // --- INITIALE AKTIVE PARAMETER (AUV Konzept) ---
                 BaseParameters = new Dictionary<string, float>
                 {

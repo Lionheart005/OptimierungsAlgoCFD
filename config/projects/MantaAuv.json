@@ -7,6 +7,10 @@
 
   "ProjectName": "MantaAuv",
 
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
+  "OptimizationAlgorithm": "Rsm",
+
   // --- Startwerte der aktiven Parameter (mm, ausser TailTaper) ---
   "BaseParameters": {
     "Length": 50.0,

@@ -9,6 +9,14 @@ namespace MyPicoGkProject
     public class ProjectConfig
     {
         public string ProjectName { get; set; } = "";
+
+        /// <summary>
+        /// Welches Optimierungsverfahren gefahren wird: <c>"Rsm"</c> oder <c>"Evolution"</c>.
+        /// Aufgelöst über <see cref="OptimizationAlgorithmFactory"/>; ein unbekannter Name
+        /// führt zu einer Warnung und dem Standardverfahren.
+        /// </summary>
+        public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
+
         public Dictionary<string, float> BaseParameters { get; set; } = new();
         public Dictionary<string, float> MaxDeviations { get; set; } = new();
         public Dictionary<string, (float Min, float Max)> ParameterBounds { get; set; } = new();
