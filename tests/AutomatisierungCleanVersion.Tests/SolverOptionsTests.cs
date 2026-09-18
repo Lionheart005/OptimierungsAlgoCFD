@@ -22,6 +22,7 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.TurbulenceModel, loaded.TurbulenceModel);
             Assert.Equal(defaults.SpeedOfSound, loaded.SpeedOfSound);
             Assert.Equal(defaults.ReferenceLength, loaded.ReferenceLength);
+            Assert.Equal(defaults.ReferenceAreaMetric, loaded.ReferenceAreaMetric);
             Assert.Equal(defaults.CflNumber, loaded.CflNumber);
             Assert.Equal(defaults.CflAdapt, loaded.CflAdapt);
             Assert.Equal(defaults.CflAdaptFactorDown, loaded.CflAdaptFactorDown);

@@ -22,6 +22,14 @@ namespace MyPicoGkProject
         /// <summary>SU2 REF_LENGTH.</summary>
         public float ReferenceLength { get; set; } = 0.01f;
 
+        /// <summary>
+        /// Name der Metrik in <c>ModelRecord.PassiveParameters</c>, aus der SU2 REF_AREA gebildet
+        /// wird. Der Wert wird als mm² gelesen und in m² umgerechnet — das ganze Framework
+        /// rechnet in mm. Ein Projekt, das seine Referenzfläche anders nennt, trägt den Namen
+        /// hier ein; fehlt die Metrik zur Laufzeit, warnt <see cref="Su2Solver"/> (TODO-12).
+        /// </summary>
+        public string ReferenceAreaMetric { get; set; } = "FrontalArea";
+
         // --- CFL-Steuerung ---
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;

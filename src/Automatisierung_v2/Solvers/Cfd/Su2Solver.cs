@@ -12,6 +12,18 @@ namespace MyPicoGkProject
     /// </summary>
     public class Su2Solver : ISimulationSolver
     {
+        /// <summary>
+        /// Umrechnung der Geometrie-Metriken (mm²) in SU2-Einheiten (m²). Das ganze Framework
+        /// rechnet in mm — PicoGK, die STL-Dateien und die Gmsh-Skalierung ebenso.
+        /// </summary>
+        private const float SquareMmToSquareM = 0.000001f;
+
+        /// <summary>
+        /// Ersatz-Referenzfläche in mm², wenn die konfigurierte Metrik fehlt. Bewusst derselbe
+        /// Wert wie vor TODO-12, damit sich im Fehlerfall nur die Meldung ändert, nicht die Zahl.
+        /// </summary>
+        private const float FallbackReferenceAreaMm2 = 1.0f;
+
         private readonly Su2SolverOptions _options;
 
         /// <param name="options">Vorgabedaten aus config/solvers/su2.json; ohne Angabe gelten die Standardwerte.</param>
@@ -28,11 +40,7 @@ namespace MyPicoGkProject
             SimulationConfig config,
             string workingDirectory)
         {
-            // Frontalfläche aus den bereits berechneten Metriken holen
-            float realAreaMm2 = record.PassiveParameters.ContainsKey("FrontalArea") 
-                ? record.PassiveParameters["FrontalArea"] 
-                : 1.0f;
-            float refArea = realAreaMm2 * 0.000001f;
+            float refArea = ResolveReferenceArea(record);
 
             Console.WriteLine($"    -> Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
             
@@ -113,6 +121,44 @@ namespace MyPicoGkProject
             }
 
             record.PassiveParameters["Drag"] = ReadDragFromHistory(historyPath);
+        }
+
+        /// <summary>
+        /// Bestimmt SU2 REF_AREA aus den Metriken des Modells. Welche Metrik gemeint ist, steht
+        /// in <see cref="Su2SolverOptions.ReferenceAreaMetric"/> — der Solver kennt keinen festen
+        /// Namen mehr (TODO-12).
+        ///
+        /// Fehlt die Metrik, wird weitergerechnet, aber <b>nicht stillschweigend</b>: der
+        /// CD-Wert wäre dann um Größenordnungen falsch, und genau das war vorher nicht zu sehen.
+        /// </summary>
+        public float ResolveReferenceArea(ModelRecord record)
+        {
+            string metric = (_options.ReferenceAreaMetric ?? string.Empty).Trim();
+
+            if (metric.Length == 0)
+            {
+                WarnAboutMissingReferenceArea("Es ist keine Referenzflächen-Metrik konfiguriert", record);
+                return FallbackReferenceAreaMm2 * SquareMmToSquareM;
+            }
+
+            if (record.PassiveParameters.TryGetValue(metric, out float areaMm2))
+                return areaMm2 * SquareMmToSquareM;
+
+            WarnAboutMissingReferenceArea($"Die Metrik '{metric}' fehlt in den Ergebnissen dieses Modells", record);
+            return FallbackReferenceAreaMm2 * SquareMmToSquareM;
+        }
+
+        private static void WarnAboutMissingReferenceArea(string reason, ModelRecord record)
+        {
+            string known = record.PassiveParameters.Count == 0
+                ? "(keine)"
+                : string.Join(", ", record.PassiveParameters.Keys);
+
+            Console.WriteLine($"[WARNUNG] {reason} — SU2 rechnet ersatzweise mit REF_AREA = "
+                              + (FallbackReferenceAreaMm2 * SquareMmToSquareM).ToString(CultureInfo.InvariantCulture)
+                              + " m². Der CD-Wert ist damit um Größenordnungen falsch.");
+            Console.WriteLine($"          Vorhandene Metriken: {known}.");
+            Console.WriteLine("          Der Name gehört in config/solvers/su2.json unter 'ReferenceAreaMetric'.");
         }
 
         private float ReadDragFromHistory(string historyPath)
