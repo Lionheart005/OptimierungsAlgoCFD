@@ -11,6 +11,9 @@ namespace MyPicoGkProject
     /// </summary>
     public class WorkflowController
     {
+        /// <summary>Variantennummer, unter der Validierungsläufe (Re-Simulation) laufen.</summary>
+        private const int ValidationVariantNumber = 99;
+
         private readonly SimulationContext _context;
         private readonly IOptimizationAlgorithm _optimizer;
         private readonly IGeometryGenerator _geometry;
@@ -72,57 +75,8 @@ namespace MyPicoGkProject
 
                     PrintVariantHeader(iter, var, activeParams);
 
-                    // 2. Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt
-                    RubberBandScaler scaler = new RubberBandScaler(
-                        activeParams, 
-                        _context.Project.DimensionalParameters,
-                        _context.Config.TargetPicoGkSize);
-
-                    // 3. Datensatz vorbereiten
-                    ModelRecord record = new ModelRecord
-                    {
-                        Iteration = iter,
-                        Variant = var,
-                        ActiveParameters = activeParams
-                    };
-
-                    // 4. Geometrie erzeugen (IGeometryGenerator) → GeometryResult
-                    var geoResult = _geometry.GenerateAndExport(
-                        iter, var, 
-                        scaler.ShrunkParameters, 
-                        _context.WorkingDirectory,
-                        _context.Config.VoxelSmoothingIterations,
-                        _context.Config.VoxelSmoothingPremeltingSteps);
-
-                    record.StlPath = geoResult.StlPath;
-
-                    // Metriken aus dem GeometryResult in den Record übernehmen und zurückskalieren
-                    ApplyGeometryMetrics(record, geoResult, scaler);
-                    record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
-                    
-                    Console.WriteLine($"       -> Voxel-Geometrie erstellt. (Metriken: {string.Join(", ", record.PassiveParameters.Where(p => p.Key != "ScaleFactor").Select(p => $"{p.Key}={p.Value:F1}"))})");
-                    
-                    // 5. Mesh generieren (IMeshGenerator)
-                    try
-                    {
-                        record.MeshPath = _mesher.GenerateMesh(
-                            geoResult.StlPath, iter, var,
-                            _context.Config, scaler.ShrinkFactor,
-                            _context.WorkingDirectory);
-
-                        // 6. FÜR JEDEN Solver in _solvers: solver.Solve(...)
-                        foreach (var solver in _solvers)
-                        {
-                            solver.Solve(record.MeshPath, record, _context.Config, _context.WorkingDirectory);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"       -> [FEHLER] Simulation abgebrochen: {ex.Message}");
-                        // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
-                        // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
-                        record.SimulationFailed = true;
-                    }
+                    // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
+                    ModelRecord record = RunPipeline(activeParams, iter, var);
 
                     // 7. Datensatz speichern
                     _context.History.Add(record);
@@ -162,43 +116,75 @@ namespace MyPicoGkProject
         }
 
         /// <summary>
-        /// Callback für den ModelValidator: Führt eine vollständige Re-Simulation mit den gegebenen Parametern durch.
+        /// Callback für den ModelValidator: Führt eine vollständige Re-Simulation mit den gegebenen
+        /// Parametern durch. Läuft durch dieselbe Pipeline wie eine reguläre Variante,
+        /// nur unter der Variantennummer 99 und ohne Eintrag in der History.
         /// </summary>
         private ModelRecord ResimulateForValidation(Dictionary<string, float> testParams, int iteration)
         {
+            return RunPipeline(testParams, iteration, ValidationVariantNumber);
+        }
+
+        /// <summary>
+        /// Die eigentliche Pipeline für einen Parametersatz:
+        /// Skalierung (Gummiband) → Geometrie → Metriken → Vernetzung → Solver-Kette.
+        /// Gibt einen fertigen <see cref="ModelRecord"/> zurück; die Fitness wird hier
+        /// bewusst nicht berechnet, das macht der Optimierungsalgorithmus bzw. der Validator.
+        /// </summary>
+        private ModelRecord RunPipeline(Dictionary<string, float> parameters, int iteration, int variant)
+        {
+            // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt
             RubberBandScaler scaler = new RubberBandScaler(
-                testParams, 
+                parameters,
                 _context.Project.DimensionalParameters,
                 _context.Config.TargetPicoGkSize);
 
+            ModelRecord record = new ModelRecord
+            {
+                Iteration = iteration,
+                Variant = variant,
+                ActiveParameters = parameters
+            };
+
+            // Geometrie erzeugen (IGeometryGenerator) → GeometryResult
             var geoResult = _geometry.GenerateAndExport(
-                iteration, 99, 
-                scaler.ShrunkParameters, 
+                iteration, variant,
+                scaler.ShrunkParameters,
                 _context.WorkingDirectory,
                 _context.Config.VoxelSmoothingIterations,
                 _context.Config.VoxelSmoothingPremeltingSteps);
 
-            ModelRecord validationRecord = new ModelRecord
+            record.StlPath = geoResult.StlPath;
+
+            // Metriken aus dem GeometryResult in den Record übernehmen und zurückskalieren
+            ApplyGeometryMetrics(record, geoResult, scaler);
+            record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
+
+            Console.WriteLine($"       -> Voxel-Geometrie erstellt. (Metriken: {string.Join(", ", record.PassiveParameters.Where(p => p.Key != "ScaleFactor").Select(p => $"{p.Key}={p.Value:F1}"))})");
+
+            try
             {
-                Iteration = iteration,
-                Variant = 99,
-                ActiveParameters = testParams
-            };
+                // Mesh generieren (IMeshGenerator)
+                record.MeshPath = _mesher.GenerateMesh(
+                    geoResult.StlPath, iteration, variant,
+                    _context.Config, scaler.ShrinkFactor,
+                    _context.WorkingDirectory);
 
-            // Metriken übertragen
-            ApplyGeometryMetrics(validationRecord, geoResult, scaler);
-
-            string meshPath = _mesher.GenerateMesh(
-                geoResult.StlPath, iteration, 99,
-                _context.Config, scaler.ShrinkFactor,
-                _context.WorkingDirectory);
-
-            foreach (var solver in _solvers)
+                // FÜR JEDEN Solver in _solvers: solver.Solve(...)
+                foreach (var solver in _solvers)
+                {
+                    solver.Solve(record.MeshPath, record, _context.Config, _context.WorkingDirectory);
+                }
+            }
+            catch (Exception ex)
             {
-                solver.Solve(meshPath, validationRecord, _context.Config, _context.WorkingDirectory);
+                Console.WriteLine($"       -> [FEHLER] Simulation abgebrochen: {ex.Message}");
+                // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
+                // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
+                record.SimulationFailed = true;
             }
 
-            return validationRecord;
+            return record;
         }
 
         /// <summary>
