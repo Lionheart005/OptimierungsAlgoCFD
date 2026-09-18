@@ -55,8 +55,7 @@ namespace MyPicoGkProject
                 var controller = new WorkflowController(
                     geometry,
                     stages,
-                    fitness,
-                    validator, 
+                    validator,
                     optimizer, 
                     context
                 );

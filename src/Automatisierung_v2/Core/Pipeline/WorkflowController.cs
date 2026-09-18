@@ -18,20 +18,20 @@ namespace MyPicoGkProject
         private readonly IOptimizationAlgorithm _optimizer;
         private readonly IGeometryGenerator _geometry;
         private readonly SolverStage[] _stages;
-        private readonly IFitnessCalculator _fitness;
         private readonly IModelValidator _validator;
+
+        // Kein IFitnessCalculator-Feld: die Bewertung läuft über den Optimierungsalgorithmus
+        // (EvaluateAndSelectBest) und im Validierungslauf über den ChampionValidator.
 
         public WorkflowController(
             IGeometryGenerator geometry,
             SolverStage[] stages,
-            IFitnessCalculator fitness,
             IModelValidator validator,
             IOptimizationAlgorithm optimizer,
             SimulationContext context)
         {
             _geometry = geometry;
             _stages = stages;
-            _fitness = fitness;
             _validator = validator;
             _optimizer = optimizer;
             _context = context;
