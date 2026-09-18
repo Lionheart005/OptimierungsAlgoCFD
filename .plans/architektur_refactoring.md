@@ -1,16 +1,15 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
-> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `0d045f9 TODO-11`.
+> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `1e11b08 TODO-12`.
 > **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
 > projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die
 > Fitness, Mesher hängen pro Solver-Stufe.
 > **Block B ist fertig** (TODO-6 bis TODO-9 + TODO-14): alle Zahlen und Pfade kommen aus
 > `config/*.json`, Scaler und Smoother sind abschaltbar.
-> **Block C ist angefangen** (TODO-10 + TODO-11): `Program.cs` hat kein `using PicoGK` mehr,
+> **Block C ist fertig** (TODO-10 bis TODO-12): `Program.cs` hat kein `using PicoGK` mehr,
 > der Kernel-Start läuft über `IGeometryKernel`, die Algorithmuswahl über die Projekt-JSON,
-> und `Solvers/` schreibt den Windkanal selbst als STL.
-> **Offen:** TODO-12 aus Block C, der Rest von Block D
-> (TODO-15, 16, 17, 19, 20, 21).
+> `Solvers/` schreibt den Windkanal selbst als STL und kennt keinen festen Metriknamen mehr.
+> **Offen:** nur noch Block D (TODO-15, 16, 17, 19, 20, 21).
 
 ## Ziel
 
@@ -37,14 +36,15 @@ Diese Punkte sind entschieden und ersetzen die ursprünglichen "Offenen Fragen":
 
 ```
 dotnet build Automatisierung.sln   →  Build succeeded. 0 Warnings, 0 Errors
-dotnet test  Automatisierung.sln   →  Passed: 54, Failed: 0, Skipped: 0
+dotnet test  Automatisierung.sln   →  Passed: 63, Failed: 0, Skipped: 0
 ```
-**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 54/54 Tests.**
+**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 63/63 Tests.**
 Block A hat keine Tests gebraucht (4/4), Block B hat 15 dazugebracht: Loader (6),
 Projekt-JSON (3), Solver-Optionen (4), Scaler-Schalter (2). TODO-10 hat 10 dazugebracht
 (Algorithmus-Fabrik, inkl. Groß-/Kleinschreibung, Fallback und Manta-Vorgabe).
-TODO-11 hat 25 dazugebracht (Tunnel-Geometrie 13, STL-Writer 5, Mesher-Tunnel 7);
-die vier neuen JSON-Schlüssel sind zusätzlich in `SolverOptionsTests` mit abgedeckt.
+TODO-11 hat 25 dazugebracht (Tunnel-Geometrie 13, STL-Writer 5, Mesher-Tunnel 7),
+TODO-12 noch 9 (Referenzflächen-Metrik); die fünf neuen JSON-Schlüssel sind zusätzlich
+in `SolverOptionsTests` mit abgedeckt.
 Die JSON-Tests vergleichen jede mitgelieferte Datei gegen die Code-Vorgaben — dort
 würde ein Zahlendreher auffallen.
 
@@ -135,7 +135,8 @@ AutomatisierungCleanVersion/
     ├── OptimizationAlgorithmFactoryTests.cs  (10 Tests)
     ├── TunnelGeometryTests.cs            (13 Tests)
     ├── StlWriterTests.cs                 (5 Tests)
-    └── GmshCfdMesherTunnelTests.cs       (7 Tests)
+    ├── GmshCfdMesherTunnelTests.cs       (7 Tests)
+    └── Su2ReferenceAreaTests.cs          (9 Tests)
 ```
 
 **Fehlt gegenüber der Zielstruktur:** `Solvers/Fem/`, `WorkflowControllerTests.cs`
@@ -279,7 +280,7 @@ CLI-Argument überschreibbar.
   **Zusammen mit TODO-14 umgesetzt**, weil der Smoother-Schalter den `IGeometryGenerator`
   erreichen musste.
 
-### Block C — PicoGK austauschbar machen (Entscheidung 2)
+### Block C — PicoGK austauschbar machen (Entscheidung 2) ✅ ERLEDIGT
 
 - [x] **TODO-10 — `Library.Go()` hinter die Geometrie-Abstraktion** *(Commit `9c5b7b3`)*
   **Entscheidung (vom Nutzer, 18.09.2026):** ein **separates `IGeometryKernel`**, nicht
@@ -348,12 +349,32 @@ CLI-Argument überschreibbar.
   entartetes Dreieck), `GmshCfdMesherTunnelTests` (7: Standardquader, Zylinderwahl,
   Fallback bei Tippfehler, Cache).
 
-- [ ] **TODO-12 — Referenzflächen-Metrik im Solver konfigurierbar**
-  `Solvers/Cfd/Su2Solver.cs:24-26` liest fest `PassiveParameters["FrontalArea"]`.
-  Ein Projekt, das die Metrik anders nennt, bekommt still `refArea = 1.0` — der Drag-Wert
-  wäre dann um Größenordnungen falsch, ohne Fehlermeldung.
-  **Lösung:** Metrikname in `Su2SolverOptions` (TODO-8), und wenn der Key fehlt:
-  Warnung ausgeben statt still weiterzurechnen.
+- [x] **TODO-12 — Referenzflächen-Metrik im Solver konfigurierbar** *(Commit `1e11b08`)*
+  `Su2Solver` las fest `PassiveParameters["FrontalArea"]`. Ein Projekt, das die Metrik anders
+  nennt, bekam still die Ersatzfläche — der CD-Wert wäre dann um Größenordnungen falsch
+  gewesen, ohne Fehlermeldung.
+
+  **Umgesetzt:**
+  - `Su2SolverOptions.ReferenceAreaMetric` (→ `config/solvers/su2.json`), Vorgabe
+    `"FrontalArea"` — also unverändert für Manta. Führende/folgende Leerzeichen egal.
+  - `Su2Solver.ResolveReferenceArea(record)` löst den Namen auf und rechnet mm² → m².
+    Die Methode ist öffentlich, damit sie ohne MPI und SU2 testbar ist.
+  - **Fehlt die Metrik** (oder ist kein Name konfiguriert), wird weitergerechnet, aber
+    **nicht still**: `[WARNUNG]` mit Grund, Ersatzwert, der Liste der tatsächlich
+    vorhandenen Metriken und dem Hinweis auf den JSON-Schlüssel. Die vorhandenen Metriken
+    mitzudrucken ist der eigentliche Nutzen — ein Tippfehler im Namen ist so sofort sichtbar.
+  - **Der Ersatzwert bleibt exakt der alte** (1 mm² → 1e-6 m²), damit sich im Fehlerfall
+    nur die Meldung ändert, nicht die Zahl. *(Anmerkung: die frühere Planzeile sprach von
+    `refArea = 1.0`; tatsächlich kamen durch die mm²-Umrechnung immer 1e-6 m² heraus.)*
+  - Der Umrechnungsfaktor mm² → m² bleibt fest verdrahtet: dass Geometrie-Metriken in mm
+    vorliegen, ist eine Konvention des ganzen Frameworks (PicoGK, STL, Gmsh-Skalierung),
+    keine Eigenheit von SU2.
+
+  **Tests: 54 → 63.** `Su2ReferenceAreaTests` (9): Vorgabe und Umrechnung, eigener
+  Metrikname, fehlende Metrik → Warnung + Ersatzwert, leerer/nicht gesetzter Name,
+  Leerzeichen im Namen, Record ganz ohne Metriken, und dass die aufgelöste Fläche
+  unverändert als `REF_AREA` in der erzeugten SU2-cfg landet. `SolverOptionsTests`
+  deckt den neuen JSON-Schlüssel mit ab.
 
 ### Block D — Korrektheit, Aufräumen, Tests
 
@@ -467,9 +488,9 @@ JETZT:   Program → wählt Projekt → verdrahtet Interfaces → WorkflowContro
            [IGeometryKernel]     ✅ PicoGkKernel / DirectGeometryKernel
          + PicoGK raus aus Solvers/, Tunnel-Form wählbar  ✅ TODO-11
            [StlWriter + TunnelGeometry]  Box (wie bisher) | Cylinder
+         + Referenzflächen-Metrik konfigurierbar          ✅ TODO-12
 
 ZIEL (offen):
-         + Referenzflächen-Metrik konfigurierbar          (TODO-12)
          + Korrektheit und Tests                          (Block D: TODO-15, 16, 17, 19, 20, 21)
 ```
 
