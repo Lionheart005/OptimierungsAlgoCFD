@@ -119,9 +119,9 @@ namespace MyPicoGkProject
                     catch (Exception ex)
                     {
                         Console.WriteLine($"       -> [FEHLER] Simulation abgebrochen: {ex.Message}");
-                        // Setze einen generischen Fehler-Marker — der FitnessCalculator muss damit umgehen
-                        if (!record.PassiveParameters.ContainsKey("Drag"))
-                            record.PassiveParameters["Drag"] = float.MaxValue;
+                        // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
+                        // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
+                        record.SimulationFailed = true;
                     }
 
                     // 7. Datensatz speichern

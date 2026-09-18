@@ -16,7 +16,14 @@ namespace MyPicoGkProject
         // Passive Parameter / Metriken (Resultate aus der Simulation, z.B. Volumen, Drag)
         public Dictionary<string, float> PassiveParameters { get; set; } = new Dictionary<string, float>();
 
-        public float Fitness { get; set; } 
+        /// <summary>
+        /// Generischer Fehler-Marker: Vernetzung oder Solver-Kette sind abgebrochen,
+        /// die passiven Parameter sind also unvollständig. Der Kern kennt keine
+        /// Metriknamen — der <see cref="IFitnessCalculator"/> entscheidet, was das bedeutet.
+        /// </summary>
+        public bool SimulationFailed { get; set; }
+
+        public float Fitness { get; set; }
         public string StlPath { get; set; } = "";
         public string MeshPath { get; set; } = "";
     }

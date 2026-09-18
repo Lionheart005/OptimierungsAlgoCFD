@@ -67,10 +67,17 @@ namespace MyPicoGkProject
             int k = context.Project.BaseParameters.Count;
             int minRequiredSamples = ((k + 1) * (k + 2)) / 2 + 2;
 
-            if (context.History.Count < minRequiredSamples)
+            // Nur gelungene Simulationen taugen als Stützstellen. Fehlgeschlagene Modelle
+            // tragen keine echte Fitness, sie würden die Antwortfläche verzerren — sie zählen
+            // deshalb auch nicht für die DoE-Anzahl. Stattdessen läuft eine Variante mehr.
+            var usableSamples = context.History.Where(r => !r.SimulationFailed).ToList();
+
+            if (usableSamples.Count < minRequiredSamples)
             {
-                int missing = minRequiredSamples - context.History.Count;
-                Console.WriteLine($"\n[INFO] {Name}: Aufbau des Ersatzmodells. Benötige noch {missing} Basis-Simulationen (DoE).");
+                int missing = minRequiredSamples - usableSamples.Count;
+                int failed = context.History.Count - usableSamples.Count;
+                string failedNote = failed > 0 ? $" ({failed} fehlgeschlagene Simulation(en) zählen nicht mit)" : "";
+                Console.WriteLine($"\n[INFO] {Name}: Aufbau des Ersatzmodells. Benötige noch {missing} Basis-Simulationen (DoE).{failedNote}");
                 return;
             }
 
@@ -85,7 +92,7 @@ namespace MyPicoGkProject
                 bool exploit = _random.NextDouble() < context.Config.RsmExploitationRatio;
                 Dictionary<string, float> virtParams = GenerateVirtualCandidate(context, bestRecord, exploit);
                 
-                float predictedFitness = PredictFitnessSurrogate(virtParams, context.History, context.Project.ParameterBounds, context.Config.RsmIdwPower);
+                float predictedFitness = PredictFitnessSurrogate(virtParams, usableSamples, context.Project.ParameterBounds, context.Config.RsmIdwPower);
                 
                 virtualResults.Add((virtParams, predictedFitness));
             }
@@ -104,12 +111,16 @@ namespace MyPicoGkProject
             }
         }
 
-        private float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> history, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
+        /// <summary>
+        /// IDW-Schätzung der Fitness. <paramref name="samples"/> enthält nur gelungene
+        /// Simulationen — abgebrochene Läufe sind keine gültigen Stützstellen.
+        /// </summary>
+        private float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
         {
             float numerator = 0f;
             float denominator = 0f;
 
-            foreach (var record in history)
+            foreach (var record in samples)
             {
                 float distSq = 0f;
 
@@ -132,6 +143,8 @@ namespace MyPicoGkProject
                 numerator += weight * record.Fitness;
                 denominator += weight;
             }
+
+            if (denominator <= 0f) return 0f;
 
             return numerator / denominator;
         }

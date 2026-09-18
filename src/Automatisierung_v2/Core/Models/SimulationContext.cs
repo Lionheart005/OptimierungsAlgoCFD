@@ -43,14 +43,17 @@ namespace MyPicoGkProject
             string csvPath = Path.Combine(WorkingDirectory, "Simulation_Results.csv");
             StringBuilder csvBuilder = new StringBuilder();
             
-            var activeKeys = History[0].ActiveParameters.Keys.ToList();
-            var passiveKeys = History[0].PassiveParameters.Keys.ToList();
-            
+            // Spalten über ALLE Records sammeln, nicht nur über den ersten: sonst fehlt eine
+            // Metrik im gesamten Export, sobald sie ausgerechnet im ersten Record fehlt
+            // (z.B. weil dessen Simulation abgebrochen ist).
+            var activeKeys = History.SelectMany(r => r.ActiveParameters.Keys).Distinct().ToList();
+            var passiveKeys = History.SelectMany(r => r.PassiveParameters.Keys).Distinct().ToList();
+
             // Header
-            string header = "Iteration;Variant;" + 
-                            string.Join(";", activeKeys) + ";" + 
-                            string.Join(";", passiveKeys) + ";" + 
-                            "Fitness;StlPath;MeshPath";
+            string header = "Iteration;Variant;" +
+                            string.Join(";", activeKeys) + ";" +
+                            string.Join(";", passiveKeys) + ";" +
+                            "Fitness;StlPath;MeshPath;SimulationFailed";
             csvBuilder.AppendLine(header);
 
             // Daten
@@ -62,7 +65,8 @@ namespace MyPicoGkProject
                 string line = $"{record.Iteration};{record.Variant};" +
                               $"{string.Join(";", activeVals)};" +
                               $"{string.Join(";", passiveVals)};" +
-                              $"{record.Fitness:F5};{record.StlPath};{record.MeshPath}";
+                              $"{record.Fitness:F5};{record.StlPath};{record.MeshPath};" +
+                              $"{(record.SimulationFailed ? 1 : 0)}";
                 csvBuilder.AppendLine(line);     
             }
 

@@ -17,6 +17,14 @@ namespace MyPicoGkProject
 
         public void CalculateFitness(ModelRecord record, SimulationConfig config)
         {
+            // Abgebrochene Vernetzung/Simulation: der Kern meldet das generisch per Flag,
+            // früher stand dafür ein "Drag" = float.MaxValue im Record.
+            if (record.SimulationFailed)
+            {
+                record.Fitness = 0.0001f;
+                return;
+            }
+
             float drag = record.PassiveParameters.ContainsKey("Drag") ? record.PassiveParameters["Drag"] : float.MaxValue;
             float volume = record.PassiveParameters.ContainsKey("Volume") ? record.PassiveParameters["Volume"] : 0f;
             float sensorDist = record.PassiveParameters.ContainsKey("SensorDistance") ? record.PassiveParameters["SensorDistance"] : 0f;
