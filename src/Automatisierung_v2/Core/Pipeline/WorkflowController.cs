@@ -17,23 +17,20 @@ namespace MyPicoGkProject
         private readonly SimulationContext _context;
         private readonly IOptimizationAlgorithm _optimizer;
         private readonly IGeometryGenerator _geometry;
-        private readonly IMeshGenerator _mesher;
-        private readonly ISimulationSolver[] _solvers;
+        private readonly SolverStage[] _stages;
         private readonly IFitnessCalculator _fitness;
         private readonly IModelValidator _validator;
 
         public WorkflowController(
             IGeometryGenerator geometry,
-            IMeshGenerator mesher,
-            ISimulationSolver[] solvers,
+            SolverStage[] stages,
             IFitnessCalculator fitness,
             IModelValidator validator,
             IOptimizationAlgorithm optimizer,
             SimulationContext context)
         {
             _geometry = geometry;
-            _mesher = mesher;
-            _solvers = solvers;
+            _stages = stages;
             _fitness = fitness;
             _validator = validator;
             _optimizer = optimizer;
@@ -44,7 +41,7 @@ namespace MyPicoGkProject
         {
             Console.WriteLine($"[SYSTEM] Nutze Optimierungsalgorithmus: {_optimizer.Name}");
             Console.WriteLine($"[SYSTEM] Projekt: {_context.Project.ProjectName}");
-            Console.WriteLine($"[SYSTEM] Solver: {string.Join(", ", _solvers.Select(s => s.Name))}");
+            Console.WriteLine($"[SYSTEM] Solver: {string.Join(", ", _stages.Select(s => s.Solver.Name))}");
 
             int totalVariants = _context.Config.MaxIterations * _context.Config.VariantsPerIteration;
             int completedVariants = 0;
@@ -164,16 +161,25 @@ namespace MyPicoGkProject
 
             try
             {
-                // Mesh generieren (IMeshGenerator)
-                record.MeshPath = _mesher.GenerateMesh(
-                    geoResult.StlPath, iteration, variant,
-                    _context.Config, scaler.ShrinkFactor,
-                    _context.WorkingDirectory);
+                // Jede Stufe vernetzt mit ihrem eigenen Mesher und rechnet dann.
+                // Stufen, die sich dieselbe Mesher-Instanz teilen, vernetzen nur einmal.
+                var meshCache = new Dictionary<IMeshGenerator, string>(ReferenceEqualityComparer.Instance);
 
-                // FÜR JEDEN Solver in _solvers: solver.Solve(...)
-                foreach (var solver in _solvers)
+                foreach (var stage in _stages)
                 {
-                    solver.Solve(record.MeshPath, record, _context.Config, _context.WorkingDirectory);
+                    if (!meshCache.TryGetValue(stage.Mesher, out string? meshPath))
+                    {
+                        meshPath = stage.Mesher.GenerateMesh(
+                            geoResult.StlPath, iteration, variant,
+                            _context.Config, scaler.ShrinkFactor,
+                            _context.WorkingDirectory);
+                        meshCache[stage.Mesher] = meshPath;
+
+                        // ModelRecord führt genau einen Mesh-Pfad — den der ersten Stufe.
+                        if (string.IsNullOrEmpty(record.MeshPath)) record.MeshPath = meshPath;
+                    }
+
+                    stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
                 }
             }
             catch (Exception ex)

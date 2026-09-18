@@ -36,19 +36,24 @@ namespace MyPicoGkProject
                 var context = new SimulationContext(config, projectConfig);
                 context.EnsureDirectories(); // Erstellt Ergebnisse-Ordner etc.
 
-                var mesher = new GmshCfdMesher();
-                var solver = new Su2Solver();
-                
+                // Simulationskette: jede Stufe bringt ihren eigenen Vernetzer mit.
+                // Ein FEM-Solver bekäme hier eine eigene Mesher-Instanz, ein zweiter
+                // CFD-Solver dieselbe — dann wird nur einmal vernetzt.
+                var cfdMesher = new GmshCfdMesher();
+                var stages = new[]
+                {
+                    new SolverStage(cfdMesher, new Su2Solver())
+                };
+
                 // Optimierungsalgorithmus wählen (Rsm oder Evolution)
                 IOptimizationAlgorithm optimizer = new RsmOptimizationAlgorithm(fitness);
                 // Alternativ: IOptimizationAlgorithm optimizer = new EvolutionaryAlgorithm(fitness);
 
                 // 4. Workflow-Controller mit injizierten Abhängigkeiten erstellen
                 var controller = new WorkflowController(
-                    geometry, 
-                    mesher, 
-                    new ISimulationSolver[] { solver }, 
-                    fitness, 
+                    geometry,
+                    stages,
+                    fitness,
                     validator, 
                     optimizer, 
                     context
