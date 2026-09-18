@@ -10,7 +10,9 @@ namespace MyPicoGkProject
             try
             {
                 // 1. Projekt aus args oder Konvention auswählen
+                //    Aufruf: <Projektname> [Konfigurationsverzeichnis]
                 string projectName = args.Length > 0 ? args[0] : "MantaAuv";
+                string? configDirectory = args.Length > 1 ? args[1] : null;
                 Console.WriteLine($"[SYSTEM] Starte Projekt: {projectName}");
 
                 // 2. Projekt-spezifische Konfiguration laden
@@ -30,7 +32,8 @@ namespace MyPicoGkProject
                 }
 
                 // 3. Framework-Kern (identisch für alle Projekte)
-                var config = SimulationConfig.CreateDefault();
+                //    Zahlen und Pfade kommen aus config/simulation.json (+ simulation.local.json)
+                var config = JsonConfigLoader.LoadSimulationConfig(configDirectory);
                 var context = new SimulationContext(config, projectConfig);
                 context.EnsureDirectories(); // Erstellt Ergebnisse-Ordner etc.
 

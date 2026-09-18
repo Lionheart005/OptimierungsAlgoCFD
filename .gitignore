@@ -6,6 +6,9 @@ obj/
 *.userosscache
 *.sln.docstates
 
+# Maschinenspezifische Konfiguration (überlagert die Basisdateien)
+*.local.json
+
 # Logs
 *.log
 
