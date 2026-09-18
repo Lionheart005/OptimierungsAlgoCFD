@@ -1,14 +1,15 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
-> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `9c5b7b3 TODO-10`.
+> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `0d045f9 TODO-11`.
 > **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
 > projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die
 > Fitness, Mesher hängen pro Solver-Stufe.
 > **Block B ist fertig** (TODO-6 bis TODO-9 + TODO-14): alle Zahlen und Pfade kommen aus
 > `config/*.json`, Scaler und Smoother sind abschaltbar.
-> **Block C ist angefangen** (TODO-10): `Program.cs` hat kein `using PicoGK` mehr,
-> der Kernel-Start läuft über `IGeometryKernel`, die Algorithmuswahl über die Projekt-JSON.
-> **Offen:** TODO-11 und TODO-12 aus Block C, der Rest von Block D
+> **Block C ist angefangen** (TODO-10 + TODO-11): `Program.cs` hat kein `using PicoGK` mehr,
+> der Kernel-Start läuft über `IGeometryKernel`, die Algorithmuswahl über die Projekt-JSON,
+> und `Solvers/` schreibt den Windkanal selbst als STL.
+> **Offen:** TODO-12 aus Block C, der Rest von Block D
 > (TODO-15, 16, 17, 19, 20, 21).
 
 ## Ziel
@@ -36,14 +37,24 @@ Diese Punkte sind entschieden und ersetzen die ursprünglichen "Offenen Fragen":
 
 ```
 dotnet build Automatisierung.sln   →  Build succeeded. 0 Warnings, 0 Errors
-dotnet test  Automatisierung.sln   →  Passed: 29, Failed: 0, Skipped: 0
+dotnet test  Automatisierung.sln   →  Passed: 54, Failed: 0, Skipped: 0
 ```
-**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 29/29 Tests.**
+**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 54/54 Tests.**
 Block A hat keine Tests gebraucht (4/4), Block B hat 15 dazugebracht: Loader (6),
 Projekt-JSON (3), Solver-Optionen (4), Scaler-Schalter (2). TODO-10 hat 10 dazugebracht
 (Algorithmus-Fabrik, inkl. Groß-/Kleinschreibung, Fallback und Manta-Vorgabe).
+TODO-11 hat 25 dazugebracht (Tunnel-Geometrie 13, STL-Writer 5, Mesher-Tunnel 7);
+die vier neuen JSON-Schlüssel sind zusätzlich in `SolverOptionsTests` mit abgedeckt.
 Die JSON-Tests vergleichen jede mitgelieferte Datei gegen die Code-Vorgaben — dort
 würde ein Zahlendreher auffallen.
+
+**Zusätzlich einmalig gegengeprüft (TODO-11):** Das vom neuen `StlWriter` geschriebene
+`Static_Windtunnel.stl` wurde gegen die Datei verglichen, die
+`PicoGK.Utils.mshCreateCube(new Vector3(600,300,300), Vector3.Zero).SaveToStlFile(...)`
+erzeugt. Beide sind 684 Byte groß und ab Offset 84 (also alle Normalen und Ecken)
+**byteweise identisch** — nur der 80-Byte-Kopftext unterscheidet sich, den liest kein
+Netzgenerator aus. Der `TunnelGeometryTests.Box_Reproduces_The_PicoGk_Cube_Triangle_For_Triangle`
+hält dieselben 12 Dreiecke dauerhaft fest.
 
 Der Code kompiliert und die vorhandenen Tests laufen. **Die Pipeline wurde nicht end-to-end
 ausgeführt** (braucht Linux + SU2 + Gmsh + MPI), Laufzeitfehler sind also nicht ausgeschlossen.
@@ -67,6 +78,10 @@ SU2-Config und Drag-Auslesen wurden 1:1 übernommen — kein Funktionsverlust fe
    `float.ToString(InvariantCulture)` formatiert, dadurch steht dort `1025` statt `1025.0`,
    `0.001001` statt `1.001e-3` und `( 0.5, 1.2, 1, 50 )` statt `( 0.5, 1.2, 1.0, 50.0 )`.
    SU2 liest beides identisch — die Physik ist unverändert.
+7. **Kopfzeile von `Static_Windtunnel.stl`** (TODO-11): steht jetzt auf
+   `Automatisierung STL UNITS=mm` statt `PicoGK UNITS=mm`. Der 80-Byte-Kopf eines
+   binären STL ist reiner Kommentar; Geometrie und Dreiecksreihenfolge sind
+   byteweise unverändert.
 
 ---
 
@@ -95,16 +110,18 @@ AutomatisierungCleanVersion/
 │   │   ├── Pipeline/     WorkflowController.cs, ChampionValidator.cs
 │   │   ├── Algorithms/   EvolutionaryAlgorithm.cs, RsmOptimizationAlgorithm.cs,
 │   │   │                 OptimizationAlgorithmFactory.cs
-│   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs, DirectGeometryKernel.cs
+│   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs, DirectGeometryKernel.cs,
+│   │                     StlWriter.cs (+ StlTriangle, TODO-11 ✅)
 │   ├── Kernels/PicoGk/
 │   │   └── PicoGkKernel.cs               ← einzige Datei außerhalb von Projects/
 │   │                                       mit `using PicoGK` (TODO-10 ✅)
 │   ├── Projects/MantaAuv/
-│   │   ├── MantaGeometryGenerator.cs
+│   │   ├── MantaGeometryGenerator.cs     ← hat als einzige Projektdatei `using PicoGK`
 │   │   ├── MantaFitnessCalculator.cs
 │   │   └── MantaProjectConfig.cs         ← nur noch Fallback-Vorgaben
 │   └── Solvers/Cfd/
-│       ├── GmshCfdMesher.cs, GmshMesherOptions.cs   ← hat noch `using PicoGK` (TODO-11)
+│       ├── GmshCfdMesher.cs, GmshMesherOptions.cs   ← PicoGK-frei (TODO-11 ✅)
+│       ├── TunnelGeometry.cs             ← Windkanal als Dreiecksliste (TODO-11 ✅)
 │       ├── Su2Solver.cs, Su2SolverOptions.cs
 │       └── Su2ConfigGenerator.cs
 └── tests/AutomatisierungCleanVersion.Tests/
@@ -115,7 +132,10 @@ AutomatisierungCleanVersion/
     ├── JsonConfigLoaderTests.cs          (6 Tests)
     ├── ProjectConfigJsonTests.cs         (3 Tests)
     ├── SolverOptionsTests.cs             (4 Tests)
-    └── OptimizationAlgorithmFactoryTests.cs  (10 Tests)
+    ├── OptimizationAlgorithmFactoryTests.cs  (10 Tests)
+    ├── TunnelGeometryTests.cs            (13 Tests)
+    ├── StlWriterTests.cs                 (5 Tests)
+    └── GmshCfdMesherTunnelTests.cs       (7 Tests)
 ```
 
 **Fehlt gegenüber der Zielstruktur:** `Solvers/Fem/`, `WorkflowControllerTests.cs`
@@ -290,33 +310,43 @@ CLI-Argument überschreibbar.
   beide Verfahren, Fallback bei Tippfehler/leer/null, Manta-Vorgabe `"Rsm"`);
   `ProjectConfigJsonTests` prüft den neuen Schlüssel mit.
 
-- [ ] **TODO-11 — PicoGK-Abhängigkeit aus `Solvers/` entfernen**
-  `Solvers/Cfd/GmshCfdMesher.cs` nutzt `using PicoGK` und `Utils.mshCreateCube`
-  (in `EnsureTunnel`), nur um den Windkanal als STL zu schreiben. Damit hängt die
-  CFD-Schicht am Geometrie-Kernel.
+- [x] **TODO-11 — PicoGK-Abhängigkeit aus `Solvers/` entfernen** *(Commit `0d045f9`)*
+  `Solvers/Cfd/GmshCfdMesher.cs` nutzte `using PicoGK` und `Utils.mshCreateCube`
+  (in `EnsureTunnel`), nur um den Windkanal als STL zu schreiben.
 
   **Entscheidung (vom Nutzer, 18.09.2026):** eigener STL-Writer im Framework,
   **nicht** der Umweg über Gmsh `Box{...}` — die Netz-Topologie des Farfields soll
-  sich nicht ändern. Der Writer erzeugt die Tunnel-Geometrie selbst und schreibt sie
-  direkt als STL; danach hat außer `Projects/MantaAuv/` keine Datei mehr `using PicoGK`.
+  sich nicht ändern.
 
-  **Umfang:**
-  - Neue Klasse, z.B. `Core/Utilities/StlWriter.cs` (oder `Solvers/Cfd/TunnelStlWriter.cs`),
-    die eine Dreiecksliste als STL schreibt — binär oder ASCII, ohne PicoGK.
-  - Zwei Tunnel-Formen, über JSON wählbar:
-    - **Quader** (bisheriges Verhalten, Standard): 12 Dreiecke.
-    - **Zylinder**: Achse entlang X (= Strömungsrichtung), Mantel + zwei Deckel,
-      trianguliert über eine konfigurierbare Segmentzahl.
-  - Neue Felder in `GmshMesherOptions` (→ `config/solvers/gmsh.json`):
-    `TunnelShape` (`"Box"` | `"Cylinder"`, Standard `"Box"`),
-    `TunnelDiameter` und `TunnelLength` für den Zylinder,
-    `TunnelSegments` (Standard z.B. 64) für die Feinheit des Mantels.
-    Die vorhandenen `TunnelSizeX/Y/Z` und `TunnelCenterX/Y/Z` bleiben für den Quader.
-  - **Der Standardfall muss exakt der bisherige Quader bleiben** (600 × 300 × 300 mm,
-    im Ursprung zentriert), sonst ändert sich die Simulationsdomäne und damit der Drag.
-    Ein Test sollte die 12 Dreiecke bzw. die Bounding Box des geschriebenen STL prüfen.
+  **Umgesetzt:**
+  - `Core/Utilities/StlWriter.cs`: `StlTriangle` (drei Ecken, Normale aus der
+    Eckenreihenfolge) und `StlWriter.WriteBinary(path, triangles, header)`.
+    Der 80-Byte-Kopf darf **nicht** mit `solid` beginnen, sonst halten Leser die Datei
+    für ein ASCII-STL — deshalb `"Automatisierung STL UNITS=mm"`.
+  - `Solvers/Cfd/TunnelGeometry.cs`: `CreateBox(size, center)` und
+    `CreateCylinder(diameter, length, center, segments)`. Der Zylinder liegt mit der
+    Achse auf X (= Strömungsrichtung), Mantel + zwei Deckelfächer, `4 × segments`
+    Dreiecke, Normalen nach außen. Unsinnige Zahlen (Segmente < 3, Durchmesser/Länge
+    ≤ 0) werfen `ArgumentOutOfRangeException` statt eine kaputte Hülle zu liefern.
+  - `GmshMesherOptions` (→ `config/solvers/gmsh.json`): `TunnelShape`
+    (`"Box"` | `"Cylinder"`, Standard `"Box"`), `TunnelDiameter` (300), `TunnelLength`
+    (600), `TunnelSegments` (64). `TunnelSizeX/Y/Z` und `TunnelCenterX/Y/Z` bleiben;
+    `TunnelCenter*` gilt für beide Formen.
+  - **Fehlerfall wie bei der Algorithmuswahl (TODO-10):** unbekannter `TunnelShape` →
+    Warnung auf der Konsole und Rückfall auf `"Box"`, kein Abbruch. Leerer Name =
+    nicht konfiguriert, Rückfall ohne Warnung. Groß-/Kleinschreibung und Leerzeichen egal.
+  - **Der Standardfall ist nachweislich exakt der bisherige Quader:** die geschriebene
+    Datei ist ab Offset 84 byteweise identisch mit der von PicoGK erzeugten — gleiche
+    12 Dreiecke, gleiche Reihenfolge, gleiche Orientierung (siehe Verifikationsstand).
+    `TunnelGeometryTests` hält diese 12 Dreiecke als Literal fest.
   - Der Zylinder ist eine **neue Fähigkeit**, kein Ersatz — er ändert das Verhalten nur,
     wenn er in der JSON aktiv gewählt wird.
+
+  **Tests: 29 → 54.** `TunnelGeometryTests` (13: PicoGK-Vergleich, Bounding Box,
+  Außennormalen, Dichtigkeit über die Kantenbilanz für Quader und Zylinder,
+  abgelehnte Zahlen), `StlWriterTests` (5: Dateilayout, Kopfzeile, Round-Trip,
+  entartetes Dreieck), `GmshCfdMesherTunnelTests` (7: Standardquader, Zylinderwahl,
+  Fallback bei Tippfehler, Cache).
 
 - [ ] **TODO-12 — Referenzflächen-Metrik im Solver konfigurierbar**
   `Solvers/Cfd/Su2Solver.cs:24-26` liest fest `PassiveParameters["FrontalArea"]`.
@@ -435,9 +465,10 @@ JETZT:   Program → wählt Projekt → verdrahtet Interfaces → WorkflowContro
 
          + Algorithmuswahl + Kernel-Start aus der Config  ✅ TODO-10
            [IGeometryKernel]     ✅ PicoGkKernel / DirectGeometryKernel
+         + PicoGK raus aus Solvers/, Tunnel-Form wählbar  ✅ TODO-11
+           [StlWriter + TunnelGeometry]  Box (wie bisher) | Cylinder
 
 ZIEL (offen):
-         + PicoGK raus aus Solvers/, Tunnel-Form wählbar  (TODO-11)
          + Referenzflächen-Metrik konfigurierbar          (TODO-12)
          + Korrektheit und Tests                          (Block D: TODO-15, 16, 17, 19, 20, 21)
 ```
