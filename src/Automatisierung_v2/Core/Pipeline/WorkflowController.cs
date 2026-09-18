@@ -97,17 +97,7 @@ namespace MyPicoGkProject
                     record.StlPath = geoResult.StlPath;
 
                     // Metriken aus dem GeometryResult in den Record übernehmen und zurückskalieren
-                    foreach (var metric in geoResult.Metrics)
-                    {
-                        // Heuristik: "Volume" → kubische Rückskalierung, "Area"/"Distance" → quadratische
-                        if (metric.Key.Contains("Volume", StringComparison.OrdinalIgnoreCase))
-                            record.PassiveParameters[metric.Key] = scaler.RestoreVolume(metric.Value);
-                        else if (metric.Key.Contains("Area", StringComparison.OrdinalIgnoreCase) || 
-                                 metric.Key.Contains("Distance", StringComparison.OrdinalIgnoreCase))
-                            record.PassiveParameters[metric.Key] = scaler.RestoreArea(metric.Value);
-                        else
-                            record.PassiveParameters[metric.Key] = metric.Value;
-                    }
+                    ApplyGeometryMetrics(record, geoResult, scaler);
                     record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
                     
                     Console.WriteLine($"       -> Voxel-Geometrie erstellt. (Metriken: {string.Join(", ", record.PassiveParameters.Where(p => p.Key != "ScaleFactor").Select(p => $"{p.Key}={p.Value:F1}"))})");
@@ -196,16 +186,7 @@ namespace MyPicoGkProject
             };
 
             // Metriken übertragen
-            foreach (var metric in geoResult.Metrics)
-            {
-                if (metric.Key.Contains("Volume", StringComparison.OrdinalIgnoreCase))
-                    validationRecord.PassiveParameters[metric.Key] = scaler.RestoreVolume(metric.Value);
-                else if (metric.Key.Contains("Area", StringComparison.OrdinalIgnoreCase) || 
-                         metric.Key.Contains("Distance", StringComparison.OrdinalIgnoreCase))
-                    validationRecord.PassiveParameters[metric.Key] = scaler.RestoreArea(metric.Value);
-                else
-                    validationRecord.PassiveParameters[metric.Key] = metric.Value;
-            }
+            ApplyGeometryMetrics(validationRecord, geoResult, scaler);
 
             string meshPath = _mesher.GenerateMesh(
                 geoResult.StlPath, iteration, 99,
@@ -218,6 +199,25 @@ namespace MyPicoGkProject
             }
 
             return validationRecord;
+        }
+
+        /// <summary>
+        /// Überträgt die Metriken des <see cref="GeometryResult"/> in den Record und rechnet sie
+        /// dabei von der PicoGK-Arbeitsgröße auf die reale Größe zurück. Welche Dimension eine
+        /// Metrik hat, deklariert das Projekt im <see cref="GeometryResult"/> — der Kern rät nicht.
+        /// </summary>
+        private static void ApplyGeometryMetrics(ModelRecord record, GeometryResult geoResult, RubberBandScaler scaler)
+        {
+            foreach (var metric in geoResult.Metrics)
+            {
+                record.PassiveParameters[metric.Key] = geoResult.ScalingFor(metric.Key) switch
+                {
+                    MetricScaling.Volume => scaler.RestoreVolume(metric.Value),
+                    MetricScaling.Area   => scaler.RestoreArea(metric.Value),
+                    MetricScaling.Linear => scaler.RestoreLength(metric.Value),
+                    _                    => metric.Value
+                };
+            }
         }
 
         private void PrintVariantHeader(int iter, int variant, Dictionary<string, float> parameters)

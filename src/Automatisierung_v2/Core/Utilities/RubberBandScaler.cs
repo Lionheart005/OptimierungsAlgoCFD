@@ -55,6 +55,11 @@ namespace MyPicoGkProject
             }
         }
 
+        public float RestoreLength(float picoGkLength)
+        {
+            return picoGkLength * (1.0f / ShrinkFactor);
+        }
+
         public float RestoreVolume(float picoGkVolume)
         {
             return picoGkVolume * (float)Math.Pow(1.0f / ShrinkFactor, 3);

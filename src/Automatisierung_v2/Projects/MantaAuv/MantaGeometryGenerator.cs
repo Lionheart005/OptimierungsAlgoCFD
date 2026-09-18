@@ -101,16 +101,12 @@ namespace MyPicoGkProject
                 Console.WriteLine($"       -> [WARNUNG] Glättung fehlgeschlagen: {ex.Message}");
             }
 
-            return new GeometryResult
-            {
-                StlPath = fullModelPath,
-                Metrics = new Dictionary<string, float>
-                {
-                    { "Volume", modelVolume },
-                    { "FrontalArea", frontalArea },
-                    { "SensorDistance", sensorDistanceScore }
-                }
-            };
+            var result = new GeometryResult { StlPath = fullModelPath };
+            result.AddMetric("Volume", modelVolume, MetricScaling.Volume);
+            result.AddMetric("FrontalArea", frontalArea, MetricScaling.Area);
+            // SensorDistance ist ein halbes Kreuzprodukt, also eine Fläche — nicht eine Länge.
+            result.AddMetric("SensorDistance", sensorDistanceScore, MetricScaling.Area);
+            return result;
         }
     }
 }
