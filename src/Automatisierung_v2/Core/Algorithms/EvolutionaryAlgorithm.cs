@@ -11,12 +11,18 @@ namespace MyPicoGkProject
     /// </summary>
     public class EvolutionaryAlgorithm : IOptimizationAlgorithm
     {
-        private readonly Random _random = new Random();
+        private readonly Random _random;
         private readonly IFitnessCalculator _fitnessCalculator;
 
-        public EvolutionaryAlgorithm(IFitnessCalculator fitnessCalculator)
+        /// <param name="fitnessCalculator">Bewertet die Modelle einer Iteration.</param>
+        /// <param name="random">
+        /// Optional: feste Zufallsquelle. Im Lauf ungesetzt (echter Zufall), in Tests
+        /// ein <c>new Random(seed)</c>, damit Mutationen reproduzierbar sind (TODO-19).
+        /// </param>
+        public EvolutionaryAlgorithm(IFitnessCalculator fitnessCalculator, Random? random = null)
         {
             _fitnessCalculator = fitnessCalculator;
+            _random = random ?? new Random();
         }
 
         public string Name => "Evolutionärer Algorithmus (Box-Muller)";

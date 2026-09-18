@@ -12,13 +12,19 @@ namespace MyPicoGkProject
     /// </summary>
     public class RsmOptimizationAlgorithm : IOptimizationAlgorithm
     {
-        private readonly Random _random = new Random();
+        private readonly Random _random;
         private readonly IFitnessCalculator _fitnessCalculator;
         private Queue<Dictionary<string, float>> _nextVirtualCandidates = new Queue<Dictionary<string, float>>();
 
-        public RsmOptimizationAlgorithm(IFitnessCalculator fitnessCalculator)
+        /// <param name="fitnessCalculator">Bewertet die Modelle einer Iteration.</param>
+        /// <param name="random">
+        /// Optional: feste Zufallsquelle. Im Lauf ungesetzt (echter Zufall), in Tests
+        /// ein <c>new Random(seed)</c>, damit die DoE-Phase reproduzierbar ist (TODO-19).
+        /// </param>
+        public RsmOptimizationAlgorithm(IFitnessCalculator fitnessCalculator, Random? random = null)
         {
             _fitnessCalculator = fitnessCalculator;
+            _random = random ?? new Random();
         }
 
         public string Name => "RSM (Surrogate-basiert / Ersatzmodell)";
@@ -115,8 +121,12 @@ namespace MyPicoGkProject
         /// <summary>
         /// IDW-Schätzung der Fitness. <paramref name="samples"/> enthält nur gelungene
         /// Simulationen — abgebrochene Läufe sind keine gültigen Stützstellen.
+        ///
+        /// Öffentlich und statisch, damit die Antwortfläche mit bekannten Stützstellen
+        /// geprüft werden kann, ohne einen kompletten Lauf zu fahren (TODO-19) —
+        /// wie bei <see cref="Su2Solver.ResolveReferenceArea"/>.
         /// </summary>
-        private float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
+        public static float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
         {
             float numerator = 0f;
             float denominator = 0f;
