@@ -17,7 +17,6 @@ namespace MyPicoGkProject
                 ProjectConfig projectConfig;
                 IGeometryGenerator geometry;
                 IFitnessCalculator fitness;
-                IModelValidator validator;
 
                 switch (projectName)
                 {
@@ -25,7 +24,6 @@ namespace MyPicoGkProject
                         projectConfig = MantaProjectConfig.Create();
                         geometry = new MantaGeometryGenerator();
                         fitness = new MantaFitnessCalculator(projectConfig);
-                        validator = new MantaModelValidator(projectConfig);
                         break;
                     default:
                         throw new ArgumentException($"Unbekanntes Projekt: {projectName}");
@@ -39,6 +37,10 @@ namespace MyPicoGkProject
                 // Simulationskette: jede Stufe bringt ihren eigenen Vernetzer mit.
                 // Ein FEM-Solver bekäme hier eine eigene Mesher-Instanz, ein zweiter
                 // CFD-Solver dieselbe — dann wird nur einmal vernetzt.
+                // Der Bouncer ist Framework-Bestandteil und prüft die Fitness,
+                // nicht eine projektspezifische Metrik.
+                IModelValidator validator = new ChampionValidator(fitness);
+
                 var cfdMesher = new GmshCfdMesher();
                 var stages = new[]
                 {

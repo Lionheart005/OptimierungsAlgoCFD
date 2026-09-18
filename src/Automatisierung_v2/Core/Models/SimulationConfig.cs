@@ -40,6 +40,12 @@ namespace MyPicoGkProject
         public float RsmExploitationRatio { get; set; } = 0.7f;
         public float RsmExploitationSigma { get; set; } = 0.1f;
 
+        // 5. Validierung des Champions (Bouncer)
+        /// <summary>Erlaubte relative Abweichung der Fitness bei der Re-Simulation (0.20 = 20%).</summary>
+        public float BouncerTolerance { get; set; } = 0.20f;
+        /// <summary>Betrag, um den ein zufällig gewählter Parameter für die Re-Simulation verstellt wird.</summary>
+        public float BouncerJitter { get; set; } = 0.01f;
+
         public static SimulationConfig CreateDefault() => new SimulationConfig();
     }
 }

@@ -49,8 +49,9 @@ namespace MyPicoGkProject
                 {
                     { "MinimumAllowedVolume", 2000f },
                     { "MaximumAllowedVolume", 85000f },
-                    { "DragBalanceFactor", 3f },
-                    { "BouncerTolerance", 0.20f }
+                    { "DragBalanceFactor", 3f }
+                    // BouncerTolerance liegt jetzt im Framework (SimulationConfig),
+                    // weil der Bouncer nicht mehr projektspezifisch ist.
                 },
 
                 // --- DIMENSIONSBEHAFTETE PARAMETER (werden beim Skalieren berücksichtigt) ---
