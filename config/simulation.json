@@ -17,6 +17,12 @@
   "VoxelSmoothingIterations": 40,
   "VoxelSmoothingPremeltingSteps": 2,
 
+  // --- Abschaltbare Framework-Bausteine ---
+  // Scaler aus: der Geometrie-Kernel arbeitet mit den echten Massen, ScaleFactor bleibt 1.
+  // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell.
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+
   // --- CFD & SU2 ---
   "MachNumber": 0.1,
   "Su2MaxIterations": 500,

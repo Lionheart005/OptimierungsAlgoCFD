@@ -130,8 +130,10 @@ namespace MyPicoGkProject
         /// </summary>
         private ModelRecord RunPipeline(Dictionary<string, float> parameters, int iteration, int variant)
         {
-            // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt
-            RubberBandScaler scaler = new RubberBandScaler(
+            // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt.
+            // Abgeschaltet liefert Create() eine Neutral-Instanz (ShrinkFactor 1, Identität).
+            RubberBandScaler scaler = RubberBandScaler.Create(
+                _context.Config.UseRubberBandScaler,
                 parameters,
                 _context.Project.DimensionalParameters,
                 _context.Config.TargetPicoGkSize);
@@ -148,8 +150,7 @@ namespace MyPicoGkProject
                 iteration, variant,
                 scaler.ShrunkParameters,
                 _context.WorkingDirectory,
-                _context.Config.VoxelSmoothingIterations,
-                _context.Config.VoxelSmoothingPremeltingSteps);
+                _context.Config);
 
             record.StlPath = geoResult.StlPath;
 

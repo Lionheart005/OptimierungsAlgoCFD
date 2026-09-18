@@ -16,6 +16,34 @@ namespace MyPicoGkProject
         public Dictionary<string, float> ShrunkParameters { get; private set; }
 
         /// <summary>
+        /// Erzeugt je nach Schalter einen echten oder einen neutralen Scaler. Dadurch braucht
+        /// der Aufrufer kein <c>if</c> — der Aus-Fall ist einfach die Identität.
+        /// </summary>
+        public static RubberBandScaler Create(
+            bool enabled,
+            Dictionary<string, float> realParameters,
+            HashSet<string> dimensionalParameters,
+            float targetSize = 20.0f)
+        {
+            return enabled
+                ? new RubberBandScaler(realParameters, dimensionalParameters, targetSize)
+                : CreateNeutral(realParameters);
+        }
+
+        /// <summary>
+        /// Neutraler Scaler: ShrinkFactor 1.0, Parameter unverändert, alle Restore-Methoden
+        /// sind die Identität (weil sie mit 1/1 potenziert multiplizieren).
+        /// </summary>
+        public static RubberBandScaler CreateNeutral(Dictionary<string, float> realParameters)
+            => new RubberBandScaler(realParameters);
+
+        private RubberBandScaler(Dictionary<string, float> realParameters)
+        {
+            ShrinkFactor = 1.0f;
+            ShrunkParameters = new Dictionary<string, float>(realParameters);
+        }
+
+        /// <summary>
         /// Erstellt einen neuen Scaler mit expliziter Liste dimensionaler Parameter.
         /// </summary>
         /// <param name="realParameters">Die echten Parameter in mm.</param>

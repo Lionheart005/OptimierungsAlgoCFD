@@ -16,8 +16,7 @@ namespace MyPicoGkProject
             int iteration, int variant,
             Dictionary<string, float> parameters,
             string outputDirectory,
-            float voxelSmoothingIterations,
-            int smoothingPremeltingSteps)
+            SimulationConfig config)
         {
             // 1. Gene auslesen mit Fallbacks
             float length = parameters.TryGetValue("Length", out var l) ? l : 50f;
@@ -92,13 +91,19 @@ namespace MyPicoGkProject
             string fullModelPath = Path.Combine(outputDirectory, modelName);
             exportModel.SaveToStlFile(fullModelPath);
 
-            try
+            if (config.UseStlSmoothing)
             {
-                StlSmoother.SmoothStl(fullModelPath, fullModelPath, (int)voxelSmoothingIterations, smoothingPremeltingSteps);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"       -> [WARNUNG] Glättung fehlgeschlagen: {ex.Message}");
+                try
+                {
+                    StlSmoother.SmoothStl(
+                        fullModelPath, fullModelPath,
+                        config.VoxelSmoothingIterations,
+                        config.VoxelSmoothingPremeltingSteps);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"       -> [WARNUNG] Glättung fehlgeschlagen: {ex.Message}");
+                }
             }
 
             var result = new GeometryResult { StlPath = fullModelPath };

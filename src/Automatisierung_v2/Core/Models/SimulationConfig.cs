@@ -19,6 +19,17 @@ namespace MyPicoGkProject
         public int VoxelSmoothingIterations { get; set; } = 40;
         public int VoxelSmoothingPremeltingSteps { get; set; } = 2;
 
+        // 1a. Abschaltbare Framework-Bausteine
+        /// <summary>
+        /// Skaliert die Geometrie auf <see cref="TargetPicoGkSize"/> und die Metriken zurück.
+        /// Aus: der Geometrie-Kernel arbeitet direkt mit den echten Maßen, ScaleFactor bleibt 1.
+        /// </summary>
+        public bool UseRubberBandScaler { get; set; } = true;
+        /// <summary>
+        /// Glättet die exportierte STL. Aus: die STL kommt unverändert aus dem Voxel-Modell.
+        /// </summary>
+        public bool UseStlSmoothing { get; set; } = true;
+
         // 2. CFD & SU2 Einstellungen
         public float MachNumber { get; set; } = 0.1f;
         public int Su2MaxIterations { get; set; } = 500;
