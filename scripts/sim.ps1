@@ -158,7 +158,10 @@ function Invoke-Remote {
         $code = $LASTEXITCODE
     }
     else {
-        & ssh $Server $remote
+        # Out-Host, nicht einfach "& ssh ...": die Ausgabe eines nativen Programms
+        # landet sonst im Erfolgs-Stream der Funktion und wuerde vom | Out-Null
+        # des Aufrufers mit verschluckt. Out-Host schreibt direkt auf die Konsole.
+        & ssh $Server $remote | Out-Host
         $code = $LASTEXITCODE
         $output = $null
     }
@@ -173,6 +176,20 @@ function Invoke-Remote {
 function Test-RemoteRunning {
     $result = Invoke-Remote -CommandLine "$RunnerCall running" -Quiet -AllowFailure
     return ($result.ExitCode -eq 0)
+}
+
+# Liegt auf dem Server ueberhaupt schon ein Stand? Ohne diese Pruefung scheitern
+# status/stop/log/fetch beim allerersten Mal an einem nackten "cd: No such file".
+function Test-RemoteDeployed {
+    & ssh $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Assert-RemoteDeployed {
+    if (Test-RemoteDeployed) { return }
+
+    throw ("Auf $Server liegt unter '$RemoteDir' noch kein Stand. " +
+           "Erst hochladen mit:  .\scripts\sim.ps1 deploy -Server $Server")
 }
 
 function Get-RemoteHash {
@@ -316,21 +333,61 @@ function Invoke-Fetch {
 # Ablauf
 # ---------------------------------------------------------------------------
 
-switch ($Command) {
-    'deploy' { Invoke-Deploy }
-    'run' { Invoke-Deploy -ThenStart }
-    'build' { Write-Step "Bauen auf $Server"; Invoke-Runner -Arguments 'build' }
-    'doctor' { Write-Step "Pruefe Umgebung auf $Server"; Invoke-Runner -Arguments 'doctor' }
-    'status' { Invoke-Runner -Arguments "status $Lines" }
-    'stop' { Invoke-Runner -Arguments 'stop' }
-    'fetch' { Invoke-Fetch }
-    'log' {
-        $follow = 'yes'
-        if ($NoFollow) { $follow = 'no' }
-        if ($follow -eq 'yes') {
-            Write-Host "Strg+C beendet nur die Anzeige - der Lauf auf dem Server laeuft weiter." -ForegroundColor Yellow
+try {
+    switch ($Command) {
+        'deploy' { Invoke-Deploy }
+        'run' { Invoke-Deploy -ThenStart }
+
+        'build' {
+            Assert-RemoteDeployed
+            Write-Step "Bauen auf $Server"
+            Invoke-Runner -Arguments 'build'
         }
-        # Direkt ohne Wrapper, damit Strg+C sauber durchschlaegt.
-        & ssh $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
+
+        'doctor' {
+            # doctor prueft unter anderem die Pfade aus config/simulation.json und
+            # braucht deshalb einen Stand auf dem Server. Beim allerersten Aufruf
+            # laden wir ihn hier hoch -- gebaut wird dabei bewusst nicht.
+            if (-not (Test-RemoteDeployed)) {
+                Write-Step "Erster Kontakt mit $Server - lade den Code hoch"
+                Push-Sources
+                # Kein .deploy_hash schreiben: das naechste deploy soll regulaer
+                # hochladen UND bauen, statt sich auf "unveraendert" zu verlassen.
+            }
+            Write-Step "Pruefe Umgebung auf $Server"
+            Invoke-Runner -Arguments 'doctor'
+        }
+
+        'status' {
+            Assert-RemoteDeployed
+            Invoke-Runner -Arguments "status $Lines"
+        }
+
+        'stop' {
+            Assert-RemoteDeployed
+            Invoke-Runner -Arguments 'stop'
+        }
+
+        'fetch' {
+            Assert-RemoteDeployed
+            Invoke-Fetch
+        }
+
+        'log' {
+            Assert-RemoteDeployed
+            $follow = 'yes'
+            if ($NoFollow) { $follow = 'no' }
+            if ($follow -eq 'yes') {
+                Write-Host "Strg+C beendet nur die Anzeige - der Lauf auf dem Server laeuft weiter." -ForegroundColor Yellow
+            }
+            # Direkt ohne Wrapper, damit Strg+C sauber durchschlaegt.
+            & ssh $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
+        }
     }
+}
+catch {
+    # Klartext statt PowerShell-Stacktrace: die Ursache steht in der Meldung.
+    Write-Host ""
+    Write-Host "FEHLER: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
 }

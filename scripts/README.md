@@ -67,6 +67,7 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 
 ```powershell
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
+                            # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
 .\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
 .\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze?
