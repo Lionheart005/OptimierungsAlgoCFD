@@ -47,7 +47,10 @@ namespace MyPicoGkProject
             int completedVariants = 0;
             double totalSecondsPassed = 0;
             
-            ModelRecord? previousWinner = null;
+            // Gewinner der zuletzt gelaufenen Iteration. Nur für die Schlussmeldung
+            // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
+            // bestimmt (TODO-15), nicht über die letzte Iteration.
+            ModelRecord? lastIterationWinner = null;
 
             // =========================================================
             // ÄUẞERE SCHLEIFE: ITERATIONEN (z.B. Generationen)
@@ -95,7 +98,7 @@ namespace MyPicoGkProject
                     _context.Config,
                     (testParams) => ResimulateForValidation(testParams, iter));
 
-                previousWinner = trueWinner;
+                lastIterationWinner = trueWinner;
                 
                 _context.ExportToCsv(); 
                 
@@ -109,7 +112,28 @@ namespace MyPicoGkProject
                 }
             }
 
-            FinishOptimization(previousWinner);
+            // Der beste Lauf des GESAMTEN Durchgangs, nicht der Gewinner der letzten
+            // Iteration: beim EA ist das meist dasselbe, beim RSM mit seiner zufälligen
+            // DoE-Phase oft nicht.
+            FinishOptimization(SelectBestRecord(_context.History), lastIterationWinner);
+        }
+
+        /// <summary>
+        /// Der Record mit der höchsten Fitness. Disqualifizierte und fehlgeschlagene Modelle
+        /// tragen eine sehr kleine Fitness und fallen dadurch von selbst heraus.
+        /// Bei Gleichstand gewinnt der frühere Eintrag, damit die Auswahl reproduzierbar ist.
+        /// Gibt <c>null</c> zurück, wenn die Liste leer ist.
+        /// </summary>
+        public static ModelRecord? SelectBestRecord(IEnumerable<ModelRecord> records)
+        {
+            ModelRecord? best = null;
+
+            foreach (var record in records)
+            {
+                if (best == null || record.Fitness > best.Fitness) best = record;
+            }
+
+            return best;
         }
 
         /// <summary>
@@ -234,7 +258,7 @@ namespace MyPicoGkProject
             Console.WriteLine($"       -> Dauer: {timer.Elapsed.TotalSeconds:F1}s (Geschätzte Restzeit gesamt: {timeLeft:hh\\:mm\\:ss})");
         }
 
-        private void FinishOptimization(ModelRecord? champion)
+        private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
         {
             Console.WriteLine("\n==================================================");
             Console.WriteLine(" OPTIMIERUNG ERFOLGREICH BEENDET");
@@ -244,7 +268,16 @@ namespace MyPicoGkProject
             {
                 Console.WriteLine($"\n🏆 ABSOLUTER CHAMPION: Iteration {champion.Iteration} | Variante {champion.Variant}");
                 Console.WriteLine($"   Score: {champion.Fitness:F2}");
-                
+
+                // Sichtbar machen, wenn der beste Lauf nicht der letzte war — sonst wundert
+                // sich der Nutzer über zwei verschiedene Varianten in der Ausgabe.
+                if (lastIterationWinner != null && !ReferenceEquals(lastIterationWinner, champion))
+                {
+                    Console.WriteLine(
+                        $"   (Gewinner der letzten Iteration war Iteration {lastIterationWinner.Iteration} | " +
+                        $"Variante {lastIterationWinner.Variant} mit Score {lastIterationWinner.Fitness:F2})");
+                }
+
                 // Passive Parameter dynamisch anzeigen
                 foreach (var kvp in champion.PassiveParameters)
                 {

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace MyPicoGkProject
 {
@@ -8,11 +10,43 @@ namespace MyPicoGkProject
     /// </summary>
     public class MantaFitnessCalculator : IFitnessCalculator
     {
-        private readonly ProjectConfig _project;
+        /// <summary>Ziele, ohne die sich die Fitness-Formel nicht rechnen lässt.</summary>
+        private static readonly string[] RequiredTargets =
+        {
+            "MinimumAllowedVolume", "MaximumAllowedVolume", "DragBalanceFactor"
+        };
 
+        private readonly float _minimumAllowedVolume;
+        private readonly float _maximumAllowedVolume;
+        private readonly float _dragBalanceFactor;
+
+        /// <summary>
+        /// Prüft die Pflicht-Ziele sofort: fehlt eines, bricht der Lauf hier ab —
+        /// beim Verdrahten in <c>Program.cs</c>, vor der ersten Simulation. Vorher kam
+        /// mitten im Lauf eine nackte <see cref="KeyNotFoundException"/>, nach Stunden
+        /// Rechenzeit (TODO-16).
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Ein Pflicht-Ziel fehlt in der Konfiguration.</exception>
         public MantaFitnessCalculator(ProjectConfig project)
         {
-            _project = project;
+            var missing = RequiredTargets.Where(key => !project.OptimizationTargets.ContainsKey(key)).ToList();
+
+            if (missing.Count > 0)
+            {
+                string present = project.OptimizationTargets.Count > 0
+                    ? string.Join(", ", project.OptimizationTargets.Keys)
+                    : "(keine)";
+
+                throw new InvalidOperationException(
+                    $"[KONFIGURATION] Projekt '{project.ProjectName}': in OptimizationTargets fehlt/fehlen " +
+                    $"{string.Join(", ", missing)}. Die Manta-Fitness braucht {string.Join(", ", RequiredTargets)}. " +
+                    $"Vorhanden ist: {present}. Nachtragen in config/projects/{project.ProjectName}.json " +
+                    $"(oder in MantaProjectConfig.Create()).");
+            }
+
+            _minimumAllowedVolume = project.OptimizationTargets["MinimumAllowedVolume"];
+            _maximumAllowedVolume = project.OptimizationTargets["MaximumAllowedVolume"];
+            _dragBalanceFactor = project.OptimizationTargets["DragBalanceFactor"];
         }
 
         public void CalculateFitness(ModelRecord record, SimulationConfig config)
@@ -35,9 +69,10 @@ namespace MyPicoGkProject
                 return;
             }
 
-            float minVol = _project.OptimizationTargets["MinimumAllowedVolume"];
-            float maxVol = _project.OptimizationTargets["MaximumAllowedVolume"];
-            float dragBalance = _project.OptimizationTargets["DragBalanceFactor"];
+            // Die Ziele sind im Konstruktor geprüft und übernommen worden.
+            float minVol = _minimumAllowedVolume;
+            float maxVol = _maximumAllowedVolume;
+            float dragBalance = _dragBalanceFactor;
 
             // 1. Sichere Werte für den Nenner garantieren
             float realDrag = Math.Abs(drag);
