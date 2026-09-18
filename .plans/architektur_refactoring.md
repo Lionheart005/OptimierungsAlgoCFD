@@ -1,11 +1,13 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
-> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `8141071 TODO-13`.
+> **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `3fd9140 TODO-9 + TODO-14`.
 > **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
 > projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die
 > Fitness, Mesher hängen pro Solver-Stufe.
-> **Offen:** Block B (JSON-Konfiguration), Block C (PicoGK austauschbar) und der Rest von
-> Block D. Die TODO-Liste am Ende ist die Arbeitsgrundlage zum Fertigstellen.
+> **Block B ist fertig** (TODO-6 bis TODO-9 + TODO-14): alle Zahlen und Pfade kommen aus
+> `config/*.json`, Scaler und Smoother sind abschaltbar.
+> **Offen:** Block C (PicoGK austauschbar) und der Rest von Block D
+> (TODO-15, 16, 17, 19, 20, 21).
 
 ## Ziel
 
@@ -32,9 +34,12 @@ Diese Punkte sind entschieden und ersetzen die ursprünglichen "Offenen Fragen":
 
 ```
 dotnet build Automatisierung.sln   →  Build succeeded. 0 Warnings, 0 Errors
-dotnet test  Automatisierung.sln   →  Passed: 4, Failed: 0, Skipped: 0
+dotnet test  Automatisierung.sln   →  Passed: 19, Failed: 0, Skipped: 0
 ```
-(Sollstand nach Block A unverändert: 0/0/4 — es sind noch keine Tests dazugekommen, siehe TODO-19.)
+**Aktueller Sollstand: 0 Fehler, 0 Warnungen, 19/19 Tests.**
+Block A hat keine Tests gebraucht (4/4), Block B hat 15 dazugebracht: Loader (6),
+Projekt-JSON (3), Solver-Optionen (4), Scaler-Schalter (2). Die JSON-Tests vergleichen
+jede mitgelieferte Datei gegen die Code-Vorgaben — dort würde ein Zahlendreher auffallen.
 
 Der Code kompiliert und die vorhandenen Tests laufen. **Die Pipeline wurde nicht end-to-end
 ausgeführt** (braucht Linux + SU2 + Gmsh + MPI), Laufzeitfehler sind also nicht ausgeschlossen.
@@ -54,6 +59,10 @@ SU2-Config und Drag-Auslesen wurden 1:1 übernommen — kein Funktionsverlust fe
    eine Variante mehr. Ohne fehlgeschlagene Simulationen identisch zu vorher.
 5. **CSV-Export**: Spaltennamen sind jetzt die Vereinigung über alle Records (vorher nur
    `History[0]`), zusätzlich gibt es die Spalte `SimulationFailed` (0/1) am Zeilenende.
+6. **Text der erzeugten SU2-cfg** (TODO-8): die Zahlen werden jetzt über
+   `float.ToString(InvariantCulture)` formatiert, dadurch steht dort `1025` statt `1025.0`,
+   `0.001001` statt `1.001e-3` und `( 0.5, 1.2, 1, 50 )` statt `( 0.5, 1.2, 1.0, 50.0 )`.
+   SU2 liest beides identisch — die Physik ist unverändert.
 
 ---
 
@@ -64,6 +73,11 @@ AutomatisierungCleanVersion/
 ├── Automatisierung.sln
 ├── .gitignore                            ← liegt jetzt im Root (TODO-18 ✅)
 ├── .plans/architektur_refactoring.md
+├── config/                               ← alle Zahlen und Pfade (TODO-6..8 ✅)
+│   ├── simulation.json                   ← Framework-Konfiguration
+│   ├── projects/MantaAuv.json            ← Projektvorgaben
+│   └── solvers/su2.json, gmsh.json       ← Solver-/Mesher-Vorgaben
+│   (jeweils *.local.json daneben möglich — überlagert, gitignored)
 ├── src/Automatisierung_v2/
 │   ├── Automatisierung_v2.csproj
 │   ├── Program.cs                        ← Composition Root, switch über Projektname
@@ -72,26 +86,35 @@ AutomatisierungCleanVersion/
 │   │   │                 IMeshGenerator, IModelValidator, IOptimizationAlgorithm
 │   │   ├── Models/       GeometryResult (+ MetricScaling), ModelRecord, ProjectConfig,
 │   │   │                 SimulationConfig, SimulationContext, SolverStage
+│   │   ├── Configuration/ JsonConfigLoader.cs, ProjectConfigDto.cs
 │   │   ├── Pipeline/     WorkflowController.cs, ChampionValidator.cs
 │   │   ├── Algorithms/   EvolutionaryAlgorithm.cs, RsmOptimizationAlgorithm.cs
 │   │   └── Utilities/    RubberBandScaler.cs, StlSmoother.cs
 │   ├── Projects/MantaAuv/
 │   │   ├── MantaGeometryGenerator.cs
 │   │   ├── MantaFitnessCalculator.cs
-│   │   └── MantaProjectConfig.cs
+│   │   └── MantaProjectConfig.cs         ← nur noch Fallback-Vorgaben
 │   └── Solvers/Cfd/
-│       ├── GmshCfdMesher.cs
-│       ├── Su2Solver.cs
+│       ├── GmshCfdMesher.cs, GmshMesherOptions.cs
+│       ├── Su2Solver.cs, Su2SolverOptions.cs
 │       └── Su2ConfigGenerator.cs
 └── tests/AutomatisierungCleanVersion.Tests/
     ├── AutomatisierungCleanVersion.Tests.csproj   (xUnit + Moq)
-    ├── RubberBandScalerTests.cs          (1 Test)
+    ├── RubberBandScalerTests.cs          (3 Tests)
     ├── EvolutionaryAlgorithmTests.cs     (1 Test)
-    └── MantaFitnessCalculatorTests.cs    (2 Tests)
+    ├── MantaFitnessCalculatorTests.cs    (2 Tests)
+    ├── JsonConfigLoaderTests.cs          (6 Tests)
+    ├── ProjectConfigJsonTests.cs         (3 Tests)
+    └── SolverOptionsTests.cs             (4 Tests)
 ```
 
-**Fehlt gegenüber der Zielstruktur:** die JSON-Konfigurationsdateien, `Solvers/Fem/`,
-`WorkflowControllerTests.cs` (und die übrigen Tests aus TODO-19).
+**Fehlt gegenüber der Zielstruktur:** `Solvers/Fem/`, `WorkflowControllerTests.cs`
+(und die übrigen Tests aus TODO-19).
+
+**Aufrufkonvention:** `<Projektname> [Konfigurationsverzeichnis]`, z.B.
+`dotnet run -- MantaAuv` oder `dotnet run -- MantaAuv /opt/auv/config`.
+Ohne zweites Argument wird `config/` gesucht — erst im Arbeitsverzeichnis, dann bis zu
+sechs Ebenen darüber, weil `dotnet run` im Projektordner startet.
 
 ---
 
@@ -124,8 +147,9 @@ AutomatisierungCleanVersion/
 - [x] Projektauswahl via CLI-Argument, `switch` über Projektnamen
 - [x] Verdrahtung der konkreten Implementierungen
 - [x] Ordnerstruktur angelegt
-- [ ] **Keine JSON-Konfiguration** (Entscheidung 3) — siehe TODO-6 bis TODO-9
+- [x] JSON-Konfiguration (Entscheidung 3) — TODO-6 bis TODO-9
 - [ ] Algorithmuswahl nur auskommentiert statt konfigurierbar — siehe TODO-10
+- [ ] `Library.Go(...)` steht noch direkt in `Program.cs` — siehe TODO-10
 
 ### Phase 5: Tests & FEM-Vorbereitung — ⚠️ angefangen
 - [x] Test-Projekt mit xUnit + Moq angelegt und in der Solution
@@ -190,46 +214,40 @@ TODO-3 und TODO-4 nicht doppelt gepflegt werden mussten).
   Solver-Kette (Abbruch → `SimulationFailed` statt durchgereichter Exception).
   Die Variantennummer 99 für Validierungsläufe steht als Konstante `ValidationVariantNumber`.
 
-### Block B — Konfiguration nach JSON (Entscheidung 3)
+### Block B — Konfiguration nach JSON (Entscheidung 3) ✅ ERLEDIGT
 
-- [ ] **TODO-6 — `SimulationConfig` aus JSON laden**
-  `Core/Models/SimulationConfig.cs` ist komplett hardcodiert, inklusive der Linux-Pfade
-  zu mpirun/SU2/Gmsh (`:10-12`). Genau das sollte laut Entscheidung 3 in eine JSON-Datei.
-  **Lösung:** `config/simulation.json` + Loader (`System.Text.Json`).
-  `CreateDefault()` bleibt als Fallback, wenn keine Datei da ist.
-  Die Pfade müssen pro Maschine überschreibbar sein (Windows-Entwicklung vs. Linux-Server)
-  — z.B. `simulation.local.json`, das die Basisdatei überlagert und in `.gitignore` steht.
+Entscheidung zur Ablage (vom Nutzer bestätigt): **alle** JSON-Dateien liegen unter
+`config/` im Repo-Root, nicht neben dem Projektcode. Ein Fundort, eine Suchlogik,
+eine Overlay-Regel (`*.local.json`, gitignored). Das Verzeichnis ist per zweitem
+CLI-Argument überschreibbar.
 
-- [ ] **TODO-7 — `MantaProjectConfig` nach JSON**
-  `Projects/MantaAuv/MantaProjectConfig.cs` enthält nur Zahlen (BaseParameters,
-  MaxDeviations, ParameterBounds, OptimizationTargets, DimensionalParameters) — also
-  reine Vorgabedaten. **Lösung:** `Projects/MantaAuv/project.json`.
-  *Stolperstein:* `ParameterBounds` ist ein `Dictionary<string, (float Min, float Max)>`;
-  ValueTuples serialisiert `System.Text.Json` nicht. Ein kleines DTO
-  (`{ "Length": { "min": 30, "max": 100 } }`) einführen und beim Laden umwandeln.
-  Die **Geometrie- und Fitness-Klassen bleiben C#** — nur die Zahlen wandern.
+- [x] **TODO-6 — `SimulationConfig` aus JSON laden** *(Commit `156f390`)*
+  `Core/Configuration/JsonConfigLoader.cs`: Standardwerte → `simulation.json` →
+  `simulation.local.json`. Zusammengeführt wird auf `JsonNode`-Ebene, jede Stufe
+  überschreibt nur die Schlüssel, die sie nennt. Fehlende Datei = kein Fehler,
+  ungültiges JSON bricht mit Dateiname ab. Kommentare und nachgestellte Kommata erlaubt.
+  `CreateDefault()` bleibt der Fallback.
 
-- [ ] **TODO-8 — Solver- und Mesher-Zahlen nach JSON**
-  Hardcodierte Werte, die laut Entscheidung 3 Vorgabedaten sind:
-  - `Solvers/Cfd/Su2ConfigGenerator.cs:31-33` — Dichte 1025.0, `MU_CONSTANT` 1.001e-3,
-    Turbulenzmodell `SA`, Schallgeschwindigkeit 343.2 (`:17`), `REF_LENGTH` 0.01 (`:41`),
-    CFL-Parameter (`:58-60`).
-  - `Solvers/Cfd/GmshCfdMesher.cs:27-28` — Windkanal-Abmessungen (600×300×300 mm).
-  - `Solvers/Cfd/GmshCfdMesher.cs:88-92` — Grenzschicht-Feld (SizeMin 1.2, SizeMax 120.0,
-    DistMin 3.0, DistMax 40.0).
-  **Lösung:** `Su2SolverOptions` / `GmshMesherOptions` als Klassen, aus JSON geladen,
-  per Konstruktor injiziert.
+- [x] **TODO-7 — Projektzahlen nach JSON** *(Commit `e565dd4`)*
+  Liegt als `config/projects/MantaAuv.json` (nicht in `Projects/MantaAuv/`, s.o.).
+  Der ValueTuple-Stolperstein ist über `ProjectConfigDto` + `ParameterBoundsDto` gelöst:
+  `"Length": { "Min": 30, "Max": 100 }`. `MantaProjectConfig.Create()` bleibt als
+  Code-Vorgabe, die Datei überlagert sie. Geometrie und Fitness bleiben C#.
 
-- [ ] **TODO-9 — Schalter für Scaler und Smoother (Entscheidung 4)**
-  Beide laufen aktuell immer:
-  - `RubberBandScaler` wird in `WorkflowController.cs:76` und `:179` bedingungslos erzeugt.
-  - `StlSmoother.SmoothStl(...)` wird in `MantaGeometryGenerator.cs:97` bedingungslos gerufen.
-  **Lösung:** `UseRubberBandScaler` und `UseStlSmoothing` in `SimulationConfig` (aus JSON).
-  - Scaler aus → `ShrinkFactor = 1.0`, Parameter unverändert durchreichen, Restore-Methoden
-    werden zu Identität. Am saubersten über eine Neutral-Instanz, dann braucht der
-    Controller kein `if` an vier Stellen.
-  - Smoother aus → Aufruf überspringen. Der Schalter muss den `IGeometryGenerator`
-    erreichen; passt gut zu TODO-14 (Signatur aufräumen).
+- [x] **TODO-8 — Solver- und Mesher-Zahlen nach JSON** *(Commit `4599692`)*
+  `Su2SolverOptions` (`config/solvers/su2.json`) und `GmshMesherOptions`
+  (`config/solvers/gmsh.json`), beide per Konstruktor injiziert, geladen über
+  `JsonConfigLoader.LoadSolverOptions<T>`. Zahlen unverändert; die erzeugte SU2-cfg
+  formatiert sie jetzt über `InvariantCulture` und sieht daher minimal anders aus
+  (siehe Verifikationsstand, Punkt 6).
+
+- [x] **TODO-9 — Schalter für Scaler und Smoother (Entscheidung 4)** *(Commit `3fd9140`)*
+  `UseRubberBandScaler` und `UseStlSmoothing` in `SimulationConfig`, Standard beide `true`.
+  Scaler aus → `RubberBandScaler.Create(false, ...)` liefert eine Neutral-Instanz
+  (ShrinkFactor 1.0, Parameter unverändert, Restore-Methoden = Identität); der Controller
+  braucht kein `if`. Smoother aus → der Generator überspringt den Aufruf.
+  **Zusammen mit TODO-14 umgesetzt**, weil der Smoother-Schalter den `IGeometryGenerator`
+  erreichen musste.
 
 ### Block C — PicoGK austauschbar machen (Entscheidung 2)
 
@@ -266,13 +284,11 @@ Unabhängig von A–C, jederzeit erledigbar.
   `IOptimizationAlgorithm.EvaluateAndSelectBest`, den Re-Sim-Record bewertet der
   `ChampionValidator` selbst.
 
-- [ ] **TODO-14 — `IGeometryGenerator`-Signatur aufräumen**
-  `Core/Interfaces/IGeometryGenerator.cs:14` deklariert `float voxelSmoothingIterations`,
-  obwohl der Wert in `SimulationConfig` ein `int` ist und der Generator ihn mit
-  `(int)` zurückcastet (`MantaGeometryGenerator.cs:97`). Außerdem sind zwei
-  STL-Glättungsparameter in einem allgemeinen Geometrie-Interface fehl am Platz.
-  **Lösung:** stattdessen `SimulationConfig` (oder ein `GeometryOptions`-Objekt) übergeben.
-  Passt zusammen mit dem Smoother-Schalter aus TODO-9.
+- [x] **TODO-14 — `IGeometryGenerator`-Signatur aufräumen** *(Commit `3fd9140`, mit TODO-9)*
+  `GenerateAndExport(...)` nimmt jetzt `SimulationConfig` statt
+  `(float voxelSmoothingIterations, int smoothingPremeltingSteps)`. Der falsche
+  `float`-Typ und der `(int)`-Cast im Generator sind weg, und die Signatur passt zu
+  `IMeshGenerator` und `ISimulationSolver`, die die Konfiguration ebenfalls als Ganzes nehmen.
 
 - [ ] **TODO-15 — "ABSOLUTER CHAMPION" ist der letzte, nicht der beste**
   `Core/Pipeline/WorkflowController.cs:157` überschreibt `previousWinner` in jeder Iteration;
@@ -358,10 +374,12 @@ JETZT:   Program → wählt Projekt → verdrahtet Interfaces → WorkflowContro
                                                     [IFitnessCalculator]  ✅ Projekt liefert
                                                     [IModelValidator]     ✅ ChampionValidator im Kern
 
+         + JSON-Konfiguration für alle Zahlen und Pfade   ✅ Block B
+         + Scaler und Smoother abschaltbar                ✅ TODO-9
+
 ZIEL (offen):
-         + JSON-Konfiguration für alle Zahlen und Pfade   (Block B)
-         + Scaler und Smoother abschaltbar                (TODO-9)
-         + PicoGK hinter einer Kernel-Abstraktion         (Block C)
+         + PicoGK hinter einer Kernel-Abstraktion         (Block C: TODO-10, 11, 12)
+         + Korrektheit und Tests                          (Block D: TODO-15, 16, 17, 19, 20, 21)
 ```
 
 **Ergebnis nach Abschluss:** Neues Projekt anlegen = 2 C#-Dateien (Geometrie + Fitness)
