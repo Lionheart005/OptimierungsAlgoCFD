@@ -261,11 +261,32 @@ CLI-Argument überschreibbar.
   über die JSON-Config statt über Auskommentieren steuerbar machen.
 
 - [ ] **TODO-11 — PicoGK-Abhängigkeit aus `Solvers/` entfernen**
-  `Solvers/Cfd/GmshCfdMesher.cs:6,33` nutzt `using PicoGK` und `Utils.mshCreateCube`,
-  nur um den Windkanal-Quader als STL zu schreiben. Damit hängt die CFD-Schicht am
-  Geometrie-Kernel. **Lösung:** den Quader direkt als ASCII- oder Binär-STL schreiben
-  (12 Dreiecke, ~40 Zeilen Code) oder den Tunnel in Gmsh selbst per `Box{...}` erzeugen.
-  Danach hat außer `Projects/MantaAuv/` keine Datei mehr `using PicoGK`.
+  `Solvers/Cfd/GmshCfdMesher.cs` nutzt `using PicoGK` und `Utils.mshCreateCube`
+  (in `EnsureTunnel`), nur um den Windkanal als STL zu schreiben. Damit hängt die
+  CFD-Schicht am Geometrie-Kernel.
+
+  **Entscheidung (vom Nutzer, 18.09.2026):** eigener STL-Writer im Framework,
+  **nicht** der Umweg über Gmsh `Box{...}` — die Netz-Topologie des Farfields soll
+  sich nicht ändern. Der Writer erzeugt die Tunnel-Geometrie selbst und schreibt sie
+  direkt als STL; danach hat außer `Projects/MantaAuv/` keine Datei mehr `using PicoGK`.
+
+  **Umfang:**
+  - Neue Klasse, z.B. `Core/Utilities/StlWriter.cs` (oder `Solvers/Cfd/TunnelStlWriter.cs`),
+    die eine Dreiecksliste als STL schreibt — binär oder ASCII, ohne PicoGK.
+  - Zwei Tunnel-Formen, über JSON wählbar:
+    - **Quader** (bisheriges Verhalten, Standard): 12 Dreiecke.
+    - **Zylinder**: Achse entlang X (= Strömungsrichtung), Mantel + zwei Deckel,
+      trianguliert über eine konfigurierbare Segmentzahl.
+  - Neue Felder in `GmshMesherOptions` (→ `config/solvers/gmsh.json`):
+    `TunnelShape` (`"Box"` | `"Cylinder"`, Standard `"Box"`),
+    `TunnelDiameter` und `TunnelLength` für den Zylinder,
+    `TunnelSegments` (Standard z.B. 64) für die Feinheit des Mantels.
+    Die vorhandenen `TunnelSizeX/Y/Z` und `TunnelCenterX/Y/Z` bleiben für den Quader.
+  - **Der Standardfall muss exakt der bisherige Quader bleiben** (600 × 300 × 300 mm,
+    im Ursprung zentriert), sonst ändert sich die Simulationsdomäne und damit der Drag.
+    Ein Test sollte die 12 Dreiecke bzw. die Bounding Box des geschriebenen STL prüfen.
+  - Der Zylinder ist eine **neue Fähigkeit**, kein Ersatz — er ändert das Verhalten nur,
+    wenn er in der JSON aktiv gewählt wird.
 
 - [ ] **TODO-12 — Referenzflächen-Metrik im Solver konfigurierbar**
   `Solvers/Cfd/Su2Solver.cs:24-26` liest fest `PassiveParameters["FrontalArea"]`.
