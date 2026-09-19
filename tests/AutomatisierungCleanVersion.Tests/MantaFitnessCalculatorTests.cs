@@ -36,6 +36,39 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(500f, record.Fitness, 3);
         }
 
+        /// <summary>
+        /// TODO-26: die Formel rechnet mit Drag, Volume und SensorDistance. Fehlt eine davon,
+        /// soll der Controller nach der ersten Variante abbrechen — dafür muss der Rechner
+        /// sie überhaupt erst melden. FrontalArea gehört bewusst nicht dazu: die geht als
+        /// REF_AREA in den Solver, nicht in die Fitness.
+        /// </summary>
+        [Fact]
+        public void Required_Metrics_Name_Exactly_What_The_Formula_Reads()
+        {
+            var calculator = new MantaFitnessCalculator(MantaProjectConfig.Create());
+
+            Assert.Equal(
+                new[] { "Drag", "Volume", "SensorDistance" },
+                calculator.RequiredMetrics);
+        }
+
+        /// <summary>
+        /// Ein Rechner, der sich nicht festlegt, erbt eine leere Liste — bestehende
+        /// Implementierungen mussten für TODO-26 nicht angefasst werden.
+        /// </summary>
+        [Fact]
+        public void A_Calculator_That_Declares_Nothing_Requires_Nothing()
+        {
+            IFitnessCalculator schweigsam = new SchweigsamerRechner();
+
+            Assert.Empty(schweigsam.RequiredMetrics);
+        }
+
+        private class SchweigsamerRechner : IFitnessCalculator
+        {
+            public void CalculateFitness(ModelRecord record, SimulationConfig config) => record.Fitness = 1f;
+        }
+
         [Fact]
         public void CalculateFitness_Should_Disqualify_If_Drag_Max()
         {

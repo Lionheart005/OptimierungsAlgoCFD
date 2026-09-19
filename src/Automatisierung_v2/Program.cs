@@ -71,12 +71,15 @@ namespace MyPicoGkProject
                     OptimizationAlgorithmFactory.Create(config.OptimizationAlgorithm, fitness);
 
                 // 4. Workflow-Controller mit injizierten Abhängigkeiten erstellen
+                //    Die Pflicht-Metriken gehen als reine Namensliste hinein, nicht als
+                //    Rechner: der Controller bewertet nichts selbst (TODO-13).
                 var controller = new WorkflowController(
                     geometry,
                     stages,
                     validator,
-                    optimizer, 
-                    context
+                    optimizer,
+                    context,
+                    fitness.RequiredMetrics
                 );
                 
                 // 5. Geometrie-Kernel starten; der Optimierungslauf läuft in dessen

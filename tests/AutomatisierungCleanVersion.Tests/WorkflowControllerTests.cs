@@ -396,5 +396,109 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(99, resimulated!.Variant);                // ValidationVariantNumber
             Assert.Equal(6, context.History.Count);                // Validierungsläufe zählen nicht mit
         }
+
+        // -------------------------------------------------------------------
+        // TODO-26: Pflicht-Metriken der Fitness
+        // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Fehlt eine Metrik, die die Fitness-Formel braucht, bricht der Lauf nach der ersten
+        /// Variante ab — statt stundenlang mit einer Ersatz-Fitness weiterzurechnen.
+        /// </summary>
+        [Fact]
+        public void A_Missing_Required_Metric_Stops_The_Run_After_The_First_Variant()
+        {
+            var log = new List<string>();
+            var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S")) };
+
+            // Die Geometrie meldet Volume, aber kein SensorDistance.
+            var geometry = Geometry(("Volume", 4200f, MetricScaling.Volume));
+            var context = Context(iterations: 5, variants: 4);
+
+            var controller = new WorkflowController(
+                geometry, stages, PassthroughValidator(), Optimizer(), context,
+                new[] { "Volume", "SensorDistance" });
+
+            var error = Assert.Throws<InvalidOperationException>(() => controller.RunOptimization());
+
+            Assert.Contains("SensorDistance", error.Message);
+            Assert.Contains("Vorhanden ist:", error.Message);
+            // Genau eine Variante gerechnet, nicht 5 x 4 = 20.
+            Assert.Equal(1, log.Count(entry => entry == "S"));
+        }
+
+        [Fact]
+        public void Complete_Required_Metrics_Let_The_Run_Pass()
+        {
+            var log = new List<string>();
+            var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S")) };
+
+            var geometry = Geometry(
+                ("Volume", 4200f, MetricScaling.Volume),
+                ("SensorDistance", 12f, MetricScaling.Area));
+
+            var context = Context(iterations: 1, variants: 2);
+
+            new WorkflowController(
+                    geometry, stages, PassthroughValidator(), Optimizer(), context,
+                    new[] { "Volume", "SensorDistance" })
+                .RunOptimization();
+
+            Assert.Equal(2, context.History.Count);
+        }
+
+        /// <summary>
+        /// Ohne Angabe wird nichts geprüft — bestehende Verdrahtungen bleiben unverändert.
+        /// </summary>
+        [Fact]
+        public void Without_Required_Metrics_Nothing_Is_Checked()
+        {
+            var log = new List<string>();
+            var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S")) };
+
+            var context = Context(iterations: 1, variants: 2);
+            new WorkflowController(Geometry(), stages, PassthroughValidator(), Optimizer(), context)
+                .RunOptimization();
+
+            Assert.Equal(2, context.History.Count);
+        }
+
+        /// <summary>
+        /// Ein abgestürzter Solver ist kein Konfigurationsfehler: die Prüfung wartet auf die
+        /// erste Variante, die wirklich durchgelaufen ist. Sonst würde ein einzelner
+        /// SU2-Absturz in Variante 1 als fehlende Metrik gemeldet.
+        /// </summary>
+        [Fact]
+        public void A_Failed_First_Variant_Does_Not_Trigger_The_Check()
+        {
+            var log = new List<string>();
+
+            // Der Solver wirft nur beim allerersten Aufruf.
+            int calls = 0;
+            var solver = new Mock<ISimulationSolver>();
+            solver.SetupGet(s => s.Name).Returns("Wackelig");
+            solver.Setup(s => s.Solve(
+                    It.IsAny<string>(), It.IsAny<ModelRecord>(),
+                    It.IsAny<SimulationConfig>(), It.IsAny<string>()))
+                .Callback((string mesh, ModelRecord record, SimulationConfig c, string dir) =>
+                {
+                    calls++;
+                    log.Add("S");
+                    if (calls == 1) throw new InvalidOperationException("SU2 ist abgestürzt");
+                    record.PassiveParameters["Drag"] = 0.5f;
+                });
+
+            var stages = new[] { new SolverStage(Mesher(log, "M"), solver.Object) };
+            var context = Context(iterations: 1, variants: 3);
+
+            new WorkflowController(
+                    Geometry(), stages, PassthroughValidator(), Optimizer(), context,
+                    new[] { "Drag" })
+                .RunOptimization();
+
+            // Variante 1 ist fehlgeschlagen und wurde übersprungen; Variante 2 liefert Drag.
+            Assert.True(context.History[0].SimulationFailed);
+            Assert.Equal(3, context.History.Count);
+        }
     }
 }
