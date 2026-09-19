@@ -882,10 +882,13 @@ Wer den Code liest, stolpert über ein paar Stellen, die Absicht sind:
 
 ## Offene Punkte
 
-* **End-to-End-Vergleich gegen `main`** steht noch aus: ein kleiner Lauf
-  (`MaxIterations=1`, `VariantsPerIteration=2`) gegen einen `main`-Lauf mit
-  denselben Startwerten. Erwartete Abweichung ist genau eine: `TailTaper` wird
-  jetzt korrekt *nicht* mehr mitskaliert.
+* **Der Zahlenvergleich gegen `main`** steht noch aus. Die Kette selbst läuft: am
+  20.09.2026 ist ein zweites Projekt (Manta-Logik, 2 × 2 Varianten) auf dem Server
+  fehlerfrei durchgelaufen, samt `deploy`, `doctor` und Bouncer-Kontrollrechnungen.
+  Offen ist der Vergleich mit einem `main`-Lauf bei denselben Startwerten. Erwartete
+  Abweichung ist genau eine: `TailTaper` wird jetzt korrekt *nicht* mehr mitskaliert.
+  Mehr als größenordnungsweise geht der Vergleich nicht — die DoE-Phase des RSM zieht
+  ihre Punkte mit einem unbesäten `Random`.
 * **`BouncerTolerance` nachjustieren** nach dem ersten echten Lauf.
 * **`ModelRecord.MeshPath` führt nur einen Pfad** — den der ersten Solver-Stufe.
   Wer mehrere Netze protokollieren will, braucht dort eine Liste.
@@ -895,9 +898,10 @@ Wer den Code liest, stolpert über ein paar Stellen, die Absicht sind:
 * **`PicoGkMeshMetrics` ist nicht getestet** — jeder Aufruf braucht eine laufende
   PicoGK-Umgebung und die native `libpicogk`. Geprüft ist die Rechnung dahinter
   (`MeshMetrics`), nicht die Schleife über das PicoGK-Netz.
-* **Die Vorlage ist noch nie gelaufen.** Sie compiliert und ihre Fitness ist geprüft,
-  aber ein echter Rauchtest (`new-project.ps1`, dann ein Lauf mit zwei Varianten auf
-  dem Server) steht aus.
+* **Die Geometrie der Vorlage ist noch nie gelaufen.** Der Weg über
+  `new-project.ps1` ist bewiesen (das Testprojekt vom 20.09.2026 entstand so), aber
+  dessen Quader war für den Test durch die Manta-Geometrie ersetzt. Ein Lauf mit dem
+  Platzhalter-Quader — und damit mit `MeshMetrics` im Einsatz — fehlt.
 * **Der Physik-Widerspruch** zwischen Luft-Schallgeschwindigkeit und
   Wasser-Fluideigenschaften (siehe Teil A, Abschnitt „Strömung").
 

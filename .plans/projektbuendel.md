@@ -39,17 +39,41 @@ erzeugt von `scripts/new-project.ps1`; am Framework-Code ändert sich dafür nic
 | Vorlagen-JSONs | alle Schlüssel = Code-Standard | zwei Ausnahmen: `MaxIterations=1`, `VariantsPerIteration=2` | „Lauffähig als Rauchtest" aus demselben Satz. 100 CFD-Varianten sind kein Rauchtest. Ein Test lässt genau diese zwei Abweichungen zu |
 | `-Project` in `sim.ps1` | — | Vorgabe `MantaAuv` bleibt, wird aber gemeldet | Sie steht im Aufruf und ist damit sichtbar; auf der Server-Seite, wo sie unsichtbar war, ist sie ersatzlos entfallen |
 
+### Praxistest bestanden (20.09.2026)
+
+**Ein zweites Projekt ist auf dem Server fehlerfrei durchgelaufen.** Angelegt mit
+`.\scripts\new-project.ps1 MantaRauchtest`, verdrahtet mit derselben Logik wie MantaAuv, aber
+mit eigenem Laufumfang (2 Iterationen × 2 Varianten = 4 Varianten plus 2 Kontrollrechnungen des
+Bouncers). `deploy`, `projects`, `doctor` und `run` liefen ohne Fehler und ohne Warnung.
+
+Damit ist praktisch belegt, was dieser Plan behauptet:
+
+* Ein neues Projekt ist ein **Ordner** — angelegt vom Skript, gefunden per Reflection, ohne
+  eine Zeile im Framework.
+* Die **Umschaltkette** trägt: `-Project` → `SIM_PROJECT` → `dotnet … "$PROJECT_NAME"`,
+  durch `require_project` und die tmux-Sitzung hindurch.
+* Die **Schichten** greifen: das Testprojekt nannte in seiner `simulation.json` nur fünf
+  Schlüssel (drei Pfade, Laufumfang), seine Solver-Dateien bestanden nur aus Kommentaren — der
+  Rest kam aus den Code-Standards und war derselbe wie bei MantaAuv.
+* **Zwei Projekte stören sich nicht:** eigener Ergebnisordner, MantaAuvs CSV unberührt.
+
+Das Testprojekt ist danach wieder gelöscht worden; es steht in der Historie
+(Commit `2f6125c`), falls der Aufbau noch einmal gebraucht wird. `ProjectsOnDiskTests` läuft
+über die Ordner, die vorhanden sind, und bleibt dadurch grün.
+
+**`sim-runner.sh` ist damit ebenfalls in der Praxis geprüft** — die statische Prüfung auf
+Windows (kein bash, kein WSL) war nur ein Notbehelf.
+
 ### Was danach offen bleibt
 
-* **TODO-21 aus dem Vorgängerplan:** der End-to-End-Lauf auf dem Linux-Server und der
-  Vergleich gegen `main`. Deploy und `doctor` laufen inzwischen sauber durch (geprüft am
-  19.09.2026), gerechnet wurde noch nicht.
-* **`sim-runner.sh` ist ungetestet:** auf dem Entwicklungsrechner gibt es kein bash und kein
-  WSL, nicht einmal `bash -n`. Geprüft sind nur Schlüsselwort- und Quote-Bilanz sowie die
-  PowerShell-Syntax der `.ps1`. Die harmlosen ersten Aufrufe auf dem Server sind `projects`
-  und `doctor`.
-* **Die Vorlage ist noch nie gelaufen:** sie compiliert, ihre Fitness ist geprüft, aber ein
-  echter Rauchtest (`new-project.ps1`, dann zwei Varianten auf dem Server) steht aus.
+* **TODO-21 aus dem Vorgängerplan, halb erledigt:** die Kette läuft end-to-end auf dem Server
+  (siehe oben). Offen ist nur noch der **Zahlenvergleich gegen einen `main`-Lauf** mit denselben
+  Startwerten. Erwartete Abweichung ist genau eine: `TailTaper` wird jetzt korrekt *nicht* mehr
+  mitskaliert. Der Vergleich ist ohnehin nur größenordnungsweise möglich, weil die DoE-Phase des
+  RSM ihre Punkte mit einem unbesäten `Random` zieht.
+* **Die Geometrie der Vorlage ist noch nie gelaufen:** der Weg über `new-project.ps1` ist
+  bewiesen, aber der Quader aus `_Vorlage` wurde für den Test durch die Manta-Geometrie ersetzt.
+  Ein Lauf mit dem Platzhalter-Quader (und damit mit `MeshMetrics` im Einsatz) fehlt.
 * **`PicoGkMeshMetrics` ist nicht getestet** — jeder Aufruf braucht eine laufende
   PicoGK-Umgebung. Geprüft ist die Rechnung dahinter.
 * **`BouncerTolerance`** ist seit TODO-3 strenger und will nach dem ersten echten Lauf
