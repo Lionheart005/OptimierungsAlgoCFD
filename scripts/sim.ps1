@@ -24,6 +24,7 @@
     fetch    Ergebnisse vom Server nach Windows holen
     doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
     build    Nur bauen, nicht starten
+    projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
 
 .EXAMPLE
     .\scripts\sim.ps1 doctor
@@ -44,7 +45,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build')]
+    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -54,6 +55,13 @@ param(
     # Bewusst NICHT das alte Automatisierung_v2: das bleibt als main-Referenz liegen.
     [string]$RemoteDir = 'Documents/AutomatisierungCleanVersion',
 
+    # Der Umschalter zwischen Projekten. Der Name ist der Ordnername unter src/projects/
+    # (Entscheidung 1) und wird als SIM_PROJECT an sim-runner.sh durchgereicht.
+    #
+    # Die Vorgabe bleibt hier stehen, anders als auf der Server-Seite: dort waere sie
+    # unsichtbar, hier steht sie im Aufruf und wird zusaetzlich gemeldet, sobald ein
+    # projektbezogener Befehl sie benutzt (TODO-28). Welche Namen es gibt:
+    # .\scripts\sim.ps1 projects
     [string]$Project = 'MantaAuv',
 
     # Laufende Simulation trotz geaendertem Code weiterlaufen lassen
@@ -376,6 +384,18 @@ function Invoke-Fetch {
 # ---------------------------------------------------------------------------
 
 try {
+    # Sagen, mit welchem Projekt gerechnet wird, wenn der Aufruf es nicht nennt. Auf der
+    # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
+    # bequem und darf bleiben -- aber nicht stumm. Die Liste der Befehle ist genau die,
+    # bei denen der Projektname das Ergebnis aendert (log liest die eine globale
+    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen).
+    $projectBoundCommands = @('deploy', 'run', 'status', 'fetch', 'doctor')
+
+    if ($projectBoundCommands -contains $Command -and -not $PSBoundParameters.ContainsKey('Project')) {
+        Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
+        Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+    }
+
     switch ($Command) {
         'deploy' { Invoke-Deploy }
         'run' { Invoke-Deploy -ThenStart }
@@ -400,6 +420,15 @@ try {
             }
             Write-Step "Pruefe Umgebung auf $Server"
             Invoke-Runner -Arguments 'doctor'
+        }
+
+        'projects' {
+            Assert-RemoteDeployed
+            Write-Step "Projekte auf $Server"
+            # Ueber Invoke-Remote und nicht Invoke-Runner: dieser Befehl setzt bewusst
+            # KEIN SIM_PROJECT. Er wird gerade dann gebraucht, wenn man den Namen nicht
+            # kennt -- und der Server soll antworten, ohne einen zu verlangen.
+            Invoke-Remote -CommandLine "$RunnerCall projects" | Out-Null
         }
 
         'status' {

@@ -66,6 +66,7 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 ## Alltag
 
 ```powershell
+.\scripts\sim.ps1 projects  # Welche Projekte kennt der Server, wo liegen Ergebnisse?
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
                             # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
@@ -74,6 +75,13 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
 .\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
 ```
+
+Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
+Ordnername unter `src/projects/`. Ohne die Angabe gilt die Vorgabe `MantaAuv`, und
+die Skripte sagen das auch: auf der Windows-Seite als Hinweiszeile, auf dem Server
+gar nicht mehr. `sim-runner.sh` hat **keinen** Standard mehr — von Hand aufgerufen
+verlangt es `SIM_PROJECT=<Name>`, weil ein Vertipper dort sonst klaglos ein anderes
+Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
 
 ## Ergebnisse herunterladen
 
