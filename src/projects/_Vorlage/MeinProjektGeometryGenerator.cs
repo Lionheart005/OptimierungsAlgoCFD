@@ -5,6 +5,7 @@ using System.Numerics;
 using PicoGK;
 
 using MyPicoGkProject.Core;
+using MyPicoGkProject.Kernels.PicoGk;
 
 namespace MyPicoGkProject.Projects.MeinProjekt
 {
@@ -50,16 +51,23 @@ namespace MyPicoGkProject.Projects.MeinProjekt
 
             Voxels voxels = BuildVoxelModel(length, width, height);
 
-            // Volumen und Hüllquader liefert PicoGK direkt. Die Oberfläche NICHT — die muss aus
-            // dem Dreiecksnetz summiert werden, siehe SurfaceAreaOf(...).
-            voxels.CalculateProperties(out float volume, out BBox3 boundingBox);
-
-            float spanY = boundingBox.vecMax.Y - boundingBox.vecMin.Y;
-            float spanZ = boundingBox.vecMax.Z - boundingBox.vecMin.Z;
-
-            // Das Netz, das exportiert wird — und aus dem die Oberfläche kommt.
+            // Das Netz, das exportiert wird — und aus dem alle Maße kommen.
             Mesh exportModel = new Mesh(voxels);
-            float surfaceArea = SurfaceAreaOf(exportModel);
+
+            // Volumen, Oberfläche und Hüllquader in einem Durchgang (TODO-29). Die Oberfläche
+            // ist der Grund, warum es diesen Helfer gibt: PicoGKs CalculateProperties liefert
+            // Volumen und Hüllquader, die Oberfläche NICHT — die muss aus dem Dreiecksnetz
+            // summiert werden, und das wäre in jedem Projekt dieselbe Schleife.
+            //
+            // Die Alternative ist voxels.CalculateProperties(out float volume, out BBox3 box) —
+            // so macht es MantaAuv. Der Unterschied ist echt, aber klein: PicoGK misst das
+            // VOXELFELD, MeshMetrics das daraus gewonnene NETZ.
+            MeshMeasurement measurement = PicoGkMeshMetrics.Measure(exportModel);
+
+            // Ein negatives Vorzeichen hiesse: die Dreiecke sind nach innen gedreht. Gmsh
+            // rechnet so eine Huelle nicht oder falsch, und im Betrag sieht man es nicht.
+            if (measurement.SignedVolume < 0f)
+                Console.WriteLine("       -> [WARNUNG] Das Netz ist nach innen gedreht (negatives Volumen).");
 
             // Der Dateiname ist frei wählbar, das Muster aber praktisch: Iteration und Variante
             // stehen darin, und alle STLs eines Laufs liegen unter Ergebnisse/<Projekt>/.
@@ -99,17 +107,17 @@ namespace MyPicoGkProject.Projects.MeinProjekt
             // EIN FALSCHER EINTRAG FÄLLT NICHT AUF. Der Wert ist dann um den Skalierungsfaktor
             // hoch 1, 2 oder 3 daneben — und sieht trotzdem plausibel aus. Welche Dimension eine
             // Metrik bekam, hält Ergebnisse/<Projekt>/effective-config.json fest (TODO-25).
-            result.AddMetric("Volume", volume, MetricScaling.Volume);
-            result.AddMetric("SurfaceArea", surfaceArea, MetricScaling.Area);
+            result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
+            result.AddMetric("SurfaceArea", measurement.SurfaceArea, MetricScaling.Area);
 
             // FrontalArea ist die angeströmte Fläche (quer zur X-Achse) und hat einen zweiten
             // Abnehmer: solvers/su2.json nennt sie unter "ReferenceAreaMetric", SU2 bildet daraus
             // REF_AREA und normiert damit alle Beiwerte. Wer sie umbenennt, muss den Namen dort
             // mitziehen — sonst warnt der Solver und rechnet mit einem Ersatzwert.
-            result.AddMetric("FrontalArea", spanY * spanZ, MetricScaling.Area);
+            result.AddMetric("FrontalArea", measurement.FrontalBoxArea, MetricScaling.Area);
 
-            // Spannweite: eine Länge, also Linear.
-            result.AddMetric("Span", spanY, MetricScaling.Linear);
+            // Spannweite: die Ausdehnung quer zur Strömung. Eine Länge, also Linear.
+            result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
 
             // Ein Verhältnis ist dimensionslos und darf NICHT mitskaliert werden — das ist der
             // Fall für None. (Beispiel, die Fitness dieser Vorlage benutzt es nicht.)
@@ -131,30 +139,6 @@ namespace MyPicoGkProject.Projects.MeinProjekt
         {
             Mesh box = Utils.mshCreateCube(new Vector3(length, width, height), Vector3.Zero);
             return new Voxels(box);
-        }
-
-        /// <summary>
-        /// Oberfläche als Summe der Dreiecksflächen. PicoGKs
-        /// <c>CalculateProperties</c> liefert Volumen und Hüllquader, die Oberfläche aber nicht.
-        ///
-        /// <para>
-        /// Diese Schleife wäre in jedem Projekt dieselbe — TODO-29 sieht dafür einen
-        /// <c>Core/Utilities/MeshMetrics</c>-Helfer vor. Solange es ihn nicht gibt, steht sie hier,
-        /// und sie ist kurz genug, um sie zu verstehen: die Fläche eines Dreiecks ist die halbe
-        /// Länge des Kreuzprodukts zweier Kantenvektoren.
-        /// </para>
-        /// </summary>
-        private static float SurfaceAreaOf(Mesh mesh)
-        {
-            float area = 0f;
-
-            for (int triangle = 0; triangle < mesh.nTriangleCount(); triangle++)
-            {
-                mesh.GetTriangle(triangle, out Vector3 a, out Vector3 b, out Vector3 c);
-                area += Vector3.Cross(b - a, c - a).Length() * 0.5f;
-            }
-
-            return area;
         }
 
         /// <summary>
