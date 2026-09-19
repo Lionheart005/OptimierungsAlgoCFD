@@ -1,0 +1,64 @@
+{
+  // ===================================================================
+  //  MantaRauchtest -- Projektvorgaben
+  // ===================================================================
+  //
+  // Ein ZWEITES Projekt neben MantaAuv, angelegt mit
+  //
+  //     .\scripts\new-project.ps1 MantaRauchtest
+  //
+  // Zweck: der Praxistest fuer den Umbau aus .plans/projektbuendel.md. Es rechnet
+  // mit derselben Logik wie MantaAuv, aber nur 2 x 2 Varianten statt 10 x 10 --
+  // siehe simulation.json nebenan.
+  //
+  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername:
+  // dieser Ordner heisst MantaRauchtest, also heisst das Projekt so.
+  //
+  // Die Werte sind mit src/projects/MantaAuv/project.json identisch -- absichtlich.
+  // Nur so ist ein Lauf dieses Projekts mit einem MantaAuv-Lauf vergleichbar, und
+  // eine Abweichung in den Ergebnissen kann nur aus der Umschaltkette kommen.
+  //
+  // Code-Standard darunter ist MantaRauchtestProject.CreateDefaults(), das
+  // MantaProjectConfig.Create() wiederverwendet.
+
+  // --- Startwerte der aktiven Parameter (mm, ausser TailTaper) ---
+  "BaseParameters": {
+    "Length": 50.0,
+    "Width": 40.0,
+    "MainRadius": 4.0,
+    "WingRadius": 3.0,
+    "TailTaper": 1.0
+  },
+
+  // --- Anfängliche Mutationsstärke (Sigma-Streuung) ---
+  "MaxDeviations": {
+    "Length": 5.0,
+    "Width": 4.0,
+    "MainRadius": 1.0,
+    "WingRadius": 1.0,
+    "TailTaper": 0.1
+  },
+
+  // --- Harte Grenzen für physikalische Plausibilität ---
+  "ParameterBounds": {
+    "Length": { "Min": 30.0, "Max": 100.0 },
+    "Width": { "Min": 20.0, "Max": 80.0 },
+    "MainRadius": { "Min": 4.0, "Max": 15.0 },
+    "WingRadius": { "Min": 2.0, "Max": 10.0 },
+    "TailTaper": { "Min": 0.1, "Max": 1.5 }
+  },
+
+  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
+  // Fitness = (Volume * SensorDistance) / Drag^DragBalanceFactor,
+  // Strafe x0.1 ausserhalb des erlaubten Volumenbereichs.
+  // Alle drei sind Pflicht: MantaFitnessCalculator prueft sie im Konstruktor.
+  "OptimizationTargets": {
+    "MinimumAllowedVolume": 2000.0,
+    "MaximumAllowedVolume": 85000.0,
+    "DragBalanceFactor": 3.0
+  },
+
+  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
+  // TailTaper ist dimensionslos und steht bewusst NICHT in dieser Liste.
+  "DimensionalParameters": [ "Length", "Width", "MainRadius", "WingRadius" ]
+}
