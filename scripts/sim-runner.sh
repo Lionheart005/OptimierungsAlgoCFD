@@ -36,7 +36,10 @@ LOG_FILE="$REPO_DIR/simulation.log"
 LOG_ARCHIVE="$REPO_DIR/logs"
 HASH_FILE="$REPO_DIR/.deploy_hash"
 EXIT_FILE="$REPO_DIR/.last_exit"
-RESULT_CSV="$REPO_DIR/Ergebnisse/Simulation_Results.csv"
+# Ergebnisse liegen seit TODO-25 je Projekt getrennt -- zwei Projekte ueberschrieben
+# sich vorher gegenseitig die CSV.
+RESULT_DIR="$REPO_DIR/Ergebnisse/$PROJECT_NAME"
+RESULT_CSV="$RESULT_DIR/Simulation_Results.csv"
 
 PICOGK_BUILD_DIR="${PICOGK_BUILD_DIR:-$HOME/software/PicoGK/build}"
 
@@ -400,6 +403,8 @@ cmd_status() {
     fi
 
     if has_session; then say "tmux:  Sitzung '$SESSION' vorhanden"; else say "tmux:  keine Sitzung '$SESSION'"; fi
+
+    say "Ergebnisse: Ergebnisse/$PROJECT_NAME/"
 
     if [ -f "$RESULT_CSV" ]; then
         local records

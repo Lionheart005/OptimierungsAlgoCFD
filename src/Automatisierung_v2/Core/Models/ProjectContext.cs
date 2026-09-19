@@ -46,11 +46,16 @@ namespace MyPicoGkProject.Core
         public ProjectConfig Project { get; }
 
         /// <summary>
-        /// Die Berichte aller über diesen Kontext geladenen Dateien — welcher Schlüssel kam aus
-        /// welcher Datei. TODO-25 schreibt sie als <c>effective-config.json</c> neben die
-        /// Ergebnisse.
+        /// Alles, was für diesen Lauf geladen wurde: je Datei der fertige Wert und der Bericht,
+        /// welcher Schlüssel woher kam. <see cref="EffectiveConfigWriter"/> schreibt das als
+        /// <c>effective-config.json</c> neben die Ergebnisse (TODO-25) — damit ein alter Lauf
+        /// rekonstruierbar bleibt, egal was danach an den Dateien passiert.
         /// </summary>
-        public List<ConfigLoadReport> Reports { get; } = new();
+        public List<LoadedConfiguration> Loaded { get; } = new();
+
+        /// <summary>Nimmt eine geladene Datei in die Sammlung auf.</summary>
+        public void Record<T>(string name, ConfigLoadResult<T> result) where T : class
+            => Loaded.Add(new LoadedConfiguration(name, result.Value, result.Report));
 
         /// <summary>
         /// Lädt die Optionen eines Solvers oder Vernetzers aus
@@ -72,11 +77,13 @@ namespace MyPicoGkProject.Core
                 return new T();
             }
 
+            string relativeName = $"solvers/{name}.json";
+
             var result = JsonConfigLoader.LoadForProject(
-                new T(), $"solvers/{name}.json", ProjectDirectory!, ConfigDirectory);
+                new T(), relativeName, ProjectDirectory!, ConfigDirectory);
 
             result.Report.PrintMachineOverrideWarning(Name);
-            Reports.Add(result.Report);
+            Record(relativeName, result);
 
             return result.Value;
         }

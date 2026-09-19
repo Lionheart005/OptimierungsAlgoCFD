@@ -111,6 +111,14 @@ namespace MyPicoGkProject.Core
         }
     }
 
+    /// <summary>
+    /// Eine geladene Konfigurationsdatei, wie sie in die <c>effective-config.json</c> wandert.
+    /// </summary>
+    /// <param name="Name">Name relativ zum Projektordner, z.B. <c>solvers/su2.json</c>.</param>
+    /// <param name="Value">Das fertige Konfigurationsobjekt, wie der Lauf es benutzt hat.</param>
+    /// <param name="Report">Woher jeder Schlüssel kam.</param>
+    public sealed record LoadedConfiguration(string Name, object Value, ConfigLoadReport Report);
+
     /// <summary>Ergebnis eines Ladevorgangs: der fertige Wert und der Bericht dazu.</summary>
     public sealed class ConfigLoadResult<T> where T : class
     {

@@ -339,9 +339,14 @@ namespace MyPicoGkProject.Core
                     Console.WriteLine($"   {kvp.Key}: {kvp.Value:F4}");
                 }
 
-                Console.WriteLine($"\n📂 ParaView-Dateien:");
-                Console.WriteLine($"   Oberfläche: Ergebnisse/Analyseergebnisse/Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
-                Console.WriteLine($"   Volumen:    Ergebnisse/Analyseergebnisse/Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
+                // Die Pfade kommen aus dem Kontext und stehen nicht mehr als Text hier:
+                // seit TODO-25 liegen die Ergebnisse unter Ergebnisse/<Projekt>/, und eine
+                // hartcodierte Zeile hätte den Nutzer in den falschen Ordner geschickt.
+                string analysis = System.IO.Path.Combine(_context.WorkingDirectory, "Analyseergebnisse");
+
+                Console.WriteLine($"\n📂 ParaView-Dateien in {analysis}:");
+                Console.WriteLine($"   Oberfläche: Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
+                Console.WriteLine($"   Volumen:    Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
             }
         }
     }

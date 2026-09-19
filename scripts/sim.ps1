@@ -318,13 +318,22 @@ function Invoke-Fetch {
 
     Write-Step "Hole Ergebnisse nach $target"
 
+    # Ergebnisse liegen seit TODO-25 unter Ergebnisse/<Projekt>/ -- geholt wird also
+    # gezielt das Projekt, nicht der gemeinsame Topf.
+    $remoteResults = "$RemoteDir/Ergebnisse/$Project"
+
     if ($All) {
-        & scp -q -r "${Server}:$RemoteDir/Ergebnisse" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner konnte nicht geholt werden." }
+        & scp -q -r "${Server}:$remoteResults" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner von '$Project' konnte nicht geholt werden." }
     }
     else {
-        & scp -q "${Server}:$RemoteDir/Ergebnisse/Simulation_Results.csv" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf gemacht?)." }
+        & scp -q "${Server}:$remoteResults/Simulation_Results.csv" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf von '$Project' gemacht?)." }
+
+        # Die effective-config.json ist klein und beantwortet spaeter die Frage, womit
+        # dieser Datensatz entstanden ist -- sie gehoert zur CSV dazu.
+        & scp -q "${Server}:$remoteResults/effective-config.json" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "effective-config.json konnte nicht geholt werden." }
     }
 
     & scp -q "${Server}:$RemoteDir/simulation.log" $target

@@ -170,8 +170,8 @@ namespace MyPicoGkProject
             var context = new ProjectContext(
                 name, projectDirectory, null, simulation.Value, projectConfig);
 
-            context.Reports.Add(simulation.Report);
-            context.Reports.Add(project.Report);
+            context.Record("simulation.json", simulation);
+            context.Record(ProjectPaths.ManifestFileName, project);
 
             return context;
         }
@@ -184,10 +184,17 @@ namespace MyPicoGkProject
             IGeometryGenerator geometry = definition.CreateGeometry(context);
             IFitnessCalculator fitness = definition.CreateFitness(context);
             IGeometryKernel kernel = definition.CreateKernel();
+
+            // CreateStages lädt die Solver-Optionen — muss also vor dem Schreiben der
+            // effective-config.json laufen, sonst fehlen sie dort.
             SolverStage[] stages = definition.CreateStages(context);
 
+            // Ergebnisse/<Projekt>/ statt eines gemeinsamen Topfes (TODO-25): zwei Projekte
+            // überschreiben sich sonst gegenseitig die Simulation_Results.csv.
             var simulationContext = new SimulationContext(context.Simulation, context.Project);
             simulationContext.EnsureDirectories();
+
+            string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context);
 
             // Der Bouncer ist Framework-Bestandteil und prüft die Fitness, nicht eine
             // projektspezifische Metrik (Entscheidung 6).
@@ -211,6 +218,8 @@ namespace MyPicoGkProject
             Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
             Console.WriteLine($"  Projekt:          {context.Name}");
             Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
+            Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
+            Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
             Console.WriteLine("==================================================");
 
             kernel.RunHosted(context.Simulation.BaseVoxelResolution, controller.RunOptimization);
