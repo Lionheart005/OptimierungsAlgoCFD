@@ -63,11 +63,19 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Die Programmpfade müssen PATH-relativ sein. Ein absoluter Pfad im Code-Standard band
-        /// jeden fremden Nutzer an die Installation eines ganz bestimmten Servers.
+        /// Der <b>Code-Standard</b> muss PATH-relativ bleiben. Er gilt für jedes Projekt, das
+        /// nichts einträgt — stünde hier die Installation eines bestimmten Servers, erbte sie
+        /// jeder fremde Nutzer, ohne es zu merken.
+        ///
+        /// <para>
+        /// Ein einzelnes Projekt darf davon abweichen: MantaAuv trägt in seiner
+        /// simulation.json absolute Pfade, weil der Hochschulserver die Programme nicht über
+        /// den PATH findet. Das ist genau die Aufgabenteilung der Schichten — die Ausnahme
+        /// steht beim Projekt, nicht im Framework.
+        /// </para>
         /// </summary>
         [Fact]
-        public void The_Program_Paths_Are_Path_Relative()
+        public void The_Code_Default_Program_Paths_Stay_Path_Relative()
         {
             var defaults = SimulationConfig.CreateDefault();
 
@@ -76,15 +84,53 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal("gmsh", defaults.GmshPath);
         }
 
-        /// <summary>Dasselbe für die mitgelieferte Projektdatei — dort stand der Serverpfad.</summary>
+        /// <summary>
+        /// Ein Projekt, das die drei Schlüssel nicht nennt, bekommt den PATH-relativen
+        /// Code-Standard. Das ist der Weg zurück für jeden anderen Server: die drei Zeilen aus
+        /// der simulation.json löschen, fertig.
+        /// </summary>
         [Fact]
-        public void The_Shipped_Simulation_Json_Uses_Path_Relative_Programs()
+        public void A_Project_Without_Path_Keys_Falls_Back_To_The_Relative_Default()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "pathtest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(directory, "simulation.json"),
+                    @"{ ""MaxIterations"": 3 }");
+
+                var loaded = JsonConfigLoader.LoadForProject(
+                    SimulationConfig.CreateDefault(), "simulation.json", directory).Value;
+
+                Assert.Equal("mpirun", loaded.MpiRunPath);
+                Assert.Equal("SU2_CFD", loaded.Su2Path);
+                Assert.Equal("gmsh", loaded.GmshPath);
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        /// <summary>
+        /// MantaAuv nennt alle drei Pfade ausdrücklich. Stünde nur einer davon in der Datei,
+        /// wäre für die anderen beiden stillschweigend die PATH-Suche zuständig — und genau
+        /// die schlägt auf dem Hochschulserver fehl.
+        /// </summary>
+        [Fact]
+        public void MantaAuv_Names_All_Three_Program_Paths_Explicitly()
         {
             var loaded = MantaProjectFiles.Simulation();
+            var defaults = SimulationConfig.CreateDefault();
 
-            Assert.DoesNotContain("/", loaded.MpiRunPath);
-            Assert.DoesNotContain("/", loaded.Su2Path);
-            Assert.DoesNotContain("/", loaded.GmshPath);
+            Assert.NotEqual(defaults.MpiRunPath, loaded.MpiRunPath);
+            Assert.NotEqual(defaults.Su2Path, loaded.Su2Path);
+            Assert.NotEqual(defaults.GmshPath, loaded.GmshPath);
+
+            Assert.StartsWith("/", loaded.MpiRunPath);
+            Assert.StartsWith("/", loaded.Su2Path);
+            Assert.StartsWith("/", loaded.GmshPath);
         }
 
         /// <summary>

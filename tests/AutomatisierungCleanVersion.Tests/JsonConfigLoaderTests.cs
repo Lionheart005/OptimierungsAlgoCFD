@@ -89,7 +89,9 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Equal(defaults.MaxIterations, fromFile.MaxIterations);
             Assert.Equal(defaults.VariantsPerIteration, fromFile.VariantsPerIteration);
-            Assert.Equal(defaults.Su2Path, fromFile.Su2Path);
+            // Die Programmpfade sind bewusst NICHT dabei: MantaAuv weicht dort vom
+            // Code-Standard ab, weil der Hochschulserver sie nicht über den PATH findet.
+            // Geprüft wird das in ProjectLayoutTests.
             Assert.Equal(defaults.BouncerTolerance, fromFile.BouncerTolerance, 5);
             Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
             Assert.Equal(defaults.OptimizationAlgorithm, fromFile.OptimizationAlgorithm);

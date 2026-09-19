@@ -19,14 +19,27 @@
   // meldet er sie mit jedem Schluessel, den sie diesem Projekt aushebelt.
 
   // --- Pfade zu externer Software ---
-  // Bewusst PATH-relativ und nicht absolut: sim-runner.sh legt in load_env die
-  // richtigen Verzeichnisse auf den PATH, und .NET loest einen blossen
-  // Programmnamen darueber auf. Ein absoluter Pfad wuerde dieses Projekt an
-  // genau einen Rechner binden. Ob die Programme gefunden werden, prueft
-  // `.\scripts\sim.ps1 doctor` VOR dem Lauf.
-  "MpiRunPath": "mpirun",
-  "Su2Path": "SU2_CFD",
-  "GmshPath": "gmsh",
+  //
+  // DER CODE-STANDARD IST PATH-RELATIV ("mpirun", "SU2_CFD", "gmsh"), siehe
+  // Core/Models/SimulationConfig.cs. Ein Projekt, das nichts eintraegt, sucht die
+  // Programme also ueber den PATH -- das ist der Normalfall und funktioniert auf
+  // jedem Rechner, der sie regulaer installiert hat.
+  //
+  // DIESES Projekt traegt sie trotzdem absolut ein, weil der Hochschulserver
+  // (BIC_12) sie nicht ueber den PATH findet: SU2 und Gmsh sind dort von Hand
+  // nach ~/software entpackt, mpirun kommt aus Miniconda. Bei "ssh host befehl"
+  // startet bash nicht-interaktiv und Ubuntus ~/.bashrc steigt sofort wieder aus,
+  // deshalb greift dort nichts aus conda init.
+  //
+  // Die Pfade stammen aus ServerHochschuleEinrichten2.txt und setup_server.sh.
+  // Aendert sich die Gmsh-Version, aendert sich auch dieser Pfad.
+  //
+  // Auf einem anderen Server: diese drei Zeilen loeschen, dann gilt wieder der
+  // PATH-relative Code-Standard. Welche Variante greift, sagt `sim.ps1 doctor`
+  // VOR dem Lauf -- er nennt bei jedem Programm den tatsaechlich gefundenen Ort.
+  "MpiRunPath": "/home/lpleissner/miniconda/bin/mpirun",
+  "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
+  "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 
   // --- Zeit & Umfang ---
   // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.

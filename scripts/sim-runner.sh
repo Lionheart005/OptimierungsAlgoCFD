@@ -197,6 +197,11 @@ cmd_doctor() {
                 fi
             else
                 fail "$entry -> $configured (weder Datei noch im PATH)"
+                case "$configured" in
+                    */*) say "          Der Pfad existiert nicht oder ist nicht ausfuehrbar." ;;
+                    *)   say "          Gesucht im PATH: $PATH" ;;
+                esac
+                say "          Eintragen in src/projects/$PROJECT_NAME/simulation.json unter '$entry'."
                 problems=$((problems + 1))
             fi
         done
