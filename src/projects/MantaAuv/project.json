@@ -1,13 +1,28 @@
 {
-  // Projektvorgaben für das Manta-Ray AUV. Was hier fehlt, kommt aus den Code-Vorgaben
-  // in Projects/MantaAuv/MantaProjectConfig.cs. Maschinen- oder versuchsspezifische
-  // Abweichungen gehören in MantaAuv.local.json daneben (gitignored).
+  // ===================================================================
+  //  MantaAuv -- Projektvorgaben
+  // ===================================================================
   //
-  // Nur Zahlen und Namen — Geometrie-Erzeugung und Fitness-Formel bleiben C#-Code.
-
-  "ProjectName": "MantaAuv",
-
-  // Das Optimierungsverfahren steht in config/simulation.json ("OptimizationAlgorithm").
+  // Die Manifestdatei heisst in JEDEM Projekt "project.json" (Entscheidung 2).
+  // Ein Dateiname, der ueberall derselbe ist, kann nicht mit dem Projektnamen
+  // verwechselt werden -- "config/projects/MantaAuv.json" konnte das.
+  //
+  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername
+  // (Entscheidung 1): dieser Ordner heisst MantaAuv, also heisst das Projekt so,
+  // und gestartet wird mit
+  //
+  //     .\scripts\sim.ps1 run -Project MantaAuv
+  //
+  // Was hier fehlt, kommt aus den Code-Vorgaben in MantaProjectConfig.cs
+  // nebenan. Ein unbekannter Schluessel bricht den Start ab -- ausser INNERHALB
+  // der Zuordnungen unten: dort sind die Schluessel Parameternamen und frei
+  // waehlbar.
+  //
+  // Nur Zahlen und Namen -- Geometrie-Erzeugung und Fitness-Formel bleiben
+  // C#-Code, nebenan in diesem Ordner (Entscheidung 7).
+  //
+  // Das Optimierungsverfahren steht in simulation.json ("OptimizationAlgorithm"),
+  // weil das Verfahren eine Framework-Einstellung ist und keine Projekteigenschaft.
 
   // --- Startwerte der aktiven Parameter (mm, ausser TailTaper) ---
   "BaseParameters": {

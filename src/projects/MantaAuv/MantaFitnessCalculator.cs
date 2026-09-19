@@ -52,7 +52,7 @@ namespace MyPicoGkProject.Projects.MantaAuv
                 throw new InvalidOperationException(
                     $"[KONFIGURATION] Projekt '{project.ProjectName}': in OptimizationTargets fehlt/fehlen " +
                     $"{string.Join(", ", missing)}. Die Manta-Fitness braucht {string.Join(", ", RequiredTargets)}. " +
-                    $"Vorhanden ist: {present}. Nachtragen in config/projects/{project.ProjectName}.json " +
+                    $"Vorhanden ist: {present}. Nachtragen in src/projects/{project.ProjectName}/project.json " +
                     $"(oder in MantaProjectConfig.Create()).");
             }
 

@@ -102,7 +102,9 @@ namespace AutomatisierungCleanVersion.Tests
             var ex = Assert.Throws<InvalidOperationException>(() => new MantaFitnessCalculator(config));
 
             Assert.Contains(missingKey, ex.Message);
-            Assert.Contains("MantaAuv.json", ex.Message);
+            // Die Meldung muss sagen, WO nachzutragen ist — seit TODO-24 ist das die
+            // project.json im Projektordner und nicht mehr config/projects/MantaAuv.json.
+            Assert.Contains("src/projects/MantaAuv/project.json", ex.Message);
         }
 
         /// <summary>Ohne jedes Ziel werden alle drei fehlenden Schlüssel auf einmal gemeldet.</summary>

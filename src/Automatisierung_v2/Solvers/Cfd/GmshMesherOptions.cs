@@ -4,7 +4,7 @@ namespace MyPicoGkProject.Solvers.Cfd
 {
     /// <summary>
     /// Vorgabedaten für den Gmsh-CFD-Vernetzer: Abmessungen des Windkanals und
-    /// Grenzschicht-Feld. Werden aus <c>config/solvers/gmsh.json</c> geladen und per
+    /// Grenzschicht-Feld. Werden aus <c>src/projects/&lt;Name&gt;/solvers/gmsh.json</c> geladen und per
     /// Konstruktor injiziert. Die Standardwerte entsprechen exakt dem, was vorher in
     /// <see cref="GmshCfdMesher"/> hardcodiert stand (600 × 300 × 300 mm, zentriert).
     /// </summary>

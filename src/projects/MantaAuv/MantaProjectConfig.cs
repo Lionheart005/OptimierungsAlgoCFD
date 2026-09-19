@@ -17,7 +17,7 @@ namespace MyPicoGkProject.Projects.MantaAuv
                 ProjectName = "MantaAuv",
 
                 // Das Optimierungsverfahren steht im Framework (SimulationConfig /
-                // config/simulation.json), weil es keine Projekteigenschaft ist.
+                // simulation.json nebenan), weil es keine Projekteigenschaft ist.
 
                 // --- INITIALE AKTIVE PARAMETER (AUV Konzept) ---
                 BaseParameters = new Dictionary<string, float>

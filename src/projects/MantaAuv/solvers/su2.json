@@ -1,10 +1,17 @@
 {
-  // Vorgabedaten für den SU2-Solver. Was hier fehlt, kommt aus den Standardwerten
-  // in Solvers/Cfd/Su2SolverOptions.cs. Abweichungen für einen einzelnen Rechner
-  // gehören in su2.local.json daneben (gitignored).
+  // ===================================================================
+  //  MantaAuv -- SU2-Solver
+  // ===================================================================
   //
-  // Nicht hier, sondern in simulation.json: MachNumber, Su2MaxIterations,
+  // Was hier fehlt, kommt aus den Standardwerten in
+  // Solvers/Cfd/Su2SolverOptions.cs. Ein unbekannter Schluessel bricht den Start
+  // ab -- ausser innerhalb von "ResultMetrics", wo die Schluessel Metriknamen sind.
+  //
+  // Nicht hier, sondern in ../simulation.json: MachNumber, Su2MaxIterations,
   // CauchyElements, CauchyTolerance, MpiCores und die Programmpfade.
+  //
+  // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
+  // (gitignored). Sollstand ist, dass es keine gibt.
 
   // --- Fluideigenschaften ---
   "Density": 1025.0,          // kg/m³, Meerwasser

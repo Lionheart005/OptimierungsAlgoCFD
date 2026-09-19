@@ -32,7 +32,7 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         private readonly Su2SolverOptions _options;
 
-        /// <param name="options">Vorgabedaten aus config/solvers/su2.json; ohne Angabe gelten die Standardwerte.</param>
+        /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
         public Su2Solver(Su2SolverOptions? options = null)
         {
             _options = options ?? new Su2SolverOptions();
@@ -169,7 +169,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                               + (FallbackReferenceAreaMm2 * SquareMmToSquareM).ToString(CultureInfo.InvariantCulture)
                               + " m². Der CD-Wert ist damit um Größenordnungen falsch.");
             Console.WriteLine($"          Vorhandene Metriken: {known}.");
-            Console.WriteLine("          Der Name gehört in config/solvers/su2.json unter 'ReferenceAreaMetric'.");
+            Console.WriteLine("          Der Name gehört in die solvers/su2.json des Projekts unter 'ReferenceAreaMetric'.");
         }
 
         /// <summary>

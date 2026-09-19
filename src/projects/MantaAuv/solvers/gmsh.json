@@ -1,7 +1,16 @@
 {
-  // Vorgabedaten für den Gmsh-CFD-Vernetzer. Was hier fehlt, kommt aus den
-  // Standardwerten in Solvers/Cfd/GmshMesherOptions.cs.
-  // Die Anzahl der Threads (GmshCores) und der Programmpfad stehen in simulation.json.
+  // ===================================================================
+  //  MantaAuv -- Gmsh-Vernetzer
+  // ===================================================================
+  //
+  // Was hier fehlt, kommt aus den Standardwerten in
+  // Solvers/Cfd/GmshMesherOptions.cs. Ein unbekannter Schluessel bricht den
+  // Start ab (TODO-22).
+  //
+  // Nicht hier, sondern in ../simulation.json: GmshCores und GmshPath.
+  //
+  // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
+  // daneben (gitignored). Sollstand ist, dass es keine gibt.
 
   // --- Windkanal (Simulationsdomäne) in mm ---
   // "Box" = Quader aus TunnelSize*, "Cylinder" = Zylinder mit Achse entlang X

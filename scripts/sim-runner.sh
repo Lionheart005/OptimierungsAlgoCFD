@@ -24,6 +24,12 @@ PROJECT_NAME="${SIM_PROJECT:-MantaAuv}"
 APP_PROJECT="$REPO_DIR/src/Automatisierung_v2/Automatisierung_v2.csproj"
 BIN_DIR="$REPO_DIR/src/Automatisierung_v2/bin/Debug/net9.0"
 APP_DLL="$BIN_DIR/Automatisierung_v2.dll"
+
+# Seit TODO-24 liegt alles Einstellbare im Projektordner. config/ enthaelt nur noch
+# die README und ggf. eine maschinenspezifische *.local.json -- es ist kein
+# Pflichtverzeichnis mehr und fehlt auf einem frischen Rechner voellig.
+PROJECTS_DIR="$REPO_DIR/src/projects"
+PROJECT_DIR="$PROJECTS_DIR/$PROJECT_NAME"
 CONFIG_DIR="$REPO_DIR/config"
 
 LOG_FILE="$REPO_DIR/simulation.log"
@@ -81,23 +87,37 @@ has_session() {
     tmux has-session -t "$SESSION" >/dev/null 2>&1
 }
 
-# Liest einen Wert aus config/simulation.json. Die local-Datei gewinnt, genau wie
-# im Programm. Reicht fuer flache String-Werte und kommt ohne JSON-Parser aus.
+# Fragt das Programm selbst nach dem WIRKSAMEN Wert einer Einstellung.
+#
+# Vorher fischte hier ein sed-Einzeiler in config/simulation.json. Das ging, solange
+# es genau eine Datei gab. Seit TODO-22/24 sind es bis zu vier Schichten ueber mehrere
+# Verzeichnisse -- doctor haette also Pfade geprueft, die im Lauf gar nicht gelten.
+# "--print-config" gibt SCHLUESSEL=WERT aus, eine Zeile je Eintrag, und laeuft vor dem
+# Kernel-Start (also ohne PicoGK und ohne Xvfb).
 config_value() {
-    local key="$1" value=""
-    local file
-    for file in "$CONFIG_DIR/simulation.json" "$CONFIG_DIR/simulation.local.json"; do
-        [ -f "$file" ] || continue
-        local found
-        found="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$file" | head -n 1)"
+    local key="$1"
 
-        # Bewusst if statt '[ -n "$found" ] && value="$found"': die Kurzform liefert
-        # Exit-Code 1, wenn der Schluessel in der Datei fehlt. Waere das die letzte
-        # Anweisung der Schleife, wuerde "set -e" das ganze Skript abbrechen --
-        # ausgerechnet bei einer simulation.local.json, die nur MaxIterations setzt.
-        if [ -n "$found" ]; then value="$found"; fi
-    done
-    printf '%s' "$value"
+    [ -f "$APP_DLL" ] || { printf ''; return 0; }
+
+    # "|| true": ein Abbruch des Programms soll hier nichts ausloesen, die fehlende
+    # Ausgabe meldet der Aufrufer selbst.
+    dotnet "$APP_DLL" "$PROJECT_NAME" --print-config 2>/dev/null \
+        | sed -n "s/^${key}=//p" | head -n 1 || true
+}
+
+# Ist das ein ausfuehrbares Programm -- als Pfad oder ueber den PATH? Seit TODO-24
+# stehen in der Konfiguration bloss noch "mpirun", "SU2_CFD" und "gmsh"; load_env legt
+# die passenden Verzeichnisse auf den PATH, und .NET loest den Namen darueber auf.
+resolve_tool() {
+    local candidate="$1"
+    [ -n "$candidate" ] || return 1
+
+    if [ -x "$candidate" ]; then
+        printf '%s' "$candidate"
+        return 0
+    fi
+
+    command -v "$candidate" 2>/dev/null || return 1
 }
 
 # libpicogk.so neben die DLL legen. Muss nach JEDEM dotnet build passieren --
@@ -152,41 +172,63 @@ cmd_doctor() {
     done
 
     say ""
-    say "--- Pfade aus config/simulation.json ---"
-    local mpirun_path su2_path gmsh_path
-    mpirun_path="$(config_value MpiRunPath)"
-    su2_path="$(config_value Su2Path)"
-    gmsh_path="$(config_value GmshPath)"
+    say "--- Programmpfade (wirksame Konfiguration des Projekts) ---"
 
-    local entry
-    for entry in "MpiRunPath|$mpirun_path" "Su2Path|$su2_path"; do
-        local name="${entry%%|*}" path="${entry#*|}"
-        if [ -z "$path" ]; then
-            fail "$name steht nicht in der Konfiguration"
-            problems=$((problems + 1))
-        elif [ -x "$path" ]; then
-            ok "$name -> $path"
-        else
-            fail "$name -> $path (nicht vorhanden oder nicht ausfuehrbar)"
-            problems=$((problems + 1))
-        fi
-    done
-
-    # GmshPath ist in der Vorgabe nur "gmsh", wird also ueber den PATH gesucht.
-    if [ -z "$gmsh_path" ]; then
-        fail "GmshPath steht nicht in der Konfiguration"
-        problems=$((problems + 1))
-    elif [ -x "$gmsh_path" ] || command -v "$gmsh_path" >/dev/null 2>&1; then
-        ok "GmshPath -> $gmsh_path"
+    if [ ! -f "$APP_DLL" ]; then
+        say "  [INFO]  noch nicht gebaut -- die Pfade lassen sich erst nach"
+        say "          'sim-runner.sh build' pruefen."
     else
-        fail "GmshPath -> $gmsh_path (weder Datei noch im PATH)"
-        problems=$((problems + 1))
+        local entry
+        for entry in MpiRunPath Su2Path GmshPath; do
+            local configured resolved
+            configured="$(config_value "$entry")"
+
+            if [ -z "$configured" ]; then
+                fail "$entry steht nicht in der Konfiguration"
+                problems=$((problems + 1))
+                continue
+            fi
+
+            if resolved="$(resolve_tool "$configured")"; then
+                if [ "$resolved" = "$configured" ]; then
+                    ok "$entry -> $resolved"
+                else
+                    ok "$entry -> $configured (ueber PATH: $resolved)"
+                fi
+            else
+                fail "$entry -> $configured (weder Datei noch im PATH)"
+                problems=$((problems + 1))
+            fi
+        done
     fi
 
     say ""
     say "--- Projekt ---"
     if [ -f "$APP_PROJECT" ]; then ok "csproj vorhanden"; else fail "csproj fehlt: $APP_PROJECT"; problems=$((problems + 1)); fi
-    if [ -d "$CONFIG_DIR" ]; then ok "config/ vorhanden"; else fail "config/ fehlt: $CONFIG_DIR"; problems=$((problems + 1)); fi
+
+    # config/ ist seit TODO-24 KEIN Pflichtverzeichnis mehr: es enthaelt nur noch den
+    # Notausgang, und auf einem frischen Rechner fehlt es schlicht. Was zaehlt, ist der
+    # Projektordner -- ohne ihn findet der Lauf seine Zahlen nicht.
+    if [ -d "$PROJECT_DIR" ]; then
+        ok "Projektordner vorhanden: src/projects/$PROJECT_NAME"
+    else
+        fail "Projektordner fehlt: $PROJECT_DIR"
+        if [ -d "$PROJECTS_DIR" ]; then
+            say "          Vorhanden sind: $(ls -1 "$PROJECTS_DIR" 2>/dev/null | tr '\n' ' ')"
+        fi
+        problems=$((problems + 1))
+    fi
+
+    # Eine vorhandene *.local.json ist kein Fehler, aber ein Sonderfall: sie ueberlebt
+    # jedes Deploy und haelt damit Werte fest, die niemand hochgeladen hat.
+    local local_files
+    local_files="$(find "$CONFIG_DIR" "$PROJECTS_DIR" -name '*.local.json' 2>/dev/null || true)"
+    if [ -n "$local_files" ]; then
+        say "  [ACHTUNG] Maschinenspezifische Dateien gefunden:"
+        printf '%s\n' "$local_files" | while IFS= read -r found; do say "            $found"; done
+        say "            Normalerweise sollte es keine geben -- siehe config/README.md."
+    fi
+
     if [ -f "$APP_DLL" ]; then ok "gebaute DLL vorhanden"; else say "  [INFO]  noch nicht gebaut (sim-runner.sh build)"; fi
 
     if [ -f "$BIN_DIR/libpicogk.so" ]; then
@@ -234,7 +276,10 @@ cmd_foreground() {
     local rc=0
     # xvfb-run -a: sucht sich selbst eine freie Display-Nummer, statt auf :99 zu
     # beharren und an einem alten, haengenden Xvfb zu scheitern.
-    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$CONFIG_DIR" >>"$LOG_FILE" 2>&1 || rc=$?
+    # Nur noch der Projektname. Das zweite Argument war frueher das config-Verzeichnis;
+    # seit TODO-24 waere es das PROJEKT-Verzeichnis, und das findet das Programm selbst,
+    # indem es von hier aus nach src/projects/ aufwaerts sucht.
+    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" >>"$LOG_FILE" 2>&1 || rc=$?
 
     echo "$rc" >"$EXIT_FILE"
     {

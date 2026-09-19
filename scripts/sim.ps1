@@ -353,9 +353,11 @@ try {
         }
 
         'doctor' {
-            # doctor prueft unter anderem die Pfade aus config/simulation.json und
-            # braucht deshalb einen Stand auf dem Server. Beim allerersten Aufruf
-            # laden wir ihn hier hoch -- gebaut wird dabei bewusst nicht.
+            # doctor prueft unter anderem die wirksamen Programmpfade und braucht
+            # deshalb einen Stand auf dem Server. Beim allerersten Aufruf laden wir
+            # ihn hier hoch -- gebaut wird dabei bewusst nicht. Die Pfadpruefung
+            # selbst funktioniert erst nach einem Build, weil doctor das Programm
+            # mit --print-config danach fragt (TODO-24); das meldet er auch so.
             if (-not (Test-RemoteDeployed)) {
                 Write-Step "Erster Kontakt mit $Server - lade den Code hoch"
                 Push-Sources

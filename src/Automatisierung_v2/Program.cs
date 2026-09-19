@@ -138,18 +138,17 @@ namespace MyPicoGkProject
             string name = definition.Name;
             string? projectDirectory = ProjectPaths.ResolveProjectDirectory(name, projectDirectoryArgument);
 
-            // Solange es keinen Projektordner gibt, bleibt es beim bisherigen Weg über config/.
-            // Diese Weiche fällt mit TODO-24 weg, wenn die Dateien umgezogen sind.
+            // Ohne Ordner gibt es keine Zahlen. Weiterzurechnen hiesse, stillschweigend mit den
+            // Code-Standards zu arbeiten — stundenlang, mit plausibel aussehenden Ergebnissen,
+            // die nichts mit den eingestellten Werten zu tun haben.
             if (projectDirectory == null)
-            {
-                Console.WriteLine(
-                    $"[CONFIG] Kein Ordner src/projects/{name}/ gefunden — Konfiguration kommt aus config/.");
-
-                var simulationFromConfig = JsonConfigLoader.LoadSimulationConfig();
-                var projectFromConfig = JsonConfigLoader.LoadProjectConfig(name, definition.CreateDefaults());
-
-                return new ProjectContext(name, null, null, simulationFromConfig, projectFromConfig);
-            }
+                throw new InvalidOperationException(
+                    $"[PROJEKT] Zum Projekt '{name}' wurde kein Ordner "
+                    + $"{ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{name}/ gefunden. "
+                    + "Dort liegen project.json, simulation.json und solvers/*.json. Gesucht wurde "
+                    + $"aufwärts von {JsonConfigLoader.Label(Environment.CurrentDirectory)}; ein anderer Ort "
+                    + $"lässt sich über die Umgebungsvariable {ProjectPaths.ProjectsDirectoryVariable} "
+                    + "oder als zweites Aufrufargument angeben.");
 
             Console.WriteLine($"[CONFIG] Projektordner: {JsonConfigLoader.Label(projectDirectory)}");
 

@@ -7,7 +7,7 @@ namespace MyPicoGkProject.Solvers.Cfd
     /// <summary>
     /// Vorgabedaten für den SU2-Solver: Fluideigenschaften, Referenzwerte, CFL-Steuerung
     /// und die Zuordnung der Ergebnisgrößen (TODO-26).
-    /// Werden aus <c>config/solvers/su2.json</c> geladen und per Konstruktor injiziert.
+    /// Werden aus <c>src/projects/&lt;Name&gt;/solvers/su2.json</c> geladen und per Konstruktor injiziert.
     /// Die Standardwerte hier entsprechen exakt dem, was vorher in
     /// <see cref="Su2ConfigGenerator"/> hardcodiert stand.
     /// </summary>

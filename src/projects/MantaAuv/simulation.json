@@ -1,0 +1,79 @@
+{
+  // ===================================================================
+  //  MantaAuv -- Framework-Einstellungen dieses Projekts
+  // ===================================================================
+  //
+  // Was hier fehlt, kommt aus den Standardwerten in
+  // Core/Models/SimulationConfig.cs. Eingetragen gehoert also nur, was vom
+  // Code-Standard ABWEICHT -- alles andere ist Rauschen, das beim naechsten
+  // Framework-Update veraltet.
+  //
+  // Ein unbekannter Schluessel bricht den Start ab (TODO-22). Der Abbruch nennt
+  // den Schluessel und den naechstaehnlichen gueltigen Namen.
+  //
+  // Ein zweites Projekt hat seine eigene Datei unter src/projects/<Name>/ und
+  // kommt dieser hier nicht in die Quere.
+  //
+  // Maschinenspezifische Ausnahmen gehoeren in eine simulation.local.json
+  // (gitignored). SOLLSTAND IST, DASS ES KEINE GIBT: findet der Start eine,
+  // meldet er sie mit jedem Schluessel, den sie diesem Projekt aushebelt.
+
+  // --- Pfade zu externer Software ---
+  // Bewusst PATH-relativ und nicht absolut: sim-runner.sh legt in load_env die
+  // richtigen Verzeichnisse auf den PATH, und .NET loest einen blossen
+  // Programmnamen darueber auf. Ein absoluter Pfad wuerde dieses Projekt an
+  // genau einen Rechner binden. Ob die Programme gefunden werden, prueft
+  // `.\scripts\sim.ps1 doctor` VOR dem Lauf.
+  "MpiRunPath": "mpirun",
+  "Su2Path": "SU2_CFD",
+  "GmshPath": "gmsh",
+
+  // --- Zeit & Umfang ---
+  // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.
+  // Fuer einen kurzen Testlauf hier heruntersetzen und neu deployen -- es gibt
+  // kein verstecktes zweites Stellrad mehr.
+  "MaxIterations": 10,
+  "VariantsPerIteration": 10,
+  "BaseVoxelResolution": 0.5,
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+
+  // --- Abschaltbare Framework-Bausteine ---
+  // Scaler aus: der Geometrie-Kernel arbeitet mit den echten Massen, ScaleFactor bleibt 1.
+  // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell.
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+
+  // --- CFD & SU2 ---
+  "MachNumber": 0.1,
+  "Su2MaxIterations": 500,
+  "CauchyElements": 150,
+  "CauchyTolerance": "1e-4",
+  "MpiCores": 12,
+  "GmshCores": 12,
+
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
+  "OptimizationAlgorithm": "Rsm",
+
+  // --- Evolutionärer Algorithmus ---
+  "MinimalDeviationExploration": 1.0,
+  "MinimalDeviationExploitation": 0.05,
+  "RoleFineTuner": 0.2,
+  "RoleCautious": 0.4,
+  "RoleNormal": 0.6,
+
+  // --- RSM (Antwortflächen-Verfahren) ---
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // --- Validierung des Champions (Bouncer) ---
+  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation.
+  // Achtung: prüfte früher den Drag; die Fitness reagiert empfindlicher,
+  // der Wert muss beim ersten echten Lauf nachjustiert werden.
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01
+}

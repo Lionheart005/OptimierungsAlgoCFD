@@ -53,19 +53,24 @@ namespace MyPicoGkProject.Core
         public List<ConfigLoadReport> Reports { get; } = new();
 
         /// <summary>
-        /// Lädt die Optionen eines Solvers oder Vernetzers, z.B. <c>"su2"</c> oder <c>"gmsh"</c>.
+        /// Lädt die Optionen eines Solvers oder Vernetzers aus
+        /// <c>&lt;Projektordner&gt;/solvers/&lt;name&gt;.json</c>, z.B. <c>"su2"</c> oder
+        /// <c>"gmsh"</c> — über alle vier Schichten aus TODO-22.
         ///
         /// <para>
-        /// Liegt ein Projektordner vor, gilt der Vierschichtenweg aus TODO-22 mit
-        /// <c>&lt;Projekt&gt;/solvers/&lt;name&gt;.json</c>. Gibt es ihn nicht, bleibt es beim
-        /// bisherigen Weg über <c>config/solvers/</c> — diese Weiche fällt mit TODO-24 weg,
-        /// wenn die Dateien umgezogen sind. Das Projekt merkt von beidem nichts.
+        /// Ohne Projektordner gelten die Code-Standards. Im regulären Lauf kommt das nicht vor
+        /// (<c>Program.cs</c> bricht vorher ab); es ist der Fall für Tests, die eine
+        /// Solver-Kette bauen, ohne ein Repo auf der Platte zu haben.
         /// </para>
         /// </summary>
         public T LoadSolverOptions<T>(string name) where T : class, new()
         {
             if (string.IsNullOrWhiteSpace(ProjectDirectory))
-                return JsonConfigLoader.LoadSolverOptions<T>(name, ConfigDirectory);
+            {
+                Console.WriteLine(
+                    $"[CONFIG] Kein Projektordner — '{name}' nutzt die Code-Standards.");
+                return new T();
+            }
 
             var result = JsonConfigLoader.LoadForProject(
                 new T(), $"solvers/{name}.json", ProjectDirectory!, ConfigDirectory);

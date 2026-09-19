@@ -5,7 +5,7 @@ namespace MyPicoGkProject.Core
     /// <summary>
     /// Erzeugt den Optimierungsalgorithmus anhand des Namens aus der Framework-Konfiguration
     /// (<see cref="SimulationConfig.OptimizationAlgorithm"/>, gesetzt in
-    /// <c>config/simulation.json</c>). Vorher stand die Wahl auskommentiert
+    /// <c>src/projects/&lt;Name&gt;/simulation.json</c>). Vorher stand die Wahl auskommentiert
     /// in <c>Program.cs</c>.
     /// </summary>
     public static class OptimizationAlgorithmFactory
