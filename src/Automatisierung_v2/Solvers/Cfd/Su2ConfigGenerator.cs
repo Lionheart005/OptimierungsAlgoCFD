@@ -30,6 +30,20 @@ namespace MyPicoGkProject.Solvers.Cfd
                 options.CflAdaptMax
             }.Select(value => value.ToString(CultureInfo.InvariantCulture)));
 
+            // Beides war vor TODO-26 fest verdrahtet. Leer bedeutet „nicht konfiguriert“ und
+            // fällt ohne Warnung auf den Code-Standard zurück — dasselbe Muster wie bei
+            // TunnelShape (TODO-11) und der Algorithmuswahl (TODO-10). Eine leere Zeile
+            // würde SU2 beim Einlesen sonst um die Ohren fliegen.
+            string convergenceField = string.IsNullOrWhiteSpace(options.ConvergenceField)
+                ? Su2SolverOptions.DefaultConvergenceField
+                : options.ConvergenceField.Trim();
+
+            string[] historyFields = options.HistoryOutput != null && options.HistoryOutput.Length > 0
+                ? options.HistoryOutput
+                : Su2SolverOptions.DefaultHistoryOutput;
+
+            string historyOutput = string.Join(", ", historyFields.Select(field => field.Trim()));
+
             string[] cfgContent = {
                 "%",
                 "% --- SOLVER & PHYSIK ---",
@@ -77,12 +91,12 @@ namespace MyPicoGkProject.Solvers.Cfd
                 "CONV_NUM_METHOD_TURB= SCALAR_UPWIND",
                 "% --- ABBRUCHKRITERIEN ---",
                 $"ITER= {config.Su2MaxIterations}",          
-                "CONV_FIELD= DRAG",
+                $"CONV_FIELD= {convergenceField}",
                 $"CONV_CAUCHY_ELEMS= {config.CauchyElements}",
                 $"CONV_CAUCHY_EPS= {config.CauchyTolerance}",
                 "CONV_STARTITER= 100",
                 "CONV_RESIDUAL_MINVAL= -8",
-                "HISTORY_OUTPUT= (ITER, RMS_RES, AERO_COEFF)",    
+                $"HISTORY_OUTPUT= ({historyOutput})",
                 "%",            
                 $"MESH_FILENAME= {Path.GetFileName(meshPath)}", 
                 "MESH_FORMAT= SU2",

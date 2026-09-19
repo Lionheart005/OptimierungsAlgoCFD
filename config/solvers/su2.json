@@ -18,6 +18,39 @@
   // Fehlt sie zur Laufzeit, warnt der Solver — der CD-Wert wäre sonst still falsch.
   "ReferenceAreaMetric": "FrontalArea",
 
+  // --- Ergebnisgrößen: welche Zahl kommt unter welchem Namen an? ---
+  // Links: unter welchem Namen die Fitness-Formel den Wert in PassiveParameters sieht.
+  // Rechts: wie die Spalte in der SU2-history.csv heisst.
+  // "Lift dazunehmen" ist damit eine Zeile hier und kein Eingriff in Solvers/.
+  //
+  // Verfuegbar sind alle Beiwerte aus AERO_COEFF (siehe HistoryOutput weiter unten):
+  //   CD  Widerstand      CL  Auftrieb       CSF Seitenkraft
+  //   CMx Rollmoment      CMy Nickmoment     CMz Giermoment
+  //
+  // DREI STOLPERSTEINE:
+  // 1. Objekte werden ADDITIV gemerged. Schreibt ein Projekt nur {"Lift": "CL"},
+  //    bekommt es "Drag" aus dem Code-Standard dazu. Eine Groesse wieder loszuwerden
+  //    geht nur ueber Su2SolverOptions.ResultMetrics im Code.
+  // 2. Eine konfigurierte, aber fehlende Spalte ist ein FEHLER: der Solver nennt die
+  //    tatsaechlich vorhandenen Spalten und wertet das Modell als fehlgeschlagen.
+  // 3. REF_AREA normiert ALLE Beiwerte, auch CL. Die oben gewaehlte Frontalflaeche ist
+  //    fuer den Widerstand richtig; wer auf Auftrieb optimiert, sollte pruefen, ob nicht
+  //    eine Fluegelflaeche die passendere Bezugsgroesse waere. Und CL haengt an der
+  //    Anstroemrichtung (FREESTREAM_VELOCITY) und an REF_ORIGIN_MOMENT_* -- beim ersten
+  //    Auftriebslauf einmal gegen eine bekannte Geometrie pruefen.
+  "ResultMetrics": {
+    "Drag": "CD"
+  },
+
+  // Groesse, an der SU2 seine Konvergenz misst (CONV_FIELD). Wer auf Auftrieb
+  // optimiert, will hier "LIFT" statt "DRAG".
+  "ConvergenceField": "DRAG",
+
+  // Welche Spaltengruppen SU2 ueberhaupt in die history.csv schreibt (HISTORY_OUTPUT).
+  // AERO_COEFF liefert saemtliche Beiwerte -- wer die Gruppe entfernt, nimmt damit
+  // jeder Zuordnung in ResultMetrics die Grundlage.
+  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
   // --- CFL-Steuerung ---
   "CflNumber": 5.0,
   "CflAdapt": true,

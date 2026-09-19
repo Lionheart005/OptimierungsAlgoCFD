@@ -25,6 +25,11 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.SpeedOfSound, loaded.SpeedOfSound);
             Assert.Equal(defaults.ReferenceLength, loaded.ReferenceLength);
             Assert.Equal(defaults.ReferenceAreaMetric, loaded.ReferenceAreaMetric);
+            // TODO-26: die Zuordnung der Ergebnisgrößen muss in der Datei stehen, damit sie
+            // ein neuer Nutzer überhaupt findet — der Code-Standard allein ist unsichtbar.
+            Assert.Equal(defaults.ResultMetrics, loaded.ResultMetrics);
+            Assert.Equal(defaults.ConvergenceField, loaded.ConvergenceField);
+            Assert.Equal(defaults.HistoryOutput, loaded.HistoryOutput);
             Assert.Equal(defaults.CflNumber, loaded.CflNumber);
             Assert.Equal(defaults.CflAdapt, loaded.CflAdapt);
             Assert.Equal(defaults.CflAdaptFactorDown, loaded.CflAdaptFactorDown);
