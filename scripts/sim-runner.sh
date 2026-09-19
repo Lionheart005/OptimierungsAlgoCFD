@@ -90,22 +90,46 @@ has_session() {
     tmux has-session -t "$SESSION" >/dev/null 2>&1
 }
 
-# Fragt das Programm selbst nach dem WIRKSAMEN Wert einer Einstellung.
+# Fragt das Programm EINMAL nach der wirksamen Konfiguration und merkt sich die Ausgabe.
 #
-# Vorher fischte hier ein sed-Einzeiler in config/simulation.json. Das ging, solange
-# es genau eine Datei gab. Seit TODO-22/24 sind es bis zu vier Schichten ueber mehrere
+# Vorher fischte hier ein sed-Einzeiler in config/simulation.json. Das ging, solange es
+# genau eine Datei gab. Seit TODO-22/24 sind es bis zu vier Schichten ueber mehrere
 # Verzeichnisse -- doctor haette also Pfade geprueft, die im Lauf gar nicht gelten.
 # "--print-config" gibt SCHLUESSEL=WERT aus, eine Zeile je Eintrag, und laeuft vor dem
 # Kernel-Start (also ohne PicoGK und ohne Xvfb).
+#
+# WICHTIG: "das Programm konnte nicht gefragt werden" und "der Schluessel ist nicht
+# konfiguriert" sind zwei verschiedene Befunde. Die erste Fassung hat beides zu
+# "steht nicht in der Konfiguration" verschmolzen und die Ausgabe mit 2>/dev/null
+# verworfen -- ein veralteter Build sah damit aus wie eine kaputte Konfiguration.
+# Das Programm meldet Bedienfehler ausserdem auf stdout, nicht auf stderr.
+CONFIG_DUMP=""
+CONFIG_ERROR=""
+
+load_effective_config() {
+    CONFIG_DUMP=""
+    CONFIG_ERROR=""
+
+    if [ ! -f "$APP_DLL" ]; then
+        CONFIG_ERROR="das Programm ist noch nicht gebaut"
+        return 0
+    fi
+
+    if ! CONFIG_DUMP="$(dotnet "$APP_DLL" "$PROJECT_NAME" --print-config 2>&1)"; then
+        CONFIG_ERROR="das Programm hat mit einem Fehler abgebrochen"
+        return 0
+    fi
+
+    # Der Aufruf lief durch, lieferte aber keine SCHLUESSEL=WERT-Zeilen. Haeufigster
+    # Grund: die DLL auf dem Server ist aelter als "--print-config" und hat das
+    # Argument als Konfigurationsverzeichnis gedeutet.
+    if ! printf '%s\n' "$CONFIG_DUMP" | grep -q '^MpiRunPath='; then
+        CONFIG_ERROR="das Programm kennt '--print-config' nicht (veralteter Build?)"
+    fi
+}
+
 config_value() {
-    local key="$1"
-
-    [ -f "$APP_DLL" ] || { printf ''; return 0; }
-
-    # "|| true": ein Abbruch des Programms soll hier nichts ausloesen, die fehlende
-    # Ausgabe meldet der Aufrufer selbst.
-    dotnet "$APP_DLL" "$PROJECT_NAME" --print-config 2>/dev/null \
-        | sed -n "s/^${key}=//p" | head -n 1 || true
+    printf '%s\n' "$CONFIG_DUMP" | sed -n "s/^$1=//p" | head -n 1
 }
 
 # Ist das ein ausfuehrbares Programm -- als Pfad oder ueber den PATH? Seit TODO-24
@@ -177,9 +201,22 @@ cmd_doctor() {
     say ""
     say "--- Programmpfade (wirksame Konfiguration des Projekts) ---"
 
-    if [ ! -f "$APP_DLL" ]; then
-        say "  [INFO]  noch nicht gebaut -- die Pfade lassen sich erst nach"
-        say "          'sim-runner.sh build' pruefen."
+    load_effective_config
+
+    if [ -n "$CONFIG_ERROR" ]; then
+        fail "Die wirksame Konfiguration laesst sich nicht abfragen: $CONFIG_ERROR"
+        say  "          Aufruf war:  dotnet <DLL> $PROJECT_NAME --print-config"
+
+        if [ -n "$CONFIG_DUMP" ]; then
+            say "          Was das Programm gesagt hat:"
+            printf '%s\n' "$CONFIG_DUMP" | tail -n 15 | while IFS= read -r line; do
+                say "            $line"
+            done
+        fi
+
+        say "          Das ist KEIN Pfadproblem -- die Pfade wurden gar nicht geprueft."
+        say "          Meist hilft ein frischer Build:  .\\scripts\\sim.ps1 build"
+        problems=$((problems + 1))
     else
         local entry
         for entry in MpiRunPath Su2Path GmshPath; do

@@ -241,9 +241,26 @@ function Push-Sources {
         & scp -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
         if ($LASTEXITCODE -ne 0) { throw "scp ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
 
+        # Verwaiste Dateien entfernen, BEVOR entpackt wird.
+        #
+        # Ein Deploy ueberschreibt nur, er loescht nie. Wird eine Datei umbenannt oder
+        # verschoben, liegt sie auf dem Server danach doppelt -- und bei C#-Dateien heisst
+        # das: derselbe Typ zweimal, der Build scheitert mit CS0101. Genau das ist beim
+        # Umzug nach src/projects/ passiert.
+        #
+        # Ausgenommen sind *.local.json (die sollen ein Deploy ueberleben, das ist ihr
+        # ganzer Zweck) sowie bin/ und obj/, damit der Build inkrementell bleibt und
+        # libpicogk.so liegen bleibt.
+        #
+        # Der Tarball liegt zu diesem Zeitpunkt schon drueben: schlaegt das Entpacken
+        # fehl, ist "tar -xzf deploy.tar.gz" im Repo-Verzeichnis die Reparatur.
+        $prune = "find src scripts config -type f ! -name '*.local.json' " +
+                 "-not -path '*/bin/*' -not -path '*/obj/*' -delete 2>/dev/null; " +
+                 "find src scripts config -type d -empty -delete 2>/dev/null; true"
+
         # Entpacken, Zeilenenden der Shell-Skripte hart auf LF ziehen (falls sie
         # doch einmal mit CRLF aus dem git-Checkout kommen) und ausfuehrbar machen.
-        $unpack = "tar -xzf deploy.tar.gz && rm -f deploy.tar.gz && sed -i 's/\r`$//' scripts/*.sh && chmod +x scripts/*.sh"
+        $unpack = "$prune && tar -xzf deploy.tar.gz && rm -f deploy.tar.gz && sed -i 's/\r`$//' scripts/*.sh && chmod +x scripts/*.sh"
         Invoke-Remote -CommandLine $unpack | Out-Null
     }
     finally {
@@ -281,9 +298,12 @@ function Invoke-Deploy {
     if ($wasRunning -and $NoRestart) {
         Write-Warn "Geaenderter Code wird hochgeladen, aber NICHT gebaut (-NoRestart)."
         Write-Warn "Der laufende Lauf rechnet mit der alten Version weiter; ein Build wuerde"
-        Write-Warn "ihm die DLL unter den Fuessen wegziehen. Gebaut wird beim naechsten Start."
+        Write-Warn "ihm die DLL unter den Fuessen wegziehen."
         Push-Sources
-        Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
+        # Bewusst KEIN .deploy_hash: der Stand gilt erst als uebernommen, wenn er auch
+        # gebaut ist. Sonst meldet das naechste Deploy "unveraendert" und der Build
+        # unterbleibt fuer immer -- die DLL bliebe auf ewig die alte.
+        Write-Warn "Der Stand gilt als offen; das naechste Deploy baut ihn."
         return
     }
 
@@ -293,10 +313,15 @@ function Invoke-Deploy {
     }
 
     Push-Sources
-    Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
     Write-Step "Bauen auf $Server"
     Invoke-Runner -Arguments 'build'
+
+    # Der Hash wird ERST nach einem erfolgreichen Build geschrieben. Stand er vorher da
+    # und der Build scheiterte, meldete jedes weitere Deploy "Code unveraendert" und
+    # baute nie wieder -- der Server rechnete dann dauerhaft mit einer alten DLL,
+    # waehrend alles danach aussah, als sei der neue Stand drueben.
+    Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
