@@ -1,5 +1,13 @@
 # Architektur-Refactoring: Projektbasiertes Plugin-System
 
+> **⚠ Überholt in Teilen (19.09.2026).** Die Design-Entscheidungen 1–6 und die TODOs 1–20
+> gelten weiter und sind erledigt. **Die Ordner- und Konfigurationsstruktur weiter unten ist
+> es nicht mehr:** `projektbuendel.md` hat sie ersetzt — die JSONs liegen nicht mehr unter
+> `config/`, sondern in `src/projects/<Name>/`, der `switch` in `Program.cs` ist einer
+> `IProjectDefinition` gewichen, und `Ergebnisse/` ist nach Projekten getrennt. Der aktuelle
+> Stand steht in [`projektbuendel.md`](projektbuendel.md) und in
+> `src/Automatisierung_v2/README.md`. **Offen ist aus diesem Plan nur noch TODO-21.**
+>
 > **Stand: 18.09.2026** — Branch `Refactoring`, letzter Commit `468f76f TODO-20`.
 > **Block A ist fertig** (TODO-1 bis TODO-5 + TODO-13 + TODO-18): `Core/` enthält kein
 > projektspezifisches Wissen mehr, der Bouncer ist Framework-Bestandteil und prüft die

@@ -44,9 +44,15 @@ Je spezifischer, desto später — und gitignoriert schlägt eingecheckt.
 ## Warum es diese Dateien trotzdem nicht geben soll
 
 Der einzige Grund für sie war, dass der Server andere Programmpfade braucht als der
-Windows-Entwicklungsrechner. Seit TODO-24 stehen dort aber `mpirun`, `SU2_CFD` und
-`gmsh` ohne Verzeichnis, und `sim-runner.sh load_env` legt die passenden Verzeichnisse
-auf den `PATH`. Damit findet der Server sie von selbst.
+Windows-Entwicklungsrechner. Seit TODO-24 steht im **Code-Standard** aber `mpirun`,
+`SU2_CFD` und `gmsh` ohne Verzeichnis, und `sim-runner.sh load_env` legt die passenden
+Verzeichnisse auf den `PATH`.
+
+Und wenn ein Rechner sie dort trotzdem nicht findet, ist der richtige Ort dafür die
+`simulation.json` **des Projekts** — eingecheckt, sichtbar, mitdeployt. MantaAuv macht
+genau das: sie trägt die drei absoluten Pfade des Hochschulservers, weil bei
+`ssh host befehl` keine interaktive Shell startet und dort nichts aus `conda init`
+greift. Auch das ist also kein Grund für eine Datei in diesem Ordner.
 
 Alles andere — Laufumfang, Physik, Netzfeinheit — ist Projektsache und gehört nach
 `src/projects/<Name>/`. Eine `*.local.json` mit solchen Werten ist ein verstecktes

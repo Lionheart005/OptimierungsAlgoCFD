@@ -3,6 +3,62 @@
 > **Stand: 19.09.2026** — Nachfolgeplan zu `architektur_refactoring.md` (dort offen: TODO-21,
 > der End-to-End-Lauf auf dem Server). Die Nummerierung wird hier mit **TODO-22** fortgesetzt.
 
+---
+
+## ✅ ERLEDIGT — alle Arbeitsschritte, Branch `ProjectOrganisation`
+
+| Schritt | Commit | Inhalt |
+|---|---|---|
+| TODO-22 | `a2ffa89` | Vier Konfigurationsschichten, strikte Schlüsselprüfung, Warnblock für `*.local.json` |
+| TODO-23 | `7edd050` | `IProjectDefinition` + `ProjectRegistry`, `switch` raus aus `Program.cs` |
+| TODO-24 | `409f970`, `c575192` | MantaAuv nach `src/projects/`, `config/` auf die README eingedampft |
+| TODO-25 | `069ad72` | `Ergebnisse/<Projekt>/` + `effective-config.json` je Lauf |
+| TODO-26 | `79ae8fd`, `1eeb36b` | SU2-`ResultMetrics`, `RequiredMetrics` der Fitness |
+| TODO-27 | `43b40f9` | `src/projects/_Vorlage/` + `scripts/new-project.ps1` |
+| TODO-28 | `d9ca9b3` | Kein stiller Projekt-Standard mehr, Befehl `projects` |
+| TODO-29 | `29f51d9` | `MeshMetrics` + `PicoGkMeshMetrics` |
+| TODO-30 | dieser Commit | `src/projects/README.md`, Framework- und Skript-README nachgezogen |
+
+**Verifikationsstand:** `dotnet build Automatisierung.sln` → 0 Fehler, 0 Warnungen.
+`dotnet test Automatisierung.sln` → **251/251**, davon 139 neu in diesem Plan (112 → 251).
+
+**Die drei Anforderungen sind erfüllt:** jede JSON-Datei ist projektabhängig, zwei Projekte
+existieren nebeneinander ohne sich zu überschreiben (auch bei den Ergebnissen), und
+umgeschaltet wird nur über `-Project` beim Startaufruf. Ein neues Projekt ist ein Ordner,
+erzeugt von `scripts/new-project.ps1`; am Framework-Code ändert sich dafür nichts.
+
+### Abweichungen vom Plan, mit Begründung
+
+| Stelle | Plan | Umgesetzt | Warum |
+|---|---|---|---|
+| `CfdProjectDefinition` | `Core/Pipeline/` | `Composition/` | Sie nennt `PicoGkKernel`, `GmshCfdMesher` und `Su2Solver` beim Namen; TODO-20 hat erzwungen, dass `Core/` kein `using` auf `Kernels`/`Solvers`/`Projects` hat |
+| Pflicht-Metriken im Controller | `IFitnessCalculator` durchreichen | reine Namensliste | Sonst käme die mit TODO-13 entfernte Abhängigkeit zurück |
+| `_Vorlage` | in TODO-24 | in TODO-27 | Die Vorlage braucht `IProjectDefinition`, das erst TODO-23 gebracht hat |
+| Programmpfade MantaAuv | PATH-relativ, `*.local.json` entfällt | **Code-Standard** PATH-relativ, MantaAuvs `simulation.json` trägt absolute Pfade | Der Hochschulserver findet die Programme nicht über den `PATH` (`ssh host befehl` startet keine interaktive Shell). Die Ausnahme steht damit beim Projekt — eingecheckt, sichtbar, mitdeployt — statt in einer unsichtbaren `local`-Datei |
+| `_Vorlage`-Klassen | im Projekt-Build | vom **Testprojekt** compiliert, aus dem Programm-Build ausgeschlossen | Im Programm wäre es eine Definition namens `MeinProjekt` ohne Ordner ⇒ Abbruch. Gar nicht compiliert wäre die Vorlage totes Textmaterial: so bricht eine geänderte Schnittstelle sofort `dotnet test` |
+| Vorlagen-JSONs | alle Schlüssel = Code-Standard | zwei Ausnahmen: `MaxIterations=1`, `VariantsPerIteration=2` | „Lauffähig als Rauchtest" aus demselben Satz. 100 CFD-Varianten sind kein Rauchtest. Ein Test lässt genau diese zwei Abweichungen zu |
+| `-Project` in `sim.ps1` | — | Vorgabe `MantaAuv` bleibt, wird aber gemeldet | Sie steht im Aufruf und ist damit sichtbar; auf der Server-Seite, wo sie unsichtbar war, ist sie ersatzlos entfallen |
+
+### Was danach offen bleibt
+
+* **TODO-21 aus dem Vorgängerplan:** der End-to-End-Lauf auf dem Linux-Server und der
+  Vergleich gegen `main`. Deploy und `doctor` laufen inzwischen sauber durch (geprüft am
+  19.09.2026), gerechnet wurde noch nicht.
+* **`sim-runner.sh` ist ungetestet:** auf dem Entwicklungsrechner gibt es kein bash und kein
+  WSL, nicht einmal `bash -n`. Geprüft sind nur Schlüsselwort- und Quote-Bilanz sowie die
+  PowerShell-Syntax der `.ps1`. Die harmlosen ersten Aufrufe auf dem Server sind `projects`
+  und `doctor`.
+* **Die Vorlage ist noch nie gelaufen:** sie compiliert, ihre Fitness ist geprüft, aber ein
+  echter Rauchtest (`new-project.ps1`, dann zwei Varianten auf dem Server) steht aus.
+* **`PicoGkMeshMetrics` ist nicht getestet** — jeder Aufruf braucht eine laufende
+  PicoGK-Umgebung. Geprüft ist die Rechnung dahinter.
+* **`BouncerTolerance`** ist seit TODO-3 strenger und will nach dem ersten echten Lauf
+  nachjustiert werden.
+* **Kosmetik:** `Core/Configuration/JsonConfigLoader.cs` trägt in seinen Kommentaren doppelt
+  kodiertes UTF-8 („LÃ¤dt" statt „Lädt"). Keine Codezeile betroffen.
+
+---
+
 ## Ziel
 
 Drei Anforderungen, wörtlich aus der Aufgabenstellung:
@@ -424,7 +480,7 @@ Beispiel-`history.csv`, die CD, CL und CMy enthält; Test, dass `CM` nicht verse
 Test, dass eine konfigurierte, aber fehlende Spalte den Record als fehlgeschlagen markiert.
 **Unabhängig von TODO-22 bis 25** — kann vorgezogen werden.
 
-### TODO-27 — Vorlage und Anlege-Befehl
+### TODO-27 — Vorlage und Anlege-Befehl ✅ *(Commit `43b40f9`)*
 `src/projects/_Vorlage/` mit durchkommentierten JSONs (alle Schlüssel mit den Code-Standards als
 Wert), einem Geometrie-Generator, der einen Quader baut und Volumen/Oberfläche/Spannweite meldet,
 und einer Fitness, die nur den Widerstand minimiert — lauffähig als Rauchtest.
@@ -432,7 +488,7 @@ und einer Fitness, die nur den Widerstand minimiert — lauffähig als Rauchtest
 Startbefehl. **Nicht** über `JsonConfigLoader.Save` erzeugen: das schreibt JSON ohne Kommentare und
 vernichtet genau die Erklärungen, die einen neuen Nutzer tragen.
 
-### TODO-28 — Skripte nachziehen
+### TODO-28 — Skripte nachziehen ✅ *(Commits `c1825b5`, `d9ca9b3`)*
 * `sim.ps1`: `-Project` bleibt der Umschalter; `$DeployRoots` deckt `src/projects` über `src`
   bereits ab; neuer Befehl `projects` (listet, was der Server kennt). Der `*.local.json`-Filter in
   `Get-DeployFiles` ist ein Namensmuster und schützt die neuen Projekt-Locals ohne Änderung.
@@ -442,13 +498,32 @@ vernichtet genau die Erklärungen, die einen neuen Nutzer tragen.
 * `doctor` darf ein fehlendes `config/` nicht mehr als Fehler werten (`sim-runner.sh:189`): auf
   einem frischen Rechner ist der Ordner leer und damit in git unsichtbar.
 
-### TODO-29 — optional: `MeshMetrics`-Helfer
+### TODO-29 — optional: `MeshMetrics`-Helfer ✅ *(Commit `29f51d9`)*
 Oberfläche, Hüllquader, Spannweite und Volumen aus dem Dreiecksnetz, damit Projekte das nicht
 jeweils neu schreiben. Rein additiv, blockiert nichts.
 
-### TODO-30 — Dokumentation
+### TODO-30 — Dokumentation ✅
 `src/projects/README.md`: „So legst du ein Projekt an" in sechs Schritten. Ergänzungen in
 `scripts/README.md` und `src/Automatisierung_v2/README.md`. Diesen Plan als erledigt markieren.
+
+**Umgesetzt.** `src/projects/README.md` ist neu (sechs Schritte plus eine Tabelle „wenn etwas
+nicht auftaucht", die die fünf häufigsten Abbruchmeldungen ihren Ursachen zuordnet).
+
+Beim Framework-README sind es keine Ergänzungen geblieben: es beschrieb noch den `switch` in
+`Program.cs` und `config/projects/<Name>.json` als Ablageort, und die Anleitung „Neues Projekt
+anlegen" nannte einen `case`, den es nicht mehr gibt. Eine Anleitung, die in die Irre führt, ist
+schlechter als keine — nachgezogen sind deshalb: Projektwahl und Registry, die vier Schichten
+samt Warnblock und `--print-config`, die Programmpfade (Code-Standard PATH-relativ, MantaAuv
+absolut), `ResultMetrics`, `Ergebnisse/<Projekt>/`, die Schichten-Übersicht mit `Composition/`
+und `src/projects/`, `IProjectDefinition` als achtes Interface, `MeshMetrics`, die drei
+Fangnetz-Testgruppen und die Testzahl (112 → 251).
+
+`scripts/README.md`: `new-project.ps1` und `projects` aufgenommen, die Projektvorgabe erklärt,
+die scp-Beispiele auf `Ergebnisse/<Projekt>/` gezogen — und die Passage über das Aufräumen beim
+Deploy korrigiert: sie behauptete noch, gelöschte Dateien blieben auf dem Server liegen.
+
+`config/README.md`: klargestellt, dass ein Projekt selbst absolute Programmpfade tragen darf
+(und MantaAuv es tut) — auch das ist kein Grund für eine `*.local.json`.
 
 ---
 
