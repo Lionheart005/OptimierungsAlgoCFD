@@ -1,0 +1,88 @@
+{
+  // ===================================================================
+  //  MeinProjekt -- Projektvorgaben
+  // ===================================================================
+  //
+  // Die Manifestdatei heisst in JEDEM Projekt "project.json" (Entscheidung 2).
+  // Ein Dateiname, der ueberall derselbe ist, kann nicht mit dem Projektnamen
+  // verwechselt werden -- "config/projects/MantaAuv.json" konnte das.
+  //
+  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername
+  // (Entscheidung 1): heisst der Ordner "Propeller", heisst das Projekt so, und
+  // gestartet wird mit
+  //
+  //     .\scripts\sim.ps1 run -Project Propeller
+  //
+  // Was hier fehlt, kommt aus MeinProjektProject.CreateDefaults() nebenan. Diese
+  // Datei und der Code-Standard dort sind absichtlich deckungsgleich -- so siehst
+  // du an einer Stelle alles, was es gibt, und ein Test haelt beide zusammen
+  // (TemplateProjectTests).
+  //
+  // Ein unbekannter Schluessel bricht den Start ab -- ausser INNERHALB der
+  // Zuordnungen unten: dort sind die Schluessel Parameternamen und frei waehlbar.
+  //
+  // Nur Zahlen und Namen -- Geometrie-Erzeugung und Fitness-Formel bleiben
+  // C#-Code, nebenan in diesem Ordner (Entscheidung 7).
+  //
+  // Das Optimierungsverfahren steht in simulation.json ("OptimizationAlgorithm"),
+  // weil das Verfahren eine Framework-Einstellung ist und keine Projekteigenschaft.
+
+  // --- Startwerte der aktiven Parameter (mm) ---
+  // Diese Namen sind der Vertrag mit dem Geometrie-Generator: er liest sie in
+  // MeinProjektGeometryGenerator.GenerateAndExport wieder heraus. Wer hier einen
+  // Parameter umbenennt, muss ihn dort mitbenennen -- sonst rechnet der Generator
+  // still mit seinem eingebauten Ersatzwert weiter.
+  "BaseParameters": {
+    "Length": 50.0,
+    "Width": 30.0,
+    "Height": 20.0
+  },
+
+  // --- Anfaengliche Mutationsstaerke (Sigma-Streuung) ---
+  // Wie weit der Algorithmus je Parameter vom Arbeitspunkt weggeht. Zu klein =
+  // der Lauf tastet sich nie vom Startpunkt weg, zu gross = er springt wild.
+  // Faustregel: etwa ein Zehntel der Spanne aus ParameterBounds.
+  "MaxDeviations": {
+    "Length": 5.0,
+    "Width": 3.0,
+    "Height": 2.0
+  },
+
+  // --- Harte Grenzen fuer physikalische Plausibilitaet ---
+  // Der Algorithmus verlaesst diese Grenzen nicht. Sie sind die einzige Stelle,
+  // die verhindert, dass eine Variante mit 0 mm Hoehe vernetzt werden soll.
+  "ParameterBounds": {
+    "Length": { "Min": 20.0, "Max": 100.0 },
+    "Width": { "Min": 10.0, "Max": 80.0 },
+    "Height": { "Min": 5.0, "Max": 50.0 }
+  },
+
+  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
+  //
+  // LEER, WEIL DIE VORLAGEN-FITNESS NUR DEN WIDERSTAND MINIMIERT:
+  // Fitness = 1 / Drag, mehr braucht sie nicht.
+  //
+  // So nimmst du ein Ziel dazu -- am Beispiel eines erlaubten Volumenbereichs:
+  //   1. hier eintragen:   "MinimumAllowedVolume": 2000.0
+  //   2. in MeinProjektProject.CreateDefaults() denselben Wert eintragen
+  //      (das ist der Code-Standard, falls diese Datei ihn nicht nennt)
+  //   3. in MeinProjektFitnessCalculator den Namen in RequiredTargets aufnehmen
+  //      und den Wert in der Formel benutzen
+  //
+  // Schritt 3 ist der wichtige: was in RequiredTargets steht, prueft der
+  // Konstruktor beim Verdrahten. Fehlt es, bricht der Lauf in der ersten Sekunde
+  // ab und nicht nach Stunden Rechenzeit (TODO-16). MantaAuv macht das mit
+  // MinimumAllowedVolume, MaximumAllowedVolume und DragBalanceFactor vor.
+  "OptimizationTargets": {},
+
+  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
+  //
+  // Nur was eine LAENGE ist, gehoert hier hinein. Der RubberBandScaler rechnet
+  // die Geometrie auf die PicoGK-Arbeitsgroesse (TargetPicoGkSize) herunter und
+  // die Ergebnisse zurueck; ein dimensionsloser Parameter -- ein Verhaeltnis, ein
+  // Winkel, ein Zaehlwert -- wuerde dabei falsch mitskaliert. MantaAuv laesst
+  // "TailTaper" aus genau diesem Grund bewusst weg.
+  //
+  // Hier sind alle drei Parameter Kantenlaengen, also stehen alle drei drin.
+  "DimensionalParameters": [ "Length", "Width", "Height" ]
+}

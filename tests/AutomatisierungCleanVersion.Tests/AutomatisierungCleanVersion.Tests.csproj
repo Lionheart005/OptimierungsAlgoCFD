@@ -23,4 +23,22 @@
     <ProjectReference Include="..\..\src\Automatisierung_v2\Automatisierung_v2.csproj" />
   </ItemGroup>
 
+  <!--
+    src/projects/_Vorlage/ wird HIER compiliert, nicht im Programm (TODO-27).
+
+    Das Programm muss die Vorlage ausschliessen: sie bringt eine vollstaendige
+    IProjectDefinition mit dem Platzhalternamen "MeinProjekt" mit, zu dem es keinen
+    Projektordner gibt. Die ProjectRegistry wuerde beim Start abbrechen.
+
+    Gar nicht compiliert waere sie aber totes Textmaterial. Aendert sich eine Schnittstelle
+    des Frameworks, soll die Vorlage MIT brechen, und zwar hier und sofort, nicht erst, wenn
+    Monate spaeter jemand ein neues Projekt daraus anlegt. Dass die Klassen dadurch in der
+    Test-Assembly landen, stoert nichts: ProjectRegistry.Discover() scannt die
+    Programm-Assembly, nicht diese.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\projects\_Vorlage\**\*.cs"
+             Exclude="..\..\src\projects\_Vorlage\**\bin\**;..\..\src\projects\_Vorlage\**\obj\**" />
+  </ItemGroup>
+
 </Project>

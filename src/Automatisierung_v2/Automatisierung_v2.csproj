@@ -23,9 +23,16 @@
     Die JSON-Dateien der Projekte werden bewusst NICHT mitkopiert: sie laegen dann in bin/,
     und eine Aenderung an der Quelldatei wuerde erst nach einem Rebuild wirken. Diese Sorte
     Verwirrung will man bei einem mehrstuendigen Lauf nicht.
+
+    AUSGENOMMEN IST _Vorlage (TODO-27). Die Vorlage bringt eine vollstaendige
+    IProjectDefinition mit. Waere sie im Build, faende die ProjectRegistry beim Start ein
+    Projekt namens "MeinProjekt", zu dem es keinen Ordner gibt, und wuerde zu Recht
+    abbrechen. Compiliert wird der Ordner trotzdem, naemlich vom Testprojekt: aendert sich
+    eine Schnittstelle des Frameworks, soll das ein Testfehler sein und keine Ueberraschung
+    beim Anlegen des naechsten Projekts.
   -->
   <ItemGroup>
-    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**" />
+    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Vorlage\**" />
   </ItemGroup>
 
 </Project>
