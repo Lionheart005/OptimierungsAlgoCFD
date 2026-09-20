@@ -1,0 +1,81 @@
+{
+  // ===================================================================
+  //  MeinProjekt -- SU2-Solver
+  // ===================================================================
+  //
+  // Auch diese Datei nennt JEDEN Schluessel mit dem Code-Standard aus
+  // Solvers/Cfd/Su2SolverOptions.cs -- als Nachschlagewerk. In einem echten
+  // Projekt bleibt nur stehen, was abweicht; der Rest darf weg.
+  //
+  // Ein unbekannter Schluessel bricht den Start ab -- ausser innerhalb von
+  // "ResultMetrics", wo die Schluessel Metriknamen sind und frei waehlbar.
+  //
+  // Nicht hier, sondern in ../simulation.json: MachNumber, Su2MaxIterations,
+  // CauchyElements, CauchyTolerance, MpiCores und die Programmpfade.
+  //
+  // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
+  // (gitignored). Sollstand ist, dass es keine gibt.
+
+  // --- Fluideigenschaften ---
+  // Der Standard ist Meerwasser -- fuer Luft etwa 1.225 kg/m3 und 1.81e-5 Pa*s.
+  "Density": 1025.0,            // kg/m3
+  "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
+  "TurbulenceModel": "SA",      // SA oder SST
+  "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um
+
+  // --- Referenzwerte ---
+  "ReferenceLength": 0.01,
+
+  // Metrik aus der Geometrie (in mm2), aus der SU2 REF_AREA bildet. Der Name
+  // muss einer sein, den der Geometrie-Generator per AddMetric meldet --
+  // MeinProjektGeometryGenerator liefert "FrontalArea" genau dafuer. Fehlt die
+  // Metrik zur Laufzeit, warnt der Solver und rechnet mit einem Ersatzwert
+  // weiter; die Beiwerte waeren dann um Groessenordnungen falsch (TODO-12).
+  "ReferenceAreaMetric": "FrontalArea",
+
+  // --- Ergebnisgroessen: welche Zahl kommt unter welchem Namen an? ---
+  // Links: unter welchem Namen die Fitness-Formel den Wert in PassiveParameters
+  //        sieht (MeinProjektFitnessCalculator liest "Drag").
+  // Rechts: wie die Spalte in der SU2-history.csv heisst.
+  // "Lift dazunehmen" ist damit eine Zeile hier und kein Eingriff in Solvers/.
+  //
+  // Verfuegbar sind alle Beiwerte aus AERO_COEFF (siehe HistoryOutput unten):
+  //   CD  Widerstand      CL  Auftrieb       CSF Seitenkraft
+  //   CMx Rollmoment      CMy Nickmoment     CMz Giermoment
+  //
+  // DREI STOLPERSTEINE:
+  // 1. Objekte werden ADDITIV gemerged. Schreibst du hier nur {"Lift": "CL"},
+  //    bekommst du "Drag" aus dem Code-Standard dazu. Eine Groesse wieder
+  //    loszuwerden geht nur ueber Su2SolverOptions.ResultMetrics im Code.
+  // 2. Eine konfigurierte, aber fehlende Spalte ist ein FEHLER: der Solver nennt
+  //    die tatsaechlich vorhandenen Spalten und wertet das Modell als
+  //    fehlgeschlagen. Wer eine Groesse eintraegt, braucht sie also auch.
+  // 3. REF_AREA normiert ALLE Beiwerte, auch CL. Die oben gewaehlte
+  //    Frontalflaeche ist fuer den Widerstand richtig; wer auf Auftrieb optimiert, sollte
+  //    pruefen, ob nicht eine Fluegelflaeche die passendere Bezugsgroesse waere.
+  //    Und CL haengt an der Anstroemrichtung (FREESTREAM_VELOCITY) und an
+  //    REF_ORIGIN_MOMENT_* -- beim ersten Auftriebslauf einmal gegen eine
+  //    bekannte Geometrie pruefen.
+  "ResultMetrics": {
+    "Drag": "CD"
+  },
+
+  // Groesse, an der SU2 seine Konvergenz misst (CONV_FIELD). Wer auf Auftrieb
+  // optimiert, will hier "LIFT" statt "DRAG".
+  "ConvergenceField": "DRAG",
+
+  // Welche Spaltengruppen SU2 ueberhaupt in die history.csv schreibt
+  // (HISTORY_OUTPUT). AERO_COEFF liefert saemtliche Beiwerte -- wer die Gruppe
+  // entfernt, nimmt damit jeder Zuordnung in ResultMetrics die Grundlage.
+  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
+  // --- CFL-Steuerung ---
+  // Groesser = schnellere, aber unruhigere Konvergenz. Divergiert SU2, ist
+  // CflNumber die erste Zahl, die man halbiert.
+  "CflNumber": 5.0,
+  "CflAdapt": true,
+  "CflAdaptFactorDown": 0.5,
+  "CflAdaptFactorUp": 1.2,
+  "CflAdaptMin": 1.0,
+  "CflAdaptMax": 50.0
+}

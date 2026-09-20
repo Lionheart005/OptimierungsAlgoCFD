@@ -8,7 +8,7 @@ namespace AutomatisierungCleanVersion.Tests
 {
     /// <summary>
     /// TODO-10: die Algorithmuswahl kommt aus der Framework-Konfiguration
-    /// (config/simulation.json) statt aus auskommentiertem Code in Program.cs.
+    /// (simulation.json des Projekts) statt aus auskommentiertem Code in Program.cs.
     /// </summary>
     public class OptimizationAlgorithmFactoryTests
     {
@@ -59,14 +59,14 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Die mitgelieferte config/simulation.json muss dieselbe Wahl treffen wie die
-        /// Code-Vorgabe — der Schlüssel liegt seit der Korrektur dort und nicht mehr
+        /// Die mitgelieferte src/projects/MantaAuv/simulation.json muss dieselbe Wahl treffen
+        /// wie die Code-Vorgabe — der Schlüssel liegt seit der Korrektur dort und nicht mehr
         /// in der Projekt-JSON.
         /// </summary>
         [Fact]
         public void Repository_Simulation_Json_Selects_Rsm()
         {
-            Assert.Equal("Rsm", JsonConfigLoader.LoadSimulationConfig().OptimizationAlgorithm);
+            Assert.Equal("Rsm", MantaProjectFiles.Simulation().OptimizationAlgorithm);
         }
     }
 }

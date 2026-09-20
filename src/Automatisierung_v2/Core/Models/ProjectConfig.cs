@@ -11,7 +11,7 @@ namespace MyPicoGkProject.Core
         public string ProjectName { get; set; } = "";
 
         // Das Optimierungsverfahren steht NICHT hier, sondern in SimulationConfig
-        // (config/simulation.json) — es ist eine Framework-Einstellung, kein Projektmerkmal.
+        // (simulation.json des Projekts) — es ist eine Framework-Einstellung, kein Projektmerkmal.
 
         public Dictionary<string, float> BaseParameters { get; set; } = new();
         public Dictionary<string, float> MaxDeviations { get; set; } = new();

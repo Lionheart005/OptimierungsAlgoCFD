@@ -10,14 +10,15 @@ namespace AutomatisierungCleanVersion.Tests
     public class SolverOptionsTests
     {
         /// <summary>
-        /// config/solvers/su2.json muss dieselben Werte enthalten wie die Code-Standards —
-        /// sonst rechnet SU2 mit anderen Fluideigenschaften als vor dem Umzug nach JSON.
+        /// src/projects/MantaAuv/solvers/su2.json muss dieselben Werte enthalten wie die
+        /// Code-Standards — sonst rechnet SU2 mit anderen Fluideigenschaften als vor dem
+        /// Umzug nach JSON.
         /// </summary>
         [Fact]
         public void Su2_Json_Matches_Code_Defaults()
         {
             var defaults = new Su2SolverOptions();
-            var loaded = JsonConfigLoader.LoadSolverOptions<Su2SolverOptions>("su2");
+            var loaded = MantaProjectFiles.Load(new Su2SolverOptions(), "solvers/su2.json");
 
             Assert.Equal(defaults.Density, loaded.Density);
             Assert.Equal(defaults.DynamicViscosity, loaded.DynamicViscosity);
@@ -25,6 +26,11 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.SpeedOfSound, loaded.SpeedOfSound);
             Assert.Equal(defaults.ReferenceLength, loaded.ReferenceLength);
             Assert.Equal(defaults.ReferenceAreaMetric, loaded.ReferenceAreaMetric);
+            // TODO-26: die Zuordnung der Ergebnisgrößen muss in der Datei stehen, damit sie
+            // ein neuer Nutzer überhaupt findet — der Code-Standard allein ist unsichtbar.
+            Assert.Equal(defaults.ResultMetrics, loaded.ResultMetrics);
+            Assert.Equal(defaults.ConvergenceField, loaded.ConvergenceField);
+            Assert.Equal(defaults.HistoryOutput, loaded.HistoryOutput);
             Assert.Equal(defaults.CflNumber, loaded.CflNumber);
             Assert.Equal(defaults.CflAdapt, loaded.CflAdapt);
             Assert.Equal(defaults.CflAdaptFactorDown, loaded.CflAdaptFactorDown);
@@ -37,7 +43,7 @@ namespace AutomatisierungCleanVersion.Tests
         public void Gmsh_Json_Matches_Code_Defaults()
         {
             var defaults = new GmshMesherOptions();
-            var loaded = JsonConfigLoader.LoadSolverOptions<GmshMesherOptions>("gmsh");
+            var loaded = MantaProjectFiles.Load(new GmshMesherOptions(), "solvers/gmsh.json");
 
             Assert.Equal(defaults.TunnelShape, loaded.TunnelShape);
             Assert.Equal(defaults.TunnelSizeX, loaded.TunnelSizeX);

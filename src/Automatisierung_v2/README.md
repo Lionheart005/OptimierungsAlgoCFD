@@ -42,7 +42,9 @@ Eine Variante ist ein kompletter Durchlauf durch die Kette:
 3. **Geometrie bauen.** PicoGK erzeugt das Voxelmodell und exportiert eine STL.
    Optional wird sie geglättet.
 4. **Vernetzen.** Gmsh legt einen Windkanal um das Modell und erzeugt das Rechennetz.
-5. **Rechnen.** SU2 löst die Strömung und liefert den Widerstandsbeiwert `CD`.
+5. **Rechnen.** SU2 löst die Strömung und liefert den Widerstandsbeiwert `CD` —
+   und auf Wunsch weitere Beiwerte wie Auftrieb oder Momente, eine Zeile in der
+   `su2.json` des Projekts.
 6. **Bewerten.** Die Fitness-Funktion des Projekts verrechnet alle Messwerte zu
    einer einzigen Zahl. Groß = gut.
 
@@ -61,8 +63,9 @@ Gewinner der letzten Iteration.
 ## Welches Projekt gerechnet wird
 
 Ein „Projekt" ist die Kombination aus Geometrie-Bauplan, Zielfunktion und
-Parametervorgaben — zum Beispiel `MantaAuv`. Der Projektname ist **kein Eintrag in
-einer Konfigurationsdatei**, sondern ein **Argument beim Start**:
+Parametervorgaben — zum Beispiel `MantaAuv`. **Ein Projekt ist ein Ordner unter
+`src/projects/`, und der Ordnername ist der Projektname.** Es gibt keine zweite
+Stelle, an der er stünde: kein Feld in einer JSON, kein Eintrag in einer Liste.
 
 | Wo du startest | So wählst du das Projekt |
 |---|---|
@@ -70,88 +73,156 @@ einer Konfigurationsdatei**, sondern ein **Argument beim Start**:
 | Direkt auf dem Server per SSH | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 | Lokal auf deinem Rechner | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
 
-Ohne Angabe wird überall **`MantaAuv`** genommen. Die Vorgabe steht an drei
-Stellen, je nachdem, welche du dauerhaft ändern willst:
+**Es gibt keinen stillen Standard.** Ohne Angabe bricht das Programm ab und nennt
+die vorhandenen Projekte; `sim-runner.sh` genauso. Einzige Ausnahme ist der
+Parameter `-Project` in [`scripts/sim.ps1`](../../scripts/sim.ps1), der weiter auf
+`MantaAuv` vorbelegt ist — der steht aber im Aufruf und wird zusätzlich gemeldet,
+sobald er benutzt wird. Der Grund für die Strenge: ein Vertipper würde sonst
+stundenlang das falsche Projekt rechnen, mit plausibel aussehenden Zahlen.
 
-* [`scripts/sim.ps1`](../../scripts/sim.ps1) — Parameter `$Project = 'MantaAuv'`
-* [`scripts/sim-runner.sh`](../../scripts/sim-runner.sh) — `SIM_PROJECT:-MantaAuv`
-* [`Program.cs`](Program.cs) — `args.Length > 0 ? args[0] : "MantaAuv"`
+Welche Projekte es gibt:
 
-Der Name steuert zwei Dinge gleichzeitig:
-
-1. **Welcher C#-Code läuft** — der `switch` in [`Program.cs`](Program.cs) verdrahtet
-   Geometrie-Generator und Fitness-Funktion des Projekts.
-2. **Welche Konfigurationsdatei gilt** — `config/projects/<Name>.json`.
-
-Ein Name, für den es keinen `case` gibt, bricht sofort mit
-`Unbekanntes Projekt: <Name>` ab. **Es reicht also nicht, eine neue JSON-Datei
-anzulegen** — ein neues Projekt braucht auch Code (siehe
-[Neues Projekt anlegen](#neues-projekt-anlegen)).
-
-Der zweite Startparameter ist optional und gibt das Konfigurationsverzeichnis an:
-
-```bash
-dotnet run --project src/Automatisierung_v2 -- MantaAuv /pfad/zu/config
+```powershell
+dotnet run --project src/Automatisierung_v2 -- --list-projects   # lokal
+.\scripts\sim.ps1 projects                                       # auf dem Server
 ```
 
-Ohne Angabe wird `config/` im Arbeitsverzeichnis gesucht und notfalls bis zu sechs
-Ebenen darüber — deshalb funktioniert `dotnet run` auch aus dem Projektordner heraus.
+Die Liste kommt nicht aus einer Datei: die
+[`ProjectRegistry`](Core/Configuration/ProjectRegistry.cs) sucht beim Start alle
+`IProjectDefinition`-Klassen per Reflection und gleicht sie **in beide Richtungen**
+gegen die Ordner ab. Eine Definition ohne Ordner findet ihre Zahlen nicht, ein
+Ordner ohne Definition ist nicht startbar — beides bricht mit Ansage ab, statt
+still weiterzurechnen.
+
+Der zweite Startparameter ist optional und gibt das Projektverzeichnis an, wenn es
+nicht gefunden wird:
+
+```bash
+dotnet run --project src/Automatisierung_v2 -- MantaAuv /pfad/zu/src/projects
+```
+
+Ohne Angabe wird `src/projects/` im Arbeitsverzeichnis gesucht und notfalls bis zu
+sechs Ebenen darüber — deshalb funktioniert `dotnet run` auch aus dem Projektordner
+heraus. Alternativ die Umgebungsvariable `SIM_PROJECTS_DIR`.
 
 ## Die Konfigurationsdateien
 
-Alle liegen unter `config/` im Wurzelverzeichnis des Repos:
+**Alles, was ein Projekt einstellt, liegt in seinem Ordner.** Vier Dateien, und
+zwei Projekte kommen sich nicht in die Quere:
 
 ```
-config/
-├── simulation.json            Framework: Pfade, Umfang, Physik, Algorithmuswahl
-├── projects/MantaAuv.json     Projekt: Startwerte, Grenzen, Optimierungsziele
-└── solvers/
-    ├── su2.json               Strömungslöser: Fluid, Referenzwerte, CFL
-    └── gmsh.json              Vernetzer: Windkanal, Netzfeinheit
+src/projects/
+├── _Vorlage/                  Kopiervorlage für ein neues Projekt
+└── MantaAuv/
+    ├── project.json           Startwerte, Grenzen, Optimierungsziele
+    ├── simulation.json        Framework: Pfade, Umfang, Physik, Algorithmuswahl
+    ├── solvers/su2.json       Strömungslöser: Fluid, Referenzwerte, Ergebnisgrößen
+    ├── solvers/gmsh.json      Vernetzer: Windkanal, Netzfeinheit
+    ├── MantaProject.cs        verdrahtet das Projekt (IProjectDefinition)
+    ├── MantaGeometryGenerator.cs
+    └── MantaFitnessCalculator.cs
 ```
+
+Die Manifestdatei heißt in **jedem** Projekt `project.json`. Ein Dateiname, der
+überall derselbe ist, kann nicht mit dem Projektnamen verwechselt werden —
+`config/projects/MantaAuv.json` konnte das.
 
 **Es muss nichts davon vorhanden sein.** Jeder Wert hat eine im Code hinterlegte
 Vorgabe; die Datei überschreibt nur, was sie selbst nennt. Eine fehlende Datei ist
 kein Fehler, eine kaputte JSON bricht mit Dateinamen ab.
 
+**Ein unbekannter Schlüssel ist dagegen ein Abbruch.** Früher verschluckte der
+Merge einen Tippfehler: `"MachNumer"` fiel beim Lesen weg, und der Lauf rechnete
+stundenlang mit dem Standardwert weiter. Heute nennt die Meldung die Datei, den
+Schlüssel und die nächstähnlichen gültigen Namen.
+
+In den JSON-Dateien sind `//`-Kommentare und nachgestellte Kommata erlaubt. Die
+mitgelieferten Dateien sind durchkommentiert — wer sie mit einem Werkzeug neu
+schreibt, verliert genau die Erklärungen.
+
+### Die vier Schichten
+
+| # | Datei | Im Repo? | Gilt für |
+|---|---|---|---|
+| 1 | Code-Standards (`SimulationConfig`, `Su2SolverOptions`, `GmshMesherOptions`, `CreateDefaults()`) | ja | alles |
+| 2 | `src/projects/<Name>/…json` | ja | dieses Projekt, alle Rechner |
+| 3 | `config/…local.json` *(Notausgang)* | **nein** | alle Projekte, dieser Rechner |
+| 4 | `src/projects/<Name>/…local.json` *(Notausgang)* | **nein** | dieses Projekt, dieser Rechner |
+
+**Regel in einem Satz: je spezifischer, desto später — und gitignoriert schlägt
+eingecheckt.** Schicht 3 gewinnt über Schicht 2, damit ein Projekt dem Rechner
+nicht seine Programmpfade umbiegt; Schicht 4 gewinnt über alles.
+
+Eine **globale** eingecheckte Basisdatei gibt es nicht mehr. Sie hat früher nur die
+Code-Standards verdoppelt und wäre die schlimmste Sorte Konfiguration: eine, die
+aussieht, als würde sie gelten.
+
 ### Die `.local.json`-Regel
 
-Neben jeder Datei darf eine `*.local.json` liegen, die sie überlagert:
+Eine `*.local.json` ist eine gitignorierte Ausnahmedatei für **genau einen
+Rechner**. Die Deploy-Skripte übertragen sie bewusst nicht — eine solche Datei auf
+dem Server überlebt jedes Deploy und lässt sich nur dort löschen, wo sie liegt.
+
+**Sollstand ist, dass es nirgends eine gibt.** Der Mechanismus bleibt als
+Notausgang für Rechner mit exotischer Installation, aber jede vorhandene Datei
+meldet das Programm beim Start — mit Dateiname und **jedem einzelnen Schlüssel**,
+den sie dem Projekt aushebelt, samt beider Werte:
 
 ```
-simulation.json          <- gehört ins Repo, gilt für alle
-simulation.local.json    <- nur auf diesem Rechner, gitignored
+==================================================================
+[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt:
+          config/simulation.local.json
+          MaxIterations        Projekt: 10   ->   local: 2
+          Normalerweise sollte es diese Datei nicht geben. Gehoeren die
+          Werte zum Projekt, dann nach src/projects/MantaAuv/ uebernehmen
+          und die Datei loeschen.
+==================================================================
 ```
 
-Die Reihenfolge ist: **Code-Vorgabe → Basisdatei → local-Datei.** Genutzt wird das
-für alles, was nur auf einer Maschine gilt. Beispiel für einen kurzen Probelauf auf
-dem Server:
+Für einen kurzen Probelauf braucht es sie nicht: `MaxIterations` in
+`src/projects/<Name>/simulation.json` setzen und deployen. Es gibt dann kein
+verstecktes zweites Stellrad.
 
-```jsonc
-// config/simulation.local.json
-{
-  "MaxIterations": 1,
-  "VariantsPerIteration": 2
-}
+### Was wirklich gilt
+
+Jeder Lauf schreibt `Ergebnisse/<Projekt>/effective-config.json` mit der
+tatsächlich verwendeten Konfiguration **samt Herkunft je Schlüssel**. Damit bleibt
+ein alter Lauf nachvollziehbar, egal was danach an den Dateien passiert. Vorab
+nachsehen, ohne etwas zu starten:
+
+```powershell
+dotnet run --project src/Automatisierung_v2 --no-build -- MantaAuv --print-config
 ```
 
-Die Deploy-Skripte übertragen `*.local.json` bewusst **nicht** — eine solche Datei
-auf dem Server überlebt also jedes Deploy und wird nie von einer Windows-Fassung
-überschrieben.
+Das läuft auch auf Windows ohne PicoGK, Gmsh und SU2 — es ist der schnellste Weg,
+eine Änderung an den JSONs gegenzuprüfen. `sim.ps1 doctor` benutzt denselben Aufruf
+auf dem Server, um die Programmpfade zu prüfen.
 
-In den JSON-Dateien sind `//`-Kommentare und nachgestellte Kommata erlaubt.
-
-## `config/simulation.json` — Framework
+## `simulation.json` — Framework
 
 ### Pfade zu externer Software
 
-| Schlüssel | Vorgabe | Bedeutung |
+| Schlüssel | Code-Standard | Bedeutung |
 |---|---|---|
-| `MpiRunPath` | `/home/lpleissner/miniconda/bin/mpirun` | Startet SU2 auf mehreren Kernen |
-| `Su2Path` | `/home/lpleissner/software/bin/SU2_CFD` | Der Strömungslöser |
-| `GmshPath` | `gmsh` | Der Vernetzer; ohne Pfad wird er im `PATH` gesucht |
+| `MpiRunPath` | `mpirun` | Startet SU2 auf mehreren Kernen |
+| `Su2Path` | `SU2_CFD` | Der Strömungslöser |
+| `GmshPath` | `gmsh` | Der Vernetzer |
 
-Stimmt hier etwas nicht, meldet `.\scripts\sim.ps1 doctor` das, bevor ein Lauf startet.
+**Der Code-Standard ist PATH-relativ.** .NET löst einen bloßen Programmnamen über
+den `PATH` auf, und `sim-runner.sh load_env` legt die üblichen
+Installationsverzeichnisse dorthin. Früher standen hier die absoluten Pfade eines
+bestimmten Servers — ein fremder Nutzer erbte damit eine Installation, die es auf
+seinem Rechner nicht gibt, und merkte es erst im Lauf.
+
+**MantaAuv weicht davon ab** und trägt in seiner `simulation.json` absolute Pfade
+ein: der Hochschulserver findet SU2, Gmsh und `mpirun` nicht über den `PATH`, weil
+bei `ssh host befehl` keine interaktive Shell startet. Das ist genau die
+Aufgabenteilung der Schichten — die Ausnahme steht beim Projekt, nicht im Framework.
+Auf einem anderen Server: die drei Zeilen dort löschen, dann gilt wieder der
+PATH-relative Standard.
+
+Welche Variante greift, sagt `.\scripts\sim.ps1 doctor` **vor** dem Lauf: er nennt
+zu jedem Programm den tatsächlich gefundenen Ort.
 
 ### Umfang des Laufs
 
@@ -246,16 +317,20 @@ würfelt er gleichverteilt im erlaubten Bereich; im Log steht dann
 > `Drag^DragBalanceFactor` ein), dieselbe Toleranz ist dadurch **strenger** als
 > früher. Meldet das Log häufig `Kein Modell stabil`, ist der Wert zu klein.
 
-## `config/projects/MantaAuv.json` — Projekt
+## `project.json` — Projekt
 
 | Block | Bedeutung |
 |---|---|
-| `ProjectName` | Name, muss zum `case` in `Program.cs` passen |
 | `BaseParameters` | Startwerte. Die Namen bestimmen, welche Parameter es überhaupt gibt |
 | `MaxDeviations` | Anfängliche Mutationsstärke je Parameter (nur „Evolution") |
 | `ParameterBounds` | Harte Unter- und Obergrenzen: `{ "Min": 30, "Max": 100 }` |
 | `OptimizationTargets` | Zahlen, die in die Fitness-Formel eingehen |
 | `DimensionalParameters` | Welche Parameter Längen sind und beim Schrumpfen mitskaliert werden |
+
+Ein Feld `ProjectName` gibt es nicht mehr — der Ordner sagt, wie das Projekt heißt.
+Dieselben Zahlen stehen zusätzlich als Code-Standard in der Projektdefinition
+(`MantaProjectConfig.Create()`); die JSON überlagert sie, und ein Test hält beide
+zusammen.
 
 Für `MantaAuv` sind die Parameter `Length`, `Width`, `MainRadius`, `WingRadius`
 (alle in mm) und `TailTaper` (dimensionslos, Verjüngung des Hecks).
@@ -293,7 +368,7 @@ Die Formel selbst steht im Code, nicht in der JSON — siehe
 > schrumpfen, weil das den geringsten Widerstand hat. Harte Grenzen in
 > `ParameterBounds` und `OptimizationTargets` sind kein Beiwerk.
 
-## `config/solvers/su2.json` — Strömungslöser
+## `solvers/su2.json` — Strömungslöser
 
 | Schlüssel | Vorgabe | Bedeutung |
 |---|---|---|
@@ -303,6 +378,9 @@ Die Formel selbst steht im Code, nicht in der JSON — siehe
 | `SpeedOfSound` | `343.2` | Rechnet `MachNumber` in eine Geschwindigkeit um |
 | `ReferenceLength` | `0.01` | SU2 `REF_LENGTH` in m |
 | `ReferenceAreaMetric` | `"FrontalArea"` | **Name der Metrik**, aus der `REF_AREA` gebildet wird |
+| `ResultMetrics` | `{ "Drag": "CD" }` | **Welche Ergebnisgrößen ankommen**, siehe unten |
+| `ConvergenceField` | `"DRAG"` | SU2 `CONV_FIELD` — woran SU2 seine Konvergenz misst |
+| `HistoryOutput` | `["ITER","RMS_RES","AERO_COEFF"]` | Welche Spaltengruppen SU2 schreibt |
 | `CflNumber` | `5.0` | Schrittweite des Lösers. Höher = schneller, aber instabiler |
 | `CflAdapt` | `true` | Schrittweite automatisch anpassen |
 | `CflAdaptFactorDown` / `…Up` | `0.5` / `1.2` | Faktoren beim Verkleinern/Vergrößern |
@@ -317,7 +395,47 @@ tatsächlich vorhandenen Metriknamen auf.
 Das Framework rechnet durchgehend in **Millimetern**; die Umrechnung mm² → m² für
 SU2 passiert automatisch.
 
-## `config/solvers/gmsh.json` — Vernetzer
+### Mehr als nur Widerstand auslesen
+
+SU2 schreibt über `AERO_COEFF` ohnehin **alle** Beiwerte in seine `history.csv` —
+verworfen wurden sie bisher nur beim Lesen. `ResultMetrics` ordnet zu:
+
+```jsonc
+// Links: unter welchem Namen die Fitness-Formel den Wert sieht.
+// Rechts: wie die Spalte in der SU2-history.csv heisst.
+"ResultMetrics": {
+  "Drag": "CD",
+  "Lift": "CL",
+  "Nickmoment": "CMy"
+}
+```
+
+Verfügbar sind `CD` (Widerstand), `CL` (Auftrieb), `CSF` (Seitenkraft) sowie `CMx`,
+`CMy`, `CMz` (Roll-, Nick-, Giermoment). „Auftrieb dazunehmen" ist damit **eine
+Zeile in der JSON** und kein Eingriff in `Solvers/`.
+
+Drei Dinge dazu:
+
+* **Objekte werden additiv gemerged.** Ein Projekt, das nur `{"Lift":"CL"}`
+  schreibt, bekommt `Drag` aus dem Code-Standard dazu. Eine Größe wieder
+  *los*zuwerden geht nur über `Su2SolverOptions.ResultMetrics` im Code.
+* **Eine konfigurierte, aber fehlende Spalte ist ein Fehler.** Der Solver nennt die
+  tatsächlich vorhandenen Spalten und markiert das Modell als fehlgeschlagen.
+  Verglichen wird **exakt** (nach Anführungszeichen und Leerzeichen), nur notfalls
+  über den Präfix und dann mit Warnung: ein `"CM"` hätte sonst `CMx`, `CMy` und
+  `CMz` getroffen, und welche Spalte gewinnt, hinge an der Reihenfolge.
+* **`REF_AREA` normiert alle Beiwerte, auch `CL`.** Die Frontalfläche ist für den
+  Widerstand richtig; wer auf Auftrieb optimiert, sollte prüfen, ob nicht eine
+  Flügelfläche die passendere Bezugsgröße wäre. Und `CL` hängt an der
+  Anströmrichtung — beim ersten Auftriebslauf einmal gegen eine bekannte Geometrie
+  prüfen.
+
+Wer eine Größe konfiguriert, sollte sie auch in `RequiredMetrics` seines
+Fitness-Rechners nennen: der Controller prüft diese Liste **nach der ersten
+gerechneten Variante** und bricht dort ab, statt stundenlang mit einer
+Ersatz-Fitness weiterzurechnen.
+
+## `solvers/gmsh.json` — Vernetzer
 
 ### Windkanal (Simulationsdomäne)
 
@@ -348,7 +466,15 @@ Dazwischen wird linear vergröbert. Das ist der wirksamste Hebel für die Rechen
 
 ## Ergebnisse lesen
 
-`Ergebnisse/Simulation_Results.csv`, semikolongetrennt (öffnet direkt in Excel):
+Jedes Projekt hat seinen eigenen Ergebnisordner — `Ergebnisse/<Projekt>/`. Vorher
+war es ein gemeinsamer Topf, und ein zweites Projekt überschrieb die CSV des ersten.
+
+| Datei | Inhalt |
+|---|---|
+| `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante |
+| `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel |
+
+`Simulation_Results.csv`, semikolongetrennt (öffnet direkt in Excel):
 
 | Spalte | Inhalt |
 |---|---|
@@ -375,12 +501,20 @@ Die beste Variante steht auch am Ende von `simulation.log` unter
 ## Typische Aufgaben
 
 **Lauf kürzer machen** → `MaxIterations` und `VariantsPerIteration` in
-`simulation.json` (oder in einer `simulation.local.json`).
+`src/projects/<Name>/simulation.json`, dann deployen. Das ist das einzige Stellrad.
 
 **Anderes Optimierungsverfahren** → `OptimizationAlgorithm` auf `"Evolution"`.
 
 **Anderes Bauteil rechnen** → beim Start `-Project <Name>` angeben, siehe
 [Welches Projekt gerechnet wird](#welches-projekt-gerechnet-wird).
+
+**Neues Bauteil anlegen** → `.\scripts\new-project.ps1 <Name>`, dann Geometrie und
+Fitness im neuen Ordner ausfüllen. Die sechs Schritte stehen in
+[`src/projects/README.md`](../projects/README.md).
+
+**Eine weitere Ergebnisgröße auswerten** (Auftrieb, Momente) → `ResultMetrics` in
+`solvers/su2.json`, siehe
+[Mehr als nur Widerstand auslesen](#mehr-als-nur-widerstand-auslesen).
 
 **Parameter fest einstellen** → in `ParameterBounds` `Min` und `Max` auf denselben
 Wert setzen. Der Parameter wird dann immer auf diesen Wert geklemmt.
@@ -418,31 +552,53 @@ seit dem Refactoring **vom Compiler erzwungen** — die Namespaces entsprechen d
 Ordnern, und `Core` hat kein `using` auf die anderen Schichten.
 
 ```
-src/Automatisierung_v2/
-├── Program.cs                 MyPicoGkProject              Zusammenbau (Composition Root)
-├── Core/                      MyPicoGkProject.Core         Das Framework
-│   ├── Interfaces/            die sieben Verträge
-│   ├── Models/                Datenmodell
-│   ├── Configuration/         JSON laden
-│   ├── Pipeline/              Ablaufsteuerung + Türsteher
-│   ├── Algorithms/            EA, RSM, Fabrik
-│   └── Utilities/             Scaler, Smoother, STL-Writer
-├── Kernels/PicoGk/            MyPicoGkProject.Kernels.PicoGk
-├── Projects/MantaAuv/         MyPicoGkProject.Projects.MantaAuv
-└── Solvers/Cfd/               MyPicoGkProject.Solvers.Cfd
+src/
+├── Automatisierung_v2/            Das Framework -- für ein Projekt NIE angefasst
+│   ├── Program.cs                 MyPicoGkProject                  Composition Root
+│   ├── Composition/               MyPicoGkProject.Composition      CfdProjectDefinition
+│   ├── Core/                      MyPicoGkProject.Core             Der Kern
+│   │   ├── Interfaces/            die acht Verträge
+│   │   ├── Models/                Datenmodell
+│   │   ├── Configuration/         JSON laden, Projekte finden
+│   │   ├── Pipeline/              Ablaufsteuerung + Türsteher
+│   │   ├── Algorithms/            EA, RSM, Fabrik
+│   │   └── Utilities/             Scaler, Smoother, STL-Writer, MeshMetrics
+│   ├── Kernels/PicoGk/            MyPicoGkProject.Kernels.PicoGk
+│   └── Solvers/Cfd/               MyPicoGkProject.Solvers.Cfd
+└── projects/                      Alle Projekte, je ein Ordner
+    ├── _Vorlage/                  MyPicoGkProject.Projects.MeinProjekt
+    └── MantaAuv/                  MyPicoGkProject.Projects.MantaAuv
 ```
 
+`src/projects/` liegt bewusst **neben** dem Framework, nicht darin: „hier das
+Gerüst, dort meine Projekte" ist sofort lesbar. Preis dafür ist eine Zeile in der
+csproj, die `..\projects\**\*.cs` mit hereinzieht.
+
 Die Abhängigkeiten zeigen **nur nach innen**: `Projects` und `Solvers` kennen
-`Core`, niemals umgekehrt. Nur `Program.cs` kennt alle.
+`Core`, niemals umgekehrt. Das ist vom Compiler erzwungen — `Core/` hat kein
+einziges `using` auf `Projects`, `Solvers` oder `Kernels`.
 
-`using PicoGK` steht in genau zwei Dateien: `Kernels/PicoGk/PicoGkKernel.cs` und
-`Projects/MantaAuv/MantaGeometryGenerator.cs`. Ein Projekt ohne Voxelgeometrie
-braucht PicoGK also überhaupt nicht.
+`Composition/` ist die Schicht, die alle anderen kennen darf, dieselbe Rolle wie
+`Program.cs`. Dort liegt `CfdProjectDefinition`: die fertig verdrahtete Kette
+PicoGK → Gmsh → SU2, von der ein CFD-Projekt erbt. Sie muss diese Klassen beim
+Namen nennen und kann deshalb nicht in `Core/` liegen.
 
-## Die sieben Interfaces
+`using PicoGK` steht in vier Dateien: `Kernels/PicoGk/PicoGkKernel.cs`,
+`Kernels/PicoGk/PicoGkMeshMetrics.cs` und den beiden Geometrie-Generatoren unter
+`src/projects/`. Ein Projekt ohne Voxelgeometrie braucht PicoGK überhaupt nicht — es
+überschreibt `CreateKernel()` mit `DirectGeometryKernel`.
+
+**`_Vorlage` ist aus dem Build des Programms ausgeschlossen** und wird vom
+Testprojekt compiliert. Sonst gäbe es eine Projektdefinition mit dem Platzhalternamen
+`MeinProjekt`, zu der kein Ordner gehört. Gar nicht compiliert wäre die Vorlage aber
+totes Textmaterial: so bricht eine geänderte Schnittstelle sofort `dotnet test` und
+nicht Monate später beim Anlegen eines Projekts.
+
+## Die acht Interfaces
 
 | Interface | Aufgabe | Implementierung |
 |---|---|---|
+| `IProjectDefinition` | Projekt verdrahten: Name, Vorgaben, Geometrie, Fitness, Kette | `MantaProject` (über `CfdProjectDefinition`) |
 | `IGeometryGenerator` | Parameter → STL + Metriken | `MantaGeometryGenerator` |
 | `IGeometryKernel` | Laufzeitumgebung hochfahren | `PicoGkKernel`, `DirectGeometryKernel` |
 | `IMeshGenerator` | STL → Rechennetz | `GmshCfdMesher` |
@@ -450,6 +606,21 @@ braucht PicoGK also überhaupt nicht.
 | `IFitnessCalculator` | Messwerte → eine Zahl | `MantaFitnessCalculator` |
 | `IOptimizationAlgorithm` | nächste Parameter vorschlagen | `EvolutionaryAlgorithm`, `RsmOptimizationAlgorithm` |
 | `IModelValidator` | Champion gegenprüfen | `ChampionValidator` |
+
+`IProjectDefinition` ist der Vertrag, der `Program.cs` von den Projekten befreit hat:
+
+```csharp
+string Name { get; }                                  // = Ordnername
+ProjectConfig      CreateDefaults();                  // project.json überlagert das
+IGeometryKernel    CreateKernel();
+IGeometryGenerator CreateGeometry(ProjectContext c);
+IFitnessCalculator CreateFitness(ProjectContext c);
+SolverStage[]      CreateStages(ProjectContext c);
+```
+
+`ProjectContext` reicht durch, was ein Projekt zum Verdrahten braucht: Name, Ordner,
+die fertig geladene `SimulationConfig` und `ProjectConfig` sowie
+`LoadSolverOptions<T>("su2")`, das schon auf den richtigen Ordner zeigt.
 
 `IGeometryKernel` ist bewusst von `IGeometryGenerator` getrennt: PicoGK muss über
 `Library.Go(...)` gestartet werden und der ganze Programmablauf läuft *innerhalb*
@@ -499,6 +670,20 @@ result.AddMetric("Ratio", r, MetricScaling.None);               // unverändert
 Der Kern rät nicht mehr anhand des Namens, wie zurückskaliert wird — das Projekt
 sagt es. Ohne Angabe gilt `None`.
 
+Ein **falsches** `MetricScaling` fällt nicht auf: der Wert ist dann um den
+Skalierungsfaktor hoch 1, 2 oder 3 daneben und sieht trotzdem plausibel aus. Welche
+Dimension eine Metrik bekam, hält `effective-config.json` fest.
+
+**`MeshMetrics`** ([Core/Utilities](Core/Utilities/MeshMetrics.cs)) nimmt einem
+Projekt die Maße ab: Volumen, Oberfläche und Hüllquader aus einer Dreiecksliste, in
+einem Durchgang. Anlass ist die Oberfläche — PicoGKs `CalculateProperties` liefert
+Volumen und Hüllquader, die Oberfläche **nicht**, und die Schleife dafür wäre in
+jedem Projekt dieselbe. Für ein PicoGK-Netz gibt es
+`PicoGkMeshMetrics.Measure(mesh)`; die Rechnung selbst bleibt PicoGK-frei im Kern.
+Das Volumen ist **mit Vorzeichen** abfragbar: negativ heißt, die Dreiecke sind nach
+innen gedreht — im Betrag wäre dieser Fehler unsichtbar. Rein additiv; MantaAuv
+rechnet weiter mit `CalculateProperties` und bekommt exakt die Zahlen wie zuvor.
+
 **`SimulationContext`** — die Laufzeitdatenbank. Wichtig ist die Trennung:
 
 | | Herkunft | Wird verändert |
@@ -519,9 +704,25 @@ lässt sich eine FEM-Stufe mit eigenem Netz neben die CFD-Stufe hängen.
 ## Konfiguration laden
 
 [`JsonConfigLoader`](Core/Configuration/JsonConfigLoader.cs) führt auf
-`JsonNode`-Ebene zusammen: **Code-Vorgabe → Basisdatei → local-Datei**. Jede Stufe
-überschreibt nur die Schlüssel, die sie nennt; verschachtelte Objekte werden
-verschmolzen, alles andere ersetzt.
+`JsonNode`-Ebene zusammen, in der Reihenfolge der [vier
+Schichten](#die-vier-schichten). Jede Stufe überschreibt nur die Schlüssel, die sie
+nennt; verschachtelte Objekte werden verschmolzen, alles andere ersetzt.
+
+Vor dem Übernehmen gleicht [`ConfigSchema`](Core/Configuration/ConfigSchema.cs) jeden
+Schlüssel gegen die Properties des Zieltyps ab (unbekannt ⇒ Abbruch mit Vorschlag per
+Levenshtein-Abstand). In ein `Dictionary` steigt die Prüfung nicht ab: `"Length"`
+unter `BaseParameters` ist ein Parametername und kein Property-Name.
+
+Der Loader protokolliert außerdem, **welche Datei welchen Schlüssel gewonnen hat**.
+Daraus entstehen der `*.local.json`-Warnblock und
+[`EffectiveConfigWriter`](Core/Configuration/EffectiveConfigWriter.cs), der die
+`effective-config.json` neben die Ergebnisse legt.
+
+Wo die Projekte liegen, löst [`ProjectPaths`](Core/Configuration/ProjectPaths.cs):
+Aufrufargument → `SIM_PROJECTS_DIR` → aufwärts suchen nach `src/projects/`. Bewusst
+**kein** `CopyToOutputDirectory` in der csproj — die JSONs lägen dann in `bin/`, und
+eine Änderung an der Quelldatei würde erst nach einem Rebuild wirken. Diese Sorte
+Verwirrung will man bei einem mehrstündigen Lauf nicht.
 
 Eine Besonderheit: `ProjectConfig.ParameterBounds` ist ein
 `Dictionary<string, (float Min, float Max)>`. ValueTuples kann `System.Text.Json`
@@ -531,27 +732,34 @@ als JSON-Abbild mit `{ "Min": 30, "Max": 100 }`.
 ## Zielfunktion ändern
 
 Die Formel steht in
-[`MantaFitnessCalculator.CalculateFitness`](Projects/MantaAuv/MantaFitnessCalculator.cs).
-Die **Zahlen** darin kommen aus `OptimizationTargets` der Projekt-JSON, die
+[`MantaFitnessCalculator.CalculateFitness`](../projects/MantaAuv/MantaFitnessCalculator.cs).
+Die **Zahlen** darin kommen aus `OptimizationTargets` der `project.json`, die
 **Struktur** ist C#. Wer statt Widerstand den Auftrieb maximieren will, ändert hier
-die Gleichung — und lässt den Solver die passende Metrik liefern.
+die Gleichung — und lässt den Solver die passende Größe liefern (`ResultMetrics` in
+`solvers/su2.json`).
 
-Pflichtwerte werden im Konstruktor geprüft, nicht mitten im Lauf. Neue
-Pflichtwerte gehören in das Array `RequiredTargets` derselben Klasse.
+Zwei Prüflisten derselben Klasse, beide billig und beide eine Nachtschicht wert:
+
+* `RequiredTargets` — Zahlen aus der `project.json`. Geprüft im **Konstruktor**, also
+  beim Verdrahten, vor der ersten Simulation.
+* `RequiredMetrics` — Messwerte aus Geometrie und Solver. Die entstehen erst mit der
+  ersten Variante; der Controller prüft sie **danach** und bricht dort ab.
 
 ## Neuen Parameter hinzufügen
 
 Am Beispiel eines Spoilerwinkels:
 
-1. In `config/projects/MantaAuv.json` ergänzen:
+1. In `src/projects/MantaAuv/project.json` ergänzen:
    ```jsonc
    "BaseParameters":   { "SpoilerAngle": 15.0 },
    "MaxDeviations":    { "SpoilerAngle": 2.5 },
    "ParameterBounds":  { "SpoilerAngle": { "Min": 0.0, "Max": 45.0 } }
    ```
-2. **Nur wenn es eine Länge ist**, zusätzlich in `DimensionalParameters` eintragen.
+2. Dieselben drei Einträge in `MantaProjectConfig.Create()` — das ist die
+   Code-Schicht darunter.
+3. **Nur wenn es eine Länge ist**, zusätzlich in `DimensionalParameters` eintragen.
    Ein Winkel gehört dort **nicht** hin.
-3. Den Parameter in `MantaGeometryGenerator` auslesen und verbauen:
+4. Den Parameter in `MantaGeometryGenerator` auslesen und verbauen:
    ```csharp
    float angle = parameters.TryGetValue("SpoilerAngle", out var a) ? a : 15f;
    ```
@@ -561,49 +769,62 @@ die Namen im Dictionary, nicht über feste Felder.
 
 ## Neues Projekt anlegen
 
-1. **Ordner** `Projects/MeinProjekt/` mit zwei Klassen:
-   * `MeinProjektGeometryGenerator : IGeometryGenerator` — baut die Geometrie und
-     meldet ihre Metriken samt `MetricScaling`
-   * `MeinProjektFitnessCalculator : IFitnessCalculator` — die Zielfunktion
-   * optional `MeinProjektConfig` mit den Code-Vorgaben
-2. **Konfiguration** `config/projects/MeinProjekt.json`
-3. **Verdrahtung** in [`Program.cs`](Program.cs):
-   ```csharp
-   case "MeinProjekt":
-       projectConfig = JsonConfigLoader.LoadProjectConfig(
-           projectName, MeinProjektConfig.Create(), configDirectory);
-       geometry = new MeinProjektGeometryGenerator();
-       kernel   = new PicoGkKernel();          // oder DirectGeometryKernel
-       fitness  = new MeinProjektFitnessCalculator(projectConfig);
-       break;
-   ```
-4. Falls die Referenzfläche anders heißt: `ReferenceAreaMetric` in
-   `config/solvers/su2.json` anpassen.
+```powershell
+.\scripts\new-project.ps1 Propeller
+```
 
-Am Framework-Code ändert sich nichts.
+Das kopiert `src/projects/_Vorlage/` und setzt den Namen ein. Die sechs Schritte
+danach stehen in [`src/projects/README.md`](../projects/README.md).
+
+**Am Framework-Code ändert sich nichts** — und zwar buchstäblich nichts: kein `case`,
+keine Liste, kein Eintrag in `Program.cs`. Die
+[`ProjectRegistry`](Core/Configuration/ProjectRegistry.cs) findet die neue
+`IProjectDefinition` per Reflection. Von Hand ist ein Projekt drei C#-Dateien:
+
+```csharp
+public sealed class PropellerProject : CfdProjectDefinition
+{
+    public override string Name => "Propeller";              // = Ordnername
+
+    public override ProjectConfig CreateDefaults() => new ProjectConfig { /* Zahlen */ };
+
+    public override IGeometryGenerator CreateGeometry(ProjectContext c)
+        => new PropellerGeometryGenerator();
+
+    public override IFitnessCalculator CreateFitness(ProjectContext c)
+        => new PropellerFitnessCalculator(c.Project);
+}
+```
+
+Wer eine andere Kette braucht, überschreibt `CreateStages`; wer ohne Voxel-Kernel
+auskommt, `CreateKernel`. Beides im eigenen Projektordner.
 
 ## Neuen Solver oder Mesher anbinden
 
-`ISimulationSolver` bzw. `IMeshGenerator` implementieren und in `Program.cs` als
-weitere `SolverStage` eintragen:
+`ISimulationSolver` bzw. `IMeshGenerator` implementieren und im **Projekt** als
+weitere `SolverStage` eintragen — nicht in `Program.cs`:
 
 ```csharp
-var stages = new[]
+public override SolverStage[] CreateStages(ProjectContext c) => new[]
 {
-    new SolverStage(cfdMesher, su2Solver),
+    new SolverStage(
+        new GmshCfdMesher(c.LoadSolverOptions<GmshMesherOptions>("gmsh")),
+        new Su2Solver(c.LoadSolverOptions<Su2SolverOptions>("su2"))),
     new SolverStage(femMesher, femSolver)     // eigenes Netz
 };
 ```
 
 Ein Solver schreibt seine Ergebnisse als benannte Werte in
 `record.PassiveParameters` — mehr weiß der Kern nicht über ihn. Zahlen und Pfade
-gehören in eine eigene Options-Klasse und nach `config/solvers/<name>.json`, geladen
-über `JsonConfigLoader.LoadSolverOptions<T>`.
+gehören in eine eigene Options-Klasse und nach
+`src/projects/<Name>/solvers/<name>.json`; `ProjectContext.LoadSolverOptions<T>` lädt
+sie über alle vier Schichten. Ein neuer Solver bringt seine JSON also selbst mit,
+ohne dass der Kern davon wissen muss.
 
 ## Tests
 
 ```bash
-dotnet test Automatisierung.sln        # 112 Tests
+dotnet test Automatisierung.sln        # 251 Tests
 ```
 
 Die Tests laufen ohne PicoGK, Gmsh und SU2: Der Controller wird mit gemockten
@@ -613,9 +834,23 @@ injizierbar (fester Seed = reproduzierbar).
 
 Mit abgedeckt sind unter anderem: Reihenfolge der Solver-Kette, Mesh-Cache,
 Rückskalierung der Metriken, Verhalten bei Fehlern, der Türsteher in allen
-Verzweigungen, das IDW-Ersatzmodell gegen bekannte Stützstellen, der STL-Glätter
-und — wichtig — dass die mitgelieferten JSON-Dateien dieselben Zahlen enthalten wie
-die Code-Vorgaben. Ein Zahlendreher in `config/` fällt dadurch im Test auf.
+Verzweigungen, das IDW-Ersatzmodell gegen bekannte Stützstellen, der STL-Glätter,
+die Schichtreihenfolge des Loaders samt Abbruch bei unbekanntem Schlüssel, das
+Auflösen der Projekte und — wichtig — dass die mitgelieferten JSON-Dateien dieselben
+Zahlen enthalten wie die Code-Vorgaben. Ein Zahlendreher in einer Projektdatei fällt
+dadurch im Test auf.
+
+Drei Testgruppen sind eigentlich keine Tests, sondern Fangnetze:
+
+* **`ProjectLayoutTests`** hält die Struktur fest — dass die vier JSONs im
+  Projektordner liegen, dass der Code-Standard der Programmpfade PATH-relativ bleibt,
+  dass in `config/` keine eingecheckte JSON auftaucht, die niemand mehr liest.
+* **`TemplateProjectTests`** hält die Vorlage vollständig, aktuell und nicht startbar.
+  Dass sie überhaupt compiliert, prüft schon der Build dieses Testprojekts.
+* **`ScriptContractTests`** liest die Startskripte als **Text**: es gibt kein bash auf
+  dem Entwicklungsrechner. Sie schlagen an, wenn jemand den stillen Projekt-Standard
+  wieder einbaut oder die Kette `-Project` → `SIM_PROJECT` → `dotnet "$PROJECT_NAME"`
+  auftrennt. Einen Lauf auf dem Server ersetzen sie nicht.
 
 ## Bewusste Entscheidungen
 
@@ -631,20 +866,42 @@ Wer den Code liest, stolpert über ein paar Stellen, die Absicht sind:
 * **Alles rechnet in Millimetern.** Die Umrechnung nach SI passiert erst an der
   Schnittstelle zu SU2.
 * **Der Kern kennt keine Metriknamen.** Jeder feste String wie `"Drag"` oder
-  `"FrontalArea"` im Ordner `Core/` wäre ein Rückschritt.
+  `"FrontalArea"` im Ordner `Core/` wäre ein Rückschritt. Auch der
+  `WorkflowController` bekommt die Pflicht-Metriken nur als **Namensliste**, nicht den
+  `IFitnessCalculator` — sonst käme eine Abhängigkeit zurück, die absichtlich
+  entfernt wurde.
+* **Kein stiller Standard beim Projektnamen.** Weder in `Program.cs` noch in
+  `sim-runner.sh`. Ein Vertipper soll abbrechen und nicht stundenlang das falsche
+  Projekt rechnen.
+* **Der Ordnername ist der Projektname.** Ein Feld in einer Datei wäre eine zweite
+  Stelle, die mit dem Ordner auseinanderlaufen kann. Die `ProjectRegistry` prüft
+  beide Richtungen beim Start.
+* **`_Vorlage` wird vom Testprojekt compiliert, nicht vom Programm.** Eine Vorlage,
+  die nie durch den Compiler geht, ist nach der nächsten Schnittstellenänderung
+  stillschweigend kaputt.
 
 ## Offene Punkte
 
-* **End-to-End-Vergleich gegen `main`** steht noch aus: ein kleiner Lauf
-  (`MaxIterations=1`, `VariantsPerIteration=2`) gegen einen `main`-Lauf mit
-  denselben Startwerten. Erwartete Abweichung ist genau eine: `TailTaper` wird
-  jetzt korrekt *nicht* mehr mitskaliert.
+* **Der Zahlenvergleich gegen `main`** steht noch aus. Die Kette selbst läuft: am
+  20.09.2026 ist ein zweites Projekt (Manta-Logik, 2 × 2 Varianten) auf dem Server
+  fehlerfrei durchgelaufen, samt `deploy`, `doctor` und Bouncer-Kontrollrechnungen.
+  Offen ist der Vergleich mit einem `main`-Lauf bei denselben Startwerten. Erwartete
+  Abweichung ist genau eine: `TailTaper` wird jetzt korrekt *nicht* mehr mitskaliert.
+  Mehr als größenordnungsweise geht der Vergleich nicht — die DoE-Phase des RSM zieht
+  ihre Punkte mit einem unbesäten `Random`.
 * **`BouncerTolerance` nachjustieren** nach dem ersten echten Lauf.
 * **`ModelRecord.MeshPath` führt nur einen Pfad** — den der ersten Solver-Stufe.
   Wer mehrere Netze protokollieren will, braucht dort eine Liste.
 * **Parameter „festschrauben"** geht derzeit nur über gleiche `Min`/`Max`-Grenzen.
   Eine ausdrückliche Möglichkeit, einen Parameter aus der Optimierung zu nehmen,
   fehlt noch.
+* **`PicoGkMeshMetrics` ist nicht getestet** — jeder Aufruf braucht eine laufende
+  PicoGK-Umgebung und die native `libpicogk`. Geprüft ist die Rechnung dahinter
+  (`MeshMetrics`), nicht die Schleife über das PicoGK-Netz.
+* **Die Geometrie der Vorlage ist noch nie gelaufen.** Der Weg über
+  `new-project.ps1` ist bewiesen (das Testprojekt vom 20.09.2026 entstand so), aber
+  dessen Quader war für den Test durch die Manta-Geometrie ersetzt. Ein Lauf mit dem
+  Platzhalter-Quader — und damit mit `MeshMetrics` im Einsatz — fehlt.
 * **Der Physik-Widerspruch** zwischen Luft-Schallgeschwindigkeit und
   Wasser-Fluideigenschaften (siehe Teil A, Abschnitt „Strömung").
 
@@ -659,5 +916,8 @@ Ideen aus der Vorgängerfassung dieser Datei, die noch offen sind:
   `IOptimizationAlgorithm`-Implementierung und einen Eintrag in
   `OptimizationAlgorithmFactory`.
 
-Der vollständige Umbauplan mit Begründungen steht in
-[`.plans/architektur_refactoring.md`](../../.plans/architektur_refactoring.md).
+Die vollständigen Umbaupläne mit Begründungen stehen in
+[`.plans/architektur_refactoring.md`](../../.plans/architektur_refactoring.md) (der
+Kern: Interfaces, JSON-Konfiguration, austauschbares PicoGK) und
+[`.plans/projektbuendel.md`](../../.plans/projektbuendel.md) (ein Ordner pro Projekt,
+Umschalten nur über das Startskript).

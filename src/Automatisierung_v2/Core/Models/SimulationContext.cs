@@ -37,13 +37,36 @@ namespace MyPicoGkProject.Core
         /// </summary>
         public Dictionary<string, float> CurrentDeviations { get; set; } = new();
 
+        /// <param name="workingDirectory">
+        /// Ohne Angabe <c>Ergebnisse/&lt;Projektname&gt;/</c> im Arbeitsverzeichnis.
+        /// </param>
         public SimulationContext(SimulationConfig config, ProjectConfig project, string? workingDirectory = null)
         {
             Config = config;
             Project = project;
-            WorkingDirectory = workingDirectory ?? Path.Combine(Directory.GetCurrentDirectory(), "Ergebnisse");
+            WorkingDirectory = workingDirectory ?? DefaultWorkingDirectory(project);
 
             ResetRuntimeState();
+        }
+
+        /// <summary>
+        /// <c>Ergebnisse/&lt;Projektname&gt;/</c> (TODO-25). Vorher war <c>Ergebnisse/</c> ein
+        /// gemeinsamer Topf: das zweite Projekt überschrieb die <c>Simulation_Results.csv</c>
+        /// des ersten — dieselbe Problemklasse wie bei den Konfigurationsdateien.
+        ///
+        /// <para>
+        /// Ohne Projektnamen bleibt es beim gemeinsamen Ordner. Im Lauf kommt das nicht vor
+        /// (der Name ist der Ordnername und wird von der <see cref="ProjectRegistry"/>
+        /// erzwungen); es ist der Fall für Tests, die eine nackte
+        /// <see cref="ProjectConfig"/> bauen.
+        /// </para>
+        /// </summary>
+        public static string DefaultWorkingDirectory(ProjectConfig project)
+        {
+            string root = Path.Combine(Directory.GetCurrentDirectory(), "Ergebnisse");
+            string name = (project.ProjectName ?? string.Empty).Trim();
+
+            return name.Length == 0 ? root : Path.Combine(root, name);
         }
 
         /// <summary>

@@ -1,0 +1,110 @@
+{
+  // ===================================================================
+  //  MeinProjekt -- Framework-Einstellungen dieses Projekts
+  // ===================================================================
+  //
+  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt JEDEN Schluessel, den das
+  // Framework kennt, mit dem Wert aus dem Code-Standard
+  // (Core/Models/SimulationConfig.cs). Zwei Ausnahmen -- MaxIterations und
+  // VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt,
+  // siehe unten. Ein Test haelt beides fest (TemplateProjectTests).
+  //
+  // IN EINEM ECHTEN PROJEKT STEHT HIER NUR NOCH, WAS ABWEICHT. Alles andere
+  // darfst und sollst du loeschen: ein Schluessel mit dem Standardwert ist
+  // Rauschen, das beim naechsten Framework-Update veraltet. MantaAuv nebenan
+  // zeigt, wie kurz so eine Datei dann ist.
+  //
+  // Ein unbekannter Schluessel bricht den Start ab (TODO-22). Der Abbruch nennt
+  // den Schluessel und den naechstaehnlichen gueltigen Namen -- ein Tippfehler
+  // rechnet also nicht stundenlang stillschweigend mit dem Standardwert weiter.
+  //
+  // Jedes Projekt hat seine eigene Datei unter src/projects/<Name>/ und kommt
+  // den anderen nicht in die Quere.
+  //
+  // Maschinenspezifische Ausnahmen gehoeren in eine simulation.local.json
+  // (gitignored). SOLLSTAND IST, DASS ES KEINE GIBT: findet der Start eine,
+  // meldet er sie mit jedem Schluessel, den sie diesem Projekt aushebelt.
+
+  // --- Pfade zu externer Software ---
+  //
+  // PATH-RELATIV IST DER NORMALFALL: .NET loest einen blossen Programmnamen
+  // ueber den PATH auf, und scripts/sim-runner.sh legt in load_env die
+  // ueblichen Installationsverzeichnisse dorthin. Auf einem Rechner, der SU2,
+  // Gmsh und MPI regulaer installiert hat, sind diese drei Zeilen richtig.
+  //
+  // Findet dein Server sie nicht, dann trage sie hier ABSOLUT ein -- so macht es
+  // MantaAuv fuer den Hochschulserver. Welche Variante greift, sagt
+  // `.\scripts\sim.ps1 doctor` VOR dem Lauf: er nennt bei jedem Programm den
+  // tatsaechlich gefundenen Ort.
+  "MpiRunPath": "mpirun",
+  "Su2Path": "SU2_CFD",
+  "GmshPath": "gmsh",
+
+  // --- Zeit & Umfang ---
+  //
+  // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.
+  //
+  // ABWEICHUNG VOM CODE-STANDARD (dort 10 x 10 = 100): die Vorlage steht auf
+  // 1 x 2 = 2 Varianten, damit der erste Lauf eines neuen Projekts ein
+  // RAUCHTEST ist und keine Nachtschicht. Er beantwortet die Frage "laeuft die
+  // Kette ueberhaupt durch" in Minuten. Sitzt Geometrie und Fitness, dann hier
+  // hochsetzen und neu deployen -- es gibt kein verstecktes zweites Stellrad.
+  "MaxIterations": 1,
+  "VariantsPerIteration": 2,
+
+  // Voxelkantenlaenge in mm: kleiner = feineres Modell = deutlich langsamer.
+  "BaseVoxelResolution": 0.5,
+  // Groesse, auf die der RubberBandScaler die Geometrie fuer PicoGK bringt.
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+
+  // --- Abschaltbare Framework-Bausteine ---
+  // Scaler aus: der Geometrie-Kernel arbeitet mit den echten Massen, ScaleFactor
+  //   bleibt 1 -- dann muessen die Parameter selbst in einer Groesse liegen, mit
+  //   der PicoGK gut umgehen kann.
+  // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell, mit Treppen.
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+
+  // --- CFD & SU2 ---
+  // MachNumber x SpeedOfSound (aus solvers/su2.json) = Anstroemgeschwindigkeit.
+  "MachNumber": 0.1,
+  // Obergrenze der SU2-Iterationen je Variante; CauchyElements/CauchyTolerance
+  // brechen frueher ab, sobald die Zielgroesse ruhig liegt.
+  "Su2MaxIterations": 500,
+  "CauchyElements": 150,
+  "CauchyTolerance": "1e-4",
+  // Kerne fuer mpirun bzw. Gmsh. Mehr als der Rechner hat, macht es langsamer.
+  "MpiCores": 12,
+  "GmshCores": 12,
+
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // Rsm       = Antwortflaechen-Verfahren, lernt aus allen bisherigen Laeufen.
+  // Evolution = Mutation um den jeweils besten Kandidaten.
+  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm"
+  // zurueck.
+  "OptimizationAlgorithm": "Rsm",
+
+  // --- Evolutionaerer Algorithmus (wirkt nur bei "Evolution") ---
+  "MinimalDeviationExploration": 1.0,
+  "MinimalDeviationExploitation": 0.05,
+  "RoleFineTuner": 0.2,
+  "RoleCautious": 0.4,
+  "RoleNormal": 0.6,
+
+  // --- RSM / Antwortflaechen-Verfahren (wirkt nur bei "Rsm") ---
+  // Virtuelle Stichproben auf der Ersatzfunktion -- kostet keine Rechenzeit im
+  // Solver, nur Sekundenbruchteile im Speicher.
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // --- Validierung des Champions (Bouncer) ---
+  // Der Gewinner einer Iteration wird mit minimal verstelltem Parameter noch
+  // einmal komplett durchgerechnet. Weicht seine FITNESS um mehr als
+  // BouncerTolerance ab, war das Ergebnis Zufall und der Kandidat fliegt raus.
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01
+}

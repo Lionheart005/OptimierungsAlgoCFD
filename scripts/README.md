@@ -7,6 +7,11 @@ Hochschulrechner starten und beobachten.
 |---|---|---|
 | `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
+| `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage`) |
+
+`new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
+Werkzeugkästchen ist. Was danach zu tun ist, steht in
+[`src/projects/README.md`](../src/projects/README.md).
 
 `sim-runner.sh` wird mit hochgeladen und liegt auf dem Server im selben Repo.
 Wer ohnehin per SSH eingeloggt ist, kann es dort direkt benutzen:
@@ -66,6 +71,7 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 ## Alltag
 
 ```powershell
+.\scripts\sim.ps1 projects  # Welche Projekte kennt der Server, wo liegen Ergebnisse?
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
                             # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
@@ -74,6 +80,13 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
 .\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
 ```
+
+Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
+Ordnername unter `src/projects/`. Ohne die Angabe gilt die Vorgabe `MantaAuv`, und
+die Skripte sagen das auch: auf der Windows-Seite als Hinweiszeile, auf dem Server
+gar nicht mehr. `sim-runner.sh` hat **keinen** Standard mehr — von Hand aufgerufen
+verlangt es `SIM_PROJECT=<Name>`, weil ein Vertipper dort sonst klaglos ein anderes
+Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
 
 ## Ergebnisse herunterladen
 
@@ -105,23 +118,25 @@ Kopiert alles: Geometrien, Netze, ParaView-Dateien, SU2-Arbeitsdateien.
 ### Einzelne Modelle gezielt holen
 
 Dafür braucht es kein Skript — `scp` expandiert Platzhalter auf dem Server.
-Der Pfad ist immer `Documents/AutomatisierungCleanVersion/Ergebnisse/…`:
+Der Pfad ist immer `Documents/AutomatisierungCleanVersion/Ergebnisse/<Projekt>/…`;
+**jedes Projekt hat seinen eigenen Ordner**, sonst überschriebe ein zweites Projekt
+die Ergebnisse des ersten:
 
 ```powershell
 # Alle Dateien einer bestimmten Variante (Geometrie, Netz, Gmsh-Skript)
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/*Gen1_Var2* .\Serverergebnisse\
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/*Gen1_Var2* .\Serverergebnisse\
 
 # Nur die Geometrie zum Anschauen im CAD/Slicer
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Model_Gen1_Var2.stl .\Serverergebnisse\
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Model_Gen1_Var2.stl .\Serverergebnisse\
 
 # Nur die ParaView-Dateien einer Variante (Oberfläche + Strömungsfeld)
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Analyseergebnisse/*Gen1_Var2* .\Serverergebnisse\
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Analyseergebnisse/*Gen1_Var2* .\Serverergebnisse\
 
 # Alle ParaView-Oberflächen aller Varianten, ohne die großen Volumendateien
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/Analyseergebnisse/Surface_* .\Serverergebnisse\
+scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Analyseergebnisse/Surface_* .\Serverergebnisse\
 
 # Fehlerprotokolle, wenn eine Simulation abgebrochen ist
-scp -r BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/FehlerLogs .\Serverergebnisse\
+scp -r BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/FehlerLogs .\Serverergebnisse\
 ```
 
 Welche Variante die interessante ist, steht in der CSV (höchste `Fitness`) oder
@@ -130,15 +145,19 @@ am Ende von `simulation.log` unter „ABSOLUTER CHAMPION".
 Erst nachsehen, was überhaupt da ist:
 
 ```powershell
-ssh BIC_12 'ls -lhS Documents/AutomatisierungCleanVersion/Ergebnisse'
-ssh BIC_12 'du -sh Documents/AutomatisierungCleanVersion/Ergebnisse'
+.\scripts\sim.ps1 projects          # welche Projekte, wie viele Datensaetze
+ssh BIC_12 'ls -lhS Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv'
+ssh BIC_12 'du -sh  Documents/AutomatisierungCleanVersion/Ergebnisse/*'
 ```
 
 ### Was im Ergebnisse-Ordner liegt
 
+Alles unterhalb von `Ergebnisse/<Projekt>/`:
+
 | Datei | Bedeutung |
 |---|---|
 | `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
+| `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
 | `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
 | `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
 | `Model_GenX_VarY.stl` | erzeugte Geometrie |
@@ -212,17 +231,22 @@ die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung
 5. `dotnet build` und danach `libpicogk.so` neben die DLL kopieren (der Build
    räumt den Ordner gelegentlich auf).
 
-Weil `*.local.json` nie übertragen wird, überlebt eine `config/simulation.local.json`
-**auf dem Server** jedes Deploy. Genau der richtige Ort für Abweichungen, die nur
-dort gelten — etwa ein kleiner Probelauf:
+**Verwaiste Dateien werden vor dem Entpacken entfernt.** Ein Deploy überschreibt nur,
+es löscht nicht — eine umbenannte oder verschobene Datei lag danach doppelt auf dem
+Server, und bei C#-Dateien heißt das: derselbe Typ zweimal, `CS0101`, Build kaputt.
+Genau das ist beim Umzug nach `src/projects/` passiert. Deshalb räumt `deploy` unter
+`src/`, `scripts/` und `config/` erst auf und packt dann aus. Ausgenommen sind
+`*.local.json` (die sollen ein Deploy überleben, das ist ihr ganzer Zweck) sowie
+`bin/` und `obj/`, damit der Build inkrementell bleibt. Unter `Ergebnisse/` wird
+**nichts** angefasst.
 
-```json
-{ "MaxIterations": 1, "VariantsPerIteration": 2 }
-```
-
-Entpackt wird über den vorhandenen Stand drüber. Gelöschte Dateien verschwinden
-dadurch nicht automatisch vom Server; bei Bedarf dort einmal `rm -rf src` und neu
-deployen.
+Weil `*.local.json` nie übertragen wird, überlebt eine solche Datei auf dem Server
+jedes Deploy — sie lässt sich nur per SSH dort entfernen, wo sie liegt.
+**Sollstand ist, dass es keine gibt**, und der Start meldet jede vorhandene mit jedem
+Schlüssel, den sie aushebelt. Für einen kurzen Probelauf ist sie der falsche Weg:
+`MaxIterations` und `VariantsPerIteration` gehören in
+`src/projects/<Projekt>/simulation.json` — dann ist das, was du hochlädst, auch das,
+was läuft. Näheres in [`config/README.md`](../config/README.md).
 
 ## Warum ein eigenes Verzeichnis
 
@@ -230,8 +254,8 @@ Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
 `~/Documents/Automatisierung_v2`. Gründe:
 
 - Die alte Ablage hat das flache Layout (`Automatisierung_v2.csproj` im Wurzelordner,
-  `dotnet run` ohne Argumente). Das refaktorierte Projekt braucht `src/` und `config/`
-  nebeneinander und den Aufruf `… MantaAuv <configdir>`.
+  `dotnet run` ohne Argumente). Das refaktorierte Projekt braucht `src/projects/` neben
+  dem Framework und den Aufruf `… <Projektname>`.
 - Der alte Ordner bleibt so als `main`-Referenz für den Vergleichslauf (TODO-21) liegen.
 
 ## Stolperfallen, die hier schon erledigt sind

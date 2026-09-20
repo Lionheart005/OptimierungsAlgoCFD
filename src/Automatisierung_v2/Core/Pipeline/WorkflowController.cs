@@ -22,19 +22,30 @@ namespace MyPicoGkProject.Core
 
         // Kein IFitnessCalculator-Feld: die Bewertung läuft über den Optimierungsalgorithmus
         // (EvaluateAndSelectBest) und im Validierungslauf über den ChampionValidator.
+        // Deshalb kommen die Pflicht-Metriken als reine Namensliste herein und nicht als
+        // Rechner — sonst zöge TODO-26 die mit TODO-13 entfernte Abhängigkeit wieder ein.
+        private readonly IReadOnlyCollection<string> _requiredMetrics;
 
+        /// <param name="requiredMetrics">
+        /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
+        /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
+        /// erfolgreich gerechneten Variante, bricht der Lauf ab (TODO-26). <c>null</c> oder
+        /// leer = keine Prüfung.
+        /// </param>
         public WorkflowController(
             IGeometryGenerator geometry,
             SolverStage[] stages,
             IModelValidator validator,
             IOptimizationAlgorithm optimizer,
-            SimulationContext context)
+            SimulationContext context,
+            IReadOnlyCollection<string>? requiredMetrics = null)
         {
             _geometry = geometry;
             _stages = stages;
             _validator = validator;
             _optimizer = optimizer;
             _context = context;
+            _requiredMetrics = requiredMetrics ?? Array.Empty<string>();
         }
 
         public void RunOptimization()
@@ -51,6 +62,10 @@ namespace MyPicoGkProject.Core
             // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
             // bestimmt (TODO-15), nicht über die letzte Iteration.
             ModelRecord? lastIterationWinner = null;
+
+            // Die Pflicht-Metriken werden genau einmal geprüft — an der ersten Variante,
+            // die tatsächlich durchgelaufen ist (siehe EnsureRequiredMetrics).
+            bool requiredMetricsChecked = false;
 
             // =========================================================
             // ÄUẞERE SCHLEIFE: ITERATIONEN (z.B. Generationen)
@@ -77,6 +92,13 @@ namespace MyPicoGkProject.Core
 
                     // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
                     ModelRecord record = RunPipeline(activeParams, iter, var);
+
+                    // 6a. Liefert die Pipeline überhaupt, was die Fitness-Formel braucht?
+                    if (!requiredMetricsChecked && !record.SimulationFailed)
+                    {
+                        requiredMetricsChecked = true;
+                        EnsureRequiredMetrics(record);
+                    }
 
                     // 7. Datensatz speichern
                     _context.History.Add(record);
@@ -134,6 +156,39 @@ namespace MyPicoGkProject.Core
             }
 
             return best;
+        }
+
+        /// <summary>
+        /// Prüft, ob der Record alle Metriken trägt, die der <see cref="IFitnessCalculator"/> des
+        /// Projekts braucht — und bricht sonst ab (TODO-26).
+        ///
+        /// <para>
+        /// Bewusst erst nach der ersten Variante: vorher existiert keine einzige Metrik, weil sie
+        /// aus Geometrie und Solver kommen. Und bewusst nur an einem Record, dessen Simulation
+        /// <b>nicht</b> abgebrochen ist — sonst würde ein einzelner SU2-Absturz in Variante 1 als
+        /// Konfigurationsfehler gemeldet. Scheitert jede Variante, bleibt die Prüfung aus; dann
+        /// hat der Lauf ohnehin ein größeres Problem, über das der Solver selbst schon geredet hat.
+        /// </para>
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Eine Pflicht-Metrik fehlt.</exception>
+        private void EnsureRequiredMetrics(ModelRecord record)
+        {
+            if (_requiredMetrics.Count == 0) return;
+
+            var missing = _requiredMetrics.Where(name => !record.PassiveParameters.ContainsKey(name)).ToList();
+            if (missing.Count == 0) return;
+
+            string present = record.PassiveParameters.Count == 0
+                ? "(keine)"
+                : string.Join(", ", record.PassiveParameters.Keys);
+
+            throw new InvalidOperationException(
+                $"[KONFIGURATION] Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) "
+                + $"{string.Join(", ", missing)}, ohne die sich die Fitness-Formel nicht rechnen lässt. "
+                + $"Vorhanden ist: {present}. "
+                + "Geometrie-Metriken meldet der IGeometryGenerator des Projekts über AddMetric(...); "
+                + "Solver-Größen kommen aus 'ResultMetrics' in dessen su2.json. "
+                + "Abbruch hier, statt den ganzen Lauf mit einer Ersatz-Fitness durchzurechnen.");
         }
 
         /// <summary>
@@ -284,9 +339,14 @@ namespace MyPicoGkProject.Core
                     Console.WriteLine($"   {kvp.Key}: {kvp.Value:F4}");
                 }
 
-                Console.WriteLine($"\n📂 ParaView-Dateien:");
-                Console.WriteLine($"   Oberfläche: Ergebnisse/Analyseergebnisse/Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
-                Console.WriteLine($"   Volumen:    Ergebnisse/Analyseergebnisse/Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
+                // Die Pfade kommen aus dem Kontext und stehen nicht mehr als Text hier:
+                // seit TODO-25 liegen die Ergebnisse unter Ergebnisse/<Projekt>/, und eine
+                // hartcodierte Zeile hätte den Nutzer in den falschen Ordner geschickt.
+                string analysis = System.IO.Path.Combine(_context.WorkingDirectory, "Analyseergebnisse");
+
+                Console.WriteLine($"\n📂 ParaView-Dateien in {analysis}:");
+                Console.WriteLine($"   Oberfläche: Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
+                Console.WriteLine($"   Volumen:    Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
             }
         }
     }

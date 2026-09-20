@@ -77,23 +77,21 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Rauchtest für die mitgelieferte config/simulation.json: sie muss gefunden werden
-        /// (Suche nach oben, weil die Tests aus bin/Debug/net9.0 laufen), gültiges JSON sein
-        /// und dieselben Werte liefern wie die einkompilierten Standardwerte.
+        /// Rauchtest für die mitgelieferte src/projects/MantaAuv/simulation.json: sie muss
+        /// gefunden werden (Suche nach oben, weil die Tests aus bin/Debug/net9.0 laufen),
+        /// gültiges JSON sein und dieselben Werte liefern wie die einkompilierten Standardwerte.
         /// </summary>
         [Fact]
         public void Repository_Config_File_Is_Found_And_Matches_Defaults()
         {
-            string? directory = JsonConfigLoader.ResolveConfigDirectory(null);
-            Assert.NotNull(directory);
-            Assert.True(File.Exists(Path.Combine(directory!, "simulation.json")), "config/simulation.json fehlt.");
-
-            var fromFile = JsonConfigLoader.LoadSimulationConfig();
+            var fromFile = MantaProjectFiles.Simulation();
             var defaults = SimulationConfig.CreateDefault();
 
             Assert.Equal(defaults.MaxIterations, fromFile.MaxIterations);
             Assert.Equal(defaults.VariantsPerIteration, fromFile.VariantsPerIteration);
-            Assert.Equal(defaults.Su2Path, fromFile.Su2Path);
+            // Die Programmpfade sind bewusst NICHT dabei: MantaAuv weicht dort vom
+            // Code-Standard ab, weil der Hochschulserver sie nicht über den PATH findet.
+            // Geprüft wird das in ProjectLayoutTests.
             Assert.Equal(defaults.BouncerTolerance, fromFile.BouncerTolerance, 5);
             Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
             Assert.Equal(defaults.OptimizationAlgorithm, fromFile.OptimizationAlgorithm);

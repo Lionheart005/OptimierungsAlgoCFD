@@ -1,0 +1,50 @@
+{
+  // ===================================================================
+  //  MeinProjekt -- Gmsh-Vernetzer
+  // ===================================================================
+  //
+  // Auch diese Datei nennt JEDEN Schluessel mit dem Code-Standard aus
+  // Solvers/Cfd/GmshMesherOptions.cs -- als Nachschlagewerk. In einem echten
+  // Projekt bleibt nur stehen, was abweicht.
+  //
+  // Ein unbekannter Schluessel bricht den Start ab (TODO-22).
+  //
+  // Nicht hier, sondern in ../simulation.json: GmshCores und GmshPath.
+  //
+  // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
+  // daneben (gitignored). Sollstand ist, dass es keine gibt.
+
+  // --- Windkanal (Simulationsdomaene) in mm ---
+  //
+  // "Box"      = Quader aus TunnelSize* (bisheriges Verhalten)
+  // "Cylinder" = Zylinder mit Achse entlang X aus TunnelDiameter/TunnelLength/
+  //              TunnelSegments
+  // Beide sitzen auf TunnelCenter*; ein unbekannter Name warnt und faellt auf
+  // "Box" zurueck.
+  //
+  // WICHTIG: Der Kanal muss deutlich groesser sein als das Modell -- sonst
+  // stroemt die Loesung an den Waenden auf und der Widerstand kommt zu hoch
+  // heraus. Die Vorgabe (600 x 300 x 300) passt zu einem Modell von etwa 50 mm
+  // Laenge. Wird dein Modell groesser, waechst der Kanal mit.
+  "TunnelShape": "Box",
+  "TunnelSizeX": 600.0,
+  "TunnelSizeY": 300.0,
+  "TunnelSizeZ": 300.0,
+  "TunnelCenterX": 0.0,
+  "TunnelCenterY": 0.0,
+  "TunnelCenterZ": 0.0,
+
+  // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
+  "TunnelDiameter": 300.0,
+  "TunnelLength": 600.0,
+  "TunnelSegments": 64,
+
+  // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
+  // Zellgroesse in mm: SizeMin gilt bis DistMin Abstand von der Modellwand,
+  // SizeMax ab DistMax; dazwischen wird interpoliert. Kleinere SizeMin =
+  // feinere Grenzschicht = deutlich mehr Zellen und deutlich mehr Rechenzeit.
+  "BoundaryLayerSizeMin": 1.2,
+  "BoundaryLayerSizeMax": 120.0,
+  "BoundaryLayerDistMin": 3.0,
+  "BoundaryLayerDistMax": 40.0
+}

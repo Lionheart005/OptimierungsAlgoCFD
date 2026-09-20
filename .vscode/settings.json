@@ -1,0 +1,13 @@
+{
+  // Die Konfigurationsdateien der Projekte sind JSONC: sie duerfen Kommentare und
+  // nachgestellte Kommata enthalten, und genau so liest sie der JsonConfigLoader
+  // (JsonCommentHandling.Skip, AllowTrailingCommas).
+  //
+  // Ohne diese Zuordnung meldet VS Code in jeder Kommentarzeile "Comments are not
+  // permitted in JSON" -- ein Fehler, den es nicht gibt, und der die echten
+  // Meldungen zumuellt.
+  "files.associations": {
+    "**/src/projects/**/*.json": "jsonc",
+    "**/config/**/*.json": "jsonc"
+  }
+}

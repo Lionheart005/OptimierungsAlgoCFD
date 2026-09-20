@@ -18,6 +18,16 @@ namespace MyPicoGkProject.Projects.MantaAuv
             "MinimumAllowedVolume", "MaximumAllowedVolume", "DragBalanceFactor"
         };
 
+        /// <summary>
+        /// Metriken, ohne die die Formel nicht rechnet: Drag kommt aus der SU2-history.csv
+        /// (Zuordnung in su2.json unter 'ResultMetrics'), Volume und SensorDistance meldet
+        /// der <see cref="MantaGeometryGenerator"/>.
+        ///
+        /// FrontalArea steht bewusst nicht hier: die Fitness braucht sie nicht, sie geht als
+        /// REF_AREA in den Solver — und der warnt seit TODO-12 selbst, wenn sie fehlt.
+        /// </summary>
+        private static readonly string[] RequiredMetricNames = { "Drag", "Volume", "SensorDistance" };
+
         private readonly float _minimumAllowedVolume;
         private readonly float _maximumAllowedVolume;
         private readonly float _dragBalanceFactor;
@@ -42,7 +52,7 @@ namespace MyPicoGkProject.Projects.MantaAuv
                 throw new InvalidOperationException(
                     $"[KONFIGURATION] Projekt '{project.ProjectName}': in OptimizationTargets fehlt/fehlen " +
                     $"{string.Join(", ", missing)}. Die Manta-Fitness braucht {string.Join(", ", RequiredTargets)}. " +
-                    $"Vorhanden ist: {present}. Nachtragen in config/projects/{project.ProjectName}.json " +
+                    $"Vorhanden ist: {present}. Nachtragen in src/projects/{project.ProjectName}/project.json " +
                     $"(oder in MantaProjectConfig.Create()).");
             }
 
@@ -50,6 +60,9 @@ namespace MyPicoGkProject.Projects.MantaAuv
             _maximumAllowedVolume = project.OptimizationTargets["MaximumAllowedVolume"];
             _dragBalanceFactor = project.OptimizationTargets["DragBalanceFactor"];
         }
+
+        /// <inheritdoc/>
+        public IReadOnlyCollection<string> RequiredMetrics => RequiredMetricNames;
 
         public void CalculateFitness(ModelRecord record, SimulationConfig config)
         {

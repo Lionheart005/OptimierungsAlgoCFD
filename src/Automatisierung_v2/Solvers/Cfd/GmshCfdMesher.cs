@@ -18,7 +18,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         private readonly GmshMesherOptions _options;
         private string? _cachedTunnelPath;
 
-        /// <param name="options">Vorgabedaten aus config/solvers/gmsh.json; ohne Angabe gelten die Standardwerte.</param>
+        /// <param name="options">Vorgabedaten aus solvers/gmsh.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
         public GmshCfdMesher(GmshMesherOptions? options = null)
         {
             _options = options ?? new GmshMesherOptions();

@@ -1,0 +1,92 @@
+{
+  // ===================================================================
+  //  MantaAuv -- Framework-Einstellungen dieses Projekts
+  // ===================================================================
+  //
+  // Was hier fehlt, kommt aus den Standardwerten in
+  // Core/Models/SimulationConfig.cs. Eingetragen gehoert also nur, was vom
+  // Code-Standard ABWEICHT -- alles andere ist Rauschen, das beim naechsten
+  // Framework-Update veraltet.
+  //
+  // Ein unbekannter Schluessel bricht den Start ab (TODO-22). Der Abbruch nennt
+  // den Schluessel und den naechstaehnlichen gueltigen Namen.
+  //
+  // Ein zweites Projekt hat seine eigene Datei unter src/projects/<Name>/ und
+  // kommt dieser hier nicht in die Quere.
+  //
+  // Maschinenspezifische Ausnahmen gehoeren in eine simulation.local.json
+  // (gitignored). SOLLSTAND IST, DASS ES KEINE GIBT: findet der Start eine,
+  // meldet er sie mit jedem Schluessel, den sie diesem Projekt aushebelt.
+
+  // --- Pfade zu externer Software ---
+  //
+  // DER CODE-STANDARD IST PATH-RELATIV ("mpirun", "SU2_CFD", "gmsh"), siehe
+  // Core/Models/SimulationConfig.cs. Ein Projekt, das nichts eintraegt, sucht die
+  // Programme also ueber den PATH -- das ist der Normalfall und funktioniert auf
+  // jedem Rechner, der sie regulaer installiert hat.
+  //
+  // DIESES Projekt traegt sie trotzdem absolut ein, weil der Hochschulserver
+  // (BIC_12) sie nicht ueber den PATH findet: SU2 und Gmsh sind dort von Hand
+  // nach ~/software entpackt, mpirun kommt aus Miniconda. Bei "ssh host befehl"
+  // startet bash nicht-interaktiv und Ubuntus ~/.bashrc steigt sofort wieder aus,
+  // deshalb greift dort nichts aus conda init.
+  //
+  // Die Pfade stammen aus ServerHochschuleEinrichten2.txt und setup_server.sh.
+  // Aendert sich die Gmsh-Version, aendert sich auch dieser Pfad.
+  //
+  // Auf einem anderen Server: diese drei Zeilen loeschen, dann gilt wieder der
+  // PATH-relative Code-Standard. Welche Variante greift, sagt `sim.ps1 doctor`
+  // VOR dem Lauf -- er nennt bei jedem Programm den tatsaechlich gefundenen Ort.
+  "MpiRunPath": "/home/lpleissner/miniconda/bin/mpirun",
+  "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
+  "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
+
+  // --- Zeit & Umfang ---
+  // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.
+  // Fuer einen kurzen Testlauf hier heruntersetzen und neu deployen -- es gibt
+  // kein verstecktes zweites Stellrad mehr.
+  "MaxIterations": 10,
+  "VariantsPerIteration": 10,
+  "BaseVoxelResolution": 0.5,
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+
+  // --- Abschaltbare Framework-Bausteine ---
+  // Scaler aus: der Geometrie-Kernel arbeitet mit den echten Massen, ScaleFactor bleibt 1.
+  // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell.
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+
+  // --- CFD & SU2 ---
+  "MachNumber": 0.1,
+  "Su2MaxIterations": 500,
+  "CauchyElements": 150,
+  "CauchyTolerance": "1e-4",
+  "MpiCores": 12,
+  "GmshCores": 12,
+
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
+  "OptimizationAlgorithm": "Rsm",
+
+  // --- Evolutionärer Algorithmus ---
+  "MinimalDeviationExploration": 1.0,
+  "MinimalDeviationExploitation": 0.05,
+  "RoleFineTuner": 0.2,
+  "RoleCautious": 0.4,
+  "RoleNormal": 0.6,
+
+  // --- RSM (Antwortflächen-Verfahren) ---
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // --- Validierung des Champions (Bouncer) ---
+  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation.
+  // Achtung: prüfte früher den Drag; die Fitness reagiert empfindlicher,
+  // der Wert muss beim ersten echten Lauf nachjustiert werden.
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01
+}

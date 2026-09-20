@@ -24,6 +24,7 @@
     fetch    Ergebnisse vom Server nach Windows holen
     doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
     build    Nur bauen, nicht starten
+    projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
 
 .EXAMPLE
     .\scripts\sim.ps1 doctor
@@ -44,7 +45,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build')]
+    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -54,6 +55,13 @@ param(
     # Bewusst NICHT das alte Automatisierung_v2: das bleibt als main-Referenz liegen.
     [string]$RemoteDir = 'Documents/AutomatisierungCleanVersion',
 
+    # Der Umschalter zwischen Projekten. Der Name ist der Ordnername unter src/projects/
+    # (Entscheidung 1) und wird als SIM_PROJECT an sim-runner.sh durchgereicht.
+    #
+    # Die Vorgabe bleibt hier stehen, anders als auf der Server-Seite: dort waere sie
+    # unsichtbar, hier steht sie im Aufruf und wird zusaetzlich gemeldet, sobald ein
+    # projektbezogener Befehl sie benutzt (TODO-28). Welche Namen es gibt:
+    # .\scripts\sim.ps1 projects
     [string]$Project = 'MantaAuv',
 
     # Laufende Simulation trotz geaendertem Code weiterlaufen lassen
@@ -241,9 +249,26 @@ function Push-Sources {
         & scp -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
         if ($LASTEXITCODE -ne 0) { throw "scp ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
 
+        # Verwaiste Dateien entfernen, BEVOR entpackt wird.
+        #
+        # Ein Deploy ueberschreibt nur, er loescht nie. Wird eine Datei umbenannt oder
+        # verschoben, liegt sie auf dem Server danach doppelt -- und bei C#-Dateien heisst
+        # das: derselbe Typ zweimal, der Build scheitert mit CS0101. Genau das ist beim
+        # Umzug nach src/projects/ passiert.
+        #
+        # Ausgenommen sind *.local.json (die sollen ein Deploy ueberleben, das ist ihr
+        # ganzer Zweck) sowie bin/ und obj/, damit der Build inkrementell bleibt und
+        # libpicogk.so liegen bleibt.
+        #
+        # Der Tarball liegt zu diesem Zeitpunkt schon drueben: schlaegt das Entpacken
+        # fehl, ist "tar -xzf deploy.tar.gz" im Repo-Verzeichnis die Reparatur.
+        $prune = "find src scripts config -type f ! -name '*.local.json' " +
+                 "-not -path '*/bin/*' -not -path '*/obj/*' -delete 2>/dev/null; " +
+                 "find src scripts config -type d -empty -delete 2>/dev/null; true"
+
         # Entpacken, Zeilenenden der Shell-Skripte hart auf LF ziehen (falls sie
         # doch einmal mit CRLF aus dem git-Checkout kommen) und ausfuehrbar machen.
-        $unpack = "tar -xzf deploy.tar.gz && rm -f deploy.tar.gz && sed -i 's/\r`$//' scripts/*.sh && chmod +x scripts/*.sh"
+        $unpack = "$prune && tar -xzf deploy.tar.gz && rm -f deploy.tar.gz && sed -i 's/\r`$//' scripts/*.sh && chmod +x scripts/*.sh"
         Invoke-Remote -CommandLine $unpack | Out-Null
     }
     finally {
@@ -281,9 +306,12 @@ function Invoke-Deploy {
     if ($wasRunning -and $NoRestart) {
         Write-Warn "Geaenderter Code wird hochgeladen, aber NICHT gebaut (-NoRestart)."
         Write-Warn "Der laufende Lauf rechnet mit der alten Version weiter; ein Build wuerde"
-        Write-Warn "ihm die DLL unter den Fuessen wegziehen. Gebaut wird beim naechsten Start."
+        Write-Warn "ihm die DLL unter den Fuessen wegziehen."
         Push-Sources
-        Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
+        # Bewusst KEIN .deploy_hash: der Stand gilt erst als uebernommen, wenn er auch
+        # gebaut ist. Sonst meldet das naechste Deploy "unveraendert" und der Build
+        # unterbleibt fuer immer -- die DLL bliebe auf ewig die alte.
+        Write-Warn "Der Stand gilt als offen; das naechste Deploy baut ihn."
         return
     }
 
@@ -293,10 +321,15 @@ function Invoke-Deploy {
     }
 
     Push-Sources
-    Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
     Write-Step "Bauen auf $Server"
     Invoke-Runner -Arguments 'build'
+
+    # Der Hash wird ERST nach einem erfolgreichen Build geschrieben. Stand er vorher da
+    # und der Build scheiterte, meldete jedes weitere Deploy "Code unveraendert" und
+    # baute nie wieder -- der Server rechnete dann dauerhaft mit einer alten DLL,
+    # waehrend alles danach aussah, als sei der neue Stand drueben.
+    Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
@@ -318,13 +351,22 @@ function Invoke-Fetch {
 
     Write-Step "Hole Ergebnisse nach $target"
 
+    # Ergebnisse liegen seit TODO-25 unter Ergebnisse/<Projekt>/ -- geholt wird also
+    # gezielt das Projekt, nicht der gemeinsame Topf.
+    $remoteResults = "$RemoteDir/Ergebnisse/$Project"
+
     if ($All) {
-        & scp -q -r "${Server}:$RemoteDir/Ergebnisse" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner konnte nicht geholt werden." }
+        & scp -q -r "${Server}:$remoteResults" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner von '$Project' konnte nicht geholt werden." }
     }
     else {
-        & scp -q "${Server}:$RemoteDir/Ergebnisse/Simulation_Results.csv" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf gemacht?)." }
+        & scp -q "${Server}:$remoteResults/Simulation_Results.csv" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf von '$Project' gemacht?)." }
+
+        # Die effective-config.json ist klein und beantwortet spaeter die Frage, womit
+        # dieser Datensatz entstanden ist -- sie gehoert zur CSV dazu.
+        & scp -q "${Server}:$remoteResults/effective-config.json" $target
+        if ($LASTEXITCODE -ne 0) { Write-Warn "effective-config.json konnte nicht geholt werden." }
     }
 
     & scp -q "${Server}:$RemoteDir/simulation.log" $target
@@ -342,6 +384,18 @@ function Invoke-Fetch {
 # ---------------------------------------------------------------------------
 
 try {
+    # Sagen, mit welchem Projekt gerechnet wird, wenn der Aufruf es nicht nennt. Auf der
+    # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
+    # bequem und darf bleiben -- aber nicht stumm. Die Liste der Befehle ist genau die,
+    # bei denen der Projektname das Ergebnis aendert (log liest die eine globale
+    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen).
+    $projectBoundCommands = @('deploy', 'run', 'status', 'fetch', 'doctor')
+
+    if ($projectBoundCommands -contains $Command -and -not $PSBoundParameters.ContainsKey('Project')) {
+        Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
+        Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+    }
+
     switch ($Command) {
         'deploy' { Invoke-Deploy }
         'run' { Invoke-Deploy -ThenStart }
@@ -353,9 +407,11 @@ try {
         }
 
         'doctor' {
-            # doctor prueft unter anderem die Pfade aus config/simulation.json und
-            # braucht deshalb einen Stand auf dem Server. Beim allerersten Aufruf
-            # laden wir ihn hier hoch -- gebaut wird dabei bewusst nicht.
+            # doctor prueft unter anderem die wirksamen Programmpfade und braucht
+            # deshalb einen Stand auf dem Server. Beim allerersten Aufruf laden wir
+            # ihn hier hoch -- gebaut wird dabei bewusst nicht. Die Pfadpruefung
+            # selbst funktioniert erst nach einem Build, weil doctor das Programm
+            # mit --print-config danach fragt (TODO-24); das meldet er auch so.
             if (-not (Test-RemoteDeployed)) {
                 Write-Step "Erster Kontakt mit $Server - lade den Code hoch"
                 Push-Sources
@@ -364,6 +420,15 @@ try {
             }
             Write-Step "Pruefe Umgebung auf $Server"
             Invoke-Runner -Arguments 'doctor'
+        }
+
+        'projects' {
+            Assert-RemoteDeployed
+            Write-Step "Projekte auf $Server"
+            # Ueber Invoke-Remote und nicht Invoke-Runner: dieser Befehl setzt bewusst
+            # KEIN SIM_PROJECT. Er wird gerade dann gebraucht, wenn man den Namen nicht
+            # kennt -- und der Server soll antworten, ohne einen zu verlangen.
+            Invoke-Remote -CommandLine "$RunnerCall projects" | Out-Null
         }
 
         'status' {

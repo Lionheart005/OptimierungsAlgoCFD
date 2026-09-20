@@ -7,8 +7,20 @@ namespace MyPicoGkProject.Core
     public class SimulationConfig
     {
         // --- PFADE ZU EXTERNER SOFTWARE ---
-        public string MpiRunPath { get; set; } = "/home/lpleissner/miniconda/bin/mpirun";
-        public string Su2Path { get; set; } = "/home/lpleissner/software/bin/SU2_CFD";
+        //
+        // PATH-relativ statt absolut (TODO-24). Vorher standen hier die Pfade eines ganz
+        // bestimmten Servers (/home/lpleissner/...) — ein fremder Nutzer erbte damit eine
+        // Installation, die es auf seinem Rechner nicht gibt, und merkte es erst im Lauf.
+        //
+        // .NET löst einen bloßen Programmnamen in Process.StartInfo.FileName über den PATH
+        // auf, und scripts/sim-runner.sh legt in load_env genau die Verzeichnisse dorthin,
+        // aus denen die alten Pfade stammten. Su2Path wird ohnehin nur als Argument an
+        // mpirun durchgereicht und von diesem selbst aufgelöst.
+        //
+        // Damit entfällt der letzte Grund für eine *.local.json. Findet ein Rechner die
+        // Programme trotzdem nicht, meldet das `.\scripts\sim.ps1 doctor` vor dem Lauf.
+        public string MpiRunPath { get; set; } = "mpirun";
+        public string Su2Path { get; set; } = "SU2_CFD";
         public string GmshPath { get; set; } = "gmsh";
 
         // 1. Zeit & Umfang
