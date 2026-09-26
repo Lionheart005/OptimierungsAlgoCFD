@@ -1,108 +1,157 @@
 # Automatisierte CFD-Formoptimierung
 
-Dieses Projekt automatisiert die Formoptimierung von 3D-Bauteilen anhand ihrer aerodynamischen bzw. hydrodynamischen Eigenschaften. Aus einem Parametersatz entsteht eine voxelbasierte Geometrie, daraus ein Rechennetz und anschliessend eine CFD-Simulation. Die Ergebnisse werden als Fitness bewertet und fuer die naechste Optimierungsrunde verwendet.
+Dieses Framework automatisiert die iterative aerodynamische bzw. hydrodynamische Formoptimierung von 3D-Bauteilen. Aus einem Satz von Entwurfsparametern wird vollautomatisch ein voxelbasiertes 3D-Modell generiert, dieses in ein Rechennetz überführt und anschließend mittels numerischer Strömungsmechanik (CFD) simuliert. Eine anpassbare Zielfunktion bewertet das Strömungsverhalten und übergibt die Fitness an den Optimierungsalgorithmus, der daraus die nächste Parametergeneration ableitet.
 
 ```text
-Parameter
-   -> PicoGK: Voxelgeometrie und STL
-   -> Gmsh: Rechennetz
-   -> SU2: Stroemungssimulation
-   -> Fitness: Bewertung
-   -> Optimierungsalgorithmus: naechste Parameter
+Entwurfsparameter
+       │
+       ▼
+ Geometrieerzeugung (PicoGK)     ──► Voxelmodell & STL-Export (optional geglättet)
+       │
+       ▼
+ Vernetzung (Gmsh)               ──► 3D-Windkanal & Rechennetz
+       │
+       ▼
+ Strömungssimulation (SU2)       ──► Druck- und Geschwindigkeitsfeld (optional MPI)
+       │
+       ▼
+ Fitness-Berechnung              ──► Skalare Bewertung (z. B. Widerstand, Auftrieb, Volumen)
+       │
+       ▼
+ Optimierungsalgorithmus         ──► Bestimmung der nächsten Variante (RSM oder Evolution)
+       │
+       └─────────────────────────► Neuer Zyklus (über Dutzende bis Hunderte Generationen)
 ```
 
-Der aktuelle Beispiel-Fall ist das Projekt `MantaAuv`. Das Framework ist jedoch so strukturiert, dass weitere Geometrien, Zielfunktionen, Solver und Optimierungsverfahren ueber klar getrennte Schnittstellen ergaenzt werden koennen.
+Die Geometrieerzeugung basiert auf **Voxeln** statt klassischer CAD-Flächen (B-Rep / NURBS). Dadurch gelingen Boolesche Operationen, Verrundungen und Durchdringungen fehlerfrei und ohne abbrechende Flächenverschneidungen – eine Grundvoraussetzung für stabile, unbeaufsichtigte Optimierungsschleifen über hunderte Varianten.
 
-## Was im Repository steckt
+Wie ein vollständiges Projekt mit Geometriebauplan, Zielfunktion und Konfiguration aufgebaut ist, lässt sich beispielhaft im Ordner [`src/projects/MantaAuv/`](src/projects/MantaAuv/) nachvollziehen.
 
-- `src/Automatisierung_v2/` enthaelt das .NET-9-Programm und die eigentliche Pipeline.
-- `src/Automatisierung_v2/Core/` enthaelt die projektunabhaengigen Modelle, Interfaces, Algorithmen, Konfiguration und Ablaufsteuerung.
-- `src/Automatisierung_v2/Projects/MantaAuv/` enthaelt Geometriegenerator und Fitnessberechnung des Beispielprojekts.
-- `src/Automatisierung_v2/Kernels/` bindet PicoGK fuer die Geometrieerzeugung an.
-- `src/Automatisierung_v2/Solvers/Cfd/` bindet Gmsh und SU2 fuer Vernetzung und Stroemungssimulation an.
-- `config/` enthaelt Framework-, Projekt- und Solver-Konfigurationen.
-- `scripts/` steuert Deployments und Simulationslaeufe auf einem Linux-Server.
-- `tests/` enthaelt automatisierte Tests fuer Kernlogik, Konfiguration und Pipeline.
-- `Serverergebnisse/` ist fuer heruntergeladene Simulationsergebnisse vorgesehen und wird nicht als dauerhafte Ergebnisablage versioniert.
+---
+
+## Repository-Struktur
+
+Das Repository trennt den wiederverwendbaren Framework-Kern strikt von den individuellen Bauteilprojekten:
+
+```text
+AutomatisierungCleanVersion/
+├── src/
+│   ├── Automatisierung_v2/       # Modulares C#-Framework (.NET 9)
+│   │   ├── Core/                 # Interfaces, Datenmodelle, Algorithmen & Workflow-Steuerung
+│   │   ├── Composition/          # Vorgefertigte Kettendefinitionen (z. B. CfdProjectDefinition)
+│   │   ├── Kernels/              # Geometrie-Kernel-Anbindungen (PicoGK)
+│   │   └── Solvers/              # Solver- und Vernetzer-Anbindungen (Gmsh, SU2)
+│   │
+│   └── projects/                 # Bauteilprojekte (jeder Ordner entspricht einem Projektnamen)
+│       ├── _Vorlage/             # Vollständige Kopiervorlage für neue Bauteile
+│       └── MantaAuv/             # Beispielprojekt: AUV-Rumpf mit Sonar-Zielfunktion
+│
+├── scripts/                      # PowerShell- & Bash-Skripte für Deployment, Serverläufe & Projekt-Setup
+├── tests/                        # 250+ Unit- und Integrationstests (lauffähig ohne installierte Solver)
+├── config/                       # Lokaler Notausgang für maschinenspezifische Ausnahmedateien (*.local.json)
+└── Ergebnisse/                   # Projektbezogene Simulationsergebnisse (CSV, VTU für ParaView, STLs)
+```
+
+---
 
 ## Kernfunktionen
 
-- Parametrische Voxelgeometrie mit PicoGK
-- Automatische STL-Erzeugung und optionales Glatten
-- Windkanal- und Netzgenerierung mit Gmsh
-- CFD-Berechnung mit SU2, optional ueber MPI
-- Antwortflaechenoptimierung (RSM) und evolutionaerer Algorithmus
-- Projektabhaengige Fitnessfunktionen bei projektunabhaengigem Pipeline-Kern
-- Champion-Validierung durch eine zusaetzliche Kontrollrechnung
-- Semikolongetrennter CSV-Export mit Parametern, Metriken, Fitness und Dateipfaden
-- Reproduzierbare Tests ohne installierte PicoGK-, Gmsh- oder SU2-Laufzeit
+- **Robuste Voxel-Modellierung (PicoGK):** Algorithmische Geometriegenerierung in C# mit impliziten Funktionen. Komplexe organische Übergänge und Durchdringungen gelingen stabil ohne CAD-Kernel-Abbrüche.
+- **Integrierte Geometrieaufbereitung:** Automatische Skalierung auf optimale Voxelauflösung (*RubberBandScaler*), STL-Export und konfigurierbares Oberflächenglätten zur Vermeidung von Treppeneffekten.
+- **Vollautomatische Vernetzung (Gmsh):** Parametrische Windkanal-Generierung (Quader oder Zylinder) und automatische Netzverfeinerung in der Grenzschicht.
+- **Skalierbare CFD-Simulation (SU2):** Inkompressible Strömungsanalyse (RANS mit Spalart-Allmaras-Turbulenzmodell), konfigurierbar für Mehrkern- und Clusterbetrieb via OpenMPI.
+- **Austauschbare Optimierungsalgorithmen:**
+  - **RSM (Response Surface Methodology):** Ersatzmodellgestützte Optimierung mittels *Inverse Distance Weighting* (IDW) – ideal für schnelle Konvergenz bei 3 bis ca. 15 Parametern.
+  - **Evolutionärer Algorithmus:** (1+λ)-Populationsstrategie mit Rollenverteilung (vom Feintuner bis zum Entdecker) und dynamischer Schrittweitenanpassung nach der 1/5-Erfolgsregel.
+- **Türsteher-Validierung (Bouncer):** Jeder Generationssieger wird mit minimal verjitterten Parametern kontrollgerechnet. Instabile Zufallstreffer oder numerisches „Reward Hacking“ werden so zuverlässig ausgesiebt.
+- **Compiler-erzwungene Modularität:** Der Kern (`Core`) kennt weder konkrete Projekte noch Solver. Neue Bauteile werden als eigenständige Ordner unter `src/projects/` angelegt und beim Programmstart per Reflection automatisch registriert.
+- **Umfassende Ergebnisdokumentation:** Semikolongetrennter CSV-Export (`Simulation_Results.csv`), Speicherung der tatsächlich wirksamen Konfiguration (`effective-config.json`) sowie 3D-Druck- und Strömungsfelddaten (`.vtu`) für ParaView.
+
+---
 
 ## Schnellstart
 
-Voraussetzung fuer Entwicklung und lokale Tests ist das .NET 9 SDK. Fuer einen vollstaendigen Simulationslauf werden zusaetzlich PicoGK, Gmsh und SU2 benoetigt.
+### Voraussetzungen
 
-Tests aus dem Hauptordner starten:
+- Für Entwicklung und Tests: **.NET 9 SDK**
+- Für vollständige Simulationsläufe: **PicoGK** (inkl. nativer Laufzeitbibliothek), **Gmsh** und **SU2**
+
+### Tests ausführen
+
+Die gesamte Kern- und Konfigurationslogik wird über gemockte Interfaces getestet und lässt sich ohne externe Simulationssoftware ausführen:
 
 ```bash
 dotnet test Automatisierung.sln
 ```
 
-Das Beispielprojekt lokal starten:
+### Vorhandene Projekte auflisten
+
+```powershell
+dotnet run --project src/Automatisierung_v2 -- --list-projects
+```
+
+### Konfiguration prüfen (Dry-Run)
+
+Prüft die geladene Konfiguration des Projekts, zeigt etwaige Abweichungen an und validiert Programmpfade, ohne eine Simulation zu starten:
+
+```powershell
+dotnet run --project src/Automatisierung_v2 -- MantaAuv --print-config
+```
+
+### Simulation lokal starten
 
 ```bash
 dotnet run --project src/Automatisierung_v2 -- MantaAuv
 ```
 
-Fuer einen kurzen Probelauf koennen lokale Konfigurationsdateien verwendet werden, zum Beispiel `config/simulation.local.json` mit reduzierter Iterations- und Variantenanzahl. Diese lokalen Dateien sind fuer maschinenspezifische Einstellungen gedacht und werden nicht deployed.
+---
 
-## Simulationen auf dem Server
+## Neues Projekt anlegen
 
-Die vorgesehenen Einstiegspunkte fuer den Serverbetrieb sind:
+Ein neues Bauteil lässt sich mit einem einzigen PowerShell-Befehl aus der Vorlage erzeugen:
 
 ```powershell
-.\scripts\sim.ps1 doctor
-.\scripts\sim.ps1 run
-.\scripts\sim.ps1 status
-.\scripts\sim.ps1 fetch
+.\scripts\new-project.ps1 MeinBauteil
 ```
 
-Der Ablauf laeuft auf dem Server in einer `tmux`-Sitzung weiter. Ergebnisse koennen als kompakte CSV und Logdatei oder als vollstaendiger Ergebnisordner abgeholt werden. Fuer diese Befehle werden eine vorbereitete Linux-Umgebung, SSH-Zugriff per Schluessel sowie Gmsh, SU2, PicoGK und .NET auf dem Server vorausgesetzt.
+Das Skript kopiert die Kopiervorlage nach `src/projects/MeinBauteil/` und benennt alle Klassen und Namensräume passend um. Anschließend werden dort lediglich Geometrie (`*GeometryGenerator.cs`), Zielfunktion (`*FitnessCalculator.cs`) und Parametergrenzen (`project.json`) definiert. Am bestehenden Framework-Code muss dafür keine einzige Zeile geändert werden.
 
-## Testlauf und Ergebnisbeispiel
+---
 
-Der Bericht [OptimierungsAlgoTestlaufBericht.pdf](OptimierungsAlgoTestlaufBericht.pdf) dokumentiert einen kleinen Testlauf des selbst entwickelten Optimierungsprogramms. Er beschreibt die modulare C#-Architektur, PicoGK-basierte Geometrieerzeugung, Gmsh-Meshing, SU2-CFD sowie die Auswertung in ParaView.
+## Betrieb auf dem Linux-Server
 
-Im dort gezeigten Lauf wird ein Gewinner-Modell mit folgenden Kennwerten berichtet:
+Für zeitintensive Optimierungsläufe stehen vorbereitete Skripte bereit, die den Code auf einen Linux-Server synchronisieren, dort in einer persistenten `tmux`-Sitzung mit `xvfb-run` ausführen und die Ergebnisse abholen:
 
-| Kennwert | Wert |
-| --- | ---: |
-| Score | 184311296 |
-| Length | 85.93 mm |
-| Width | 71.28 mm |
-| MainRadius | 12.77 mm |
-| WingRadius | 2.91 mm |
-| TailTaper | 0.28 |
-| Volume | 32994 mm3 |
-| Sensorflaeche | 1108 mm2 |
+```powershell
+# 1. Umgebung und Pfade auf dem Server prüfen
+.\scripts\sim.ps1 doctor -Project MantaAuv
 
-Der Report stellt ausserdem Druckverteilungen und Stromlinien des Gewinner-Modells sowie besonders klobige, aerodynamisch guenstige und insgesamt schlecht bewertete Varianten gegenueber. Die Ergebnisse sind als dokumentierter Testlauf zu verstehen; die genaue physikalische Interpretation und die noch offenen Vergleichs- und Kalibrierlaeufe sind in der technischen Dokumentation beschrieben.
+# 2. Code synchronisieren, bauen und Lauf im Hintergrund starten
+.\scripts\sim.ps1 run -Project MantaAuv
 
-## Dokumentation
+# 3. Status und Fortschritt abfragen
+.\scripts\sim.ps1 status
 
-- [Technischer Projektleitfaden](src/Automatisierung_v2/README.md) beschreibt Bedienung, Konfiguration, Architektur, Erweiterungspunkte und Tests.
-- [Server- und Deployment-Anleitung](scripts/README.md) beschreibt SSH-Voraussetzungen, `sim.ps1`, `sim-runner.sh`, Serverlaeufe und das Abrufen von Ergebnissen.
-- [Testlaufbericht](OptimierungsAlgoTestlaufBericht.pdf) zeigt den dokumentierten Beispielversuch inklusive Visualisierungen und Ausblick.
+# 4. Live-Log verfolgen (Strg+C beendet nur die Anzeige)
+.\scripts\sim.ps1 log
 
-Im Ordner `src/Automatisierung_v2/Projects/` liegt derzeit keine eigene README-Datei; projektspezifische Informationen zum Beispiel `MantaAuv` stehen im technischen Projektleitfaden und in `config/projects/MantaAuv.json`.
+# 5. Ergebnisse (CSV & Log) auf den lokalen Rechner laden
+.\scripts\sim.ps1 fetch -Project MantaAuv
+```
 
-## Architektur in einem Satz
+Die Ergebnisse werden lokal unter `Serverergebnisse/` abgelegt.
 
-`Core` definiert die Vertraege und steuert den Ablauf, waehrend Projekte die Geometrie und Zielfunktion liefern und Solver die physikalischen Berechnungen ausfuehren.
+---
 
-## Bekannte Grenzen und offene Punkte
+## Weiterführende Dokumentation
 
-Das Framework ist fuer automatisierte Konzeptuntersuchungen und den Vergleich von Makroformen ausgelegt. Voxelaufloesung, Rechenzeit, die verwendeten physikalischen Modelle sowie die Konfiguration von Referenzflaeche und Stroemungsgeschwindigkeit beeinflussen die Aussagekraft der Ergebnisse. Der technische Leitfaden dokumentiert ausserdem offene Punkte wie den End-to-End-Vergleich mit der Vorgaengerversion, die Nachjustierung der Bouncer-Toleranz und moegliche weitere Optimierungsverfahren.
+Detaillierte Anleitungen und technische Hintergründe finden sich in den jeweiligen Ordnern:
 
-## Lizenz
-
-Im Repository ist derzeit keine separate Lizenzdatei dokumentiert.
+- [**Technischer Projektleitfaden** (`src/Automatisierung_v2/README.md`)](src/Automatisierung_v2/README.md)  
+  Umfassende Architekturbeschreibung, Interface-Verträge, Ablaufsteuerung, Algorithmen-Details, Konfigurationsschichten und Solver-Anbindung.
+- [**Projekt- & Bauteilleitfaden** (`src/projects/README.md`)](src/projects/README.md)  
+  Schritt-für-Schritt-Anleitung zur Definition neuer Geometrien, Ausgestaltung von Fitnessfunktionen, Parametereinbindung und Nutzung von `_Vorlage`.
+- [**Server- & Deployment-Handbuch** (`scripts/README.md`)](scripts/README.md)  
+  Einrichtung des SSH-Zugriffs, Servervoraussetzungen, `sim.ps1`, `sim-runner.sh`, `tmux`-Workflows und gezieltes Herunterladen von ParaView- und STL-Ergebnisdateien.
+- [**Konfigurationssystem & Notausgang** (`config/README.md`)](config/README.md)  
+  Erläuterung der Konfigurationshierarchie und Handhabung von lokalen Ausnahmedateien (`*.local.json`).
