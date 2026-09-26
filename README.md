@@ -1,6 +1,11 @@
 # Automatisierte CFD-Formoptimierung
 
+Vorwort: 
+Inspiriert durch verschiedene Anregungen im Internet und  Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die unabhängig von großen CAD Programmen mit umständlichen GUI Bedienelementen, sondern nur mit Code komplexe Formen generieren und optimieren kann. Besonders war mir wichtig, die Pipeline komplett unabhängig von der 3. Party Softwarelösung zu halten, sodass man das ganze beliebig Komplex aufziehen kann. Es gibt keine Begrenzung in Parametern, Zielfunktion oder Komplexität der Modelle, noch in der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel ein Neuronales Netzwerk anzubinden, das selbt den C# code für PicoGK generiert, sowie die Auswertung übernimmt von n-dimensionalen Optimierungsproblemen, die zu komplex für deterministische Bruteforce methoden werden.
+
+
 Dieses Framework automatisiert die iterative aerodynamische bzw. hydrodynamische Formoptimierung von 3D-Bauteilen. Aus einem Satz von Entwurfsparametern wird vollautomatisch ein voxelbasiertes 3D-Modell generiert, dieses in ein Rechennetz überführt und anschließend mittels numerischer Strömungsmechanik (CFD) simuliert. Eine anpassbare Zielfunktion bewertet das Strömungsverhalten und übergibt die Fitness an den Optimierungsalgorithmus, der daraus die nächste Parametergeneration ableitet.
+
 
 ```text
 Entwurfsparameter
