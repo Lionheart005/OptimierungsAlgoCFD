@@ -3,17 +3,17 @@ using System.Collections.Generic;
 using MyPicoGkProject.Composition;
 using MyPicoGkProject.Core;
 
-namespace MyPicoGkProject.Projects.TestprojektBaars
+namespace MyPicoGkProject.Projects.TestprojektNACA
 {
     /// <summary>
     /// Die Verdrahtung des Testprojekts Baars (NACA-Tragflügelprofil).
     /// </summary>
-    public sealed class TestprojektBaarsProject : CfdProjectDefinition
+    public sealed class TestprojektNACAProject : CfdProjectDefinition
     {
         /// <summary>
         /// Muss exakt dem Ordnernamen unter <c>src/projects/</c> entsprechen.
         /// </summary>
-        public override string Name => "TestprojektBaars";
+        public override string Name => "TestprojektNACA";
 
         /// <summary>
         /// Schicht 1 der Konfiguration: Code-Standards für die 3 NACA-Profilparameter.
@@ -55,10 +55,10 @@ namespace MyPicoGkProject.Projects.TestprojektBaars
 
         /// <inheritdoc/>
         public override IGeometryGenerator CreateGeometry(ProjectContext context)
-            => new TestprojektBaarsGeometryGenerator();
+            => new TestprojektNACAGeometryGenerator();
 
         /// <inheritdoc/>
         public override IFitnessCalculator CreateFitness(ProjectContext context)
-            => new TestprojektBaarsFitnessCalculator(context.Project);
+            => new TestprojektNACAFitnessCalculator(context.Project);
     }
 }

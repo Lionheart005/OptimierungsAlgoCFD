@@ -7,13 +7,13 @@ using PicoGK;
 using MyPicoGkProject.Core;
 using MyPicoGkProject.Kernels.PicoGk;
 
-namespace MyPicoGkProject.Projects.TestprojektBaars
+namespace MyPicoGkProject.Projects.TestprojektNACA
 {
     /// <summary>
     /// Parametrischer Geometrie-Generator für 4-stellige NACA-Tragflügelprofile.
     /// Erzeugt ein 3D-Flügelsegment mit definierter Spannweite, Sehnenlänge und Anstellwinkel.
     /// </summary>
-    public sealed class TestprojektBaarsGeometryGenerator : IGeometryGenerator
+    public sealed class TestprojektNACAGeometryGenerator : IGeometryGenerator
     {
         private const float DefaultChordLength = 50.0f;       // Sehnenlänge c in mm
         private const float DefaultWingSpan = 40.0f;          // Spannweite b in mm

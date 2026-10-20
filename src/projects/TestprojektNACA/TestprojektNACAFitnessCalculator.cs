@@ -4,14 +4,14 @@ using System.Linq;
 
 using MyPicoGkProject.Core;
 
-namespace MyPicoGkProject.Projects.TestprojektBaars
+namespace MyPicoGkProject.Projects.TestprojektNACA
 {
     /// <summary>
     /// Die Bewertung für das NACA-Flügelprofil im Testprojekt Baars.
     /// Maximiert die aerodynamische Gleitzahl:
     /// <code>Fitness = CL / CD (Gleitzahl E = Lift / Drag)</code>
     /// </summary>
-    public sealed class TestprojektBaarsFitnessCalculator : IFitnessCalculator
+    public sealed class TestprojektNACAFitnessCalculator : IFitnessCalculator
     {
         /// <summary>
         /// Fitness eines Modells, das nicht bewertbar ist — abgebrochene Simulation,
@@ -34,7 +34,7 @@ namespace MyPicoGkProject.Projects.TestprojektBaars
         /// <summary>
         /// Prüft die Pflicht-Ziele sofort im Konstruktor.
         /// </summary>
-        public TestprojektBaarsFitnessCalculator(ProjectConfig project)
+        public TestprojektNACAFitnessCalculator(ProjectConfig project)
         {
             var missing = RequiredTargets
                 .Where(key => !project.OptimizationTargets.ContainsKey(key))
