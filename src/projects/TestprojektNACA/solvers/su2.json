@@ -1,0 +1,32 @@
+{
+  // ===================================================================
+  //  TestprojektNACA -- SU2-Solver
+  // ===================================================================
+
+  // --- Fluideigenschaften ---
+  "Density": 1025.0,
+  "DynamicViscosity": 0.001001,
+  "TurbulenceModel": "SA",
+  "SpeedOfSound": 343.2,
+
+  // --- Referenzwerte ---
+  "ReferenceLength": 0.01,
+  "ReferenceAreaMetric": "FrontalArea",
+
+  // --- Ergebnisgrößen: welche Zahl kommt unter welchem Namen an? ---
+  "ResultMetrics": {
+    "Drag": "CD",
+    "Lift": "CL"
+  },
+
+  "ConvergenceField": "DRAG",
+  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
+  // --- CFL-Steuerung ---
+  "CflNumber": 5.0,
+  "CflAdapt": true,
+  "CflAdaptFactorDown": 0.5,
+  "CflAdaptFactorUp": 1.2,
+  "CflAdaptMin": 1.0,
+  "CflAdaptMax": 50.0
+}
