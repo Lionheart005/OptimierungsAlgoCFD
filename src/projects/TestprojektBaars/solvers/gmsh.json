@@ -1,0 +1,25 @@
+{
+  // ===================================================================
+  //  TestprojektBaars -- Gmsh-Vernetzer
+  // ===================================================================
+
+  // --- Windkanal (Simulationsdomäne) in mm ---
+  "TunnelShape": "Box",
+  "TunnelSizeX": 600.0,
+  "TunnelSizeY": 300.0,
+  "TunnelSizeZ": 300.0,
+  "TunnelCenterX": 0.0,
+  "TunnelCenterY": 0.0,
+  "TunnelCenterZ": 0.0,
+
+  // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
+  "TunnelDiameter": 300.0,
+  "TunnelLength": 600.0,
+  "TunnelSegments": 64,
+
+  // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
+  "BoundaryLayerSizeMin": 1.2,
+  "BoundaryLayerSizeMax": 120.0,
+  "BoundaryLayerDistMin": 3.0,
+  "BoundaryLayerDistMax": 40.0
+}

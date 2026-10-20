@@ -1,0 +1,41 @@
+{
+  // ===================================================================
+  //  TestprojektBaars -- Projektvorgaben
+  // ===================================================================
+  //
+  // Die Manifestdatei heisst in JEDEM Projekt "project.json".
+  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername.
+  //
+  // Was hier fehlt, kommt aus TestprojektBaarsProject.CreateDefaults() nebenan. Diese
+  // Datei und der Code-Standard dort sind deckungsgleich.
+
+  // --- Startwerte der aktiven Parameter (% der Sehnenlänge c) ---
+  // NACA 0012: 0% Wölbung, 40% Wölbungsrücklage, 12% maximale Dicke.
+  "BaseParameters": {
+    "MaxCamber": 0.0,
+    "CamberPosition": 40.0,
+    "MaxThickness": 12.0
+  },
+
+  // --- Anfaengliche Mutationsstaerke (Sigma-Streuung) ---
+  "MaxDeviations": {
+    "MaxCamber": 0.8,
+    "CamberPosition": 6.0,
+    "MaxThickness": 2.0
+  },
+
+  // --- Harte Grenzen fuer physikalische Plausibilitaet ---
+  "ParameterBounds": {
+    "MaxCamber": { "Min": 0.0, "Max": 8.0 },
+    "CamberPosition": { "Min": 15.0, "Max": 75.0 },
+    "MaxThickness": { "Min": 6.0, "Max": 24.0 }
+  },
+
+  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
+  // Leer, da die Fitness als Gleitzahl CL / CD formuliert ist.
+  "OptimizationTargets": {},
+
+  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
+  // Leer: Alle drei Parameter sind dimensionslose Prozentwerte relativ zur Sehnenlänge.
+  "DimensionalParameters": []
+}
