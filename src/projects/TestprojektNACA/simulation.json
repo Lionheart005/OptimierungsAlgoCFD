@@ -11,8 +11,8 @@
   "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 
   // --- Zeit & Umfang ---
-  "MaxIterations": 5,
-  "VariantsPerIteration": 5,
+  "MaxIterations": 3,
+  "VariantsPerIteration": 3,
   "BaseVoxelResolution": 0.5,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
@@ -25,7 +25,9 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
-  "MachNumber": 0.1,
+  // Ma 0.2 x 343.2 m/s = ca. 69 m/s (ca. 250 km/h): Reiseflug eines Leichtflugzeugs.
+  // Der Löser ist inkompressibel (INC_RANS), daher Ma <= 0.3 halten.
+  "MachNumber": 0.2,
   "Su2MaxIterations": 500,
   "CauchyElements": 150,
   "CauchyTolerance": "1e-4",

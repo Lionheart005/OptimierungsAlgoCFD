@@ -3,9 +3,9 @@
   //  TestprojektNACA -- SU2-Solver
   // ===================================================================
 
-  // --- Fluideigenschaften ---
-  "Density": 1025.0,
-  "DynamicViscosity": 0.001001,
+  // --- Fluideigenschaften (Luft auf Meereshöhe, ISA 15 °C) ---
+  "Density": 1.225,
+  "DynamicViscosity": 1.81e-5,
   "TurbulenceModel": "SA",
   "SpeedOfSound": 343.2,
 
