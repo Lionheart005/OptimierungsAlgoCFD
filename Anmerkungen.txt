@@ -1,0 +1,12 @@
+Skript:
+Fetch funktioniert irgendwie nicht so richtig
+
+
+Randbdingungen wo wird gesagt wo ein und ausströmt? 
+
+
+instationäre datenauswertung, also über die zeit schauen wie sicht z.B. der drag verändert 
+
+- strukturiertes gitter an rand nutzen (gleiche y+ werte) also quasi gleichmäßige quader und generell detailierter, auch hinter und um objekt.
+- anfangsmodell einmal sehr detailiert und grob rechnen (auf gitterzellen bezogen) und das grobe modell stufenweise verfeinern bis unterschiede nicht mehr sigifikant sind, dann diesen detailgrad nutzen für simulation
+- gewinner immer nochmal überprüfen in sehr detailiert und differenz bestimmen. 
