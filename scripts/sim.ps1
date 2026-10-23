@@ -25,6 +25,8 @@
     doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
     build    Nur bauen, nicht starten
     projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
+    delete   Sauberer Neuanfang: Ergebnisse ALLER Projekte und alle Logs auf dem Server
+             loeschen. Code, Build und *.local.json bleiben. Fragt vorher nach.
 
 .EXAMPLE
     .\scripts\sim.ps1 doctor
@@ -39,13 +41,18 @@
     Live zusehen. Strg+C beendet nur die Anzeige.
 
 .EXAMPLE
+    .\scripts\sim.ps1 delete
+    Vor einem ganz neuen Lauf: zeigt, was auf dem Server liegt, und loescht es nach
+    Rueckfrage. Vorher mit fetch holen, was man behalten will.
+
+.EXAMPLE
     .\scripts\sim.ps1 fetch -All
     Holt den kompletten Ergebnisse-Ordner (inkl. vtu-Dateien) nach .\Serverergebnisse\
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects')]
+    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -67,7 +74,8 @@ param(
     # Laufende Simulation trotz geaendertem Code weiterlaufen lassen
     [switch]$NoRestart,
 
-    # Hochladen erzwingen, auch wenn sich nichts geaendert hat
+    # deploy: hochladen erzwingen, auch wenn sich nichts geaendert hat
+    # delete: ohne Rueckfrage loeschen
     [switch]$Force,
 
     # fetch: kompletten Ergebnisse-Ordner statt nur CSV und Log
@@ -379,6 +387,38 @@ function Invoke-Fetch {
     Write-Host "    Fertig: $target" -ForegroundColor Green
 }
 
+function Invoke-Delete {
+    Write-Step "Laufreste auf $Server"
+
+    # Erst nur auflisten lassen: geloescht wird ueber alle Projekte hinweg, und was
+    # weg ist, ist weg -- das soll man vorher sehen.
+    $listing = Invoke-Remote -CommandLine "$RunnerCall delete" -Quiet -AllowFailure
+    $listing.Output | ForEach-Object { Write-Host "    $_" }
+
+    switch ($listing.ExitCode) {
+        0 { }
+        3 { return }
+        1 { throw "Erst den Lauf beenden:  .\scripts\sim.ps1 stop" }
+        # 2 = "Unbekannter Befehl": auf dem Server liegt ein sim-runner.sh von vor
+        # diesem Befehl. sim.ps1 laeuft lokal und ist immer neuer als das Deploy.
+        2 { throw "Der Server kennt 'delete' noch nicht (alter Stand). Erst hochladen:  .\scripts\sim.ps1 deploy" }
+        default { throw "Auflisten auf $Server fehlgeschlagen (Exit-Code $($listing.ExitCode))." }
+    }
+
+    if (-not $Force) {
+        Write-Host ""
+        Write-Warn "Das loescht die Ergebnisse ALLER Projekte auf dem Server unwiderruflich."
+        Write-Warn "Was du behalten willst, vorher holen:  .\scripts\sim.ps1 fetch -All -Project <Name>"
+        $answer = Read-Host "    Wirklich loeschen? 'ja' eingeben"
+        if ($answer -ne 'ja') {
+            Write-Host "    Abgebrochen - nichts geloescht." -ForegroundColor Green
+            return
+        }
+    }
+
+    Invoke-Remote -CommandLine "$RunnerCall delete yes" | Out-Null
+}
+
 # ---------------------------------------------------------------------------
 # Ablauf
 # ---------------------------------------------------------------------------
@@ -388,7 +428,8 @@ try {
     # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
     # bequem und darf bleiben -- aber nicht stumm. Die Liste der Befehle ist genau die,
     # bei denen der Projektname das Ergebnis aendert (log liest die eine globale
-    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen).
+    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen,
+    # delete raeumt alle Projekte zugleich ab).
     $projectBoundCommands = @('deploy', 'run', 'status', 'fetch', 'doctor')
 
     if ($projectBoundCommands -contains $Command -and -not $PSBoundParameters.ContainsKey('Project')) {
@@ -444,6 +485,11 @@ try {
         'fetch' {
             Assert-RemoteDeployed
             Invoke-Fetch
+        }
+
+        'delete' {
+            Assert-RemoteDeployed
+            Invoke-Delete
         }
 
         'log' {

@@ -30,7 +30,7 @@ SESSION="${SIM_SESSION:-sim}"
 # Laufs ueberschreiben. Program.cs hat denselben Grundsatz seit TODO-23.
 #
 # Welche Befehle ohne Projekt keinen Sinn haben, entscheidet require_project. stop, log,
-# running und hash brauchen keines: sie arbeiten auf dem Prozess bzw. auf Dateien, die
+# delete, running und hash brauchen keines: sie arbeiten auf dem Prozess bzw. auf Dateien, die
 # es nur einmal gibt.
 PROJECT_NAME="${SIM_PROJECT:-}"
 
@@ -550,10 +550,67 @@ cmd_log() {
         return 1
     fi
     if [ "$follow" = "yes" ]; then
-        tail -n "$lines" -f "$LOG_FILE"
+        # -F statt -f: cmd_start verschiebt das alte Log nach logs/ und legt ein neues
+        # an. -f bliebe an der verschobenen Datei haengen und zeigte nie wieder etwas;
+        # -F folgt dem Dateinamen und springt auf das neue Log um.
+        tail -n "$lines" -F "$LOG_FILE"
     else
         tail -n "$lines" "$LOG_FILE"
     fi
+}
+
+# Sauberer Neuanfang: raeumt alles weg, was Laeufe hinterlassen haben -- ueber ALLE
+# Projekte, damit beim naechsten Lauf keine Modelle, Netze oder Logs eines frueheren
+# (groesseren) Laufs zwischen den neuen liegen. Bewusst OHNE require_project.
+#
+# Geloescht wird nur, was das Programm beim Start ohnehin neu anlegt: Ergebnisse/
+# (EnsureDirectories baut die Unterordner wieder auf), das Log samt Archiv und der
+# letzte Exit-Code. Stehen bleiben Quellen, bin/ und obj/ (Build bleibt gueltig,
+# libpicogk.so bleibt liegen), .deploy_hash (sonst baute das naechste Deploy grundlos
+# neu) und die *.local.json.
+#
+# Ohne "yes" wird nur aufgelistet. Exit-Codes: 0 = etwas da bzw. geloescht,
+# 3 = schon sauber, 1 = ein Lauf ist aktiv.
+cmd_delete() {
+    local confirm="${1:-}"
+
+    # Einem laufenden Programm die Arbeitsdateien unter den Fuessen wegzuziehen, fuehrt
+    # zu einem halben Lauf mit kaputter CSV -- erst stoppen.
+    if is_running; then
+        say "[RUNNER] Es laeuft gerade ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    local targets=() path
+    for path in "$REPO_DIR/Ergebnisse" "$LOG_FILE" "$LOG_ARCHIVE" "$EXIT_FILE"; do
+        if [ -e "$path" ]; then targets+=("$path"); fi
+    done
+
+    if [ "${#targets[@]}" -eq 0 ]; then
+        say "[RUNNER] Nichts zu loeschen -- auf dem Server liegen keine Laufreste."
+        return 3
+    fi
+
+    if [ "$confirm" != "yes" ]; then
+        say "Auf $(hostname) wuerde geloescht:"
+        for path in "${targets[@]}"; do
+            say "  ${path#"$REPO_DIR"/}  ($(du -sh "$path" 2>/dev/null | cut -f1))"
+        done
+        if [ -d "$REPO_DIR/Ergebnisse" ]; then
+            say "  darin die Projekte: $(find "$REPO_DIR/Ergebnisse" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null)"
+        fi
+        return 0
+    fi
+
+    rm -rf -- "${targets[@]}"
+
+    # Eine tmux-Sitzung ohne laufendes Programm ist ein Ueberbleibsel (z.B. nach einem
+    # Absturz) -- gehoert zum Aufraeumen dazu.
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    say "[RUNNER] Geloescht. Der naechste Lauf beginnt mit leerem Ergebnisse-Ordner und neuem Log."
 }
 
 cmd_results() {
@@ -632,6 +689,8 @@ Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
   log [zeilen] [no]   Logausgabe; "no" als zweites Argument = nicht mitlaufen
   results [zeilen]    Kopfzeile und letzte Zeilen der Ergebnis-CSV           [Projekt]
   projects            Welche Projekte kennt dieser Server, wo liegen Ergebnisse
+  delete [yes]        Ergebnisse ALLER Projekte und alle Logs loeschen; ohne "yes"
+                      wird nur aufgelistet
   running             Exit-Code 0, wenn ein Lauf aktiv ist (fuer Skripte)
   hash                Gibt den Stand des zuletzt hochgeladenen Codes aus
 
@@ -655,6 +714,7 @@ case "${1:-}" in
     status)     cmd_status "${2:-12}" ;;
     log)        cmd_log "${2:-40}" "${3:-yes}" ;;
     results)    cmd_results "${2:-10}" ;;
+    delete)     cmd_delete "${2:-}" ;;
     running)    is_running ;;
     hash)       cat "$HASH_FILE" 2>/dev/null || echo "unbekannt" ;;
     _foreground) cmd_foreground ;;

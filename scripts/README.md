@@ -79,7 +79,17 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze?
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
 .\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
+.\scripts\sim.ps1 delete    # Sauberer Neuanfang: Ergebnisse aller Projekte + Logs löschen
 ```
+
+`delete` ist für den Fall „ab jetzt ein ganz neuer Lauf“: Es löscht auf dem Server
+`Ergebnisse/` (alle Projekte), `simulation.log`, das Archiv `logs/` und `.last_exit`.
+So liegen nach einem Lauf mit 5 Modellen nicht noch die Modelle 6–10 vom Lauf davor
+im Ordner. Code, `bin/`/`obj/` (also der Build und `libpicogk.so`), `.deploy_hash`
+und alle `*.local.json` bleiben stehen, damit der nächste Lauf ohne Neubau startet.
+Der Befehl listet erst auf und fragt dann nach (`-Force` überspringt die Frage). Bei
+einem laufenden Lauf verweigert er das Löschen. Was du behalten willst, holst du
+vorher mit `fetch -All`.
 
 Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
 Ordnername unter `src/projects/`. Ohne die Angabe gilt die Vorgabe `MantaAuv`, und

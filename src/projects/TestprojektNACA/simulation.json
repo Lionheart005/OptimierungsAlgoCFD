@@ -11,8 +11,8 @@
   "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 
   // --- Zeit & Umfang ---
-  "MaxIterations": 10,
-  "VariantsPerIteration": 10,
+  "MaxIterations": 5,
+  "VariantsPerIteration": 5,
   "BaseVoxelResolution": 0.5,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
