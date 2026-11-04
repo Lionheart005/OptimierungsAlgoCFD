@@ -110,5 +110,28 @@
   // einmal komplett durchgerechnet. Weicht seine FITNESS um mehr als
   // BouncerTolerance ab, war das Ergebnis Zufall und der Kandidat fliegt raus.
   "BouncerTolerance": 0.2,
-  "BouncerJitter": 0.01
+  "BouncerJitter": 0.01,
+
+  // --- Netzkalibrierung (TODO-42) ---
+  // Mode: "Manual" (Standard, MeshRefinementFactor oben gilt) oder "Auto" (Faktor wird am
+  //   Laufanfang kalibriert; dann darf MeshRefinementFactor nicht gesetzt sein).
+  // Tolerance: erlaubte relative Abweichung aller Ergebnisgroessen gegenueber der feinsten Referenzstufe.
+  // Use2DPrecalibration: 2D-Vorkalibrierung vor 3D-Bestaetigung nutzen (TODO-48).
+  "MeshCalibration": {
+    "Mode": "Manual",
+    "Tolerance": 0.02,
+    "Use2DPrecalibration": false
+  },
+
+  // --- Verifikation des Champions (TODO-43) ---
+  // Mode: "Off" | "Final" (Standard, Re-Simulation des Champions) | "FinalTopN" | "EachIteration"
+  // TopN: Anzahl der besten Varianten bei "FinalTopN".
+  // RefinementSteps: Verfeinerungsstufen gegenueber dem wirksamen Faktor (÷ √2 je Stufe).
+  // Tolerance: relative Abweichung, ab der laut vor Netzabhaengigkeit gewarnt wird (0.05 = 5 %).
+  "ChampionVerification": {
+    "Mode": "Final",
+    "TopN": 3,
+    "RefinementSteps": 1,
+    "Tolerance": 0.05
+  }
 }

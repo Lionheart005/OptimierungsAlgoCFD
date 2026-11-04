@@ -57,10 +57,13 @@ Nach allen Varianten einer Iteration:
    **noch einmal komplett gerechnet**. Weicht seine Fitness zu stark ab, war er ein
    Zufallstreffer und wird verworfen — dann kommt der Nächstbeste dran. Das kostet
    eine zusätzliche Simulation je Iteration (sie läuft unter der Variantennummer 99).
-9. **Nächste Runde vorbereiten.** Der Algorithmus zieht seine Schlüsse.
+9. **Feine Nachrechnung (TODO-43).** Bei `ChampionVerification.Mode = "EachIteration"`
+   wird der Sieger zusätzlich auf feinem Netz nachgerechnet und auf Netzabhängigkeit geprüft.
+10. **Nächste Runde vorbereiten.** Der Algorithmus zieht seine Schlüsse.
 
 Am Ende wird der beste Lauf **des gesamten Durchgangs** gemeldet, nicht der
-Gewinner der letzten Iteration.
+Gewinner der letzten Iteration. Bei `Mode = "Final"` oder `"FinalTopN"` wird der Champion
+bzw. die Top-N noch einmal fein nachgerechnet (`Verifikation.csv`).
 
 ## Welches Projekt gerechnet wird
 
@@ -72,8 +75,12 @@ Stelle, an der er stünde: kein Feld in einer JSON, kein Eintrag in einer Liste.
 | Wo du startest | So wählst du das Projekt |
 |---|---|
 | Server, über die Skripte | `.\scripts\sim.ps1 run -Project MantaAuv` |
+| Server, Kalibrierung | `.\scripts\sim.ps1 calibrate -Project MantaAuv` |
+| Server, Recheck | `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen3_Var2 -Finer 1` |
 | Direkt auf dem Server per SSH | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 | Lokal auf deinem Rechner | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
+| Lokal, Kalibrierung | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
+| Lokal, Recheck | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --recheck=Gen3_Var2 --finer=1` |
 
 **Es gibt keinen stillen Standard.** Ohne Angabe bricht das Programm ab und nennt
 die vorhandenen Projekte; `sim-runner.sh` genauso. Einzige Ausnahme ist der

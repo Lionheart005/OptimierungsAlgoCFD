@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.IO;
+using System.Text.RegularExpressions;
 
 using MyPicoGkProject.Core;
 
@@ -25,6 +27,8 @@ namespace MyPicoGkProject
 
         private const string ListProjectsFlag = "--list-projects";
         private const string PrintConfigFlag = "--print-config";
+        private const string CalibrateFlag = "--calibrate";
+        private const string RecheckFlag = "--recheck";
 
         /// <summary>
         /// Aufruf: <c>&lt;Projektname&gt; [Projektverzeichnis] [--list-projects] [--print-config]</c>
@@ -43,8 +47,50 @@ namespace MyPicoGkProject
                                 .Select(argument => argument.Trim().ToLowerInvariant())
                                 .ToHashSet();
 
-                var positional = args.Where(argument => !argument.StartsWith("--", StringComparison.Ordinal))
-                                     .ToArray();
+                bool isCalibrate = false;
+                bool isRecheck = false;
+                string? recheckVariant = null;
+                int recheckFiner = 1;
+                var positionalList = new List<string>();
+
+                for (int i = 0; i < args.Length; i++)
+                {
+                    string a = args[i].Trim();
+                    if (a.Equals(CalibrateFlag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isCalibrate = true;
+                    }
+                    else if (a.Equals(RecheckFlag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isRecheck = true;
+                        if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                        {
+                            recheckVariant = args[++i].Trim();
+                        }
+                    }
+                    else if (a.StartsWith(RecheckFlag + "=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isRecheck = true;
+                        recheckVariant = a.Substring((RecheckFlag + "=").Length).Trim();
+                    }
+                    else if (a.Equals("--finer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (i + 1 < args.Length && int.TryParse(args[i + 1].Trim(), out int fVal))
+                        {
+                            recheckFiner = fVal;
+                            i++;
+                        }
+                    }
+                    else if (a.StartsWith("--finer=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int.TryParse(a.Substring("--finer=".Length).Trim(), out recheckFiner);
+                    }
+                    else if (!a.StartsWith("--", StringComparison.Ordinal))
+                    {
+                        positionalList.Add(a);
+                    }
+                }
+                var positional = positionalList.ToArray();
 
                 string? projectDirectoryArgument = positional.Length > 1 ? positional[1] : null;
 
@@ -72,6 +118,18 @@ namespace MyPicoGkProject
                 if (flags.Contains(PrintConfigFlag))
                 {
                     PrintConfiguration(context);
+                    return 0;
+                }
+
+                if (isCalibrate)
+                {
+                    RunCalibration(definition, context);
+                    return 0;
+                }
+
+                if (isRecheck)
+                {
+                    RunRecheck(definition, context, recheckVariant, recheckFiner);
                     return 0;
                 }
 
@@ -194,7 +252,9 @@ namespace MyPicoGkProject
             var simulationContext = new SimulationContext(context.Simulation, context.Project);
             simulationContext.EnsureDirectories();
 
-            string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context);
+            // 1. Validierung der Kalibrierungskonfiguration (Regel 1)
+            var simulationReport = context.Loaded.FirstOrDefault(l => l.Name == "simulation.json")?.Report;
+            MeshCalibration.ValidateConfig(context.Simulation, simulationReport, context.Name);
 
             // Der Bouncer ist Framework-Bestandteil und prüft die Fitness, nicht eine
             // projektspezifische Metrik (Entscheidung 6).
@@ -214,15 +274,254 @@ namespace MyPicoGkProject
                 simulationContext,
                 fitness.RequiredMetrics);
 
-            Console.WriteLine("==================================================");
-            Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
-            Console.WriteLine($"  Projekt:          {context.Name}");
-            Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
-            Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
-            Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
-            Console.WriteLine("==================================================");
+            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            {
+                if (context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+                {
+                    var (decision, reportRelPath) = MeshCalibration.Run(
+                        context,
+                        simulationContext,
+                        (factor, tag) =>
+                        {
+                            var record = controller.RunPipeline(
+                                context.Project.BaseParameters,
+                                1,
+                                1,
+                                customRefinementFactor: factor,
+                                customTag: tag);
+                            fitness.CalculateFitness(record, context.Simulation);
+                            return record;
+                        });
 
-            kernel.RunHosted(context.Simulation.BaseVoxelResolution, controller.RunOptimization);
+                    if (!decision.Success || decision.SelectedStage == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"[KALIBRIERUNG] Automatische Netzkalibrierung fehlgeschlagen: {decision.SummaryMessage}");
+                    }
+
+                    simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
+                    simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                    simulationContext.CalibrationReportPath = reportRelPath;
+
+                    Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                }
+                else
+                {
+                    MeshCalibration.CheckManualCalibrationHints(context, simulationContext.WorkingDirectory);
+                    Console.WriteLine($"Netzfaktor: {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)} (MANUELL aus simulation.json)");
+                }
+
+                string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
+
+                Console.WriteLine("==================================================");
+                Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
+                Console.WriteLine($"  Projekt:          {context.Name}");
+                Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
+                Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
+                Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
+                Console.WriteLine("==================================================");
+
+                controller.RunOptimization();
+            });
+        }
+
+        /// <summary>
+        /// Führt eine isolierte Netzkalibrierung auf der Startgeometrie durch (--calibrate, TODO-42).
+        /// </summary>
+        private static void RunCalibration(IProjectDefinition definition, ProjectContext context)
+        {
+            Console.WriteLine($"[SYSTEM] Starte Kalibrierung für Projekt: {context.Name}");
+
+            IGeometryGenerator geometry = definition.CreateGeometry(context);
+            IFitnessCalculator fitness = definition.CreateFitness(context);
+            IGeometryKernel kernel = definition.CreateKernel();
+            SolverStage[] stages = definition.CreateStages(context);
+
+            var simulationContext = new SimulationContext(context.Simulation, context.Project);
+            simulationContext.EnsureDirectories();
+
+            EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
+
+            IModelValidator validator = new ChampionValidator(fitness);
+            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);
+            var controller = new WorkflowController(
+                geometry,
+                stages,
+                validator,
+                optimizer,
+                simulationContext,
+                fitness.RequiredMetrics);
+
+            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            {
+                var (decision, reportRelPath) = MeshCalibration.Run(
+                    context,
+                    simulationContext,
+                    (factor, tag) =>
+                    {
+                        var record = controller.RunPipeline(
+                            context.Project.BaseParameters,
+                            1,
+                            1,
+                            customRefinementFactor: factor,
+                            customTag: tag);
+                        fitness.CalculateFitness(record, context.Simulation);
+                        return record;
+                    });
+
+                if (decision.Success && decision.SelectedStage != null)
+                {
+                    Console.WriteLine($"\nEmpfohlene Zeile für src/projects/{context.Name}/simulation.json:");
+                    Console.WriteLine($"  \"MeshRefinementFactor\": {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}");
+                }
+            });
+        }
+
+        /// <summary>
+        /// Rechnet eine einzelne Variante aus Simulation_Results.csv fein nach (--recheck, TODO-43).
+        /// </summary>
+        private static void RunRecheck(IProjectDefinition definition, ProjectContext context, string? variantTarget, int finer)
+        {
+            Console.WriteLine($"[SYSTEM] Starte Recheck für Projekt: {context.Name} (Ziel: '{variantTarget ?? "letzte"}', Finer: {finer})");
+
+            var simulationContext = new SimulationContext(context.Simulation, context.Project);
+            simulationContext.EnsureDirectories();
+
+            string csvPath = Path.Combine(simulationContext.WorkingDirectory, "Simulation_Results.csv");
+            if (!File.Exists(csvPath))
+            {
+                throw new InvalidOperationException(
+                    $"[RECHECK] Die Datei '{csvPath}' existiert nicht. Bitte zuerst eine Simulation laufen lassen.");
+            }
+
+            string[] lines = File.ReadAllLines(csvPath);
+            if (lines.Length <= 1)
+            {
+                throw new InvalidOperationException($"[RECHECK] '{csvPath}' enthält keine Datensätze.");
+            }
+
+            string[] headers = lines[0].Split(';');
+
+            int targetIter = -1;
+            int targetVar = -1;
+
+            if (!string.IsNullOrWhiteSpace(variantTarget))
+            {
+                var match = Regex.Match(variantTarget, @"(?:Gen)?(?<iter>\d+)[_vVar]*(?<var>\d+)", RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    targetIter = int.Parse(match.Groups["iter"].Value);
+                    targetVar = int.Parse(match.Groups["var"].Value);
+                }
+            }
+
+            string? selectedLine = null;
+            if (targetIter > 0 && targetVar > 0)
+            {
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    var parts = lines[i].Split(';');
+                    if (parts.Length > 1 && int.TryParse(parts[0], out int it) && int.TryParse(parts[1], out int vr))
+                    {
+                        if (it == targetIter && vr == targetVar)
+                        {
+                            selectedLine = lines[i];
+                            break;
+                        }
+                    }
+                }
+                if (selectedLine == null)
+                {
+                    throw new InvalidOperationException($"[RECHECK] Variante Gen{targetIter}_Var{targetVar} wurde in '{csvPath}' nicht gefunden.");
+                }
+            }
+            else
+            {
+                selectedLine = lines.Last(l => !string.IsNullOrWhiteSpace(l));
+            }
+
+            var cols = selectedLine.Split(';');
+            targetIter = int.Parse(cols[0]);
+            targetVar = int.Parse(cols[1]);
+
+            var activeParams = new Dictionary<string, float>();
+            float originalFitness = 0f;
+            var originalMetrics = new Dictionary<string, float>();
+
+            for (int i = 2; i < headers.Length; i++)
+            {
+                string header = headers[i].Trim();
+                if (context.Project.BaseParameters.ContainsKey(header))
+                {
+                    if (float.TryParse(cols[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
+                    {
+                        activeParams[header] = val;
+                    }
+                }
+                else if (header.Equals("Fitness", StringComparison.OrdinalIgnoreCase))
+                {
+                    float.TryParse(cols[i], NumberStyles.Float, CultureInfo.InvariantCulture, out originalFitness);
+                }
+                else
+                {
+                    if (float.TryParse(cols[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float pVal))
+                    {
+                        originalMetrics[header] = pVal;
+                    }
+                }
+            }
+
+            IGeometryGenerator geometry = definition.CreateGeometry(context);
+            IFitnessCalculator fitness = definition.CreateFitness(context);
+            IGeometryKernel kernel = definition.CreateKernel();
+            SolverStage[] stages = definition.CreateStages(context);
+
+            IModelValidator validator = new ChampionValidator(fitness);
+            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);
+            var controller = new WorkflowController(
+                geometry,
+                stages,
+                validator,
+                optimizer,
+                simulationContext,
+                fitness.RequiredMetrics);
+
+            float fineFactor = context.Simulation.MeshRefinementFactor / MathF.Pow(MathF.Sqrt(2.0f), Math.Max(1, finer));
+
+            Console.WriteLine($"[RECHECK] Gefundene Variante Gen{targetIter}_Var{targetVar}: Original-Fitness={originalFitness:F4}, Recheck-Netzfaktor={fineFactor:0.00}");
+
+            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            {
+                var record = controller.RunPipeline(
+                    activeParams,
+                    targetIter,
+                    targetVar,
+                    customRefinementFactor: fineFactor,
+                    customTag: "Recheck");
+
+                fitness.CalculateFitness(record, context.Simulation);
+
+                float relDev = Math.Abs(record.Fitness - originalFitness) / Math.Max(Math.Abs(originalFitness), 1e-7f);
+
+                Console.WriteLine("\n==================================================");
+                Console.WriteLine(" RECHECK ERGEBNIS");
+                Console.WriteLine("==================================================");
+                Console.WriteLine($"Variante:             Gen{targetIter}_Var{targetVar}");
+                Console.WriteLine($"Original-Fitness:     {originalFitness:F4} (Faktor: {context.Simulation.MeshRefinementFactor:0.00})");
+                Console.WriteLine($"Recheck-Fitness:      {record.Fitness:F4} (Faktor: {fineFactor:0.00})");
+                Console.WriteLine($"Fitness-Abweichung:   {relDev * 100:0.1} %");
+
+                foreach (var m in originalMetrics.Keys)
+                {
+                    if (record.PassiveParameters.TryGetValue(m, out float rVal))
+                    {
+                        float origVal = originalMetrics[m];
+                        float mDev = Math.Abs(rVal - origVal) / Math.Max(Math.Abs(origVal), 1e-7f);
+                        Console.WriteLine($"   {m}: Original={origVal:F5}, Recheck={rVal:F5} (Abweichung: {mDev * 100:0.1} %)");
+                    }
+                }
+                Console.WriteLine("==================================================\n");
+            });
         }
 
         /// <summary>

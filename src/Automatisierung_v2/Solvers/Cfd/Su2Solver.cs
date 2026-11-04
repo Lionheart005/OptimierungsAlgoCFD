@@ -4,8 +4,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 
 using MyPicoGkProject.Core;
+using MyPicoGkProject.Kernels.Planar2D;
 
 namespace MyPicoGkProject.Solvers.Cfd
 {
@@ -23,6 +25,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// rechnet in mm — PicoGK, die STL-Dateien und die Gmsh-Skalierung ebenso.
         /// </summary>
         private const float SquareMmToSquareM = 0.000001f;
+        private const float MmToM = 0.001f;
 
         /// <summary>
         /// Ersatz-Referenzfläche in mm², wenn die konfigurierte Metrik fehlt. Bewusst derselbe
@@ -74,7 +77,47 @@ namespace MyPicoGkProject.Solvers.Cfd
             string lengthSource;
             float scaleFactor = record.PassiveParameters.TryGetValue("ScaleFactor", out float sf) && sf > 0f ? sf : 1.0f;
 
-            if (!string.IsNullOrEmpty(record.StlPath) && File.Exists(record.StlPath))
+            bool is2dGeometry = _options.Dimensions == 2 ||
+                                (!string.IsNullOrEmpty(record.StlPath) && record.StlPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+            if (is2dGeometry && !string.IsNullOrEmpty(record.StlPath) && File.Exists(record.StlPath) &&
+                record.StlPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    ContourFile2D contourFile = Shape2D.LoadContour(record.StlPath);
+                    BBox2 bounds = BBox2.Empty;
+                    if (contourFile.Contours != null)
+                    {
+                        foreach (var c in contourFile.Contours)
+                        {
+                            if (c.Points == null) continue;
+                            foreach (var p in c.Points)
+                            {
+                                if (p != null && p.Length >= 2)
+                                    bounds = bounds.Include(new Vector2(p[0], p[1]));
+                            }
+                        }
+                    }
+
+                    if (!bounds.IsEmpty && bounds.Size.X > 0f)
+                    {
+                        lengthMm = bounds.Size.X / scaleFactor;
+                        lengthSource = "aus der 2D-Bounding-Box";
+                    }
+                    else
+                    {
+                        lengthMm = _options.ReferenceLength * 1000f;
+                        lengthSource = "aus ReferenceLength";
+                    }
+                }
+                catch
+                {
+                    lengthMm = _options.ReferenceLength * 1000f;
+                    lengthSource = "aus ReferenceLength";
+                }
+            }
+            else if (!string.IsNullOrEmpty(record.StlPath) && File.Exists(record.StlPath))
             {
                 try
                 {
@@ -133,7 +176,20 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             if (File.Exists(historyPath)) File.Delete(historyPath);
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options, flow);
+            float effectiveRefLength = _options.ReferenceLength;
+            if (is2dGeometry && MathF.Abs(_options.ReferenceLength - 0.01f) < 1e-6f)
+            {
+                if (record.PassiveParameters.TryGetValue("Chord", out float chordMmVal) && chordMmVal > 0f)
+                {
+                    effectiveRefLength = chordMmVal * 0.001f;
+                }
+                else if (lengthMm > 0f && lengthMm != _options.ReferenceLength * 1000f)
+                {
+                    effectiveRefLength = lengthMm * 0.001f;
+                }
+            }
+
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options, flow, effectiveRefLength);
 
             try
             {
@@ -283,34 +339,45 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// in <see cref="Su2SolverOptions.ReferenceAreaMetric"/> — der Solver kennt keinen festen
         /// Namen mehr (TODO-12).
         ///
+        /// In 3D (Dimensions != 2) ist die Referenzgröße eine Fläche in mm² und wird mit 1e-6 in m² umgerechnet.
+        /// In 2D (Dimensions == 2 oder .json Kontur) ist REF_AREA die Sehnenlänge je Einheitsspannweite (1 m),
+        /// also eine Länge in mm, die mit 1e-3 (0.001) in Meter umgerechnet wird (TODO-46).
+        ///
         /// Fehlt die Metrik, wird weitergerechnet, aber <b>nicht stillschweigend</b>: der
         /// CD-Wert wäre dann um Größenordnungen falsch, und genau das war vorher nicht zu sehen.
         /// </summary>
         public float ResolveReferenceArea(ModelRecord record)
         {
+            bool is2D = _options.Dimensions == 2 ||
+                        (!string.IsNullOrEmpty(record.StlPath) && record.StlPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+            float conversionFactor = is2D ? MmToM : SquareMmToSquareM;
             string metric = (_options.ReferenceAreaMetric ?? string.Empty).Trim();
 
             if (metric.Length == 0)
             {
-                WarnAboutMissingReferenceArea("Es ist keine Referenzflächen-Metrik konfiguriert", record);
-                return FallbackReferenceAreaMm2 * SquareMmToSquareM;
+                WarnAboutMissingReferenceArea("Es ist keine Referenzflächen-Metrik konfiguriert", record, conversionFactor);
+                return FallbackReferenceAreaMm2 * conversionFactor;
             }
 
-            if (record.PassiveParameters.TryGetValue(metric, out float areaMm2))
-                return areaMm2 * SquareMmToSquareM;
+            if (record.PassiveParameters.TryGetValue(metric, out float val))
+                return val * conversionFactor;
 
-            WarnAboutMissingReferenceArea($"Die Metrik '{metric}' fehlt in den Ergebnissen dieses Modells", record);
-            return FallbackReferenceAreaMm2 * SquareMmToSquareM;
+            if (is2D && record.PassiveParameters.TryGetValue("Chord", out float chordVal))
+                return chordVal * conversionFactor;
+
+            WarnAboutMissingReferenceArea($"Die Metrik '{metric}' fehlt in den Ergebnissen dieses Modells", record, conversionFactor);
+            return FallbackReferenceAreaMm2 * conversionFactor;
         }
 
-        private static void WarnAboutMissingReferenceArea(string reason, ModelRecord record)
+        private static void WarnAboutMissingReferenceArea(string reason, ModelRecord record, float conversionFactor = SquareMmToSquareM)
         {
             string known = record.PassiveParameters.Count == 0
                 ? "(keine)"
                 : string.Join(", ", record.PassiveParameters.Keys);
 
             Console.WriteLine($"[WARNUNG] {reason} — SU2 rechnet ersatzweise mit REF_AREA = "
-                              + (FallbackReferenceAreaMm2 * SquareMmToSquareM).ToString(CultureInfo.InvariantCulture)
+                              + (FallbackReferenceAreaMm2 * conversionFactor).ToString(CultureInfo.InvariantCulture)
                               + " m². Der CD-Wert ist damit um Größenordnungen falsch.");
             Console.WriteLine($"          Vorhandene Metriken: {known}.");
             Console.WriteLine("          Der Name gehört in die solvers/su2.json des Projekts unter 'ReferenceAreaMetric'.");

@@ -34,6 +34,10 @@
   // Wert fuer LUFT; in Wasser ergaebe Mach 0.1 unrealistische 34.3 m/s.
   "FreestreamVelocity": 0.0,    // m/s
 
+  // --- Dimension & Anstellwinkel (TODO-46) ---
+  "Dimensions": 3,
+  "AngleOfAttackDeg": 0.0,
+
   // --- Referenzwerte ---
   "ReferenceLength": 0.01,
 

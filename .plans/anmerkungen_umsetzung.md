@@ -29,11 +29,11 @@
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [x] |
 | D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [x] Code & Tests erledigt (Server-Spike offen) |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [x] |
-| D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [ ] |
-| D | TODO-43 | Gewinner in feinerer Auflösung nachrechnen (Modus je Lauf wählbar) | [ ] |
+| D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [x] |
+| D | TODO-43 | Gewinner in feinerer Auflösung nachrechnen (Modus je Lauf wählbar) | [x] |
 | E | TODO-44 | 2D-Kernel `Kernels/Planar2D` (C#, Clipper2) mit PicoGK-ähnlicher API | [x] |
-| E | TODO-45 | `Gmsh2DMesher` mit strukturierter Quad-Grenzschicht | [ ] |
-| E | TODO-46 | SU2 in 2D: Anstellwinkel, Bezugslänge statt -fläche, `Cfd2DProjectDefinition` | [ ] |
+| E | TODO-45 | `Gmsh2DMesher` mit strukturierter Quad-Grenzschicht | [x] |
+| E | TODO-46 | SU2 in 2D: Anstellwinkel, Bezugslänge statt -fläche, `Cfd2DProjectDefinition` | [x] |
 | E | TODO-47 | Projekt `Naca2D` + `_Vorlage2D` + Validierung gegen NASA-TMR-Referenzdaten | [ ] |
 | E | TODO-48 | 2D-Vorkalibrierung als Startpunkt für die 3D-Kalibrierung (Schalter `Use2DPrecalibration`, 3D bestätigt immer) | [ ] |
 
@@ -587,7 +587,7 @@ rechteckigen Zellen, und anders als in 3D gelingt das dort praktisch immer volls
 
 **Abnahme:** Ein Test mit einer kleinen Beispiel-`surface.csv` prüft Statistik und Warnung.
 
-#### TODO-42 — Netzkalibrierung: eigener Befehl **und** Auto-Modus *(Worker: S)*
+#### TODO-42 — Netzkalibrierung: eigener Befehl **und** Auto-Modus ✅ *(erledigt 04.11.2026)*
 
 **Konfiguration** in `simulation.json`:
 
@@ -691,7 +691,7 @@ rechteckigen Zellen, und anders als in 3D gelingt das dort praktisch immer volls
   `effective-config.json` nennt die Quelle.
 * **Server:** `calibrate` auf TestprojektNACA (oder schneller auf `Naca2D`) liefert einen Bericht.
 
-#### TODO-43 — Gewinner fein nachrechnen (E3) *(Worker: S)*
+#### TODO-43 — Gewinner fein nachrechnen (E3) ✅ *(erledigt 04.11.2026)*
 
 **Konfiguration** in `simulation.json`. Die Modi sind genau die abgestimmten Optionen:
 
@@ -766,7 +766,7 @@ des Optimierers **unverändert** bleibt.
 analytisch), Offset (Fläche eines um r versetzten Quadrats), Knickpunkterkennung, den Round-Trip
 `SaveContour` → Laden und gültiges SVG. Alles läuft lokal ohne PicoGK.
 
-#### TODO-45 — `Gmsh2DMesher` *(Worker: S, Spike durch dich)*
+#### TODO-45 — `Gmsh2DMesher` ✅ *(Code & Tests erledigt 04.11.2026, Server-Spike offen)*
 
 Der Mesher schreibt ein `.geo`-Skript mit:
 
@@ -790,7 +790,7 @@ Gmsh wird mit `-2 -format su2` aufgerufen, das Netz liegt in der xy-Ebene.
 **Server-Spike:** Das NACA-0012-Profil vernetzt sauber, SU2 startet, y+ liegt im Band, und die
 Laufzeit wird hier eingetragen.
 
-#### TODO-46 — SU2 in 2D *(Worker: S)*
+#### TODO-46 — SU2 in 2D ✅ *(erledigt 04.11.2026)*
 
 1. **Anstellwinkel** (Kritikpunkt 4 aus `architektur_kritikpunkte_naca.md`):
    `Su2SolverOptions.AngleOfAttackDeg`. **Zu prüfen ist zuerst,** wie SU2 7.5.1 im INC-Löser CL und

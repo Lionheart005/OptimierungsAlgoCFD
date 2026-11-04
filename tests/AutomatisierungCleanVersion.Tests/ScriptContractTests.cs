@@ -289,5 +289,39 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Contains(".last_project", runner);
             Assert.Matches(@"lastproject\)", runner);
         }
+
+        /// <summary>
+        /// TODO-42: Beide Skripte unterstützen den Befehl 'calibrate'.
+        /// Windows reicht ihn per -ThenCalibrate an den Server weiter, und der Runner führt --calibrate aus.
+        /// </summary>
+        [Fact]
+        public void Both_Scripts_Know_The_Calibrate_Command()
+        {
+            string sim = Read("sim.ps1");
+            string runner = Read("sim-runner.sh");
+
+            Assert.Contains("'calibrate'", sim);
+            Assert.Contains("-ThenCalibrate", sim);
+            Assert.Matches(@"calibrate\)\s+cmd_calibrate", runner);
+            Assert.Contains("--calibrate", runner);
+        }
+
+        /// <summary>
+        /// TODO-43: Beide Skripte unterstützen den Befehl 'recheck' zur feinen Nachrechnung
+        /// einzelner Varianten mit Parametern -Variant und -Finer.
+        /// </summary>
+        [Fact]
+        public void Both_Scripts_Know_The_Recheck_Command()
+        {
+            string sim = Read("sim.ps1");
+            string runner = Read("sim-runner.sh");
+
+            Assert.Contains("'recheck'", sim);
+            Assert.Contains("$Variant", sim);
+            Assert.Contains("$Finer", sim);
+            Assert.Matches(@"recheck\)\s+cmd_recheck", runner);
+            Assert.Contains("--recheck", runner);
+            Assert.Contains("--finer", runner);
+        }
     }
 }

@@ -41,6 +41,8 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.CflAdaptMax, loaded.CflAdaptMax);
             Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
             Assert.Equal(defaults.YPlusWarnFactor, loaded.YPlusWarnFactor);
+            Assert.Equal(defaults.AngleOfAttackDeg, loaded.AngleOfAttackDeg);
+            Assert.Equal(defaults.Dimensions, loaded.Dimensions);
         }
 
         [Fact]

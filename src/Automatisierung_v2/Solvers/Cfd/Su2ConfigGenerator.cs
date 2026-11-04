@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -19,7 +21,8 @@ namespace MyPicoGkProject.Solvers.Cfd
             float refArea,
             SimulationConfig config,
             Su2SolverOptions options,
-            FlowConditions? flow = null)
+            FlowConditions? flow = null,
+            float? refLength = null)
         {
             string refAreaString = refArea.ToString(CultureInfo.InvariantCulture);
 
@@ -31,6 +34,28 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             float viscosity = flow?.DynamicViscosity ?? options.DynamicViscosity;
             string viscosityString = viscosity.ToString(CultureInfo.InvariantCulture);
+
+            float effectiveRefLength = refLength ?? options.ReferenceLength;
+            string refLengthString = effectiveRefLength.ToString(CultureInfo.InvariantCulture);
+
+            bool isRotatedOr2D = options.AngleOfAttackDeg != 0.0f || options.Dimensions == 2;
+            string freestreamVelocityLine;
+            string initVelocityLine;
+            string? aoaLine = null;
+
+            if (!isRotatedOr2D)
+            {
+                freestreamVelocityLine = $"FREESTREAM_VELOCITY= ( {velocityString}, 0.0, 0.0 )";
+                initVelocityLine = $"INC_VELOCITY_INIT= ( {velocityString}, 0.0, 0.0 )";
+            }
+            else
+            {
+                var (vx, vy, vz) = ResolveVelocityVector(velocity, options.AngleOfAttackDeg, options.Dimensions);
+                string vecStr = $"{vx.ToString(CultureInfo.InvariantCulture)}, {vy.ToString(CultureInfo.InvariantCulture)}, {vz.ToString(CultureInfo.InvariantCulture)}";
+                freestreamVelocityLine = $"FREESTREAM_VELOCITY= ( {vecStr} )";
+                initVelocityLine = $"INC_VELOCITY_INIT= ( {vecStr} )";
+                aoaLine = $"AOA= {options.AngleOfAttackDeg.ToString(CultureInfo.InvariantCulture)}";
+            }
 
             string cflAdaptParams = string.Join(", ", new[]
             {
@@ -54,7 +79,7 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             string historyOutput = string.Join(", ", historyFields.Select(field => field.Trim()));
 
-            string[] cfgContent = {
+            var cfgContent = new List<string> {
                 "%",
                 "% =============================================================================",
                 "% SOLVER & PHYSIK",
@@ -75,7 +100,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                 "% Freistromturbulenz ist nicht gesetzt -> SU2 7.5.1 Standardwerte gelten:",
                 "% FREESTREAM_TURBULENCEINTENSITY= 0.05 und FREESTREAM_TURB2LAMVISCRATIO= 10.0",
                 "% =============================================================================",
-                $"FREESTREAM_VELOCITY= ( {velocityString}, 0.0, 0.0 )",
+                freestreamVelocityLine,
                 $"FREESTREAM_DENSITY= {densityString}",
                 "VISCOSITY_MODEL= CONSTANT_VISCOSITY",
                 $"MU_CONSTANT= {viscosityString}",
@@ -86,14 +111,14 @@ namespace MyPicoGkProject.Solvers.Cfd
                 "% Beeinflusst nur den Weg zur Loesung, nicht die Loesung selbst.",
                 "% =============================================================================",
                 $"INC_DENSITY_INIT= {densityString}",
-                $"INC_VELOCITY_INIT= ( {velocityString}, 0.0, 0.0 )",
+                initVelocityLine,
                 "%",
                 "% =============================================================================",
                 "% REFERENZWERTE",
                 "% Bezugsgroessen fuer die Berechnung von Beiwerten (CD, CL, Momente).",
                 "% =============================================================================",
                 $"REF_AREA= {refAreaString}", 
-                $"REF_LENGTH= {options.ReferenceLength.ToString(CultureInfo.InvariantCulture)}",
+                $"REF_LENGTH= {refLengthString}",
                 "REF_ORIGIN_MOMENT_X = 0.00",
                 "REF_ORIGIN_MOMENT_Y = 0.00",
                 "REF_ORIGIN_MOMENT_Z = 0.00",
@@ -160,6 +185,15 @@ namespace MyPicoGkProject.Solvers.Cfd
                 "VOLUME_OUTPUT= (COORDINATES, SOLUTION, PRIMITIVE, VELOCITY, PRESSURE, MACH, DENSITY, SKIN_FRICTION, Y_PLUS)",
             };
 
+            if (aoaLine != null)
+            {
+                int velIdx = cfgContent.IndexOf(freestreamVelocityLine);
+                if (velIdx >= 0)
+                    cfgContent.Insert(velIdx + 1, aoaLine);
+                else
+                    cfgContent.Add(aoaLine);
+            }
+
             File.WriteAllLines(configPath, cfgContent);
         }
 
@@ -205,6 +239,55 @@ namespace MyPicoGkProject.Solvers.Cfd
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Zerlegt eine skalare Geschwindigkeit bei gegebenem Anstellwinkel in ihre
+        /// Vektorkomponenten (TODO-46).
+        /// In 2D liegt der Auftrieb auf +y: (v*cos(a), v*sin(a), 0).
+        /// In 3D liegt der Auftrieb auf +z: (v*cos(a), 0, v*sin(a)).
+        /// Winzige Beträge (|v| &lt; 1e-7) werden auf 0.0 gerundet.
+        /// </summary>
+        public static (float Vx, float Vy, float Vz) ResolveVelocityVector(float speed, float angleOfAttackDeg, int dimensions)
+        {
+            if (angleOfAttackDeg == 0.0f)
+            {
+                return (speed, 0.0f, 0.0f);
+            }
+
+            float rad = angleOfAttackDeg * (MathF.PI / 180.0f);
+            float vx = speed * MathF.Cos(rad);
+            float vLift = speed * MathF.Sin(rad);
+
+            if (MathF.Abs(vx) < 1e-7f) vx = 0.0f;
+            if (MathF.Abs(vLift) < 1e-7f) vLift = 0.0f;
+
+            if (dimensions == 2)
+            {
+                return (vx, vLift, 0.0f);
+            }
+
+            return (vx, 0.0f, vLift);
+        }
+
+        /// <summary>
+        /// Projiziert eine aerodynamische Kraft aus Körperachsen (Fx, Fy) bei Anströmung
+        /// unter Anstellwinkel alpha in Windachsen (Widerstand D, Auftrieb L) (TODO-46).
+        /// D = Fx*cos(a) + Fy*sin(a), L = -Fx*sin(a) + Fy*cos(a).
+        /// </summary>
+        public static Vector2 ProjectForceToWindAxes(Vector2 bodyForce, float angleOfAttackDeg)
+        {
+            float rad = angleOfAttackDeg * (MathF.PI / 180.0f);
+            float cosA = MathF.Cos(rad);
+            float sinA = MathF.Sin(rad);
+
+            float drag = (bodyForce.X * cosA) + (bodyForce.Y * sinA);
+            float lift = (-bodyForce.X * sinA) + (bodyForce.Y * cosA);
+
+            if (MathF.Abs(drag) < 1e-7f) drag = 0.0f;
+            if (MathF.Abs(lift) < 1e-7f) lift = 0.0f;
+
+            return new Vector2(drag, lift);
         }
     }
 }

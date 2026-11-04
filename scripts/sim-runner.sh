@@ -467,6 +467,100 @@ cmd_start() {
     return 1
 }
 
+cmd_calibrate() {
+    require_project calibrate
+    load_env
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --calibrate"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Kalibrierung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Die Kalibrierung ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
+cmd_recheck() {
+    require_project recheck
+    load_env
+
+    local var="${1:-}"
+    local finer="${2:-1}"
+    local recheck_args="--recheck"
+    if [ -n "$var" ]; then
+        recheck_args="--recheck=$var"
+    fi
+    if [ -n "$finer" ]; then
+        recheck_args="$recheck_args --finer=$finer"
+    fi
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground $recheck_args"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Recheck gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Der Recheck ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
 cmd_stop() {
     load_env
 
@@ -815,6 +909,8 @@ Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
   doctor              Prueft Werkzeuge und Pfade, bevor ein Lauf startet   [Projekt]
   build               dotnet build + libpicogk.so neben die DLL legen
   start               Startet den Lauf in einer tmux-Sitzung (baut bei Bedarf) [Projekt]
+  calibrate           Startet isolierte Netzkalibrierung in tmux          [Projekt]
+  recheck [var] [fin] Rechnet eine Variante fein nach in tmux             [Projekt]
   stop                Beendet Lauf, tmux-Sitzung und haengende Kindprozesse
   status [zeilen]     Laeuft was? Wie lange? Letzte Logzeilen                [Projekt]
   log [zeilen] [no]   Logausgabe; "no" als zweites Argument = nicht mitlaufen
@@ -852,7 +948,9 @@ case "${1:-}" in
     hash)       cat "$HASH_FILE" 2>/dev/null || echo "unbekannt" ;;
     lastproject) cmd_lastproject ;;
     pack)       cmd_pack "${2:-}" "${3:-standard}" ;;
-    _foreground) cmd_foreground ;;
+    calibrate)  cmd_calibrate ;;
+    recheck)    cmd_recheck "${2:-}" "${3:-1}" ;;
+    _foreground) shift; cmd_foreground "$@" ;;
     ""|-h|--help|help) usage ;;
     *)          say "Unbekannter Befehl: $1"; say ""; usage; exit 2 ;;
 esac

@@ -114,7 +114,8 @@ namespace AutomatisierungCleanVersion.Tests
                 MaxIterations = iterations,
                 VariantsPerIteration = variants,
                 UseRubberBandScaler = useScaler,
-                TargetPicoGkSize = 50f
+                TargetPicoGkSize = 50f,
+                ChampionVerification = new ChampionVerificationConfig { Mode = "Off" }
             };
 
             var project = new ProjectConfig

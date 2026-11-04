@@ -60,7 +60,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete')]
+    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete', 'calibrate', 'recheck')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -99,7 +99,13 @@ param(
     [switch]$NoFollow,
 
     # fetch: Zielordner unter Windows
-    [string]$Out = 'Serverergebnisse'
+    [string]$Out = 'Serverergebnisse',
+
+    # recheck: Variante (z. B. Gen3_Var2)
+    [string]$Variant = '',
+
+    # recheck: Verfeinerungsstufen gegenueber dem wirksamen Faktor (Standard 1)
+    [int]$Finer = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -324,7 +330,7 @@ function Push-Sources {
 }
 
 function Invoke-Deploy {
-    param([switch]$ThenStart)
+    param([switch]$ThenStart, [switch]$ThenCalibrate)
 
     Write-Step "Deploy nach $Server ($RemoteDir)"
 
@@ -381,6 +387,9 @@ function Invoke-Deploy {
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
     }
+    elseif ($ThenCalibrate) {
+        Invoke-Calibrate
+    }
 }
 
 function Invoke-Start {
@@ -388,6 +397,25 @@ function Invoke-Start {
     Invoke-Runner -Arguments 'start'
     Write-Host ""
     Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
+function Invoke-Calibrate {
+    Write-Step "Starte Netzkalibrierung fuer '$Project' auf $Server"
+    Invoke-Runner -Arguments 'calibrate'
+    Write-Host ""
+    Write-Host "    Die Kalibrierung haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
+function Invoke-Recheck {
+    Write-Step "Starte Recheck fuer '$Project' auf $Server"
+    $rArgs = "recheck"
+    if ($Variant) { $rArgs += " '$Variant'" }
+    if ($Finer) { $rArgs += " $Finer" }
+    Invoke-Runner -Arguments $rArgs
+    Write-Host ""
+    Write-Host "    Der Recheck haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
     Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
@@ -516,7 +544,7 @@ try {
                 Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
             }
         }
-        elseif (@('deploy', 'run', 'doctor') -contains $Command) {
+        elseif (@('deploy', 'run', 'doctor', 'calibrate', 'recheck') -contains $Command) {
             Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
             Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
         }
@@ -525,6 +553,11 @@ try {
     switch ($Command) {
         'deploy' { Invoke-Deploy }
         'run' { Invoke-Deploy -ThenStart }
+        'calibrate' { Invoke-Deploy -ThenCalibrate }
+        'recheck' {
+            Assert-RemoteDeployed
+            Invoke-Recheck
+        }
 
         'build' {
             Assert-RemoteDeployed

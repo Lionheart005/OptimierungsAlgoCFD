@@ -228,6 +228,29 @@ nicht erst geprüft.
 | `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. | `0.2` | 🟡 |
 | `BouncerJitter` | Um wie viel der eine Parameter verstellt wird, **in dessen Einheit** (nicht in Prozent!). Bei Parametern mit kleinen Zahlen (z. B. 0,02) ist `0.01` schon riesig. | `0.01` | 🔴 |
 
+**Netzkalibrierung (`MeshCalibration`, TODO-42)**
+
+Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gegenüber einer feinen Referenzstufe.
+
+| Einstellung | Bedeutung | Standard | Wann |
+| --- | --- | --- | --- |
+| `MeshCalibration` | Abschnitt für die automatisierte Netzkalibrierung. | `{}` | 🟡 |
+| `Mode` | Modus der Kalibrierung: `"Manual"` (Standard, `MeshRefinementFactor` gilt) oder `"Auto"` (Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein). | `"Manual"` | 🟡 |
+| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.02` = 2 %). | `0.02` | 🟡 |
+| `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
+
+**Gewinner fein nachrechnen (`ChampionVerification`, TODO-43)**
+
+Überprüft den Sieger oder die besten Varianten auf einem feineren Netz (`wirksamer Faktor / √2^RefinementSteps`), um Netzabhängigkeit auszuschließen.
+
+| Einstellung | Bedeutung | Standard | Wann |
+| --- | --- | --- | --- |
+| `ChampionVerification` | Abschnitt für die Verifikation der Gewinner auf feinem Netz. | `{}` | 🟡 |
+| `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (Standard, prüft den Gesamtsieger am Ende), `"FinalTopN"` (prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"Final"` | 🟡 |
+| `TopN` | Anzahl der besten Varianten am Ende bei `Mode` = `"FinalTopN"`. | `3` | 🟡 |
+| `RefinementSteps` | Anzahl der Verfeinerungsstufen gegenüber dem wirksamen Faktor (÷ √2 je Stufe). | `1` | 🟡 |
+| `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). | `0.05` | 🟡 |
+
 ### 4.3 `solvers/su2.json` – die Strömungsrechnung
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
@@ -253,6 +276,8 @@ nicht erst geprüft.
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
 | `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
 | `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
+| `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). | `0.0` | 🎯 | 🟢 |
+| `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
 
 **Wo die Strömung herkommt und hinfließt:** Das steht in keiner Einstellung. Alle sechs Seiten des
 Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in **+x-Richtung**
@@ -309,8 +334,10 @@ inzwischen geändert sind:
 | Wo | Was steht dort |
 | --- | --- |
 | **Kopf des Logs** (`simulation.log`) | Projekt, Code-Stand, und für jede Datei, welche Einstellungen *aus ihr* kamen (`[CONFIG] Herkunft der wirksamen Werte`). Alles Ungenannte war der Standardwert. Darunter die Anströmung (`Anströmung: 2 m/s (…)`) |
-| **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf); seit TODO-40/41: `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) |
+| **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, `WirksamerNetzfaktor`, `NetzfaktorQuelle`, `KalibrierBericht`, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf); seit TODO-40/41: `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) |
+| **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
+| **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
 | **`.\scripts\sim.ps1 doctor -Project <Name>`** | *Vor* einem Lauf: welche Programmpfade wirklich gelten und ob die Programme gefunden werden |
 
@@ -324,6 +351,8 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 | Befehl | Was er tut |
 | --- | --- |
 | `run` | Der Alltagsbefehl: Code hochladen, bauen, Lauf starten. Danach kann das Fenster zu. |
+| `calibrate` | Netzkalibrierung starten (TODO-42): ermittelt den optimalen `MeshRefinementFactor` für die Startgeometrie und gibt die empfohlene Zeile aus. |
+| `recheck` | Einzelne Variante (`-Variant Gen3_Var2`) auf feinerem Netz (`-Finer 1`) re-simulieren und vergleichen (TODO-43). |
 | `deploy` | Nur hochladen und bauen. Läuft schon etwas und hat sich der Code geändert, wird neu gestartet (außer mit `-NoRestart`). |
 | `build` | Nur bauen. |
 | `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Logzeilen. Ohne `-Project` wird das zuletzt gerechnete Projekt abgefragt. |
@@ -361,6 +390,10 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | `[ABGELEHNT] Modell ist instabil. Disqualifiziert.` | Der Bouncer hat einen Zufallstreffer aussortiert. Das ist normal. | Passiert es fast immer: `BouncerTolerance` lockern oder `BouncerJitter` verkleinern. |
 | `Unbekanntes Projekt '…'` | Projektname vertippt (Groß-/Kleinschreibung zählt). | `.\scripts\sim.ps1 projects` zeigt die gültigen Namen. |
 | `sim.ps1` bricht nach ein bis drei Minuten mit einem SSH-Fehler ab | Die Verbindung (VPN) war tot. | VPN prüfen, Befehl wiederholen. **Ein laufender Lauf auf dem Server rechnet trotzdem weiter.** |
+| `[KONFIGURATION] Im Auto-Modus wird der Netzfaktor kalibriert. Bitte 'MeshRefinementFactor' aus … entfernen` | Im Auto-Modus kalibriert das Framework den Netzfaktor selbst; ein fester Faktor würde dem widersprechen. | `MeshRefinementFactor` aus der genannten Datei löschen und nur `Tolerance` unter `MeshCalibration` angeben. |
+| `[WARNUNG] Ergebnis netzabhängig – Abweichung im feinen Netz beträgt …` | Die feine Nachrechnung des Champions weicht um mehr als `Tolerance` vom normalen Lauf ab. Die Optimierung hat sich auf eine Netzabhängigkeit gestützt. | `MeshCalibration` prüfen und mit einem feineren Netzfaktor (z. B. `0.71` statt `1.00`) neu rechnen. |
+| `[HINWEIS] Letzte Kalibrierung (…) empfahl …, eingetragen ist …` | Der in `simulation.json` hinterlegte manuelle Netzfaktor weicht von der letzten Kalibrierung ab. | Überprüfen, ob der empfohlene Faktor in `simulation.json` übernommen werden soll. |
+| `[HINWEIS] Kalibrierung veraltet (Konfiguration oder Startgeometrie hat sich seitdem geändert).` | Der Fingerabdruck über Geometrie und Solver-Dateien passt nicht mehr zum letzten Kalibrierbericht. | `.\scripts\sim.ps1 calibrate` ausführen, um eine frische Empfehlung zu erhalten. |
 
 ---
 
@@ -376,6 +409,8 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | **Voxel** | Würfelförmiger Baustein, aus dem PicoGK die Form zusammensetzt (wie Pixel in 3D). |
 | **Gummiband-Skalierer** | Verkleinert bzw. vergrößert die Form für PicoGK auf eine feste Arbeitsgröße und rechnet alle Kennwerte danach auf die echte Größe zurück. |
 | **Netz** | Die Zerlegung des Windkanals in viele kleine Zellen, in denen SU2 rechnet. Feiner = genauer und langsamer. |
+| **Netzfaktor (`MeshRefinementFactor`)** | Globaler Verfeinerungsfaktor für alle Zellgrößen des Windkanals (< 1.0 feiner, > 1.0 gröber). Wird im Auto-Modus oder per `calibrate` kalibriert. |
+| **Grid Convergence Index (GCI)** | Maß für die numerische Gitterunsicherheit nach Celik et al. (2008), berechnet aus mindestens drei Netzstufen. Schätzt die prozentuale Abweichung zur theoretisch feinsten Gitterlösung. |
 | **Windkanal / Fernfeld** | Der Rechenraum um das Modell. Am Rand herrscht die ungestörte Strömung. |
 | **CD, CL** | Widerstands- bzw. Auftriebsbeiwert: Kraft geteilt durch (Staudruck × Bezugsfläche). |
 | **Bezugsfläche** | Die Fläche, auf die CD und CL bezogen werden (z. B. Stirnfläche). Eine andere Fläche ergibt andere Zahlen, bei der Optimierung kürzt sie sich oft heraus. |

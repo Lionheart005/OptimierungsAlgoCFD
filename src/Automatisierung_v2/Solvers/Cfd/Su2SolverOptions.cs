@@ -39,6 +39,20 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// </summary>
         public float FreestreamVelocity { get; set; } = 0.0f;
 
+        // --- Dimension & Anstellwinkel (TODO-46) ---
+        /// <summary>
+        /// Räumliche Dimension der Simulation: 3 (Standard, 3D-Volumennetz) oder 2 (2D-Flächennetz).
+        /// In 2D liegt der Auftrieb entlang der y-Achse, in 3D entlang der z-Achse.
+        /// </summary>
+        public int Dimensions { get; set; } = 3;
+
+        /// <summary>
+        /// Anstellwinkel in Grad (Angle of Attack alpha, TODO-46).
+        /// Standard: 0.0°. Bei alpha != 0 wird der Geschwindigkeitsvektor in
+        /// FREESTREAM_VELOCITY und INC_VELOCITY_INIT gedreht (in 2D in der xy-Ebene, in 3D in der xz-Ebene).
+        /// </summary>
+        public float AngleOfAttackDeg { get; set; } = 0.0f;
+
         // --- Referenzwerte ---
         /// <summary>SU2 REF_LENGTH.</summary>
         public float ReferenceLength { get; set; } = 0.01f;

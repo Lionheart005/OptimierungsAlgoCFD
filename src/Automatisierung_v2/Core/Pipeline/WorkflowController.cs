@@ -120,6 +120,15 @@ namespace MyPicoGkProject.Core
                     _context.Config,
                     (testParams) => ResimulateForValidation(testParams, iter));
 
+                // 2a. Optionale feine Nachrechnung je Iteration (Mode = "EachIteration", TODO-43)
+                ChampionFineVerifier.VerifyIterationWinner(
+                    trueWinner,
+                    iter,
+                    _context,
+                    (p, f, t) => RunPipeline(p, iter, ValidationVariantNumber, f, t),
+                    r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
+                    _requiredMetrics);
+
                 lastIterationWinner = trueWinner;
                 
                 _context.ExportToCsv(); 
@@ -133,6 +142,13 @@ namespace MyPicoGkProject.Core
                     _optimizer.PrepareNextIteration(_context, currentIterationRecords, trueWinner);
                 }
             }
+
+            // Finale Verifikation (Mode = "Final" oder "FinalTopN", TODO-43)
+            ChampionFineVerifier.VerifyFinal(
+                _context,
+                (p, f, t) => RunPipeline(p, ValidationVariantNumber, ValidationVariantNumber, f, t),
+                r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
+                _requiredMetrics);
 
             // Der beste Lauf des GESAMTEN Durchgangs, nicht der Gewinner der letzten
             // Iteration: beim EA ist das meist dasselbe, beim RSM mit seiner zufälligen
@@ -204,10 +220,41 @@ namespace MyPicoGkProject.Core
         /// <summary>
         /// Die eigentliche Pipeline für einen Parametersatz:
         /// Skalierung (Gummiband) → Geometrie → Metriken → Vernetzung → Solver-Kette.
+        /// Unterstützt optional temporär überschriebenen Netzfaktor und Tag (TODO-42/43).
         /// Gibt einen fertigen <see cref="ModelRecord"/> zurück; die Fitness wird hier
         /// bewusst nicht berechnet, das macht der Optimierungsalgorithmus bzw. der Validator.
         /// </summary>
-        private ModelRecord RunPipeline(Dictionary<string, float> parameters, int iteration, int variant)
+        public ModelRecord RunPipeline(
+            Dictionary<string, float> parameters,
+            int iteration,
+            int variant,
+            float? customRefinementFactor = null,
+            string? customTag = null)
+        {
+            float oldFactor = _context.EffectiveMeshRefinementFactor;
+            string oldTag = _context.CurrentRunTag;
+
+            try
+            {
+                if (customRefinementFactor.HasValue)
+                {
+                    _context.EffectiveMeshRefinementFactor = customRefinementFactor.Value;
+                }
+                if (customTag != null)
+                {
+                    _context.CurrentRunTag = customTag;
+                }
+
+                return RunPipelineCore(parameters, iteration, variant);
+            }
+            finally
+            {
+                _context.EffectiveMeshRefinementFactor = oldFactor;
+                _context.CurrentRunTag = oldTag;
+            }
+        }
+
+        private ModelRecord RunPipelineCore(Dictionary<string, float> parameters, int iteration, int variant)
         {
             // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt.
             // Abgeschaltet liefert Create() eine Neutral-Instanz (ShrinkFactor 1, Identität).
@@ -223,6 +270,7 @@ namespace MyPicoGkProject.Core
                 Variant = variant,
                 ActiveParameters = parameters
             };
+            record.PassiveParameters["MeshRefinementFactor"] = _context.EffectiveMeshRefinementFactor;
 
             // Geometrie erzeugen (IGeometryGenerator) → GeometryResult
             var geoResult = _geometry.GenerateAndExport(

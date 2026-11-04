@@ -78,6 +78,8 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
                             # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
+.\scripts\sim.ps1 calibrate # Netzkalibrierung starten (ermittelt optimalen MeshRefinementFactor)
+.\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Einzelne Variante auf feinerem Netz nachrechnen
 .\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
 .\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze?
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
