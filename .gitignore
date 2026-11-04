@@ -32,3 +32,8 @@ Thumbs.db
 # PicoGK specific / other
 imgui.ini
 
+# Lokale Einstellungen von Claude Code (Freigaben, ggf. Pfade dieses Rechners).
+# Fiel bisher nur zufaellig unter *.local.json -- hier ausdruecklich, damit eine
+# Umbenennung des Musters oben sie nicht versehentlich ins Repo holt.
+.claude/settings.local.json
+

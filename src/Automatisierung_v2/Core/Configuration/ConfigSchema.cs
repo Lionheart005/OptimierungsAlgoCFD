@@ -19,9 +19,6 @@ namespace MyPicoGkProject.Core
     /// </summary>
     public static class ConfigSchema
     {
-        /// <summary>Ab wie vielen gültigen Namen die Aufzählung abgekürzt wird.</summary>
-        private const int MaxNamesToList = 15;
-
         /// <summary>
         /// Prüft alle Schlüssel von <paramref name="overlay"/> gegen <paramref name="targetType"/>.
         /// </summary>
@@ -112,9 +109,12 @@ namespace MyPicoGkProject.Core
 
             if (valid.Length == 0) return "dieser Typ hat überhaupt keine Einstellungen.";
 
-            return valid.Length <= MaxNamesToList
-                ? "gültig wären: " + string.Join(", ", valid)
-                : "gültig wären u.a.: " + string.Join(", ", valid.Take(MaxNamesToList)) + ", …";
+            // Bewusst IMMER die vollständige Liste (04.11.2026). Vorher wurde nach 15 Namen mit
+            // "u.a. …" abgekürzt — alphabetisch, also ohne Rücksicht darauf, welcher Name gemeint
+            // war. Mit dem 16. SU2-Schlüssel fiel so ausgerechnet "TurbulenceModel" aus der
+            // Meldung. Wer hier landet, hat keinen ähnlichen Namen getroffen und braucht genau
+            // diese Liste; ein paar Zeilen mehr im Abbruch kosten nichts.
+            return "gültig wären: " + string.Join(", ", valid);
         }
 
         /// <summary>

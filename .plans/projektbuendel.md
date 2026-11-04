@@ -78,8 +78,10 @@ Windows (kein bash, kein WSL) war nur ein Notbehelf.
   PicoGK-Umgebung. Geprüft ist die Rechnung dahinter.
 * **`BouncerTolerance`** ist seit TODO-3 strenger und will nach dem ersten echten Lauf
   nachjustiert werden.
-* **Kosmetik:** `Core/Configuration/JsonConfigLoader.cs` trägt in seinen Kommentaren doppelt
-  kodiertes UTF-8 („LÃ¤dt" statt „Lädt"). Keine Codezeile betroffen.
+* ~~**Kosmetik:** `Core/Configuration/JsonConfigLoader.cs` trägt in seinen Kommentaren doppelt
+  kodiertes UTF-8 („LÃ¤dt" statt „Lädt"). Keine Codezeile betroffen.~~ **Korrektur vom
+  04.11.2026:** Es waren auch zwei Ausgabetexte betroffen; im Server-Log stand
+  „Ã¼bersprungen". Behoben in TODO-33 von `anmerkungen_umsetzung.md`.
 
 ---
 

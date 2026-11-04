@@ -11,7 +11,11 @@ namespace AutomatisierungCleanVersion.Tests
     /// TODO-12: Der Solver kennt keinen festen Metriknamen mehr. Fehlt die konfigurierte
     /// Metrik, darf er nicht stillschweigend mit einer Ersatzfläche weiterrechnen — der
     /// CD-Wert wäre dann um Größenordnungen falsch, ohne dass es jemand merkt.
+    ///
+    /// Die Warnungen werden über <c>Console.SetOut</c> mitgelesen — prozessweiter Zustand,
+    /// deshalb nie parallel zu anderen Klassen (siehe <see cref="ProcessWideStateCollection"/>).
     /// </summary>
+    [Collection(ProcessWideStateCollection.Name)]
     public class Su2ReferenceAreaTests
     {
         /// <summary>Ersatzwert 1 mm² in m² — derselbe wie vor TODO-12.</summary>

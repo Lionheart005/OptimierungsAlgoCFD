@@ -8,33 +8,33 @@ using System.Text.Json.Nodes;
 namespace MyPicoGkProject.Core
 {
     /// <summary>
-    /// LÃ¤dt Konfiguration aus JSON-Dateien und legt sie Ã¼ber die einkompilierten Standardwerte.
+    /// Lädt Konfiguration aus JSON-Dateien und legt sie über die einkompilierten Standardwerte.
     ///
     /// <para>
-    /// Jede Stufe Ã¼berschreibt nur die SchlÃ¼ssel, die sie tatsÃ¤chlich enthÃ¤lt. Eine fehlende
-    /// Datei ist kein Fehler â€” dann gilt, was die Stufe davor ergeben hat. Ein
-    /// <b>unbekannter</b> SchlÃ¼ssel ist dagegen ein Abbruch (Entscheidung 8, TODO-22):
+    /// Jede Stufe überschreibt nur die Schlüssel, die sie tatsächlich enthält. Eine fehlende
+    /// Datei ist kein Fehler — dann gilt, was die Stufe davor ergeben hat. Ein
+    /// <b>unbekannter</b> Schlüssel ist dagegen ein Abbruch (Entscheidung 8, TODO-22):
     /// vorher fiel ein Tippfehler beim Lesen einfach weg.
     /// </para>
     ///
     /// <para>Die Schichten, von allgemein nach spezifisch:</para>
     /// <list type="number">
-    ///   <item>Code-Standards (<c>CreateDefault()</c> bzw. <c>new T()</c>) â€” gelten fÃ¼r alles</item>
-    ///   <item><c>src/projects/&lt;Name&gt;/â€¦json</c> â€” dieses Projekt, alle Rechner</item>
-    ///   <item><c>config/â€¦local.json</c> â€” alle Projekte, dieser Rechner <i>(Notausgang)</i></item>
-    ///   <item><c>src/projects/&lt;Name&gt;/â€¦local.json</c> â€” dieses Projekt, dieser Rechner <i>(Notausgang)</i></item>
+    ///   <item>Code-Standards (<c>CreateDefault()</c> bzw. <c>new T()</c>) — gelten für alles</item>
+    ///   <item><c>src/projects/&lt;Name&gt;/…json</c> — dieses Projekt, alle Rechner</item>
+    ///   <item><c>config/…local.json</c> — alle Projekte, dieser Rechner <i>(Notausgang)</i></item>
+    ///   <item><c>src/projects/&lt;Name&gt;/…local.json</c> — dieses Projekt, dieser Rechner <i>(Notausgang)</i></item>
     /// </list>
     ///
     /// <para>
-    /// Regel in einem Satz: <b>je spezifischer, desto spÃ¤ter â€” und gitignoriert schlÃ¤gt
-    /// eingecheckt.</b> Schicht 3 gewinnt Ã¼ber Schicht 2, damit ein Projekt dem Rechner nicht
-    /// seinen <c>Su2Path</c> Ã¼berschreiben kann; Schicht 4 gewinnt Ã¼ber alles.
+    /// Regel in einem Satz: <b>je spezifischer, desto später — und gitignoriert schlägt
+    /// eingecheckt.</b> Schicht 3 gewinnt über Schicht 2, damit ein Projekt dem Rechner nicht
+    /// seinen <c>Su2Path</c> überschreiben kann; Schicht 4 gewinnt über alles.
     /// </para>
     ///
     /// <para>
     /// <b>Sollstand ist, dass es die Schichten 3 und 4 nirgends gibt.</b> Der Mechanismus
-    /// bleibt als Notausgang fÃ¼r Rechner mit exotischer Installation â€” jede vorhandene Datei
-    /// wird beim Start gemeldet, samt jedem SchlÃ¼ssel, den sie dem Projekt aushebelt.
+    /// bleibt als Notausgang für Rechner mit exotischer Installation — jede vorhandene Datei
+    /// wird beim Start gemeldet, samt jedem Schlüssel, den sie dem Projekt aushebelt.
     /// </para>
     /// </summary>
     public static class JsonConfigLoader
@@ -44,8 +44,8 @@ namespace MyPicoGkProject.Core
 
         /// <summary>
         /// Endung der maschinenspezifischen Ausnahmedateien. Dasselbe Muster steht in der
-        /// <c>.gitignore</c> und im Upload-Filter von <c>sim.ps1</c> â€” eine solche Datei
-        /// Ã¼berlebt dadurch jedes Deploy und wird von keinem Ã¼berschrieben.
+        /// <c>.gitignore</c> und im Upload-Filter von <c>sim.ps1</c> — eine solche Datei
+        /// überlebt dadurch jedes Deploy und wird von keinem überschrieben.
         /// </summary>
         public const string MachineSpecificSuffix = ".local.json";
 
@@ -61,22 +61,22 @@ namespace MyPicoGkProject.Core
         };
 
         /// <summary>
-        /// Legt die angegebenen JSON-Dateien der Reihe nach Ã¼ber <paramref name="defaults"/>.
-        /// Nicht vorhandene Dateien werden Ã¼bersprungen.
+        /// Legt die angegebenen JSON-Dateien der Reihe nach über <paramref name="defaults"/>.
+        /// Nicht vorhandene Dateien werden übersprungen.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Eine vorhandene Datei ist kein gÃ¼ltiges JSON oder nennt einen unbekannten SchlÃ¼ssel.
+        /// Eine vorhandene Datei ist kein gültiges JSON oder nennt einen unbekannten Schlüssel.
         /// </exception>
         public static T Load<T>(T defaults, params string[] jsonFilePaths) where T : class
             => LoadWithReport(defaults, jsonFilePaths).Value;
 
         /// <summary>
-        /// Wie <see cref="Load{T}"/>, liefert aber zusÃ¤tzlich den Bericht: welcher SchlÃ¼ssel aus
+        /// Wie <see cref="Load{T}"/>, liefert aber zusätzlich den Bericht: welcher Schlüssel aus
         /// welcher Datei gewonnen hat und welche <c>*.local.json</c> dem Projekt dazwischenfunkt.
         ///
         /// <para>
         /// Ob eine Datei als maschinenspezifisch gilt, entscheidet allein ihr Name
-        /// (<see cref="MachineSpecificSuffix"/>) â€” dasselbe Kriterium wie in der
+        /// (<see cref="MachineSpecificSuffix"/>) — dasselbe Kriterium wie in der
         /// <c>.gitignore</c> und im Upload-Filter von <c>sim.ps1</c>.
         /// </para>
         /// </summary>
@@ -93,7 +93,7 @@ namespace MyPicoGkProject.Core
 
                 if (!File.Exists(path))
                 {
-                    Console.WriteLine($"[CONFIG] {label}: nicht vorhanden, Ã¼bersprungen.");
+                    Console.WriteLine($"[CONFIG] {label}: nicht vorhanden, übersprungen.");
                     continue;
                 }
 
@@ -110,12 +110,12 @@ namespace MyPicoGkProject.Core
                 }
                 catch (JsonException ex)
                 {
-                    throw new InvalidOperationException($"[CONFIG] '{path}' ist kein gÃ¼ltiges JSON: {ex.Message}", ex);
+                    throw new InvalidOperationException($"[CONFIG] '{path}' ist kein gültiges JSON: {ex.Message}", ex);
                 }
 
                 if (merged is not JsonObject target || overlay is not JsonObject source) continue;
 
-                // Erst prÃ¼fen, dann Ã¼bernehmen: ein Tippfehler soll die Zahlen gar nicht
+                // Erst prüfen, dann übernehmen: ein Tippfehler soll die Zahlen gar nicht
                 // erreichen, sondern den Lauf sofort anhalten (Entscheidung 8).
                 ConfigSchema.Validate(typeof(T), source, path);
 
@@ -138,13 +138,13 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
-        /// Wie eine Datei im Log und im Warnblock heiÃŸt: relativ zum Arbeitsverzeichnis, wenn sie
-        /// darunter liegt, sonst absolut. Immer mit SchrÃ¤gstrichen.
+        /// Wie eine Datei im Log und im Warnblock heißt: relativ zum Arbeitsverzeichnis, wenn sie
+        /// darunter liegt, sonst absolut. Immer mit Schrägstrichen.
         ///
         /// <para>
         /// Bewusst <b>nicht</b> nur der Dateiname: <c>config/simulation.local.json</c> und
-        /// <c>src/projects/MantaAuv/simulation.local.json</c> heiÃŸen gleich, und der Warnblock
-        /// soll sagen, welche der beiden zu lÃ¶schen ist.
+        /// <c>src/projects/MantaAuv/simulation.local.json</c> heißen gleich, und der Warnblock
+        /// soll sagen, welche der beiden zu löschen ist.
         /// </para>
         /// </summary>
         public static string Label(string path)
@@ -183,17 +183,17 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
-        /// LÃ¤dt eine Konfigurationsdatei eines Projekts Ã¼ber alle vier Schichten (TODO-22).
+        /// Lädt eine Konfigurationsdatei eines Projekts über alle vier Schichten (TODO-22).
         /// </summary>
-        /// <param name="defaults">Schicht 1 â€” die Code-Standards.</param>
+        /// <param name="defaults">Schicht 1 — die Code-Standards.</param>
         /// <param name="relativeName">
         /// Dateiname relativ zum Projektordner, z.B. <c>project.json</c> oder
-        /// <c>solvers/su2.json</c>. SchrÃ¤gstriche sind erlaubt und werden umgesetzt.
+        /// <c>solvers/su2.json</c>. Schrägstriche sind erlaubt und werden umgesetzt.
         /// </param>
         /// <param name="projectDirectory">Der Ordner des Projekts (Schichten 2 und 4).</param>
         /// <param name="configDirectory">
-        /// Das <c>config/</c>-Verzeichnis fÃ¼r Schicht 3. <c>null</c> = suchen; wird keines
-        /// gefunden, entfÃ¤llt die Schicht ersatzlos â€” auf einem frischen Rechner ist der Ordner
+        /// Das <c>config/</c>-Verzeichnis für Schicht 3. <c>null</c> = suchen; wird keines
+        /// gefunden, entfällt die Schicht ersatzlos — auf einem frischen Rechner ist der Ordner
         /// leer und damit in git gar nicht vorhanden.
         /// </param>
         public static ConfigLoadResult<T> LoadForProject<T>(
@@ -211,24 +211,24 @@ namespace MyPicoGkProject.Core
             };
 
             // Schicht 3: alle Projekte, dieser Rechner. Steht bewusst VOR Schicht 4 und damit
-            // Ã¼ber dem Projekt â€” ein Projekt soll dem Rechner nicht seine Pfade umbiegen.
+            // über dem Projekt — ein Projekt soll dem Rechner nicht seine Pfade umbiegen.
             string? resolvedConfig = ResolveConfigDirectory(configDirectory);
             if (resolvedConfig != null)
                 layers.Add(MachineVariantOf(Path.Combine(new[] { resolvedConfig }.Concat(segments).ToArray())));
 
-            // Schicht 4: dieses Projekt, dieser Rechner. Gewinnt Ã¼ber alles.
+            // Schicht 4: dieses Projekt, dieser Rechner. Gewinnt über alles.
             layers.Add(MachineVariantOf(layers[0]));
 
             return LoadWithReport(defaults, layers.ToArray());
         }
 
         /// <summary>
-        /// Schreibt ein Konfigurationsobjekt als JSON â€” nÃ¼tzlich, um eine Vorlagedatei
+        /// Schreibt ein Konfigurationsobjekt als JSON — nützlich, um eine Vorlagedatei
         /// mit den aktuellen Standardwerten zu erzeugen.
         ///
         /// <para>
-        /// <b>Nicht</b> fÃ¼r die mitgelieferten Dateien benutzen: das Ergebnis hat keine
-        /// Kommentare, und genau die ErklÃ¤rungen tragen einen neuen Nutzer.
+        /// <b>Nicht</b> für die mitgelieferten Dateien benutzen: das Ergebnis hat keine
+        /// Kommentare, und genau die Erklärungen tragen einen neuen Nutzer.
         /// </para>
         /// </summary>
         public static void Save<T>(T configuration, string jsonFilePath) where T : class
@@ -241,9 +241,9 @@ namespace MyPicoGkProject.Core
 
         /// <summary>
         /// Sucht das Konfigurationsverzeichnis: absoluter Pfad wird direkt genommen, ein
-        /// relativer erst im Arbeitsverzeichnis und dann in den Ã¼bergeordneten Verzeichnissen.
+        /// relativer erst im Arbeitsverzeichnis und dann in den übergeordneten Verzeichnissen.
         /// Letzteres, weil <c>dotnet run</c> im Projektverzeichnis startet, die Konfiguration
-        /// aber im Repo-Root liegt. Gibt <c>null</c> zurÃ¼ck, wenn nichts gefunden wurde.
+        /// aber im Repo-Root liegt. Gibt <c>null</c> zurück, wenn nichts gefunden wurde.
         /// </summary>
         public static string? ResolveConfigDirectory(string? configDirectory)
         {
@@ -265,15 +265,15 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
-        /// Rekursives ZusammenfÃ¼hren: verschachtelte Objekte werden verschmolzen, alles andere
+        /// Rekursives Zusammenführen: verschachtelte Objekte werden verschmolzen, alles andere
         /// ersetzt. Ein Projekt, das nur <c>{"Lift":"CL"}</c> schreibt, bekommt <c>Drag</c> aus
-        /// der Stufe davor also dazu â€” gewollt, aber es heiÃŸt auch, dass man einen Eintrag nur
-        /// Ã¼ber den Code-Standard wieder loswird.
+        /// der Stufe davor also dazu — gewollt, aber es heißt auch, dass man einen Eintrag nur
+        /// über den Code-Standard wieder loswird.
         ///
         /// <para>
-        /// Nebenbei wird protokolliert, welche Datei welchen SchlÃ¼ssel gewonnen hat, und ob eine
-        /// maschinenspezifische Datei einen Wert tatsÃ¤chlich <b>verÃ¤ndert</b>. Wertgleiche
-        /// EintrÃ¤ge zÃ¤hlen nicht: sie hebeln nichts aus und wÃ¼rden den Warnblock zumÃ¼llen.
+        /// Nebenbei wird protokolliert, welche Datei welchen Schlüssel gewonnen hat, und ob eine
+        /// maschinenspezifische Datei einen Wert tatsächlich <b>verändert</b>. Wertgleiche
+        /// Einträge zählen nicht: sie hebeln nichts aus und würden den Warnblock zumüllen.
         /// </para>
         /// </summary>
         private static void Merge(
@@ -307,7 +307,7 @@ namespace MyPicoGkProject.Core
 
         /// <summary>
         /// Ein JSON-Wert, wie ihn ein Mensch im Warnblock lesen will: Zeichenketten ohne
-        /// AnfÃ¼hrungszeichen, alles andere so, wie es in der Datei steht.
+        /// Anführungszeichen, alles andere so, wie es in der Datei steht.
         /// </summary>
         private static string Describe(JsonNode? node)
         {
