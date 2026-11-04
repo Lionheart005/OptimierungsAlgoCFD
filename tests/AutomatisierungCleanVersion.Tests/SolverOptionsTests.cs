@@ -12,7 +12,8 @@ namespace AutomatisierungCleanVersion.Tests
         /// <summary>
         /// src/projects/MantaAuv/solvers/su2.json muss dieselben Werte enthalten wie die
         /// Code-Standards — sonst rechnet SU2 mit anderen Fluideigenschaften als vor dem
-        /// Umzug nach JSON.
+        /// Umzug nach JSON. Einzige bewusste Ausnahme: <c>FreestreamVelocity</c>, siehe
+        /// <see cref="MantaAuv_Sets_A_Realistic_Velocity_In_Water"/>.
         /// </summary>
         [Fact]
         public void Su2_Json_Matches_Code_Defaults()
@@ -94,6 +95,73 @@ namespace AutomatisierungCleanVersion.Tests
             {
                 if (File.Exists(path)) File.Delete(path);
             }
+        }
+
+        // -------------------------------------------------------------------
+        // TODO-38: Anströmung direkt in m/s
+        // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Ohne <c>FreestreamVelocity</c> rechnet jedes Projekt exakt wie vor TODO-38:
+        /// Geschwindigkeit = MachNumber × SpeedOfSound.
+        /// </summary>
+        [Fact]
+        public void Without_A_Velocity_The_Old_Mach_Path_Still_Applies()
+        {
+            var config = SimulationConfig.CreateDefault();
+            var options = new Su2SolverOptions();
+
+            float velocity = Su2ConfigGenerator.ResolveVelocity(config, options, out string source);
+
+            Assert.Equal(0.0f, options.FreestreamVelocity);
+            Assert.Equal(config.MachNumber * options.SpeedOfSound, velocity);
+            Assert.Contains("MachNumber", source);
+        }
+
+        /// <summary>
+        /// Eine gesetzte Geschwindigkeit gewinnt — und erreicht beide Stellen der cfg, an denen
+        /// SU2 sie braucht: Freistrom (Randbedingung) und Startfeld.
+        /// </summary>
+        [Fact]
+        public void A_Set_Velocity_Wins_Over_The_Mach_Number_And_Reaches_The_Config()
+        {
+            var config = SimulationConfig.CreateDefault();
+            config.MachNumber = 0.3f; // darf keine Rolle mehr spielen
+
+            var options = new Su2SolverOptions { FreestreamVelocity = 2.0f };
+
+            Assert.Equal(2.0f, Su2ConfigGenerator.ResolveVelocity(config, options, out string source));
+            Assert.Contains("FreestreamVelocity", source);
+
+            string path = Path.Combine(Path.GetTempPath(), "su2cfg_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", refArea: 0.001f, config: config, options: options);
+
+                string[] lines = File.ReadAllLines(path);
+
+                Assert.Contains("FREESTREAM_VELOCITY= ( 2, 0.0, 0.0 )", lines);
+                Assert.Contains("INC_VELOCITY_INIT= ( 2, 0.0, 0.0 )", lines);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        /// <summary>
+        /// MantaAuv weicht hier bewusst vom Code-Standard ab: 2 m/s statt der 34,3 m/s, die
+        /// Mach 0.1 mit der Schallgeschwindigkeit von Luft ergab (Entscheidung E4,
+        /// <c>.plans/anmerkungen_umsetzung.md</c>). Ändert jemand den Wert, soll das bewusst
+        /// passieren — die Ergebnisse alter und neuer Läufe sind dann nicht vergleichbar.
+        /// </summary>
+        [Fact]
+        public void MantaAuv_Sets_A_Realistic_Velocity_In_Water()
+        {
+            var loaded = MantaProjectFiles.Load(new Su2SolverOptions(), "solvers/su2.json");
+
+            Assert.Equal(2.0f, loaded.FreestreamVelocity);
+            Assert.Equal(2.0f, Su2ConfigGenerator.ResolveVelocity(MantaProjectFiles.Simulation(), loaded, out _));
         }
 
         [Fact]

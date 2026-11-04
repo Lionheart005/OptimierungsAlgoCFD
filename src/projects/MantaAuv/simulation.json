@@ -59,6 +59,8 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
+  // MachNumber wirkt fuer dieses Projekt NICHT: die Anstroemung steht seit dem
+  // 04.11.2026 direkt in solvers/su2.json unter "FreestreamVelocity" (2.0 m/s).
   "MachNumber": 0.1,
   "Su2MaxIterations": 500,
   "CauchyElements": 150,

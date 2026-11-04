@@ -23,6 +23,22 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <summary>Schallgeschwindigkeit in m/s — rechnet die Mach-Zahl in eine Anströmgeschwindigkeit um.</summary>
         public float SpeedOfSound { get; set; } = 343.2f;
 
+        /// <summary>
+        /// Anströmgeschwindigkeit in m/s (TODO-38). Der Löser ist inkompressibel — eine Mach-Zahl
+        /// hat für ihn keine physikalische Bedeutung, sie war nur ein Umweg zur Geschwindigkeit.
+        /// <para>
+        /// <c>0</c> (Standard) = nicht gesetzt: dann gilt weiter
+        /// <c>MachNumber × SpeedOfSound</c> aus dem alten Weg, damit bestehende Projekte
+        /// unverändert rechnen. Größer 0: dieser Wert gilt, <c>MachNumber</c> und
+        /// <c>SpeedOfSound</c> werden für die Anströmung nicht mehr verwendet.
+        /// </para>
+        /// <para>
+        /// Vorsicht beim alten Weg in Wasser: <c>SpeedOfSound</c> steht auf der Schallgeschwindigkeit
+        /// von <b>Luft</b>; Mach 0.1 ergibt damit 34,3 m/s — für ein Unterwasserfahrzeug unrealistisch.
+        /// </para>
+        /// </summary>
+        public float FreestreamVelocity { get; set; } = 0.0f;
+
         // --- Referenzwerte ---
         /// <summary>SU2 REF_LENGTH.</summary>
         public float ReferenceLength { get; set; } = 0.01f;

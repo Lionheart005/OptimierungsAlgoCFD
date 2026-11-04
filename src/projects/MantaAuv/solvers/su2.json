@@ -17,7 +17,16 @@
   "Density": 1025.0,          // kg/m³, Meerwasser
   "DynamicViscosity": 0.001001, // Pa·s (1.001e-3)
   "TurbulenceModel": "SA",
-  "SpeedOfSound": 343.2,      // m/s, rechnet MachNumber in m/s um
+  "SpeedOfSound": 343.2,      // m/s, nur fuer den alten Weg ueber MachNumber (siehe unten)
+
+  // Anstroemgeschwindigkeit in m/s. Gesetzt (> 0) gilt sie, und MachNumber aus
+  // ../simulation.json wird fuer die Anstroemung NICHT mehr verwendet.
+  // Vorher kam die Geschwindigkeit aus MachNumber 0.1 x SpeedOfSound 343.2 m/s
+  // (Schall in LUFT) = 34.3 m/s -- fuer ein AUV in Wasser unrealistisch (~67 kn).
+  // 2.0 m/s (~4 kn) ist eine uebliche AUV-Reisegeschwindigkeit; Re bei 50 mm
+  // Koerperlaenge damit ~1e5. Die Ergebnisse sind mit Laeufen vor dem 04.11.2026
+  // nicht mehr vergleichbar.
+  "FreestreamVelocity": 2.0,
 
   // --- Referenzwerte ---
   "ReferenceLength": 0.01,

@@ -21,7 +21,14 @@
   "Density": 1025.0,            // kg/m3
   "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
   "TurbulenceModel": "SA",      // SA oder SST
-  "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um
+  "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um (nur wenn FreestreamVelocity 0 ist)
+
+  // Anstroemgeschwindigkeit in m/s. 0 = nicht gesetzt: dann gilt
+  // MachNumber (aus ../simulation.json) x SpeedOfSound. EMPFOHLEN ist, hier
+  // direkt die Geschwindigkeit einzutragen -- der Loeser ist inkompressibel,
+  // eine Mach-Zahl hat fuer ihn keine Bedeutung. Achtung: SpeedOfSound ist der
+  // Wert fuer LUFT; in Wasser ergaebe Mach 0.1 unrealistische 34.3 m/s.
+  "FreestreamVelocity": 0.0,    // m/s
 
   // --- Referenzwerte ---
   "ReferenceLength": 0.01,

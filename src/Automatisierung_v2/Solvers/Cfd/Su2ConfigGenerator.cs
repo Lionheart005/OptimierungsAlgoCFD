@@ -16,8 +16,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         {
             string refAreaString = refArea.ToString(CultureInfo.InvariantCulture);
 
-            // Umrechnung: Mach zu Geschwindigkeit in m/s (Schallgeschwindigkeit ca. 343.2 m/s bei 20°C)
-            float velocity = config.MachNumber * options.SpeedOfSound;
+            float velocity = ResolveVelocity(config, options, out _);
             string velocityString = velocity.ToString(CultureInfo.InvariantCulture);
 
             string densityString = options.Density.ToString(CultureInfo.InvariantCulture);
@@ -106,6 +105,26 @@ namespace MyPicoGkProject.Solvers.Cfd
             };
 
             File.WriteAllLines(configPath, cfgContent);
+        }
+
+        /// <summary>
+        /// Die Anströmgeschwindigkeit in m/s (TODO-38): <see cref="Su2SolverOptions.FreestreamVelocity"/>,
+        /// wenn gesetzt — sonst wie vor TODO-38 <c>MachNumber × SpeedOfSound</c>, damit Projekte
+        /// ohne den neuen Schlüssel unverändert rechnen.
+        /// </summary>
+        /// <param name="source">Klartext für das Log: woher die Zahl kommt.</param>
+        public static float ResolveVelocity(SimulationConfig config, Su2SolverOptions options, out string source)
+        {
+            if (options.FreestreamVelocity > 0f)
+            {
+                source = "FreestreamVelocity aus der su2.json (MachNumber wird dafür nicht verwendet)";
+                return options.FreestreamVelocity;
+            }
+
+            source = $"MachNumber {config.MachNumber.ToString(CultureInfo.InvariantCulture)} × SpeedOfSound "
+                     + $"{options.SpeedOfSound.ToString(CultureInfo.InvariantCulture)} m/s — "
+                     + "besser direkt 'FreestreamVelocity' in der su2.json setzen";
+            return config.MachNumber * options.SpeedOfSound;
         }
     }
 }

@@ -32,6 +32,12 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         private readonly Su2SolverOptions _options;
 
+        /// <summary>
+        /// Die Anströmung wird einmal pro Lauf gemeldet, nicht bei jeder Variante — sie ändert
+        /// sich zwischen den Varianten nicht, und im Log soll sie trotzdem stehen (TODO-38).
+        /// </summary>
+        private bool _velocityReported;
+
         /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
         public Su2Solver(Su2SolverOptions? options = null)
         {
@@ -47,6 +53,13 @@ namespace MyPicoGkProject.Solvers.Cfd
             string workingDirectory)
         {
             float refArea = ResolveReferenceArea(record);
+
+            if (!_velocityReported)
+            {
+                float velocity = Su2ConfigGenerator.ResolveVelocity(config, _options, out string source);
+                Console.WriteLine($"    -> Anströmung: {velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({source}).");
+                _velocityReported = true;
+            }
 
             Console.WriteLine($"    -> Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
             
