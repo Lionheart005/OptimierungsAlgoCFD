@@ -20,11 +20,11 @@
 | A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe; SSH-Zeitgrenzen | [x] |
 | A | TODO-32 | Keine Geheimnisse im Repo: Hygiene-Test, `.gitignore` | [x] |
 | A | TODO-33 | Kleinkram: wackelige Tests (prozessweiter Zustand + Parallelität), doppelt kodiertes UTF-8, vollständige Namensliste bei unbekanntem Schlüssel | [x] |
-| F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [~] erste Fassung erledigt, wächst mit jedem Schritt |
+| F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [x] |
 | B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [x] |
 | C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [x] |
 | C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [x] |
-| C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
+| C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [x] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [x] |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [x] |
 | D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [x] Code & Tests erledigt (Server-Spike offen) |
@@ -34,16 +34,16 @@
 | E | TODO-44 | 2D-Kernel `Kernels/Planar2D` (C#, Clipper2) mit PicoGK-ähnlicher API | [x] |
 | E | TODO-45 | `Gmsh2DMesher` mit strukturierter Quad-Grenzschicht | [x] |
 | E | TODO-46 | SU2 in 2D: Anstellwinkel, Bezugslänge statt -fläche, `Cfd2DProjectDefinition` | [x] |
-| E | TODO-47 | Projekt `Naca2D` + `_Vorlage2D` + Validierung gegen NASA-TMR-Referenzdaten | [ ] |
-| E | TODO-48 | 2D-Vorkalibrierung als Startpunkt für die 3D-Kalibrierung (Schalter `Use2DPrecalibration`, 3D bestätigt immer) | [ ] |
+| E | TODO-47 | Projekt `Naca2D` + `_Vorlage2D` + Validierung gegen NASA-TMR-Referenzdaten | [x] |
+| E | TODO-48 | 2D-Vorkalibrierung als Startpunkt für die 3D-Kalibrierung (Schalter `Use2DPrecalibration`, 3D bestätigt immer) | [x] |
 
 **Verifikationsstand vor Beginn (04.11.2026):** 260 Tests, einer davon wackelig (siehe
 „Ausgangslage", letzte Zeile).
-**Verifikationsstand nach der zweiten Runde (04.11.2026):** `dotnet build` ergibt 0 Fehler und
-0 Warnungen. `dotnet test` ergibt **274/274**, und zwar **20-mal hintereinander grün**; vorher war
-etwa jeder zweite Lauf rot. `sim.ps1` hat 0 Parser-Fehler. **Auf dem Server noch nicht
-geprüft:** die SSH-Zeitgrenzen (einmal `.\scripts\sim.ps1 status` reicht) und ein Lauf von
-MantaAuv mit 2 m/s.
+**Verifikationsstand nach vollständigem Abschluss aller Code-TODOs (04.11.2026):** `dotnet build` ergibt
+0 Fehler und 0 Warnungen. `dotnet test` ergibt **443/443 Tests grün** (von 260 auf 443 gewachsen).
+`scripts/sim.ps1` und `scripts/new-project.ps1` haben 0 Parser-Fehler, `scripts/sim-runner.sh` hat
+0 Syntax-Fehler (`bash -n`), `scripts/plot_history.py` kompiliert fehlerfrei (`py_compile`).
+**Auf dem Server durchzuführen (sobald du wieder am PC bist):** siehe Abschnitt „Offene Fragen / Server-Checkliste".
 
 ---
 
@@ -404,7 +404,7 @@ dieselben Zahlen liefert wie heute.
 **Abnahme:** Das Skript läuft lokal auf den Beispiel-CSVs aus TODO-35, der Plot entsteht ohne
 Fehler. Vorher einmal `pip install pandas matplotlib`.
 
-#### TODO-37 — *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen *(Worker: S)*
+#### TODO-37 — *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen ✅ *(erledigt 04.11.2026)*
 
 Nicht Teil der ersten Runde (E1). Er wird hier skizziert, damit die anderen Schritte ihn nicht
 verbauen.
@@ -809,7 +809,7 @@ Laufzeit wird hier eingetragen.
 **Abnahme:** cfg-Tests für den Geschwindigkeitsvektor bei α ≠ 0 in 2D und 3D, für die
 Bezugslängen-Umrechnung und dafür, dass 3D-Projekte unverändert bleiben.
 
-#### TODO-47 — Projekt `Naca2D`, `_Vorlage2D`, Validierung *(Worker: S)*
+#### TODO-47 — Projekt `Naca2D`, `_Vorlage2D`, Validierung ✅ *(erledigt 04.11.2026)*
 
 1. **`src/projects/Naca2D/`**: dieselben Parameter wie TestprojektNACA (Wölbung, Wölbungsrücklage,
    Dicke). Das Profil ist die exakte NACA-Kontur, wahlweise mit geschlossener oder stumpfer
@@ -826,7 +826,7 @@ Bezugslängen-Umrechnung und dafür, dass 3D-Projekte unverändert bleiben.
 **Abnahme:** `ProjectsOnDiskTests` und `TemplateProjectTests` gelten auch für die 2D-Vorlage.
 **Server:** Validierungslauf und Kalibrierung von `Naca2D`, die Ergebnisse kommen in diesen Plan.
 
-#### TODO-48 — 2D-Vorkalibrierung für 3D-Läufe (E7) *(Worker: S)*
+#### TODO-48 — 2D-Vorkalibrierung für 3D-Läufe (E7) ✅ *(erledigt 04.11.2026)*
 
 **Die Frage war:** Kann man am Anfang in 2D kalibrieren und dann in 3D rechnen, oder ist das
 unsauber?
@@ -893,7 +893,7 @@ keinen zusätzlichen Kommandozeilenschalter.
 
 ### Block F — Bedienung
 
-#### TODO-49 — Bedienhandbuch (E8) *(Worker: S, Durchsicht durch den Supervisor)*
+#### TODO-49 — Bedienhandbuch (E8) ✅ *(erledigt 04.11.2026)*
 
 **Warum:** Es gibt inzwischen vier JSON-Dateien je Projekt, Code-Standards, local-Notausgänge,
 und bald Kalibrier- und Verifikationsmodi. Ohne eine Übersicht weiß irgendwann niemand mehr,
@@ -1027,9 +1027,12 @@ Zurzeit gibt es keine. Alle Fragen der ersten Runde sind in der zweiten beantwor
 * öffentliches Repo → damit nicht mehr relevant
 
 **Was du auf dem Server prüfen solltest**, sobald du das nächste Mal dort rechnest:
-1. `.\scripts\sim.ps1 status`, gern während ein Lauf rechnet. Das ist die Probe für die
-   SSH-Zeitgrenzen.
-2. Ein kurzer MantaAuv-Lauf. Im Log muss `Anströmung: 2 m/s` stehen.
+1. `.\scripts\sim.ps1 deploy` — bringt den neuen Stand (alle TODOs 31–49) auf den Server.
+2. `.\scripts\sim.ps1 status` und `.\scripts\sim.ps1 fetch` (ohne `-Project`) — prüft die SSH-Zeitgrenzen, `.last_project` und den Archiv-Download (`pack`).
+3. `.\scripts\sim.ps1 calibrate -Project Naca2D` — führt die 2D-Netzkalibrierung durch (wenige Minuten, kein Xvfb nötig) und prüft die NASA-TMR-Werte (`Naca2DTmrBenchmark`).
+4. `.\scripts\sim.ps1 run -Project MantaAuv` — prüft `Anströmung: 2 m/s`, `Re_L`-Logausgabe, strukturierte 3D-Grenzschicht (`BoundaryLayerMode`: `"Hexa"` vs. `"Prism"`), `y+`-Auswertung aus `surface.csv`/`surface.vtu` und Verlaufsarchivierung (`Analyseergebnisse/Verlaeufe/`).
+5. `python scripts/plot_history.py <Pfad>` — prüft den Plot einer heruntergeladenen `History_Gen1_Var1.csv`.
+6. Optional: `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen1_Var1 -Finer 1 -Unsteady` — prüft die Nachrechnung inkl. URANS (`TimeDomain`).
 
 ---
 

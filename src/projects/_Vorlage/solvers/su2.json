@@ -113,5 +113,17 @@
 
   // Warnfaktor fuer y+: Ueberschreitet das 95 %-Quantil (P95) das Produkt
   // aus YPlusWarnFactor und TargetYPlus, warnt der Solver (Standard 2.0).
-  "YPlusWarnFactor": 2.0
+  "YPlusWarnFactor": 2.0,
+
+  // --- Zeitgenauer Modus / URANS (TODO-37) ---
+  // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).
+  "TimeDomain": {
+    "Enabled": false,
+    "TimeStep": 0.0,
+    "StepsPerPeriod": 25,
+    "StrouhalEstimate": 0.2,
+    "TimeIterations": 200,
+    "InnerIterations": 30,
+    "AveragingStartFraction": 0.5
+  }
 }

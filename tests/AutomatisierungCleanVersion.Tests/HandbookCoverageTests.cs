@@ -43,6 +43,7 @@ namespace AutomatisierungCleanVersion.Tests
             new object[] { typeof(SimulationConfig), "simulation.json" },
             new object[] { typeof(Su2SolverOptions), "solvers/su2.json" },
             new object[] { typeof(GmshMesherOptions), "solvers/gmsh.json" },
+            new object[] { typeof(Gmsh2DMesherOptions), "solvers/gmsh.json (2D)" },
             new object[] { typeof(ProjectConfigDto), "project.json" },
         };
 

@@ -401,7 +401,7 @@ cmd_foreground() {
     # Nur noch der Projektname. Das zweite Argument war frueher das config-Verzeichnis;
     # seit TODO-24 waere es das PROJEKT-Verzeichnis, und das findet das Programm selbst,
     # indem es von hier aus nach src/projects/ aufwaerts sucht.
-    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" >>"$LOG_FILE" 2>&1 || rc=$?
+    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$@" >>"$LOG_FILE" 2>&1 || rc=$?
 
     echo "$rc" >"$EXIT_FILE"
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
@@ -513,14 +513,29 @@ cmd_recheck() {
     require_project recheck
     load_env
 
-    local var="${1:-}"
-    local finer="${2:-1}"
+    local var=""
+    local finer="1"
+    local unsteady=false
     local recheck_args="--recheck"
+
+    for arg in "$@"; do
+        if [ "$arg" = "--unsteady" ] || [ "$arg" = "-unsteady" ]; then
+            unsteady=true
+        elif [ -z "$var" ]; then
+            var="$arg"
+        else
+            finer="$arg"
+        fi
+    done
+
     if [ -n "$var" ]; then
         recheck_args="--recheck=$var"
     fi
     if [ -n "$finer" ]; then
         recheck_args="$recheck_args --finer=$finer"
+    fi
+    if [ "$unsteady" = true ]; then
+        recheck_args="$recheck_args --unsteady"
     fi
 
     if is_running; then
@@ -910,7 +925,7 @@ Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
   build               dotnet build + libpicogk.so neben die DLL legen
   start               Startet den Lauf in einer tmux-Sitzung (baut bei Bedarf) [Projekt]
   calibrate           Startet isolierte Netzkalibrierung in tmux          [Projekt]
-  recheck [var] [fin] Rechnet eine Variante fein nach in tmux             [Projekt]
+  recheck [var] [fin] [--unsteady] Rechnet eine Variante fein nach in tmux [Projekt]
   stop                Beendet Lauf, tmux-Sitzung und haengende Kindprozesse
   status [zeilen]     Laeuft was? Wie lange? Letzte Logzeilen                [Projekt]
   log [zeilen] [no]   Logausgabe; "no" als zweites Argument = nicht mitlaufen
@@ -949,7 +964,7 @@ case "${1:-}" in
     lastproject) cmd_lastproject ;;
     pack)       cmd_pack "${2:-}" "${3:-standard}" ;;
     calibrate)  cmd_calibrate ;;
-    recheck)    cmd_recheck "${2:-}" "${3:-1}" ;;
+    recheck)    cmd_recheck "${@:2}" ;;
     _foreground) shift; cmd_foreground "$@" ;;
     ""|-h|--help|help) usage ;;
     *)          say "Unbekannter Befehl: $1"; say ""; usage; exit 2 ;;

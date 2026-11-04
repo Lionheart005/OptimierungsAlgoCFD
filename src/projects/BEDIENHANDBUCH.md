@@ -278,6 +278,21 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
 | `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). | `0.0` | 🎯 | 🟢 |
 | `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
+| `TimeDomain` | Block für zeitgenaue CFD-Rechnungen (URANS, Dual-Time-Stepping, TODO-37). Details siehe unten. | `{}` | 🎯⏱ | 🟡 |
+
+**Zeitgenauer Modus (URANS / Dual-Time-Stepping, TODO-37)**
+
+Für instationäre Strömungen (z. B. Wirbelablösung, periodische Schwingungen von Auftrieb und Widerstand) kann SU2 zeitgenau mit Dual-Time-Stepping 2. Ordnung betrieben werden. Gestartet wird aus dem stationären Feld; pro physikalischem Zeitschritt löst SU2 mehrere innere Pseudo-Iterationen (`InnerIterations`).
+
+| Einstellung | Bedeutung | Standard | Wirkung | Wann |
+| --- | --- | --- | --- | --- |
+| `Enabled` | Zeitgenaue Rechnung (URANS) aktivieren (`TIME_DOMAIN= YES`, `TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER`). | `false` | 🎯⏱ | 🟡 |
+| `TimeStep` | Physikalischer Zeitschritt $\Delta t$ in Sekunden. `0.0` = automatisch aus `StrouhalEstimate` und `StepsPerPeriod` berechnen. | `0.0` | 🎯⏱ | 🟡 |
+| `StepsPerPeriod` | Zeitschritte pro Wirbelablöseperiode $T = L / (\text{St} \cdot U)$ bei automatischer Zeitschrittwahl. | `25` | 🎯⏱ | 🟡 |
+| `StrouhalEstimate` | Geschätzte Strouhal-Zahl St für die Frequenzabschätzung (Standard 0.2 für stumpfe Körper / Nachläufe). | `0.2` | 🎯 | 🟡 |
+| `TimeIterations` | Anzahl der äußeren physikalischen Zeitschritte (`TIME_ITER`). | `200` | ⏱ | 🟡 |
+| `InnerIterations` | Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (`INNER_ITER`). | `30` | ⏱ | 🟡 |
+| `AveragingStartFraction` | Bruchteil der Gesamtschritte, ab dem die Zeitmittelung der Beiwerte startet (`WINDOW_START_ITER`). | `0.5` | 🎯 | 🟡 |
 
 **Wo die Strömung herkommt und hinfließt:** Das steht in keiner Einstellung. Alle sechs Seiten des
 Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in **+x-Richtung**
@@ -323,6 +338,27 @@ Im Modus `"Hexa"` wird die Bauteiloberfläche vor der Extrusion in Vierecke zerl
 * **Vorteile von Quader-Grenzschichten:** Wesentlich geringere numerische Diffusion, präzise Erfassung der Geschwindigkeitsgradienten in Wandnähe, stabilere und glattere Wandreibungswerte und y+-Profile sowie weniger Gesamtzellen bei gleicher Auflösung als mit Prismen.
 * **Quad-Dominant:** Bei komplex gekrümmten Voxel-Oberflächen bleiben vereinzelt Dreiecke übrig; daraus entstehen Prismen zwischen den Quadern. Gmsh erzeugt somit ein „quad-dominantes" Grenzschichtnetz, das SU2 problemlos rechnet.
 * Der Modus `"Prism"` dient als Rückfallebene (reine Dreiecks-Extrusion zu Prismen), falls für ein STL keine saubere Viereckzerlegung gelingt. `"Threshold"` behält das rein unstrukturierte Netz früherer Versionen bei.
+
+### 4.5 `solvers/gmsh.json` (2D-Projekte, `Gmsh2DMesherOptions`)
+
+Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder 2D-Vorkalibrierung in `TestprojektNACA`, TODO-45/48) erzeugt `Gmsh2DMesher` ein ebenes Rechennetz um die Kontur. Die Bezugslänge ist die Sehne $L$.
+
+| Einstellung | Bedeutung | Standard | Wirkung | Wann |
+| --- | --- | --- | --- | --- |
+| `FarfieldRadiusFactor` | Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge $L$ (Standard 50, da Zirkulation in 2D mit $1/r$ langsam abklingt). | `50.0` | 🎯 | 🔴 |
+| `FarfieldCircleSegments` | Anzahl der Segmente für die Fernfeld-Kreisbögen (Standard 64). | `64` | ⚙ | 🔴 |
+| `TargetYPlus` | Ziel-y+ für die erste Wandzellhöhe $y_1$ (Standard 1.0). | `1.0` | 🎯 | 🟡 |
+| `BoundaryLayerGrowthRate` | Geometrischer Wachstumsfaktor der Schichten in der Grenzschicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
+| `BoundaryLayerMinLayers` | Mindestanzahl an Wandschichten (Standard 4). | `4` | 🎯 | 🟡 |
+| `BoundaryLayerLayers` | Feste Schichtanzahl (`0` = automatisch aus Grenzschichtdicke $\delta$ ermitteln). | `0` | 🎯 | 🟡 |
+| `SurfaceCellSizeFactor` | Zellgröße an der Konturoberfläche als Bruchteil von $L$ auf Stufe 1.0 (`0.01` = $L/100$). | `0.01` | 🎯⏱ | 🟢 |
+| `SurfaceCellSizeMm` | Feste Kontur-Zellgröße in mm auf Stufe 1.0; $> 0$ überschreibt `SurfaceCellSizeFactor` × $L$. | `0.0` | 🎯⏱ | 🟡 |
+| `NearfieldCellSizeFactor` | Nahfeld-Zellgröße als Bruchteil von $L$ auf Stufe 1.0 (`0.04` = $L/25$). | `0.04` | 🎯⏱ | 🟡 |
+| `FarfieldCellSizeFactor` | Zellgröße am Fernfeldrand als Vielfaches von $L$ auf Stufe 1.0 (`2.5` = $2.5 \cdot L$). | `2.5` | 🎯⏱ | 🔴 |
+| `WakeRefinement` | Nachlauf-Verfeinerungsbox stromabwärts aktivieren/deaktivieren (Standard `true`). | `true` | 🎯⏱ | 🟡 |
+| `WakeLengthFactor` | Länge der Nachlauf-Box hinter der Hinterkante als Vielfaches von $L$ (Standard 3.0). | `3.0` | 🎯⏱ | 🟡 |
+| `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y als Vielfaches von $L$ (Standard 0.6). | `0.6` | 🎯⏱ | 🟡 |
+| `WakeCellSizeFactor` | Zellgröße in der Nachlauf-Box als Bruchteil von $L$ auf Stufe 1.0 (`0.04` = $L/25$). | `0.04` | 🎯⏱ | 🟡 |
 
 ---
 

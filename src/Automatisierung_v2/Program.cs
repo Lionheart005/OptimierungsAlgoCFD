@@ -7,6 +7,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 
 using MyPicoGkProject.Core;
+using MyPicoGkProject.Solvers.Cfd;
 
 namespace MyPicoGkProject
 {
@@ -129,7 +130,8 @@ namespace MyPicoGkProject
 
                 if (isRecheck)
                 {
-                    RunRecheck(definition, context, recheckVariant, recheckFiner);
+                    bool isUnsteady = flags.Contains("--unsteady");
+                    RunRecheck(definition, context, recheckVariant, recheckFiner, isUnsteady);
                     return 0;
                 }
 
@@ -252,9 +254,10 @@ namespace MyPicoGkProject
             var simulationContext = new SimulationContext(context.Simulation, context.Project);
             simulationContext.EnsureDirectories();
 
-            // 1. Validierung der Kalibrierungskonfiguration (Regel 1)
+            // 1. Validierung der Kalibrierungskonfiguration (Regel 1 & TODO-48)
             var simulationReport = context.Loaded.FirstOrDefault(l => l.Name == "simulation.json")?.Report;
             MeshCalibration.ValidateConfig(context.Simulation, simulationReport, context.Name);
+            MeshCalibration.ValidatePrecalibrationSupport(context.Simulation, definition);
 
             // Der Bouncer ist Framework-Bestandteil und prüft die Fitness, nicht eine
             // projektspezifische Metrik (Entscheidung 6).
@@ -278,20 +281,8 @@ namespace MyPicoGkProject
             {
                 if (context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
                 {
-                    var (decision, reportRelPath) = MeshCalibration.Run(
-                        context,
-                        simulationContext,
-                        (factor, tag) =>
-                        {
-                            var record = controller.RunPipeline(
-                                context.Project.BaseParameters,
-                                1,
-                                1,
-                                customRefinementFactor: factor,
-                                customTag: tag);
-                            fitness.CalculateFitness(record, context.Simulation);
-                            return record;
-                        });
+                    var (decision, reportRelPath) = ExecuteCalibration(
+                        definition, context, simulationContext, controller, fitness, validator, optimizer);
 
                     if (!decision.Success || decision.SelectedStage == null)
                     {
@@ -300,7 +291,11 @@ namespace MyPicoGkProject
                     }
 
                     simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
-                    simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                    if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
+                        || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                    }
                     simulationContext.CalibrationReportPath = reportRelPath;
 
                     Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
@@ -326,11 +321,13 @@ namespace MyPicoGkProject
         }
 
         /// <summary>
-        /// Führt eine isolierte Netzkalibrierung auf der Startgeometrie durch (--calibrate, TODO-42).
+        /// Führt eine isolierte Netzkalibrierung auf der Startgeometrie durch (--calibrate, TODO-42 / TODO-48).
         /// </summary>
         private static void RunCalibration(IProjectDefinition definition, ProjectContext context)
         {
             Console.WriteLine($"[SYSTEM] Starte Kalibrierung für Projekt: {context.Name}");
+
+            MeshCalibration.ValidatePrecalibrationSupport(context.Simulation, definition);
 
             IGeometryGenerator geometry = definition.CreateGeometry(context);
             IFitnessCalculator fitness = definition.CreateFitness(context);
@@ -354,20 +351,8 @@ namespace MyPicoGkProject
 
             kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
             {
-                var (decision, reportRelPath) = MeshCalibration.Run(
-                    context,
-                    simulationContext,
-                    (factor, tag) =>
-                    {
-                        var record = controller.RunPipeline(
-                            context.Project.BaseParameters,
-                            1,
-                            1,
-                            customRefinementFactor: factor,
-                            customTag: tag);
-                        fitness.CalculateFitness(record, context.Simulation);
-                        return record;
-                    });
+                var (decision, reportRelPath) = ExecuteCalibration(
+                    definition, context, simulationContext, controller, fitness, validator, optimizer);
 
                 if (decision.Success && decision.SelectedStage != null)
                 {
@@ -377,12 +362,72 @@ namespace MyPicoGkProject
             });
         }
 
-        /// <summary>
-        /// Rechnet eine einzelne Variante aus Simulation_Results.csv fein nach (--recheck, TODO-43).
-        /// </summary>
-        private static void RunRecheck(IProjectDefinition definition, ProjectContext context, string? variantTarget, int finer)
+        private static (CalibrationDecision Decision, string ReportRelativePath) ExecuteCalibration(
+            IProjectDefinition definition,
+            ProjectContext context,
+            SimulationContext simulationContext,
+            WorkflowController controller3D,
+            IFitnessCalculator fitness,
+            IModelValidator validator,
+            IOptimizationAlgorithm optimizer)
         {
-            Console.WriteLine($"[SYSTEM] Starte Recheck für Projekt: {context.Name} (Ziel: '{variantTarget ?? "letzte"}', Finer: {finer})");
+            Func<float, string, ModelRecord> runStage3D = (factor, tag) =>
+            {
+                var record = controller3D.RunPipeline(
+                    context.Project.BaseParameters,
+                    1,
+                    1,
+                    customRefinementFactor: factor,
+                    customTag: tag);
+                fitness.CalculateFitness(record, context.Simulation);
+                return record;
+            };
+
+            if (context.Simulation.MeshCalibration.Use2DPrecalibration && definition is IHasRepresentativeSection sectionProvider)
+            {
+                IGeometryGenerator section2D = sectionProvider.CreateSection2D(context);
+                var gmsh2D = new Gmsh2DMesherOptions();
+                var su2Options2D = context.LoadSolverOptions<Su2SolverOptions>("su2");
+                su2Options2D.Dimensions = 2;
+                FlowConditions flow2D = FlowConditions.From(context.Simulation, su2Options2D);
+                var stages2D = new[]
+                {
+                    new SolverStage(new Gmsh2DMesher(gmsh2D, flow2D), new Su2Solver(su2Options2D, flow2D))
+                };
+                var controller2D = new WorkflowController(
+                    section2D,
+                    stages2D,
+                    validator,
+                    optimizer,
+                    simulationContext,
+                    fitness.RequiredMetrics);
+
+                return MeshCalibration.RunWithPrecalibration2D(
+                    context,
+                    simulationContext,
+                    (factor, tag) =>
+                    {
+                        var record = controller2D.RunPipeline(
+                            context.Project.BaseParameters,
+                            1,
+                            1,
+                            customRefinementFactor: factor,
+                            customTag: tag);
+                        fitness.CalculateFitness(record, context.Simulation);
+                        return record;
+                    },
+                    runStage3D);
+            }
+
+            return MeshCalibration.Run(context, simulationContext, runStage3D);
+        }
+
+        /// <summary>
+        /// Rechnet eine einzelne Variante aus Simulation_Results.csv fein nach (--recheck, TODO-43 / TODO-37).
+        /// </summary>
+        private static void RunRecheck(IProjectDefinition definition, ProjectContext context, string? variantTarget, int finer, bool isUnsteady = false)
+        {
+            Console.WriteLine($"[SYSTEM] Starte Recheck für Projekt: {context.Name} (Ziel: '{variantTarget ?? "letzte"}', Finer: {finer}, Unsteady: {isUnsteady})");
 
             var simulationContext = new SimulationContext(context.Simulation, context.Project);
             simulationContext.EnsureDirectories();
@@ -475,6 +520,16 @@ namespace MyPicoGkProject
             IFitnessCalculator fitness = definition.CreateFitness(context);
             IGeometryKernel kernel = definition.CreateKernel();
             SolverStage[] stages = definition.CreateStages(context);
+            if (isUnsteady)
+            {
+                foreach (var stage in stages)
+                {
+                    if (stage.Solver is Su2Solver su2)
+                    {
+                        su2.Options.TimeDomain.Enabled = true;
+                    }
+                }
+            }
 
             IModelValidator validator = new ChampionValidator(fitness);
             IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);

@@ -43,6 +43,13 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.YPlusWarnFactor, loaded.YPlusWarnFactor);
             Assert.Equal(defaults.AngleOfAttackDeg, loaded.AngleOfAttackDeg);
             Assert.Equal(defaults.Dimensions, loaded.Dimensions);
+            Assert.Equal(defaults.TimeDomain.Enabled, loaded.TimeDomain.Enabled);
+            Assert.Equal(defaults.TimeDomain.TimeStep, loaded.TimeDomain.TimeStep);
+            Assert.Equal(defaults.TimeDomain.StepsPerPeriod, loaded.TimeDomain.StepsPerPeriod);
+            Assert.Equal(defaults.TimeDomain.StrouhalEstimate, loaded.TimeDomain.StrouhalEstimate);
+            Assert.Equal(defaults.TimeDomain.TimeIterations, loaded.TimeDomain.TimeIterations);
+            Assert.Equal(defaults.TimeDomain.InnerIterations, loaded.TimeDomain.InnerIterations);
+            Assert.Equal(defaults.TimeDomain.AveragingStartFraction, loaded.TimeDomain.AveragingStartFraction);
         }
 
         [Fact]

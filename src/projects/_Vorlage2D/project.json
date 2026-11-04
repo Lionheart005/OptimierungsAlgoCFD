@@ -1,0 +1,40 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  MeinProjekt2D -- Projektvorgaben
+  // ===================================================================
+  //
+  // Die Manifestdatei heisst in JEDEM Projekt "project.json".
+  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername.
+  //
+  // Was hier fehlt, kommt aus MeinProjekt2DProject.CreateDefaults() nebenan. Diese
+  // Datei und der Code-Standard dort sind deckungsgleich.
+
+  // --- Startwerte der aktiven Parameter (mm) ---
+  // Diese Namen sind der Vertrag mit dem Geometrie-Generator: er liest sie in
+  // MeinProjekt2DGeometryGenerator.GenerateAndExport wieder heraus.
+  "BaseParameters": {
+    "Chord": 50.0,
+    "Thickness": 6.0
+  },
+
+  // --- Anfaengliche Mutationsstaerke (Sigma-Streuung) ---
+  "MaxDeviations": {
+    "Chord": 5.0,
+    "Thickness": 0.6
+  },
+
+  // --- Harte Grenzen fuer physikalische Plausibilitaet ---
+  "ParameterBounds": {
+    "Chord": { "Min": 20.0, "Max": 100.0 },
+    "Thickness": { "Min": 2.0, "Max": 25.0 }
+  },
+
+  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
+  // Leer, weil die Vorlagen-Fitness nur den Widerstand minimiert:
+  "OptimizationTargets": {},
+
+  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
+  // Längenmaße in mm:
+  "DimensionalParameters": [ "Chord", "Thickness" ]
+}

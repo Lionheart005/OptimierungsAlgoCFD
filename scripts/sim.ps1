@@ -105,7 +105,10 @@ param(
     [string]$Variant = '',
 
     # recheck: Verfeinerungsstufen gegenueber dem wirksamen Faktor (Standard 1)
-    [int]$Finer = 1
+    [int]$Finer = 1,
+
+    # recheck: zeitgenaue URANS-Rechnung (Dual-Time-Stepping) fuer Einzelpruefung (TODO-37)
+    [switch]$Unsteady
 )
 
 $ErrorActionPreference = 'Stop'
@@ -413,6 +416,7 @@ function Invoke-Recheck {
     $rArgs = "recheck"
     if ($Variant) { $rArgs += " '$Variant'" }
     if ($Finer) { $rArgs += " $Finer" }
+    if ($Unsteady) { $rArgs += " --unsteady" }
     Invoke-Runner -Arguments $rArgs
     Write-Host ""
     Write-Host "    Der Recheck haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green

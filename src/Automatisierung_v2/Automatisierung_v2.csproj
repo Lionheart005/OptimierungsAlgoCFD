@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -33,7 +33,7 @@
     beim Anlegen des naechsten Projekts.
   -->
   <ItemGroup>
-    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Vorlage\**" />
+    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Vorlage\**;..\projects\_Vorlage2D\**" />
   </ItemGroup>
 
 </Project>

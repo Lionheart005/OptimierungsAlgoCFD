@@ -8,7 +8,7 @@ namespace MyPicoGkProject.Projects.TestprojektNACA
     /// <summary>
     /// Die Verdrahtung des Testprojekts Baars (NACA-Tragflügelprofil).
     /// </summary>
-    public sealed class TestprojektNACAProject : CfdProjectDefinition
+    public sealed class TestprojektNACAProject : CfdProjectDefinition, IHasRepresentativeSection
     {
         /// <summary>
         /// Muss exakt dem Ordnernamen unter <c>src/projects/</c> entsprechen.
@@ -60,5 +60,9 @@ namespace MyPicoGkProject.Projects.TestprojektNACA
         /// <inheritdoc/>
         public override IFitnessCalculator CreateFitness(ProjectContext context)
             => new TestprojektNACAFitnessCalculator(context.Project);
+
+        /// <inheritdoc/>
+        public IGeometryGenerator CreateSection2D(ProjectContext context)
+            => new TestprojektNACASection2DGenerator();
     }
 }

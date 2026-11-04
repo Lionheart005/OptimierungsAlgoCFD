@@ -156,5 +156,38 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// Liegt das 95 %-Quantil (P95) über TargetYPlus * YPlusWarnFactor, warnt der Solver (TODO-41).
         /// </summary>
         public float YPlusWarnFactor { get; set; } = 2.0f;
+
+        // --- Zeitgenauer Modus / URANS (TODO-37) ---
+        /// <summary>
+        /// Einstellungen für zeitgenaue Simulationen (URANS mit Dual-Time-Stepping) (TODO-37).
+        /// </summary>
+        public Su2TimeDomainOptions TimeDomain { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Optionen für zeitgenaue CFD-Rechnungen mit SU2 (URANS, Dual-Time-Stepping, TODO-37).
+    /// </summary>
+    public class Su2TimeDomainOptions
+    {
+        /// <summary>Zeitgenaue Rechnung (URANS, Dual-Time-Stepping) aktivieren (TODO-37).</summary>
+        public bool Enabled { get; set; } = false;
+
+        /// <summary>Physikalischer Zeitschritt in Sekunden (0 = automatisch aus StrouhalEstimate und StepsPerPeriod).</summary>
+        public float TimeStep { get; set; } = 0.0f;
+
+        /// <summary>Zeitschritte pro Wirbelablöseperiode, wenn TimeStep = 0 ist.</summary>
+        public int StepsPerPeriod { get; set; } = 25;
+
+        /// <summary>Geschätzte Strouhal-Zahl f = St * U / L für die automatische Zeitschrittwahl.</summary>
+        public float StrouhalEstimate { get; set; } = 0.2f;
+
+        /// <summary>Anzahl der äußeren physikalischen Zeitschritte (TIME_ITER).</summary>
+        public int TimeIterations { get; set; } = 200;
+
+        /// <summary>Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (INNER_ITER).</summary>
+        public int InnerIterations { get; set; } = 30;
+
+        /// <summary>Bruchteil der Gesamtzeit Schritte, ab dem die Zeitmittelung startet (WINDOW_START_ITER).</summary>
+        public float AveragingStartFraction { get; set; } = 0.5f;
     }
 }

@@ -194,6 +194,38 @@ namespace MyPicoGkProject.Solvers.Cfd
                     cfgContent.Add(aoaLine);
             }
 
+            if (options.TimeDomain != null && options.TimeDomain.Enabled)
+            {
+                float dt;
+                if (options.TimeDomain.TimeStep > 0f)
+                {
+                    dt = options.TimeDomain.TimeStep;
+                }
+                else
+                {
+                    float l = effectiveRefLength > 0f ? effectiveRefLength : 0.05f;
+                    float st = options.TimeDomain.StrouhalEstimate > 0f ? options.TimeDomain.StrouhalEstimate : 0.2f;
+                    float u = velocity > 0f ? velocity : 1.0f;
+                    float period = l / (st * u);
+                    int steps = Math.Max(1, options.TimeDomain.StepsPerPeriod);
+                    dt = period / steps;
+                }
+
+                int windowStart = (int)MathF.Round(options.TimeDomain.TimeIterations * Math.Clamp(options.TimeDomain.AveragingStartFraction, 0f, 0.95f));
+
+                cfgContent.Add("%");
+                cfgContent.Add("% =============================================================================");
+                cfgContent.Add("% ZEITGENAUER MODUS (URANS / DUAL-TIME-STEPPING, TODO-37)");
+                cfgContent.Add("% =============================================================================");
+                cfgContent.Add("TIME_DOMAIN= YES");
+                cfgContent.Add("TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER");
+                cfgContent.Add($"TIME_STEP= {dt.ToString("G6", CultureInfo.InvariantCulture)}");
+                cfgContent.Add($"TIME_ITER= {options.TimeDomain.TimeIterations}");
+                cfgContent.Add($"INNER_ITER= {options.TimeDomain.InnerIterations}");
+                cfgContent.Add($"WINDOW_START_ITER= {windowStart}");
+                cfgContent.Add("WINDOW_FUNCTION= HANN_SQUARE");
+            }
+
             File.WriteAllLines(configPath, cfgContent);
         }
 

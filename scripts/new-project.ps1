@@ -28,18 +28,27 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [string]$Name
+    [string]$Name,
+
+    [Parameter(Position = 1)]
+    [ValidateSet('3D', '2D')]
+    [string]$Template = '3D'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ProjectsRoot = Join-Path $RepoRoot 'src\projects'
-$TemplateDir = Join-Path $ProjectsRoot '_Vorlage'
+$TemplateDir = if ($Template -eq '2D') {
+    Join-Path $ProjectsRoot '_Vorlage2D'
+} else {
+    Join-Path $ProjectsRoot '_Vorlage'
+}
 
 # Das Wort, das in der Vorlage ueberall steht, wo der Projektname hin muss. Bewusst ein Wort,
 # das in keinem deutschen Kommentarsatz vorkommt: "Vorlage" waere in Prosa mitgetroffen worden.
 $Placeholder = 'MeinProjekt'
+$ActivePlaceholder = if ($Template -eq '2D') { 'MeinProjekt2D' } else { 'MeinProjekt' }
 
 # Dateiendungen, in denen der Platzhalter ersetzt wird. Die STL- oder Binaerdateien eines
 # spaeteren Projekts sollen unangetastet bleiben, deshalb eine ausdrueckliche Liste.
@@ -69,7 +78,7 @@ if ($Name -notmatch '^[A-Za-z][A-Za-z0-9_]*$') {
     throw "Ungueltiger Projektname '$Name'. Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern und Unterstrich -- der Name wird auch Klassenname (${Name}Project) und Namensraum (MyPicoGkProject.Projects.${Name})."
 }
 
-if ($Name -eq $Placeholder) {
+if ($Name -eq $Placeholder -or $Name -eq 'MeinProjekt2D') {
     throw "'$Placeholder' ist das Platzhalterwort der Vorlage und als Projektname nicht zu gebrauchen. Nimm den Namen, unter dem du das Projekt wirklich rechnen willst."
 }
 
@@ -95,7 +104,8 @@ if ($existing) {
 # Kopieren
 # ---------------------------------------------------------------------------
 
-Write-Step "Lege src/projects/$Name an (Kopie von _Vorlage)"
+$templateName = if ($Template -eq '2D') { '_Vorlage2D' } else { '_Vorlage' }
+Write-Step "Lege src/projects/$Name an (Kopie von $templateName)"
 
 Copy-Item -Path $TemplateDir -Destination $TargetDir -Recurse
 
@@ -108,13 +118,14 @@ if (Test-Path $copiedReadme) { Remove-Item $copiedReadme }
 # Umbenennen und ersetzen
 # ---------------------------------------------------------------------------
 
-Write-Step "Setze den Namen ein: $Placeholder -> $Name"
+Write-Step "Setze den Namen ein: $ActivePlaceholder -> $Name"
 
 # Zuerst die Dateinamen, dann die Inhalte. Reihenfolge ist egal, aber so stimmt die
 # Dateiliste in der Ausgabe schon mit den endgueltigen Namen.
 foreach ($file in Get-ChildItem -Path $TargetDir -Recurse -File) {
-    if ($file.Name -like "*$Placeholder*") {
-        $newName = $file.Name.Replace($Placeholder, $Name)
+    $matchWord = if ($file.Name -like "*$ActivePlaceholder*") { $ActivePlaceholder } else { $Placeholder }
+    if ($file.Name -like "*$matchWord*") {
+        $newName = $file.Name.Replace($matchWord, $Name)
         Rename-Item -LiteralPath $file.FullName -NewName $newName
         Write-Info "$($file.Name)  ->  $newName"
     }
@@ -131,10 +142,19 @@ foreach ($file in Get-ChildItem -Path $TargetDir -Recurse -File) {
     # Umlaute oder stoert den JSON-Parser.
     $text = [System.IO.File]::ReadAllText($file.FullName)
 
-    $count = ([regex]::Matches($text, [regex]::Escape($Placeholder))).Count
+    $count = 0
+    if ($text.Contains($ActivePlaceholder)) {
+        $count += ([regex]::Matches($text, [regex]::Escape($ActivePlaceholder))).Count
+        $text = $text.Replace($ActivePlaceholder, $Name)
+    }
+    if ($ActivePlaceholder -ne $Placeholder -and $text.Contains($Placeholder)) {
+        $count += ([regex]::Matches($text, [regex]::Escape($Placeholder))).Count
+        $text = $text.Replace($Placeholder, $Name)
+    }
+
     if ($count -eq 0) { continue }
 
-    $text = $text.Replace($Placeholder, $Name)
+
     [System.IO.File]::WriteAllText($file.FullName, $text, (New-Object System.Text.UTF8Encoding($false)))
 
     $totalReplacements += $count
@@ -146,7 +166,10 @@ foreach ($file in Get-ChildItem -Path $TargetDir -Recurse -File) {
 # mit diesem Skript zu tun hat.
 $leftovers = Get-ChildItem -Path $TargetDir -Recurse -File |
     Where-Object { $TextExtensions -contains $_.Extension.ToLowerInvariant() } |
-    Where-Object { [System.IO.File]::ReadAllText($_.FullName).Contains($Placeholder) }
+    Where-Object {
+        $c = [System.IO.File]::ReadAllText($_.FullName)
+        $c.Contains($ActivePlaceholder) -or ($ActivePlaceholder -ne $Placeholder -and $c.Contains($Placeholder))
+    }
 
 if ($leftovers) {
     Write-Warn "Es steht noch '$Placeholder' in: $(($leftovers | ForEach-Object { $_.Name }) -join ', ')"

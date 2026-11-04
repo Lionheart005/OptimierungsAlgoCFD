@@ -214,5 +214,127 @@ namespace MyPicoGkProject.Core
                 return new CalibrationDecision(false, null, refStage, stages, deviations, gci, msg);
             }
         }
+
+        /// <summary>
+        /// Berechnet die 3 Bestätigungsfaktoren für die 3D-Bestätigung um den 2D-Kalibrierungsfaktor f2D (TODO-48).
+        /// Geordnet von grob nach fein: { f2D * √2, f2D, f2D / √2 }.
+        /// </summary>
+        public static float[] Build3DConfirmationFactors(float factor2D)
+        {
+            float coarse = (float)Math.Round(factor2D * Math.Sqrt(2.0), 2);
+            float medium = (float)Math.Round(factor2D, 2);
+            float fine = (float)Math.Round(factor2D / Math.Sqrt(2.0), 2);
+            return new[] { coarse, medium, fine };
+        }
+
+        /// <summary>
+        /// Wertet die dreistufige 3D-Bestätigung um f2D aus (TODO-48).
+        /// Feinste der drei Stufen ist die 3D-Referenz.
+        /// Erfüllt die grobe Stufe (f2D * √2) die Kriterien (Konvergiert, YPlusOk, innerhalb Toleranz),
+        /// wird diese gewählt. Sonst f2D. Erfüllt keine die Toleranz, ist Success = false.
+        /// </summary>
+        public static CalibrationDecision EvaluateConfirmation3D(
+            float factor2D,
+            IReadOnlyList<CalibrationStageData> stages3D,
+            IReadOnlyCollection<string> monitoredMetrics,
+            float tolerance)
+        {
+            if (stages3D == null || stages3D.Count == 0)
+                throw new InvalidOperationException("[KALIBRIERUNG 3D] Keine 3D-Stufen zur Auswertung übergeben.");
+
+            var metricsToMonitor = (monitoredMetrics != null && monitoredMetrics.Count > 0)
+                ? monitoredMetrics.ToList()
+                : new List<string> { "Drag" };
+
+            // Sortierung aufsteigend nach Faktor: feinstes Netz zuerst
+            var sortedAsc = stages3D.OrderBy(s => s.Factor).ToList();
+            var refStage = sortedAsc[0]; // feinste Stufe (kleinster Faktor, ca. f2D / √2)
+
+            // Relative Abweichungen aller Stufen zur Referenz berechnen
+            var deviations = new Dictionary<int, IReadOnlyDictionary<string, float>>();
+            foreach (var stage in stages3D)
+            {
+                var stageDevs = new Dictionary<string, float>();
+                foreach (string metric in metricsToMonitor)
+                {
+                    float refVal = refStage.Metrics.TryGetValue(metric, out float rv) ? rv : 0f;
+                    float stageVal = stage.Metrics.TryGetValue(metric, out float sv) ? sv : 0f;
+                    float dev = Math.Abs(stageVal - refVal) / Math.Max(Math.Abs(refVal), 1e-7f);
+                    stageDevs[metric] = dev;
+                }
+                deviations[stage.LevelIndex] = stageDevs;
+            }
+
+            // GCI berechnen aus den 3 Stufen
+            GciResult? gci = null;
+            if (stages3D.Count >= 3)
+            {
+                var sFine = sortedAsc[0];
+                var sMed = sortedAsc[1];
+                var sCoarse = sortedAsc[2];
+
+                string primaryMetric = metricsToMonitor[0];
+                if (sFine.Metrics.ContainsKey(primaryMetric)
+                    && sMed.Metrics.ContainsKey(primaryMetric)
+                    && sCoarse.Metrics.ContainsKey(primaryMetric))
+                {
+                    float ratio = sMed.Factor / Math.Max(sFine.Factor, 1e-5f);
+                    gci = ComputeGci(
+                        sCoarse.Metrics[primaryMetric],
+                        sMed.Metrics[primaryMetric],
+                        sFine.Metrics[primaryMetric],
+                        ratio);
+                }
+            }
+
+            // Gültigkeit der 3D-Referenzstufe
+            if (!refStage.Converged || !refStage.YPlusOk)
+            {
+                string reason = !refStage.Converged
+                    ? "3D-Referenzstufe (feinstes Netz) ist numerisch nicht konvergiert."
+                    : "y+ der 3D-Referenzstufe liegt außerhalb der Toleranz.";
+
+                return new CalibrationDecision(
+                    false,
+                    null,
+                    refStage,
+                    stages3D,
+                    deviations,
+                    gci,
+                    $"[KALIBRIERUNG 3D] 3D-Bestätigung fehlgeschlagen: {reason}");
+            }
+
+            // Stufen identifizieren: coarse (größter Faktor) und medium (mittlerer Faktor)
+            // Kandidatensuche von grob nach fein
+            CalibrationStageData? coarseStage = sortedAsc.Count >= 3 ? sortedAsc[^1] : null;
+            CalibrationStageData? mediumStage = sortedAsc.Count >= 2 ? sortedAsc[^2] : null;
+
+            bool StageMatches(CalibrationStageData c)
+            {
+                if (!c.Converged || !c.YPlusOk) return false;
+                if (!deviations.TryGetValue(c.LevelIndex, out var devDict)) return false;
+                foreach (string metric in metricsToMonitor)
+                {
+                    if (devDict.TryGetValue(metric, out float d) && d > tolerance)
+                        return false;
+                }
+                return true;
+            }
+
+            if (coarseStage != null && StageMatches(coarseStage))
+            {
+                string msg = $"Grobe 3D-Stufe (Faktor {coarseStage.Factor:0.00}, Stufe {coarseStage.LevelIndex}) erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
+                return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg);
+            }
+
+            if (mediumStage != null && StageMatches(mediumStage))
+            {
+                string msg = $"2D-Stufe (Faktor {mediumStage.Factor:0.00}, Stufe {mediumStage.LevelIndex}) in 3D bestätigt: erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
+                return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, msg);
+            }
+
+            string failMsg = $"Weder die grobe 3D-Stufe noch der 2D-Faktor ({factor2D:0.00}) erreichen in 3D die Toleranz von {tolerance * 100:0.0} % gegenüber der 3D-Referenzstufe {refStage.Factor:0.00}.";
+            return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg);
+        }
     }
 }

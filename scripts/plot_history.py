@@ -175,6 +175,25 @@ def find_iter_column(df):
     return None
 
 
+def resolve_x_axis(df):
+    """
+    Ermittelt x-Achsen-Werte und Beschriftung (TODO-37):
+    Falls URANS gerechnet wurde (Cur_Time oder Time_Iter vorhanden),
+    wird physikalische Zeit oder Time_Iter verwendet und entsprechend beschriftet.
+    Sonst reguläre Iteration.
+    """
+    for col in df.columns:
+        if col.lower() in ("cur_time", "curtime", "time", "physical_time"):
+            return df[col], "Physikalische Zeit [s]"
+    for col in df.columns:
+        if col.lower() in ("time_iter", "timeiter", "time_iteration"):
+            return df[col], "Zeitschritt (Time_Iter)"
+    iter_col = find_iter_column(df)
+    if iter_col and iter_col in df.columns:
+        return df[iter_col], "Iteration"
+    return pd.Series(range(len(df))), "Iteration"
+
+
 def get_iterations_count(df, iter_col):
     """
     Bestimmt die Anzahl gerechneter Iterationen:
@@ -357,8 +376,7 @@ def plot_single_variant(csv_path, args, cfg_defaults):
     cauchy_elems = args.cauchy_elems if args.cauchy_elems is not None else cfg_defaults.get("cauchy_elems", 150)
     cauchy_eps = args.cauchy_eps if args.cauchy_eps is not None else cfg_defaults.get("cauchy_eps", 1e-4)
 
-    iter_col = find_iter_column(df)
-    x = df[iter_col] if iter_col else pd.Series(range(len(df)))
+    x, x_label = resolve_x_axis(df)
 
     metrics = detect_metrics(df, args.metrics)
     rms_cols = find_rms_columns(df)
@@ -367,9 +385,9 @@ def plot_single_variant(csv_path, args, cfg_defaults):
     fig.suptitle(f"Konvergenzverlauf: {variant_name}", fontsize=13, fontweight="bold")
 
     # -------------------------------------------------------------
-    # 1. Kennwerte über Iteration
+    # 1. Kennwerte über Iteration / Zeit
     # -------------------------------------------------------------
-    ax1.set_title("Kennwerte über Iteration", fontsize=10, fontweight="bold")
+    ax1.set_title(f"Kennwerte über {x_label}", fontsize=10, fontweight="bold")
     if len(metrics) == 1:
         m = metrics[0]
         ax1.plot(x, df[m], label=m, color="#1f77b4", linewidth=1.5)
@@ -449,7 +467,7 @@ def plot_single_variant(csv_path, args, cfg_defaults):
             y_upper = max(stats["max"], final_val + cauchy_eps) + margin
             ax3.set_ylim(y_lower, y_upper)
 
-    ax3.set_xlabel("Iteration", fontsize=10)
+    ax3.set_xlabel(x_label, fontsize=10)
     ax3.set_ylabel(f"{primary_metric}", fontsize=10)
     ax3.grid(True, linestyle="--", alpha=0.5)
     ax3.legend(loc="best")
@@ -486,6 +504,7 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
     fig.suptitle(f"Vergleich der Varianten ({len(history_files)} gerechnet)", fontsize=13, fontweight="bold")
 
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(history_files), 3)))
+    x_label = "Iteration"
 
     for idx, f in enumerate(history_files):
         var_name = extract_variant_name(f)
@@ -493,8 +512,7 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
         if df.empty:
             continue
 
-        iter_col = find_iter_column(df)
-        x = df[iter_col] if iter_col else pd.Series(range(len(df)))
+        x, x_label = resolve_x_axis(df)
         color = colors[idx % len(colors)]
 
         # 1. Kennwert-Verlauf
@@ -512,7 +530,7 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
     ax1.legend(loc="best")
 
     ax2.set_title("Residuen (logarithmisch)", fontsize=10, fontweight="bold")
-    ax2.set_xlabel("Iteration", fontsize=10)
+    ax2.set_xlabel(x_label, fontsize=10)
     ax2.set_ylabel("log10(RMS-Residuum)", fontsize=10)
     ax2.grid(True, linestyle="--", alpha=0.5)
     ax2.legend(loc="best")

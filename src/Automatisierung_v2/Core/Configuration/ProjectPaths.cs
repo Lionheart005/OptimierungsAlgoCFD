@@ -48,6 +48,11 @@ namespace MyPicoGkProject.Core
         public const string TemplateDirectoryName = "_Vorlage";
 
         /// <summary>
+        /// 2D-Vorlage für neue Projekte (TODO-47). Zählt ebenfalls nicht als Projekt.
+        /// </summary>
+        public const string Template2DDirectoryName = "_Vorlage2D";
+
+        /// <summary>
         /// Manifestdatei eines Projekts. Heißt in <b>jedem</b> Projekt gleich (Entscheidung 2):
         /// ein Dateiname, der überall derselbe ist, kann nicht mit dem Projektnamen verwechselt
         /// werden — <c>config/projects/MantaAuv.json</c> konnte das.
@@ -122,7 +127,7 @@ namespace MyPicoGkProject.Core
                 .Select(Path.GetFileName)
                 .Where(name => !string.IsNullOrEmpty(name))
                 .Select(name => name!)
-                .Where(name => !string.Equals(name, TemplateDirectoryName, StringComparison.OrdinalIgnoreCase))
+                .Where(name => !name.StartsWith(TemplateDirectoryName, StringComparison.OrdinalIgnoreCase))
                 .Where(name => !IgnoredDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .Where(name => !name.StartsWith(".", StringComparison.Ordinal))
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)

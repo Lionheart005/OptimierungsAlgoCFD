@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -39,6 +39,11 @@
   <ItemGroup>
     <Compile Include="..\..\src\projects\_Vorlage\**\*.cs"
              Exclude="..\..\src\projects\_Vorlage\**\bin\**;..\..\src\projects\_Vorlage\**\obj\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\projects\_Vorlage2D\**\*.cs"
+             Exclude="..\..\src\projects\_Vorlage2D\**\bin\**;..\..\src\projects\_Vorlage2D\**\obj\**" />
   </ItemGroup>
 
 </Project>

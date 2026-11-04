@@ -1,0 +1,34 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  Naca2D -- Gmsh 2D-Vernetzer
+  // ===================================================================
+  //
+  // Optionen für Gmsh2DMesher (TODO-45/47).
+  // Erzeugt ein kreisförmiges Fernfeld um die 2D-Profilkontur mit strukturierter
+  // Quad-Grenzschicht (BoundaryLayer-Feld) und Nachlauf-Box stromabwärts.
+
+  // --- Fernfeld (Simulationsdomäne) ---
+  // Kreisförmiges Fernfeld als Vielfaches der Sehne c (in 2D mind. 50 c).
+  "FarfieldRadiusFactor": 50.0,
+  "FarfieldCircleSegments": 64,
+
+  // --- Grenzschicht-Auflösung (BoundaryLayer Field) ---
+  // Ziel-y+ für die erste Wandzelle und Wachstumsrate:
+  "TargetYPlus": 1.0,
+  "BoundaryLayerGrowthRate": 1.2,
+  "BoundaryLayerMinLayers": 4,
+  "BoundaryLayerLayers": 0,
+
+  // --- Zellgrößen relativ zur Sehne c ---
+  "SurfaceCellSizeFactor": 0.01,
+  "SurfaceCellSizeMm": 0.0,
+  "NearfieldCellSizeFactor": 0.04,
+  "FarfieldCellSizeFactor": 2.5,
+
+  // --- Nachlauf-Verfeinerung (Wake Box) ---
+  "WakeRefinement": true,
+  "WakeLengthFactor": 3.0,
+  "WakeWidthFactor": 0.6,
+  "WakeCellSizeFactor": 0.04
+}

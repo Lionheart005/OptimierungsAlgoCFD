@@ -77,6 +77,7 @@ Stelle, an der er stünde: kein Feld in einer JSON, kein Eintrag in einer Liste.
 | Server, über die Skripte | `.\scripts\sim.ps1 run -Project MantaAuv` |
 | Server, Kalibrierung | `.\scripts\sim.ps1 calibrate -Project MantaAuv` |
 | Server, Recheck | `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen3_Var2 -Finer 1` |
+| Server, Recheck (URANS) | `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen3_Var2 -Unsteady` |
 | Direkt auf dem Server per SSH | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 | Lokal auf deinem Rechner | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
 | Lokal, Kalibrierung | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
@@ -662,7 +663,7 @@ Testprojekt compiliert. Sonst gäbe es eine Projektdefinition mit dem Platzhalte
 totes Textmaterial: so bricht eine geänderte Schnittstelle sofort `dotnet test` und
 nicht Monate später beim Anlegen eines Projekts.
 
-## Die acht Interfaces
+## Die Interfaces
 
 | Interface | Aufgabe | Implementierung |
 |---|---|---|
@@ -674,6 +675,7 @@ nicht Monate später beim Anlegen eines Projekts.
 | `IFitnessCalculator` | Messwerte → eine Zahl | `MantaFitnessCalculator` |
 | `IOptimizationAlgorithm` | nächste Parameter vorschlagen | `EvolutionaryAlgorithm`, `RsmOptimizationAlgorithm` |
 | `IModelValidator` | Champion gegenprüfen | `ChampionValidator` |
+| `IHasRepresentativeSection` | Optional: 3D-Projekt mit repräsentativem 2D-Querschnitt (TODO-48) | `TestprojektNACAProject` |
 
 `IProjectDefinition` ist der Vertrag, der `Program.cs` von den Projekten befreit hat:
 
