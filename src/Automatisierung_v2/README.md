@@ -1,5 +1,7 @@
 # Automatisierte Formoptimierung (PicoGK + Gmsh + SU2)
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Das Framework sucht selbstständig die beste Form für ein Bauteil. Es baut eine
 Geometrie aus Parametern, vernetzt sie, lässt eine Strömungssimulation darüber
 laufen, bewertet das Ergebnis mit einer Zielfunktion und leitet daraus die nächste

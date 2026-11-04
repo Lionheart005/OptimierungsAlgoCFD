@@ -1,5 +1,7 @@
 # Lauf auf dem Linux-Server steuern
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../src/projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Zwei Skripte, eine Aufgabe: den Optimierungslauf von Windows aus auf dem
 Hochschulrechner starten und beobachten.
 

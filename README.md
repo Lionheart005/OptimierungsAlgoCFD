@@ -152,6 +152,8 @@ Die Ergebnisse werden lokal unter `Serverergebnisse/` abgelegt.
 
 Detaillierte Anleitungen und technische Hintergründe finden sich in den jeweiligen Ordnern:
 
+- [**Bedienhandbuch** (`src/projects/BEDIENHANDBUCH.md`)](src/projects/BEDIENHANDBUCH.md)  
+  Wo man was einstellt und was jede Einstellung bewirkt – für Anwender ohne Programmierkenntnisse. **Hier anfangen.**
 - [**Technischer Projektleitfaden** (`src/Automatisierung_v2/README.md`)](src/Automatisierung_v2/README.md)  
   Umfassende Architekturbeschreibung, Interface-Verträge, Ablaufsteuerung, Algorithmen-Details, Konfigurationsschichten und Solver-Anbindung.
 - [**Projekt- & Bauteilleitfaden** (`src/projects/README.md`)](src/projects/README.md)  

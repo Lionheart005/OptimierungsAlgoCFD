@@ -1,5 +1,7 @@
 # `_Vorlage` — Startpunkt für ein neues Projekt
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Dieser Ordner ist **kein Projekt**, sondern die Kopiervorlage für eines. Er zeigt vollständig,
 woraus ein Projekt besteht: zwei Klassen mit Geometrie und Bewertung, eine Klasse, die beides
 verdrahtet, und vier JSON-Dateien mit allen Zahlen.

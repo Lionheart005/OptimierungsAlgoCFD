@@ -20,7 +20,7 @@
 | A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe; SSH-Zeitgrenzen | [~] Zeitgrenzen erledigt |
 | A | TODO-32 | Keine Geheimnisse im Repo: Hygiene-Test, `.gitignore` | [x] |
 | A | TODO-33 | Kleinkram: wackelige Tests (prozessweiter Zustand + Parallelität), doppelt kodiertes UTF-8, vollständige Namensliste bei unbekanntem Schlüssel | [x] |
-| F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [ ] |
+| F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [~] erste Fassung erledigt, wächst mit jedem Schritt |
 | B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [ ] |
 | C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [ ] |
 | C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [ ] |
@@ -175,6 +175,8 @@ gerechnet. Schluss ist nach `ITER` Iterationen **oder** wenn `CONV_FIELD` (DRAG)
 | **E7** | 2D kalibrieren, dann 3D rechnen: geht das, oder ist das unsauber? | **Den 2D-Faktor direkt für 3D zu übernehmen, wäre unsauber**, weil 2D keine Spannweitenrichtung, keine Randwirbel und kein Tetraedervolumen kennt. **Sauber ist es als Vorkalibrierung:** 2D liefert in Minuten den Startpunkt und prüft die Wandschicht, und 3D bestätigt mit wenigen Stufen. Die Abnahme bleibt damit in 3D. Details stehen in TODO-48. |
 | **E8** | Übersicht der Einstellungen | Ein **Bedienhandbuch** unter `src/projects/BEDIENHANDBUCH.md`, also dort, wo die Einstellungen liegen, und **nicht** im Haupt-README. Die anderen READMEs und jeder JSON-Kopf verweisen darauf. Ein Test verlangt, dass jeder Schlüssel darin erklärt ist (TODO-49). |
 | **E9** | Kleinigkeiten gleich umsetzen und committen | Erledigt sind TODO-32, TODO-33, die SSH-Zeitgrenzen und der m/s-Teil von TODO-38. Committet wird auf `MajorPhysikFixes`. |
+| **E10** | *(Dritte Runde)* Kann ich komplette 2D-Durchläufe machen, ganz ohne 3D? | **Ja, das ist ausdrücklich das Ziel von Block E.** Ein 2D-Projekt ist ein eigenständiges Projekt wie MantaAuv: `.\scripts\sim.ps1 run -Project Naca2D` fährt die **ganze** Optimierung (Optimierer, Bouncer, Kalibrierung, Feinprüfung, CSV, fetch) mit 2D-Geometrie, 2D-Netz und 2D-SU2. Es braucht dafür kein PicoGK, kein Xvfb und keine einzige 3D-Rechnung. Ein neues 2D-Projekt legt `new-project.ps1 <Name> -Template 2D` an (TODO-47). Die 2D-Vorkalibrierung für 3D (TODO-48) ist nur eine *zusätzliche* Möglichkeit, keine Voraussetzung. |
+| **E11** | *(Dritte Runde)* Handbuch für den heutigen Stand **vor** allen weiteren Änderungen | **Erste Fassung erledigt** (TODO-49): `src/projects/BEDIENHANDBUCH.md`, mit Verweisen aus allen READMEs und allen zwölf Projekt-JSONs und mit `HandbookCoverageTests`. |
 
 ### Folgerungen und eigene Festlegungen
 
@@ -691,6 +693,11 @@ des Optimierers **unverändert** bleibt.
 
 ### Block E — 2D (F8)
 
+> **Ziel von Block E (E10):** Am Ende stehen **eigenständige, vollständige 2D-Läufe ganz ohne
+> 3D**. Ein 2D-Projekt wird genau wie ein 3D-Projekt mit `sim.ps1 run -Project <Name>` gestartet
+> und nutzt Optimierer, Bouncer, Kalibrierung, Feinprüfung, CSV und fetch unverändert. Es braucht
+> weder PicoGK noch Xvfb noch eine 3D-Rechnung.
+
 #### TODO-44 — 2D-Kernel `Kernels/Planar2D` *(Worker: S)*
 
 1. NuGet `Clipper2` (Angus Johnson, Boost Software License). Die Version wird beim Umsetzen auf
@@ -893,8 +900,11 @@ verlangt, dass jeder davon im Handbuch steht. **Ein neuer Schlüssel ohne Erklä
 `dotnet test`.** Ab jetzt gehört zu jeder Abnahme in diesem Plan außerdem der Satz
 „Bedienhandbuch nachgezogen".
 
-**Wann:** Die **erste Fassung kommt sofort als nächster Schritt** und beschreibt den heutigen
-Stand. Danach wächst sie mit jedem TODO mit, und der Test erzwingt das.
+**Wann:** ✅ Die **erste Fassung ist geschrieben** (04.11.2026) und beschreibt den Stand *vor* den
+weiteren Änderungen: alle 29 + 16 + 14 + 6 Schlüssel, alle zehn Befehle, die „Ich will …"-Tabelle
+mit 20 Aufgaben, Meldungen und Glossar. Verweise stehen in allen READMEs und in allen zwölf
+Projekt-JSONs. `HandbookCoverageTests` prüft Schlüssel und Befehle. Danach wächst das Handbuch
+mit jedem TODO mit, und der Test erzwingt das.
 
 **Abnahme:** `HandbookCoverageTests` ist grün. Alle Verweise sind gesetzt. **Du** liest die
 „Ich will …"-Tabelle einmal gegen und sagst, was fehlt oder unverständlich ist.

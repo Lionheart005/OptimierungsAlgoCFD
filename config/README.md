@@ -1,5 +1,7 @@
 # `config/` — der Notausgang
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../src/projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 **Hier gibt es im Normalfall nichts einzutragen.** Dieser Ordner ist seit TODO-24 leer
 bis auf diese Datei — sie hält ihn nur in git, damit er auf einem frischen Rechner
 existiert.

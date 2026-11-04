@@ -1,5 +1,7 @@
 # Die Projekte
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Ein **Projekt** ist ein Bauteil, das optimiert werden soll: sein Geometrie-Bauplan,
 seine Zielfunktion und seine Zahlen. Jedes Projekt ist genau ein Ordner hier drin.
 
