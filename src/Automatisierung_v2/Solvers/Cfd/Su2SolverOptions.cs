@@ -130,5 +130,17 @@ namespace MyPicoGkProject.Solvers.Cfd
         public float CflAdaptMin { get; set; } = 1.0f;
         /// <summary>CFL_ADAPT_PARAM: obere Schranke.</summary>
         public float CflAdaptMax { get; set; } = 50.0f;
+
+        // --- y+-Ziel und Grenzschichtprüfung (TODO-41) ---
+        /// <summary>
+        /// Ziel-y+ für die Wandauflösung der Grenzschicht (Standard 1.0) (TODO-41).
+        /// </summary>
+        public float TargetYPlus { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 2.0).
+        /// Liegt das 95 %-Quantil (P95) über TargetYPlus * YPlusWarnFactor, warnt der Solver (TODO-41).
+        /// </summary>
+        public float YPlusWarnFactor { get; set; } = 2.0f;
     }
 }

@@ -39,6 +39,8 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.CflAdaptFactorUp, loaded.CflAdaptFactorUp);
             Assert.Equal(defaults.CflAdaptMin, loaded.CflAdaptMin);
             Assert.Equal(defaults.CflAdaptMax, loaded.CflAdaptMax);
+            Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
+            Assert.Equal(defaults.YPlusWarnFactor, loaded.YPlusWarnFactor);
         }
 
         [Fact]
@@ -66,6 +68,14 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.WakeWidthFactor, loaded.WakeWidthFactor);
             Assert.Equal(defaults.WakeCellSize, loaded.WakeCellSize);
             Assert.Equal(defaults.MeshSizeFromCurvature, loaded.MeshSizeFromCurvature);
+            Assert.Equal(defaults.BoundaryLayerMode, loaded.BoundaryLayerMode);
+            Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
+            Assert.Equal(defaults.BoundaryLayerMinLayers, loaded.BoundaryLayerMinLayers);
+            Assert.Equal(defaults.BoundaryLayerGrowthRate, loaded.BoundaryLayerGrowthRate);
+            Assert.Equal(defaults.BoundaryLayerLayers, loaded.BoundaryLayerLayers);
+            Assert.Equal(defaults.SurfaceCellSize, loaded.SurfaceCellSize);
+            Assert.Equal(defaults.CurvatureElements, loaded.CurvatureElements);
+            Assert.Equal(defaults.ClassifyAngleDeg, loaded.ClassifyAngleDeg);
         }
 
         /// <summary>

@@ -251,6 +251,8 @@ nicht erst geprüft.
 | `CflAdaptFactorUp` | Wie stark vergrößert wird, wenn es gut läuft. | `1.2` | ⏱ | 🔴 |
 | `CflAdaptMin` | Kleinste erlaubte Schrittweite. | `1.0` | ⏱ | 🔴 |
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
+| `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
+| `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
 
 **Wo die Strömung herkommt und hinfließt:** Das steht in keiner Einstellung. Alle sechs Seiten des
 Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in **+x-Richtung**
@@ -279,14 +281,23 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
 | `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
+| `BoundaryLayerMode` | Modus der Grenzschicht: `"Threshold"` (Vorgabe, unstrukturiert wie bisher), `"Hexa"` (strukturierte Quader/Hexaeder an der Wand, **Empfehlung**) oder `"Prism"` (strukturierte Prismen, Rückfallebene). | `"Threshold"` | 🎯⏱ | 🟢 |
+| `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand. Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.0` | 🎯 | 🟡 |
+| `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
+| `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
+| `BoundaryLayerLayers` | Feste Schichtanzahl; `0` = automatisch aus der Grenzschichtdicke delta berechnen. | `0` | 🎯 | 🟡 |
+| `SurfaceCellSize` | Zellgröße auf der Bauteiloberfläche in mm auf Stufe 1.0; `0.0` = nutzt `BoundaryLayerSizeMin`. | `0.0` | 🎯⏱ | 🟡 |
+| `CurvatureElements` | Anzahl Elemente pro 2π bei krümmungsabhängiger Netzverfeinerung (`Mesh.MeshSizeFromCurvature`). | `20` | 🎯⏱ | 🟡 |
+| `ClassifyAngleDeg` | Winkelgrenze in Grad für Gmsh `ClassifySurfaces` bei der Neuvernetzung der Oberfläche. | `40.0` | ⚙ | 🔴 |
 
 **Faustregeln für den Windkanal:** vor dem Modell ≥ 5 Modelllängen, dahinter ≥ 10, seitlich ≥ 3.
 Heute (600 mm bei 50 mm Modell, mittig) sind es vorn und hinten je 6 Längen.
 
-**Bekannte Grenze (wird verbessert, siehe `.plans/anmerkungen_umsetzung.md`):** Das Netz hat noch
-keine echte Wandschicht. Die Oberfläche ist so fein wie die Voxel, und der Reibungswiderstand ist
-deshalb nicht belastbar. Die Einstellungen oben verändern die Zellen *um* das Modell, nicht die
-Oberfläche selbst.
+**Empfehlung Wandschicht ("Hexa" vs. "Prism"):**
+Im Modus `"Hexa"` wird die Bauteiloberfläche vor der Extrusion in Vierecke zerlegt (`Mesh.RecombineAll = 1`) und anschließend mit `Recombine` senkrecht zur Wand extrudiert. Aus Vierecken werden **Hexaeder (flache Quader)**, die orthogonal zur Wand stehen und in Strömungsrichtung sauber hintereinanderliegen.
+* **Vorteile von Quader-Grenzschichten:** Wesentlich geringere numerische Diffusion, präzise Erfassung der Geschwindigkeitsgradienten in Wandnähe, stabilere und glattere Wandreibungswerte und y+-Profile sowie weniger Gesamtzellen bei gleicher Auflösung als mit Prismen.
+* **Quad-Dominant:** Bei komplex gekrümmten Voxel-Oberflächen bleiben vereinzelt Dreiecke übrig; daraus entstehen Prismen zwischen den Quadern. Gmsh erzeugt somit ein „quad-dominantes" Grenzschichtnetz, das SU2 problemlos rechnet.
+* Der Modus `"Prism"` dient als Rückfallebene (reine Dreiecks-Extrusion zu Prismen), falls für ein STL keine saubere Viereckzerlegung gelingt. `"Threshold"` behält das rein unstrukturierte Netz früherer Versionen bei.
 
 ---
 
@@ -299,7 +310,7 @@ inzwischen geändert sind:
 | --- | --- |
 | **Kopf des Logs** (`simulation.log`) | Projekt, Code-Stand, und für jede Datei, welche Einstellungen *aus ihr* kamen (`[CONFIG] Herkunft der wirksamen Werte`). Alles Ungenannte war der Standardwert. Darunter die Anströmung (`Anströmung: 2 m/s (…)`) |
 | **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf) |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf); seit TODO-40/41: `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
 | **`.\scripts\sim.ps1 doctor -Project <Name>`** | *Vor* einem Lauf: welche Programmpfade wirklich gelten und ob die Programme gefunden werden |
 
@@ -343,6 +354,7 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | `[WARNUNG] Ergebnisgröße '…' <- Spalte '…'` | Ein Eintrag in `ResultMetrics` passt zu keiner SU2-Spalte. Die Variante gilt als fehlgeschlagen. | Spaltennamen korrigieren (die Meldung listet die vorhandenen). |
 | `[WARNUNG] SU2 hat ITER=… erreicht, ohne dass das Kriterium erfüllt war – … ist der Stand bei Iteration …, kein konvergierter Wert.` | Die Strömungsrechnung hat die maximale Iterationszahl erreicht, bevor der Wert stabil war. Der Wert ist eine Momentaufnahme und noch nicht verlässlich. | `Su2MaxIterations` in `simulation.json` erhöhen (z. B. 1000) oder prüfen, ob die Strömung schwingt. Soll der Lauf unvollständige Rechnungen verwerfen: `TreatUnconvergedAsFailed` in `su2.json` auf `true` setzen. |
 | `[WARNUNG] … schwingt um ±… % – Hinweis auf instationäre Strömung (Wirbelablösung).` | Der Beiwert schwankt im Cauchy-Fenster stärker als `OscillationWarnLimit` (z. B. ±2 %). Meist lösen sich periodisch Wirbel ab (z. B. Kármánsche Wirbelstraße bei stumpfen Körpern). | Prüfen, ob die Geometrie zu stumpf ist, oder `ResultAveraging` in `su2.json` auf `"CauchyWindowMean"` setzen, um über die Schwingung zu mitteln. Schwellenwert mit `OscillationWarnLimit` anpassen. |
+| `[WARNUNG] y+ (95 %-Quantil = …, Max = …) überschreitet das Limit … (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.` | Der dimensionslose Wandabstand y+ ist an der Bauteilwand zu groß (das 95 %-Quantil P95 übersteigt das Limit). Das Turbulenzmodell (SA/SST) löst die viskose Unterschicht nicht optimal auf, wodurch der Reibungswiderstand ungenau werden kann. | `BoundaryLayerMode` ("Hexa") aktivieren, `TargetYPlus` prüfen, `BoundaryLayerSizeMin` bzw. `SurfaceCellSize` verfeinern oder `YPlusWarnFactor` erhöhen, falls ein größerer Wandabstand für die Grobauslegung ausreicht. |
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |

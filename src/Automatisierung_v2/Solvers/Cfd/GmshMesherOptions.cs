@@ -78,5 +78,37 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// Mesh.MeshSizeFromCurvature aktivieren; wirkt bei Neuvernetzung der Oberfläche in TODO-40.
         /// </summary>
         public bool MeshSizeFromCurvature { get; set; } = false;
+
+        // --- Strukturierte Grenzschicht (TODO-40) ---
+        /// <summary>
+        /// Modus der Grenzschicht-Vernetzung:
+        /// <list type="bullet">
+        ///   <item><c>"Threshold"</c> (Standard): Unstrukturiertes Tetraeder-Netz mit Gmsh-Threshold-Abstandsfeld.</item>
+        ///   <item><c>"Hexa"</c>: Strukturierte Quader-Grenzschicht (Hexaeder) an der Wand, extrudiert aus Viereckselementen.</item>
+        ///   <item><c>"Prism"</c>: Strukturierte Prismen-Grenzschicht an der Wand, extrudiert aus Dreieckselementen.</item>
+        /// </list>
+        /// </summary>
+        public string BoundaryLayerMode { get; set; } = "Threshold";
+
+        /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.0).</summary>
+        public float TargetYPlus { get; set; } = 1.0f;
+
+        /// <summary>Mindestanzahl an Randschichten (Standard 4).</summary>
+        public int BoundaryLayerMinLayers { get; set; } = 4;
+
+        /// <summary>Wachstumsfaktor von Schicht zu Schicht in der Grenzschicht (Standard 1.2).</summary>
+        public float BoundaryLayerGrowthRate { get; set; } = 1.2f;
+
+        /// <summary>Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.</summary>
+        public int BoundaryLayerLayers { get; set; } = 0;
+
+        /// <summary>Oberflächen-Zellgröße in mm auf Stufe 1.0; 0 = nutzt BoundaryLayerSizeMin.</summary>
+        public float SurfaceCellSize { get; set; } = 0.0f;
+
+        /// <summary>Elemente pro 2*Pi Bogenmaß bei krümmungsabhängiger Netzverfeinerung (Standard 20).</summary>
+        public int CurvatureElements { get; set; } = 20;
+
+        /// <summary>Winkelgrenze in Grad für Gmsh ClassifySurfaces bei Neuvernetzung der Bauteiloberfläche (Standard 40.0).</summary>
+        public float ClassifyAngleDeg { get; set; } = 40.0f;
     }
 }

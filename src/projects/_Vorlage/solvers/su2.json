@@ -101,5 +101,13 @@
   "CflAdaptFactorDown": 0.5,
   "CflAdaptFactorUp": 1.2,
   "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0
+  "CflAdaptMax": 50.0,
+
+  // --- y+-Ziel und Grenzschichtpruefung (TODO-41) ---
+  // Zielwert fuer y+ an der Wand (Standard 1.0).
+  "TargetYPlus": 1.0,
+
+  // Warnfaktor fuer y+: Ueberschreitet das 95 %-Quantil (P95) das Produkt
+  // aus YPlusWarnFactor und TargetYPlus, warnt der Solver (Standard 2.0).
+  "YPlusWarnFactor": 2.0
 }

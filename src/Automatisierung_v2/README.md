@@ -391,6 +391,8 @@ Die Formel selbst steht im Code, nicht in der JSON — siehe
 | `CflAdapt` | `true` | Schrittweite automatisch anpassen |
 | `CflAdaptFactorDown` / `…Up` | `0.5` / `1.2` | Faktoren beim Verkleinern/Vergrößern |
 | `CflAdaptMin` / `CflAdaptMax` | `1.0` / `50.0` | Schranken dafür |
+| `TargetYPlus` | `1.0` | Ziel-y+ für die Wandauflösung der Grenzschicht |
+| `YPlusWarnFactor` | `2.0` | Warnfaktor: P95 > TargetYPlus × YPlusWarnFactor warnt |
 
 `ReferenceAreaMetric` verdient Aufmerksamkeit: Der Widerstandsbeiwert `CD` wird auf
 diese Fläche bezogen. Passt der Name nicht zu einer Metrik, die das Projekt
@@ -511,6 +513,14 @@ beeinflussen die Ränder das Ergebnis.
 | `WakeWidthFactor` | `0.5` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ` |
 | `WakeCellSize` | `0.0` | Zellgröße in der Nachlauf-Box in mm (`0.0` = automatisch `lenX / 6.0`) |
 | `MeshSizeFromCurvature` | `false` | Krümmungsabhängige Netzverfeinerung aktivieren |
+| `BoundaryLayerMode` | `"Threshold"` | `"Threshold"` (unstrukturiert), `"Hexa"` (Quader, Empfehlung), `"Prism"` (Prismen) |
+| `TargetYPlus` | `1.0` | Ziel-y+ für die erste Zellhöhe y1 an der Wand |
+| `BoundaryLayerMinLayers` | `4` | Mindestanzahl an Schichten in der Grenzschicht |
+| `BoundaryLayerGrowthRate` | `1.2` | Wachstumsfaktor von Schicht zu Schicht |
+| `BoundaryLayerLayers` | `0` | Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta |
+| `SurfaceCellSize` | `0.0` | Zellgröße auf Bauteilwand in mm; 0.0 = nutzt BoundaryLayerSizeMin |
+| `CurvatureElements` | `20` | Elemente pro 2π bei krümmungsabhängiger Netzverfeinerung |
+| `ClassifyAngleDeg` | `40.0` | Winkelgrenze in Grad für ClassifySurfaces bei Neuvernetzung |
 
 Dazwischen wird linear vergröbert. Das ist der wirksamste Hebel für die Rechenzeit:
 `BoundaryLayerSizeMin` zu halbieren vervielfacht die Zellenzahl.
@@ -531,7 +541,7 @@ war es ein gemeinsamer Topf, und ein zweites Projekt überschrieb die CSV des er
 |---|---|
 | `Iteration`, `Variant` | Woher die Zeile stammt. `Variant 99` = Kontrollrechnung des Türstehers |
 | `Length`, `Width`, … | Die **aktiven** Parameter — was der Algorithmus eingestellt hat |
-| `Volume`, `FrontalArea`, `SensorDistance`, `MeshCells` | **Passive** Messwerte aus der Geometrie und Vernetzung (`MeshCells`: Anzahl SU2-Zellen) |
+| `Volume`, `FrontalArea`, `SensorDistance`, `MeshCells`, `BoundaryLayerHexShare`, `YPlus_Median`, `YPlus_P95`, `YPlus_Max` | **Passive** Messwerte aus der Geometrie, Vernetzung und y+-Wandauflösung (`MeshCells`: Anzahl SU2-Zellen, `BoundaryLayerHexShare`: Quader-Anteil) |
 | `ScaleFactor` | Mit welchem Faktor geschrumpft wurde (1 = Scaler aus) |
 | `Drag` | Widerstandsbeiwert CD aus SU2 |
 | `Fitness` | Die Bewertung. Größer ist besser |

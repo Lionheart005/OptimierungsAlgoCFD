@@ -156,7 +156,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                 $"MESH_FILENAME= {Path.GetFileName(meshPath)}", 
                 "MESH_FORMAT= SU2",
                 "TABULAR_FORMAT= CSV",
-                "OUTPUT_FILES= (RESTART, PARAVIEW, SURFACE_PARAVIEW)",
+                "OUTPUT_FILES= (RESTART, PARAVIEW, SURFACE_PARAVIEW, SURFACE_CSV)",
                 "VOLUME_OUTPUT= (COORDINATES, SOLUTION, PRIMITIVE, VELOCITY, PRESSURE, MACH, DENSITY, SKIN_FRICTION, Y_PLUS)",
             };
 

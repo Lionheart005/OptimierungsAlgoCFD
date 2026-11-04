@@ -27,11 +27,11 @@
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [x] |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [x] |
-| D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
-| D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [ ] |
+| D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [x] Code & Tests erledigt (Server-Spike offen) |
+| D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [x] |
 | D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [ ] |
 | D | TODO-43 | Gewinner in feinerer Auflösung nachrechnen (Modus je Lauf wählbar) | [ ] |
-| E | TODO-44 | 2D-Kernel `Kernels/Planar2D` (C#, Clipper2) mit PicoGK-ähnlicher API | [ ] |
+| E | TODO-44 | 2D-Kernel `Kernels/Planar2D` (C#, Clipper2) mit PicoGK-ähnlicher API | [x] |
 | E | TODO-45 | `Gmsh2DMesher` mit strukturierter Quad-Grenzschicht | [ ] |
 | E | TODO-46 | SU2 in 2D: Anstellwinkel, Bezugslänge statt -fläche, `Cfd2DProjectDefinition` | [ ] |
 | E | TODO-47 | Projekt `Naca2D` + `_Vorlage2D` + Validierung gegen NASA-TMR-Referenzdaten | [ ] |
@@ -490,7 +490,7 @@ heute (Regression). Ein Test prüft, dass alle Größen mit dem Faktor multipliz
 werden außerdem die Wake-Box aus einer Bounding Box, das Lesen von `MeshCells` aus einem Beispielkopf
 und Dateinamen mit Tag.
 
-#### TODO-40 — Strukturierte Quader-Grenzschicht mit vorgegebenem y+ (3D) *(Worker: S, Spike durch dich)*
+#### TODO-40 — Strukturierte Quader-Grenzschicht mit vorgegebenem y+ (3D) ✅ *(Code & Tests erledigt 04.11.2026, Server-Spike offen)*
 
 > **Korrektur vom 04.11.2026 (Empfehlung deines CFD-Professors, E12):** Die Wandschicht besteht
 > standardmäßig aus **Hexaedern**, also rechteckigen, flachen, länglichen Quadern, und nicht aus
@@ -576,7 +576,7 @@ und Dateinamen mit Tag.
 **2D (TODO-45)** ist davon nicht betroffen: Dort ist die Wandschicht mit `Quads = 1` ohnehin aus
 rechteckigen Zellen, und anders als in 3D gelingt das dort praktisch immer vollständig.
 
-#### TODO-41 — y+ nach jeder Rechnung prüfen *(Worker: S)*
+#### TODO-41 — y+ nach jeder Rechnung prüfen ✅ *(erledigt 04.11.2026)*
 
 1. In `OUTPUT_FILES` kommt `SURFACE_CSV` dazu. SU2 schreibt dann ein ASCII-`surface.csv` mit den
    Oberflächenwerten *(prüfen: heißt die Spalte `Y_Plus`?)*. Als Rückfall dient ein kleiner
@@ -742,7 +742,7 @@ des Optimierers **unverändert** bleibt.
 > und nutzt Optimierer, Bouncer, Kalibrierung, Feinprüfung, CSV und fetch unverändert. Es braucht
 > weder PicoGK noch Xvfb noch eine 3D-Rechnung.
 
-#### TODO-44 — 2D-Kernel `Kernels/Planar2D` *(Worker: S)*
+#### TODO-44 — 2D-Kernel `Kernels/Planar2D` ✅ *(erledigt 04.11.2026)*
 
 1. NuGet `Clipper2` (Angus Johnson, Boost Software License). Die Version wird beim Umsetzen auf
    nuget.org geprüft und fest eingetragen.

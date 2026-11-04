@@ -108,6 +108,15 @@ namespace MyPicoGkProject.Solvers.Cfd
                 record.PassiveParameters["ReynoldsNumber"] = reynolds;
             }
 
+            if (!record.PassiveParameters.ContainsKey("BoundaryLayerHexShare"))
+            {
+                float hexShare = GmshCfdMesher.ReadSu2BoundaryLayerHexShare(meshPath);
+                if (float.IsFinite(hexShare))
+                {
+                    record.PassiveParameters["BoundaryLayerHexShare"] = hexShare;
+                }
+            }
+
             Console.WriteLine(
                 $"    -> Anströmung {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
 
@@ -193,6 +202,10 @@ namespace MyPicoGkProject.Solvers.Cfd
                 string savedSurfaceVtu = Path.Combine(analysisResultsDir, $"Surface_Gen{record.Iteration}_Var{record.Variant}.vtu");
                 if (File.Exists(defaultSurfaceVtu)) File.Copy(defaultSurfaceVtu, savedSurfaceVtu, true);
 
+                string defaultSurfaceCsv = Path.Combine(workingDirectory, "surface.csv");
+                string savedSurfaceCsv = Path.Combine(analysisResultsDir, $"Surface_Gen{record.Iteration}_Var{record.Variant}.csv");
+                if (File.Exists(defaultSurfaceCsv)) File.Copy(defaultSurfaceCsv, savedSurfaceCsv, true);
+
                 string defaultVolumeVtu = Path.Combine(workingDirectory, "vol_solution.vtu");
                 string savedVolumeVtu = Path.Combine(analysisResultsDir, $"Volume_Gen{record.Iteration}_Var{record.Variant}.vtu");
                 if (File.Exists(defaultVolumeVtu)) File.Copy(defaultVolumeVtu, savedVolumeVtu, true);
@@ -211,6 +224,58 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             // Setzt bei einer nicht lesbaren Größe selbst record.SimulationFailed.
             ReadMetricsFromHistory(historyPath, record, config);
+
+            // y+-Statistik der Oberfläche auswerten (TODO-41)
+            EvaluateSurfaceYPlus(Path.Combine(workingDirectory, "surface.csv"), record);
+        }
+
+        /// <summary>
+        /// Wertet die y+-Statistik der Bauteiloberfläche aus und trägt YPlus_Median, YPlus_P95 und YPlus_Max
+        /// in <c>record.PassiveParameters</c> ein. Überschreitet P95 das Limit YPlusWarnFactor * TargetYPlus,
+        /// wird eine Warnung ausgegeben (TODO-41).
+        /// </summary>
+        public YPlusStatistics? EvaluateSurfaceYPlus(string surfaceCsvPath, ModelRecord record)
+        {
+            if (record == null) throw new ArgumentNullException(nameof(record));
+
+            YPlusStatistics? stats = null;
+            if (File.Exists(surfaceCsvPath))
+            {
+                try
+                {
+                    string[] lines = File.ReadAllLines(surfaceCsvPath);
+                    stats = Su2SurfaceAnalyzer.EvaluateSurfaceCsv(lines);
+                }
+                catch
+                {
+                    stats = null;
+                }
+            }
+
+            if (stats == null)
+            {
+                string? dir = Path.GetDirectoryName(surfaceCsvPath);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    stats = Su2SurfaceAnalyzer.EvaluateFromDirectory(dir);
+                }
+            }
+
+            if (stats != null)
+            {
+                record.PassiveParameters["YPlus_Median"] = stats.Median;
+                record.PassiveParameters["YPlus_P95"] = stats.P95;
+                record.PassiveParameters["YPlus_Max"] = stats.Max;
+
+                float warnLimit = _options.YPlusWarnFactor * _options.TargetYPlus;
+                if (stats.P95 > warnLimit)
+                {
+                    Console.WriteLine(
+                        $"[WARNUNG] y+ (95 %-Quantil = {stats.P95.ToString("0.00", CultureInfo.InvariantCulture)}, Max = {stats.Max.ToString("0.00", CultureInfo.InvariantCulture)}) überschreitet das Limit {warnLimit.ToString("0.00", CultureInfo.InvariantCulture)} (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.");
+                }
+            }
+
+            return stats;
         }
 
         /// <summary>
