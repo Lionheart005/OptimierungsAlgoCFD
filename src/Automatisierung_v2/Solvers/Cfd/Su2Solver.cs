@@ -31,19 +31,26 @@ namespace MyPicoGkProject.Solvers.Cfd
         private const float FallbackReferenceAreaMm2 = 1.0f;
 
         private readonly Su2SolverOptions _options;
+        private readonly FlowConditions? _flow;
 
         /// <summary>
         /// Die Anströmung wird einmal pro Lauf gemeldet, nicht bei jeder Variante — sie ändert
         /// sich zwischen den Varianten nicht, und im Log soll sie trotzdem stehen (TODO-38).
         /// </summary>
         private bool _velocityReported;
+        private bool _transitionalReported;
         private bool _unknownResultAveragingReported;
 
         /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
-        public Su2Solver(Su2SolverOptions? options = null)
+        /// <param name="flow">Gemeinsame Strömungsbedingungen (TODO-38); wenn null, werden sie aus config und options aufgelöst.</param>
+        public Su2Solver(Su2SolverOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new Su2SolverOptions();
+            _flow = flow;
         }
+
+        public Su2SolverOptions Options => _options;
+        public FlowConditions? Flow => _flow;
 
         public string Name => "SU2 CFD Solver";
 
@@ -55,11 +62,59 @@ namespace MyPicoGkProject.Solvers.Cfd
         {
             float refArea = ResolveReferenceArea(record);
 
+            FlowConditions flow = _flow ?? FlowConditions.From(config, _options);
+
             if (!_velocityReported)
             {
-                float velocity = Su2ConfigGenerator.ResolveVelocity(config, _options, out string source);
-                Console.WriteLine($"    -> Anströmung: {velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({source}).");
+                Console.WriteLine($"    -> Anströmung: {flow.Velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({flow.VelocitySource}).");
                 _velocityReported = true;
+            }
+
+            float lengthMm;
+            string lengthSource;
+            float scaleFactor = record.PassiveParameters.TryGetValue("ScaleFactor", out float sf) && sf > 0f ? sf : 1.0f;
+
+            if (!string.IsNullOrEmpty(record.StlPath) && File.Exists(record.StlPath))
+            {
+                try
+                {
+                    MeshBounds bounds = StlWriter.ReadBounds(record.StlPath);
+                    if (!bounds.IsEmpty && bounds.Size.X > 0f)
+                    {
+                        lengthMm = bounds.Size.X / scaleFactor;
+                        lengthSource = "aus der Bounding Box";
+                    }
+                    else
+                    {
+                        lengthMm = _options.ReferenceLength * 1000f;
+                        lengthSource = "aus ReferenceLength";
+                    }
+                }
+                catch
+                {
+                    lengthMm = _options.ReferenceLength * 1000f;
+                    lengthSource = "aus ReferenceLength";
+                }
+            }
+            else
+            {
+                lengthMm = _options.ReferenceLength * 1000f;
+                lengthSource = "aus ReferenceLength";
+            }
+
+            float reynolds = flow.ComputeReynoldsNumber(lengthMm * 0.001f);
+            if (reynolds > 0f)
+            {
+                record.PassiveParameters["ReynoldsNumber"] = reynolds;
+            }
+
+            Console.WriteLine(
+                $"    -> Anströmung {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
+
+            if (!_transitionalReported && reynolds > 0f && reynolds < 5e5f)
+            {
+                Console.WriteLine("    -> [HINWEIS] Re_L liegt im laminar-transitionalen Bereich (< 5e5); das Turbulenzmodell rechnet vollturbulent.");
+                _transitionalReported = true;
             }
 
             Console.WriteLine($"    -> Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
@@ -69,7 +124,7 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             if (File.Exists(historyPath)) File.Delete(historyPath);
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options);
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options, flow);
 
             try
             {

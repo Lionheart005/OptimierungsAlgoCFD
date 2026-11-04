@@ -23,9 +23,9 @@
 | F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [~] erste Fassung erledigt, wächst mit jedem Schritt |
 | B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [x] |
 | C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [x] |
-| C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [ ] |
+| C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [x] |
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
-| D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [~] m/s erledigt, MantaAuv auf 2 m/s |
+| D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [x] |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [ ] |
 | D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [ ] |
@@ -385,7 +385,7 @@ kommentierter cfg rechnet dieselben Zahlen.
 prüfen Dateinamen, Kennzahlen und Warnungen. Ein Test prüft, dass `ResultAveraging = "Last"`
 dieselben Zahlen liefert wie heute.
 
-#### TODO-36 — Plotten und Abholen *(Worker: S)*
+#### TODO-36 — Plotten und Abholen ✅ *(erledigt 04.11.2026)*
 
 1. **`scripts/plot_history.py`** mit pandas und matplotlib, wie `Plot_RSM.py`:
    * Aufruf: `python scripts/plot_history.py <Ordner|Datei> [--var Gen2_Var3] [--metrics CD CL] [--compare]`.
@@ -422,7 +422,7 @@ verbauen.
 
 ### Block D — Netz und Physik
 
-#### TODO-38 — Anströmung in m/s, Reynoldszahl ins Log *(Worker: S)* — teilweise erledigt
+#### TODO-38 — Anströmung in m/s, Reynoldszahl ins Log ✅ *(erledigt 04.11.2026)*
 
 1. ✅ **`Su2SolverOptions.FreestreamVelocity`** in m/s, neben `Density` und `DynamicViscosity`
    (*erledigt 04.11.2026*). Die Vorgabe `0` bedeutet „nicht gesetzt", dann gilt das alte

@@ -10,6 +10,7 @@ Hochschulrechner starten und beobachten.
 | `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
 | `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage`) |
+| `plot_history.py` | Windows / Linux | Konvergenzverläufe (history.csv) prüfen, auswerten und plotten |
 
 `new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
 Werkzeugkästchen ist. Was danach zu tun ist, steht in
@@ -190,6 +191,7 @@ Alles unterhalb von `Ergebnisse/<Projekt>/`:
 |---|---|
 | `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
 | `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
+| `Analyseergebnisse/Verlaeufe/` | Gespeicherte Konvergenzverläufe (`History_*.csv`) und Konfigurationen (`Config_*.cfg`) |
 | `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
 | `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
 | `Model_GenX_VarY.stl` | erzeugte Geometrie |
@@ -211,6 +213,72 @@ Anderer Rechner oder anderes Projekt:
 
 Nach `run` kann die Konsole zu — der Lauf hängt in einer tmux-Sitzung und
 überlebt das Ende der SSH-Verbindung.
+
+## Eine Rechnung von Hand prüfen
+
+Nach einem Lauf (oder währenddessen) kann die Konvergenz der SU2-Strömungssimulationen
+überprüft und visualisiert werden:
+
+### 1. Verläufe und Ergebnisse abholen
+
+```powershell
+.\scripts\sim.ps1 fetch
+# bzw. für ein bestimmtes Projekt:
+.\scripts\sim.ps1 fetch -Project MantaAuv
+```
+
+Das holt `Simulation_Results.csv`, `effective-config.json` und standardmäßig den Ordner
+`Analyseergebnisse/Verlaeufe/` (mit allen `History_GenX_VarY.csv` und `Config_GenX_VarY.cfg`)
+nach `.\Serverergebnisse\<Projekt>\`.
+
+### 2. Konvergenz prüfen und plotten mit `plot_history.py`
+
+Das Skript `scripts/plot_history.py` basiert auf `pandas` und `matplotlib`
+(`pip install pandas matplotlib`):
+
+**a) Übersichtstabelle aller Varianten anzeigen:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv
+```
+Gibt eine kompakte Konsole-Tabelle aus:
+- Anzahl gerechneter Iterationen im Vergleich zu `ITER`
+- Konvergiert (`ja`/`nein`, d.h. Abbruchkriterium vor Erreichen von `ITER` erfüllt)
+- Residuenabfall in Dekaden (erstes `rms[...]`-Residuum)
+- Endwerte und Schwingung `(max-min)/|mean|` in % über das Cauchy-Fenster für jede Metrik (`CD`, `CL`, …)
+
+**b) Einzelne Variante im Detail plotten:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv --var Gen1_Var1
+# oder direkt die CSV-Datei angeben:
+python scripts/plot_history.py Serverergebnisse/MantaAuv/Analyseergebnisse/Verlaeufe/History_Gen1_Var1.csv
+```
+Erzeugt ein PNG mit drei übereinanderliegenden Diagrammen (gespeichert als `History_Gen1_Var1.png`
+neben der CSV-Datei):
+1. **Kennwerte über Iteration**: Verlauf der aerodynamischen Beiwerte (`CD`, `CL`, …).
+2. **Residuen (logarithmisch)**: Alle `rms[...]`-Spalten über die Iterationen.
+3. **Konvergenz-Fenster (Cauchy)**: Gezoomte Darstellung der Hauptmetrik mit Endwertlinie,
+   Toleranzband (`±cauchy_eps`) und schraffiertem Cauchy-Fenster.
+
+Mit `--show` öffnet sich zusätzlich ein interaktives Matplotlib-Fenster.
+
+**c) Mehrere Varianten vergleichen:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv --compare
+python scripts/plot_history.py Serverergebnisse/MantaAuv --compare --var Gen1_Var1 Gen2_Var3
+```
+Überlagert die Kennwert- und Residuenkurven der Varianten in einer gemeinsamen Grafik
+und speichert `History_Compare.png` im Verzeichnis.
+
+### 3. Strömungsfeld und Druckverteilung in ParaView prüfen
+
+Wenn die Konvergenz rechnerisch geprüft ist und das 3D-Strömungsfeld im Detail interessiert:
+
+```powershell
+.\scripts\sim.ps1 fetch -Champion -Project MantaAuv
+```
+Holt die VTU-Dateien des Champions (`Surface_*.vtu` und `Volume_*.vtu`). Diese können
+direkt in ParaView geöffnet werden, um Druckverteilung, Grenzschicht und eventuelle
+Wirbelablösungen visuell zu analysieren.
 
 ## Auslastung auf dem Server ansehen
 

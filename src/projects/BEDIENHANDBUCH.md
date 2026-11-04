@@ -115,7 +115,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … ein **neues Projekt** | — | `.\scripts\new-project.ps1 <Name>` | danach Form und Bewertung im neuen Ordner ausfüllen |
 | … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project TestprojektNACA` |
 | … **Ergebnisse holen** | — | `.\scripts\sim.ps1 fetch -Project <Name>` | **`-Project` immer angeben**, sonst wird MantaAuv geholt (siehe Abschnitt 7) |
-| … eine **Rechnung von Hand prüfen** | — | `fetch -All`, dann ParaView | die Dateien `Surface_GenX_VarY.vtu` / `Volume_GenX_VarY.vtu` öffnen |
+| … eine **Rechnung von Hand prüfen** | — | `fetch`, dann `plot_history.py` | Konvergenz prüfen; bei Bedarf `fetch -Champion` und ParaView für die VTUs (Details in `scripts/README.md`) |
 | … nachsehen, **womit ein Lauf gerechnet hat** | — | `effective-config.json` | siehe [Abschnitt 5](#5-welche-werte-galten-wirklich) |
 
 ---
@@ -329,6 +329,7 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | --- | --- | --- |
 | `'…' nennt einen Schlüssel, den der Typ … nicht kennt` | Tippfehler in einer JSON-Datei. | Die Meldung nennt den vermutlich gemeinten Namen bzw. alle gültigen. Korrigieren. |
 | `[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt` | Eine `*.local.json` verändert still Werte. | Gehören die Werte zum Projekt: in die Projektdatei übernehmen und die local-Datei löschen. |
+| `[WARNUNG] 'MachNumber' in … ist wirkungslos, weil in solvers/su2.json 'FreestreamVelocity' (… m/s) gesetzt ist.` | In `solvers/su2.json` ist eine explizite Anströmgeschwindigkeit vorgegeben. SU2 rechnet direkt mit dieser Geschwindigkeit; der Wert `MachNumber` aus der Simulationskonfiguration hat keinen Einfluss auf die Anströmung. | Soll wieder über Mach gerechnet werden: `FreestreamVelocity` in `su2.json` auf `0` setzen. Sonst ist die Meldung nur ein Hinweis darauf, dass `MachNumber` wirkungslos ist. |
 | `Kein -Project angegeben, es gilt die Vorgabe 'MantaAuv'` | Der Befehl wirkt auf MantaAuv. | Gilt bei `run`/`deploy`/`doctor`. Bei `fetch` und `status` fragt das Skript automatisch das letzte Projekt auf dem Server ab. |
 | `FEHLER: Simulation_Results.csv fuer Projekt '…' fehlt nach dem Entpacken` | Für dieses Projekt liegen noch keine Ergebnisse auf dem Server vor. | Die Meldung listet die vorhandenen Projekte auf dem Server auf. Projektname prüfen oder Lauf erst abwarten. |
 | `[WARNUNG] Das geholte Log gehoert laut Kopfzeile zu Projekt '…'` | `simulation.log` stammt von einem anderen Projekt als die geholten Ergebnisse. | Das gewünschte Projekt mit `-Project` angeben oder einen neuen Lauf starten. |

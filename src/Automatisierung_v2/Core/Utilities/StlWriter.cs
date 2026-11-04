@@ -52,6 +52,45 @@ namespace MyPicoGkProject.Core
 
         private const int HeaderLength = 80;
 
+        /// <summary>
+        /// Liest den Hüllquader aus einem binären STL — schnell und ohne Allokation einer Dreiecksliste.
+        /// Ist die Datei leer, beschädigt oder enthält keine Dreiecke, wird ein leerer <see cref="MeshBounds"/> geliefert.
+        /// </summary>
+        public static MeshBounds ReadBounds(string stlPath)
+        {
+            if (string.IsNullOrEmpty(stlPath)) throw new ArgumentException("Pfad darf nicht leer sein.", nameof(stlPath));
+            if (!File.Exists(stlPath)) throw new FileNotFoundException("STL-Datei wurde nicht gefunden.", stlPath);
+
+            using BinaryReader br = new BinaryReader(File.OpenRead(stlPath));
+            if (br.BaseStream.Length < 84) return default;
+
+            br.BaseStream.Seek(80, SeekOrigin.Begin);
+            uint triCount = br.ReadUInt32();
+            if (triCount == 0) return default;
+
+            if (br.BaseStream.Length < 84 + (long)triCount * 50) return default;
+
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+            for (uint i = 0; i < triCount; i++)
+            {
+                br.BaseStream.Seek(12, SeekOrigin.Current); // Normale überspringen
+                for (int v = 0; v < 3; v++)
+                {
+                    float x = br.ReadSingle();
+                    float y = br.ReadSingle();
+                    float z = br.ReadSingle();
+                    Vector3 pt = new Vector3(x, y, z);
+                    min = Vector3.Min(min, pt);
+                    max = Vector3.Max(max, pt);
+                }
+                br.BaseStream.Seek(2, SeekOrigin.Current); // 2 Attribut-Bytes überspringen
+            }
+
+            return new MeshBounds(min, max);
+        }
+
         /// <summary>Schreibt <paramref name="triangles"/> als binäres STL nach <paramref name="path"/>.</summary>
         public static void WriteBinary(string path, IReadOnlyList<StlTriangle> triangles, string header = DefaultHeader)
         {

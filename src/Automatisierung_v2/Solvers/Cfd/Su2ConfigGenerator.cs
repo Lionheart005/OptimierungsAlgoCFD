@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -12,15 +13,25 @@ namespace MyPicoGkProject.Solvers.Cfd
     /// </summary>
     public static class Su2ConfigGenerator
     {
-        public static void Generate(string configPath, string meshPath, float refArea, SimulationConfig config, Su2SolverOptions options)
+        public static void Generate(
+            string configPath,
+            string meshPath,
+            float refArea,
+            SimulationConfig config,
+            Su2SolverOptions options,
+            FlowConditions? flow = null)
         {
             string refAreaString = refArea.ToString(CultureInfo.InvariantCulture);
 
-            float velocity = ResolveVelocity(config, options, out _);
+            float velocity = flow?.Velocity ?? ResolveVelocity(config, options, out _);
             string velocityString = velocity.ToString(CultureInfo.InvariantCulture);
 
-            string densityString = options.Density.ToString(CultureInfo.InvariantCulture);
-            string viscosityString = options.DynamicViscosity.ToString(CultureInfo.InvariantCulture);
+            float density = flow?.Density ?? options.Density;
+            string densityString = density.ToString(CultureInfo.InvariantCulture);
+
+            float viscosity = flow?.DynamicViscosity ?? options.DynamicViscosity;
+            string viscosityString = viscosity.ToString(CultureInfo.InvariantCulture);
+
             string cflAdaptParams = string.Join(", ", new[]
             {
                 options.CflAdaptFactorDown,
@@ -170,6 +181,30 @@ namespace MyPicoGkProject.Solvers.Cfd
                      + $"{options.SpeedOfSound.ToString(CultureInfo.InvariantCulture)} m/s — "
                      + "besser direkt 'FreestreamVelocity' in der su2.json setzen";
             return config.MachNumber * options.SpeedOfSound;
+        }
+
+        /// <summary>
+        /// Warnt, wenn in einer Konfigurationsdatei ausdrücklich eine Mach-Zahl gesetzt wurde,
+        /// diese aber wegen einer gesetzten FreestreamVelocity in solvers/su2.json ignoriert wird (TODO-38).
+        /// </summary>
+        public static bool WarnIfMachNumberOverridden(
+            ConfigLoadReport? simulationReport,
+            Su2SolverOptions su2Options,
+            TextWriter? output = null)
+        {
+            if (su2Options == null || su2Options.FreestreamVelocity <= 0f)
+                return false;
+
+            if (simulationReport != null && simulationReport.Origins.TryGetValue("MachNumber", out string? originFile))
+            {
+                TextWriter writer = output ?? Console.Out;
+                string velocityString = su2Options.FreestreamVelocity.ToString(CultureInfo.InvariantCulture);
+                writer.WriteLine(
+                    $"[WARNUNG] 'MachNumber' in {originFile} ist wirkungslos, weil in solvers/su2.json 'FreestreamVelocity' ({velocityString} m/s) gesetzt ist.");
+                return true;
+            }
+
+            return false;
         }
     }
 }

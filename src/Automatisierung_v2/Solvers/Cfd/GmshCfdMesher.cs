@@ -16,13 +16,19 @@ namespace MyPicoGkProject.Solvers.Cfd
     public class GmshCfdMesher : IMeshGenerator
     {
         private readonly GmshMesherOptions _options;
+        private readonly FlowConditions? _flow;
         private string? _cachedTunnelPath;
 
         /// <param name="options">Vorgabedaten aus solvers/gmsh.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
-        public GmshCfdMesher(GmshMesherOptions? options = null)
+        /// <param name="flow">Physikalische Strömungsbedingungen (TODO-38); bereitgestellt für Grenzschichtnetz-Berechnungen (TODO-40).</param>
+        public GmshCfdMesher(GmshMesherOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new GmshMesherOptions();
+            _flow = flow;
         }
+
+        public GmshMesherOptions Options => _options;
+        public FlowConditions? Flow => _flow;
 
         /// <summary>
         /// Erzeugt den statischen Referenz-Windkanal (gehört zum CFD-Setup, nicht zur Geometrie).
