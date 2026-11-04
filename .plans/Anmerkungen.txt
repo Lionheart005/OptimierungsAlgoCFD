@@ -1,15 +1,15 @@
 Skript:
 Fetch funktioniert irgendwie nicht so richtig
-
+Sicherstellen, dass keine Keys oder sensible Informationen irgendwo rumliegen im Code
 
 SU2 Verständinsfragen
 Randbdingungen wo wird gesagt wo ein und ausströmt? un Randbedingungen gesetzt für lösung der gleichung?
-
+--> das in kommentaren kurz in entsprechende konfigurations dateien schreiben.
 
 Neue Features:
 - instationäre datenauswertung, also über die zeit schauen wie sicht z.B. der drag verändert und das Plotten innerhalb von einer einzelnen Simulation
     Von SU2 als auch den verlauf der Kennwerte holen um simulation händisch zu überprüfen
--2D Simulation detailliert und schnell 
+-2D Simulation möglich machen (soll) detailliert und schnell. geht das mit SU2 und PicoGK? Wenn nicht gibt es einfache tools die man sich zunutze machen kann die open source sind? oder ist es vielleicht sogar einfacher die objektgenerierung einfach schnell in c# selber zu schreiben, analog zu picoGK aber eben ein 2D Kernel, der aber die gleichen features und befehle hat udn in dotnet läuft? was ist am elegantesten und auch am zukunftsfähigsten, wenn man später KI und LLMs integrieren will?
 
 
 Rechnungen sind nicht Physikalisch akkurat: 
@@ -24,7 +24,12 @@ Rechnungen sind nicht Physikalisch akkurat:
 #####################
 Erweiterungen:
 ####################
-Ganz neue Programteile Schreiben:
+Ganz neue Programteile;
+
+KI:
 Um Rechenzet zu sparen und ergebnisse zu verbessern und out of the box zu denken, überlege ich KI bzw MaschineLearing in das Programm zu übertragen.
 (Frage: Gäbe es auch eine möglichkeit ein Physical Informed LLM direkt den c# code bearbeiten zu lassen um die Geometrien ganz neu Anzupassen? Wie umfangreich wäre es den wirkflow von Leap71 mit Nyron und PicoGK komplett nachzubauen, also dass das ganze Framework von KI aus erzuegt wird?)
 (Frage: Gingen es dass ein KI Modell sowohl den Optimierungsalgorithmus als auch die Simulation ersetzt? oder müssen das zwei eigene sein. Macht das überhaupt sinn?)
+
+FEM: 
+Eine open source FEM tool, ähnliches Kaliber wie SU2 für FEM simulationen / kombinierte probleme integrieren.
