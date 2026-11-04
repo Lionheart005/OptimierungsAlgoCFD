@@ -241,6 +241,9 @@ nicht erst geprüft.
 | `ResultMetrics` | Welche SU2-Kennwerte unter welchem Namen ankommen. Links der Name für die Bewertung, rechts die SU2-Spalte: `CD` Widerstand, `CL` Auftrieb, `CSF` Seitenkraft, `CMx`/`CMy`/`CMz` Momente. **Eintragen ergänzt nur**: `Drag` bleibt immer dabei. Fehlt eine eingetragene Spalte, gilt die Variante als fehlgeschlagen. | `{ "Drag": "CD" }` | 🎯 | 🟡 |
 | `ConvergenceField` | An welchem Kennwert SU2 entscheidet, ob die Rechnung fertig ist: `"DRAG"` oder bei Auftriebsprojekten `"LIFT"`. | `"DRAG"` | 🎯⏱ | 🟡 |
 | `HistoryOutput` | Welche Spaltengruppen SU2 mitschreibt. `AERO_COEFF` liefert alle Beiwerte; ohne sie findet `ResultMetrics` nichts. | `["ITER","RMS_RES","AERO_COEFF"]` | ⚙ | 🔴 |
+| `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.02` = 2 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). | `0.02` | 🎯 | 🟡 |
+| `TreatUnconvergedAsFailed` | Ob Rechnungen, die bei Erreichen von `Su2MaxIterations` (ITER) noch nicht konvergiert sind, als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `false`: Wert wird trotzdem übernommen. | `false` | 🎯 | 🟡 |
+| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (Standard); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung. Unbekannter Wert → Warnung und `"Last"`. | `"Last"` | 🎯 | 🟡 |
 | `CflNumber` | Schrittweite des SU2-Verfahrens beim Start. Größer = schneller, aber Gefahr, dass die Rechnung „explodiert". | `5.0` | ⏱ | 🔴 |
 | `CflAdapt` | Ob SU2 die Schrittweite selbst anpasst. | `true` | ⏱ | 🔴 |
 | `CflAdaptFactorDown` | Wie stark verkleinert wird, wenn es unruhig wird. | `0.5` | ⏱ | 🔴 |
@@ -290,7 +293,8 @@ inzwischen geändert sind:
 | --- | --- |
 | **Kopf des Logs** (`simulation.log`) | Projekt, Code-Stand, und für jede Datei, welche Einstellungen *aus ihr* kamen (`[CONFIG] Herkunft der wirksamen Werte`). Alles Ungenannte war der Standardwert. Darunter die Anströmung (`Anströmung: 2 m/s (…)`) |
 | **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen) |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster) |
+| **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
 | **`.\scripts\sim.ps1 doctor -Project <Name>`** | *Vor* einem Lauf: welche Programmpfade wirklich gelten und ob die Programme gefunden werden |
 
 ---
@@ -305,17 +309,15 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 | `run` | Der Alltagsbefehl: Code hochladen, bauen, Lauf starten. Danach kann das Fenster zu. |
 | `deploy` | Nur hochladen und bauen. Läuft schon etwas und hat sich der Code geändert, wird neu gestartet (außer mit `-NoRestart`). |
 | `build` | Nur bauen. |
-| `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Logzeilen. |
+| `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Logzeilen. Ohne `-Project` wird das zuletzt gerechnete Projekt abgefragt. |
 | `log` | Log live mitlesen. Strg+C beendet nur das Mitlesen, nicht den Lauf (`-NoFollow` = einmal ausgeben, `-Lines 100` = mehr Zeilen). |
 | `stop` | Lauf und alle Rechenprozesse beenden. |
-| `fetch` | Ergebnisse nach `Serverergebnisse\` holen: CSV, `effective-config.json`, Log. Mit `-All` den ganzen Ergebnisordner (groß, mit den 3D-Dateien für ParaView). |
+| `fetch` | Ergebnisse nach `Serverergebnisse\<Server>_<Projekt>_<Zeitstempel>\` holen: CSV, `effective-config.json`, Log, Verläufe. Mit `-Champion` zusätzlich die VTUs des Champions/Top-N, mit `-All` den ganzen Ergebnisordner (groß). Ohne `-Project` wird automatisch das zuletzt gerechnete Projekt geholt. |
 | `doctor` | Prüft auf dem Server Programme und Pfade, ohne etwas zu starten. Vor dem ersten Lauf. |
 | `projects` | Welche Projekte kennt der Server, und wo liegen schon Ergebnisse? |
 | `delete` | Löscht nach Rückfrage die Ergebnisse **aller** Projekte und die Logs auf dem Server (Code bleibt). Vorher holen, was man behalten will. |
 
-Weitere Schalter: `-Project` (welches Projekt; ohne Angabe gilt `MantaAuv`), `-Server` (Standard
-`BIC_12`), `-RemoteDir` (Zielordner auf dem Server), `-Force` (hochladen erzwingen bzw. ohne
-Rückfrage löschen), `-Out` (Zielordner für `fetch`).
+Weitere Schalter: `-Project` (welches Projekt; bei `run`/`deploy`/`doctor` gilt ohne Angabe `MantaAuv`, bei `fetch`/`status` wird automatisch das letzte Projekt vom Server abgefragt), `-Champion` (`fetch`: VTUs des Champions/Top-N mitnehmen), `-All` (`fetch`: kompletten Ergebnisordner holen), `-Server` (Standard `BIC_12`), `-RemoteDir` (Zielordner auf dem Server), `-Force` (hochladen erzwingen bzw. ohne Rückfrage löschen), `-Out` (Zielordner für `fetch`).
 
 Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 
@@ -327,9 +329,13 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | --- | --- | --- |
 | `'…' nennt einen Schlüssel, den der Typ … nicht kennt` | Tippfehler in einer JSON-Datei. | Die Meldung nennt den vermutlich gemeinten Namen bzw. alle gültigen. Korrigieren. |
 | `[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt` | Eine `*.local.json` verändert still Werte. | Gehören die Werte zum Projekt: in die Projektdatei übernehmen und die local-Datei löschen. |
-| `Kein -Project angegeben, es gilt die Vorgabe 'MantaAuv'` | Der Befehl wirkt auf MantaAuv. | Bei `fetch`/`status` für ein anderes Projekt **immer** `-Project` angeben. Sonst kommt z. B. nur das Log, aber keine CSV. |
+| `Kein -Project angegeben, es gilt die Vorgabe 'MantaAuv'` | Der Befehl wirkt auf MantaAuv. | Gilt bei `run`/`deploy`/`doctor`. Bei `fetch` und `status` fragt das Skript automatisch das letzte Projekt auf dem Server ab. |
+| `FEHLER: Simulation_Results.csv fuer Projekt '…' fehlt nach dem Entpacken` | Für dieses Projekt liegen noch keine Ergebnisse auf dem Server vor. | Die Meldung listet die vorhandenen Projekte auf dem Server auf. Projektname prüfen oder Lauf erst abwarten. |
+| `[WARNUNG] Das geholte Log gehoert laut Kopfzeile zu Projekt '…'` | `simulation.log` stammt von einem anderen Projekt als die geholten Ergebnisse. | Das gewünschte Projekt mit `-Project` angeben oder einen neuen Lauf starten. |
 | `[WARNUNG] … Referenzfläche …` / `Die Metrik '…' fehlt` | Die Bezugsfläche (`ReferenceAreaMetric`) gibt es nicht. CD/CL sind dann falsch. | Den Namen in `su2.json` an die Metrik anpassen, die die Geometrie meldet (die Meldung listet sie auf). |
 | `[WARNUNG] Ergebnisgröße '…' <- Spalte '…'` | Ein Eintrag in `ResultMetrics` passt zu keiner SU2-Spalte. Die Variante gilt als fehlgeschlagen. | Spaltennamen korrigieren (die Meldung listet die vorhandenen). |
+| `[WARNUNG] SU2 hat ITER=… erreicht, ohne dass das Kriterium erfüllt war – … ist der Stand bei Iteration …, kein konvergierter Wert.` | Die Strömungsrechnung hat die maximale Iterationszahl erreicht, bevor der Wert stabil war. Der Wert ist eine Momentaufnahme und noch nicht verlässlich. | `Su2MaxIterations` in `simulation.json` erhöhen (z. B. 1000) oder prüfen, ob die Strömung schwingt. Soll der Lauf unvollständige Rechnungen verwerfen: `TreatUnconvergedAsFailed` in `su2.json` auf `true` setzen. |
+| `[WARNUNG] … schwingt um ±… % – Hinweis auf instationäre Strömung (Wirbelablösung).` | Der Beiwert schwankt im Cauchy-Fenster stärker als `OscillationWarnLimit` (z. B. ±2 %). Meist lösen sich periodisch Wirbel ab (z. B. Kármánsche Wirbelstraße bei stumpfen Körpern). | Prüfen, ob die Geometrie zu stumpf ist, oder `ResultAveraging` in `su2.json` auf `"CauchyWindowMean"` setzen, um über die Schwingung zu mitteln. Schwellenwert mit `OscillationWarnLimit` anpassen. |
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |
@@ -358,7 +364,7 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | **Turbulenzmodell (SA, SST)** | Vereinfachte Beschreibung der Wirbel, die man nicht einzeln ausrechnen kann. |
 | **Grenzschicht** | Die dünne Fluidschicht direkt an der Wand, in der die Geschwindigkeit von 0 auf die Strömung ansteigt. Dort entsteht der Reibungswiderstand. |
 | **y+** | Wie dick die erste Netzzelle an der Wand im Vergleich zur Grenzschicht ist. Für SA ohne Wandfunktion sollte y+ ≈ 1 sein. |
-| **Cauchy-Kriterium** | SU2 hört auf, wenn sich der Widerstand über `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. |
+| **Cauchy-Kriterium** | SU2 hört auf, wenn sich die überwachte Ergebnisgröße (`ConvergenceField`, z. B. Widerstand) über die letzten `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. Hört SU2 vor `Su2MaxIterations` auf, gilt die Rechnung als konvergiert (`Su2_Converged = 1`). Über dieses Fenster misst der Analyzer auch Schwingungen (`Su2_Osc_<Metrik>`). |
 | **CFL-Zahl** | Schrittweite des Rechenverfahrens: größer = schneller, aber weniger stabil. |
 | **RSM (Ersatzmodell)** | Optimierer, der aus allen bisherigen Rechnungen eine geschätzte Fitness-Landkarte baut und dort sucht. |
 | **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |

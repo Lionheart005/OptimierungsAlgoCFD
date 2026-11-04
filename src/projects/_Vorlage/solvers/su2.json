@@ -16,6 +16,9 @@
   //
   // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
   // (gitignored). Sollstand ist, dass es keine gibt.
+  //
+  // Randbedingungen (Fernfeld am Kanal, Haftwand am Modell) und Gleichungen
+  // (inkompressible RANS, SA) werden im Code erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
 
   // --- Fluideigenschaften ---
   // Der Standard ist Meerwasser -- fuer Luft etwa 1.225 kg/m3 und 1.81e-5 Pa*s.
@@ -76,6 +79,19 @@
   // (HISTORY_OUTPUT). AERO_COEFF liefert saemtliche Beiwerte -- wer die Gruppe
   // entfernt, nimmt damit jeder Zuordnung in ResultMetrics die Grundlage.
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
+  // --- Auswertung & Konvergenzbewertung (TODO-35) ---
+  // Schwelle fuer Schwingungswarnung (relativer Hub ueber das Cauchy-Fenster: (max-min)/|mean|).
+  // 0.02 = 2 %. Schwingt ein Beiwert staerker, warnt der Solver vor instationaerer Stroemung.
+  "OscillationWarnLimit": 0.02,
+
+  // true = Rechnungen, die bei ITER abbrechen ohne Konvergenzkriterium zu erfuellen,
+  // gelten als fehlgeschlagen (SimulationFailed = true). Standard false = weiterrechnen.
+  "TreatUnconvergedAsFailed": false,
+
+  // "Last" (Standard) = Endwert der letzten Iteration uebernehmen.
+  // "CauchyWindowMean" = Mittelwert ueber die letzten CauchyElements Zeilen (fuer schwingende Faelle).
+  "ResultAveraging": "Last",
 
   // --- CFL-Steuerung ---
   // Groesser = schnellere, aber unruhigere Konvergenz. Divergiert SU2, ist

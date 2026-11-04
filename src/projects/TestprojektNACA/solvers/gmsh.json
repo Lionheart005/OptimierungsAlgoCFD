@@ -4,6 +4,9 @@
   //  TestprojektNACA -- Gmsh-Vernetzer
   // ===================================================================
 
+  // Randbedingungen: Die SU2-Markernamen ("Farfield" fuer den Kanal, "Wall" fuer
+  // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
+
   // --- Windkanal (Simulationsdomäne) in mm ---
   "TunnelShape": "Box",
   "TunnelSizeX": 600.0,

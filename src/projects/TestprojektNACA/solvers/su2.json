@@ -4,6 +4,9 @@
   //  TestprojektNACA -- SU2-Solver
   // ===================================================================
 
+  // Randbedingungen (Fernfeld am Kanal, Haftwand am Modell) und Gleichungen
+  // (inkompressible RANS, SA) werden im Code erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+
   // --- Fluideigenschaften (Luft auf Meereshöhe, ISA 15 °C) ---
   "Density": 1.225,
   "DynamicViscosity": 1.81e-5,

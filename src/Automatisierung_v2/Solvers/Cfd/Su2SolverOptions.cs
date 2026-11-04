@@ -94,6 +94,31 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// </summary>
         public string[] HistoryOutput { get; set; } = (string[])DefaultHistoryOutput.Clone();
 
+        /// <summary>
+        /// Schwelle für die relative Schwingung einer Ergebnisgröße über das Cauchy-Fenster
+        /// (Standard: 0.02 = 2 %). Überschreitet die Schwingung (max - min) / |mean| diesen Wert,
+        /// warnt der Solver vor möglicher instationärer Strömung (TODO-35).
+        /// </summary>
+        public float OscillationWarnLimit { get; set; } = 0.02f;
+
+        /// <summary>
+        /// Wenn <c>true</c>, wird eine Rechnung, die bei <c>ITER</c> abbricht, ohne dass das
+        /// Konvergenzkriterium erfüllt war, als fehlgeschlagen markiert (<see cref="ModelRecord.SimulationFailed"/> = true).
+        /// Standard ist <c>false</c>, damit bestehende Optimierungsläufe unverändert weiterlaufen (TODO-35).
+        /// </summary>
+        public bool TreatUnconvergedAsFailed { get; set; } = false;
+
+        /// <summary>
+        /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35):
+        /// <list type="bullet">
+        ///   <item><c>"Last"</c> (Standard): der Wert der letzten Zeile (bisheriges Verhalten).</item>
+        ///   <item><c>"CauchyWindowMean"</c>: der Mittelwert über die letzten <c>CauchyElements</c> Zeilen
+        ///   (gedämpfter Wert bei schwingenden Rechnungen).</item>
+        /// </list>
+        /// Ein unbekannter Wert führt zu einer Warnung und dem Rückfall auf <c>"Last"</c>.
+        /// </summary>
+        public string ResultAveraging { get; set; } = "Last";
+
         // --- CFL-Steuerung ---
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;

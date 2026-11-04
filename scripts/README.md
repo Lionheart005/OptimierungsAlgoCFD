@@ -94,34 +94,54 @@ einem laufenden Lauf verweigert er das Löschen. Was du behalten willst, holst d
 vorher mit `fetch -All`.
 
 Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
-Ordnername unter `src/projects/`. Ohne die Angabe gilt die Vorgabe `MantaAuv`, und
-die Skripte sagen das auch: auf der Windows-Seite als Hinweiszeile, auf dem Server
-gar nicht mehr. `sim-runner.sh` hat **keinen** Standard mehr — von Hand aufgerufen
-verlangt es `SIM_PROJECT=<Name>`, weil ein Vertipper dort sonst klaglos ein anderes
-Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
+Ordnername unter `src/projects/`. Bei `deploy`, `run` und `doctor` gilt ohne Angabe
+die Vorgabe `MantaAuv` (mit Hinweis). `fetch` und `status` fragen dagegen automatisch
+das zuletzt gerechnete Projekt (`lastproject`) auf dem Server ab, sodass nach einem Lauf
+kein manuelles `-Project` nötig ist.
+
+`sim-runner.sh` auf dem Server hat **keinen** stillen Standard mehr — von Hand aufgerufen
+verlangt es `SIM_PROJECT=<Name>` (außer bei `lastproject`, `projects`, `delete`, `stop`, `running`, `hash`),
+weil ein Vertipper dort sonst klaglos ein anderes Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
 
 ## Ergebnisse herunterladen
 
-Alles landet unter `.\Serverergebnisse\<Server>_<Zeitstempel>\` — der Zeitstempel
-verhindert, dass ein späterer Abruf einen früheren überschreibt. Der Ordner ist
+Alles landet unter `.\Serverergebnisse\<Server>_<Projekt>_<Zeitstempel>\` — Projektname
+und Zeitstempel verhindern, dass sich verschiedene Projekte oder Abrufe überschreiben. Der Ordner ist
 gitignored.
 
-### Nur das Ergebnis (Standard)
+Das Herunterladen packt die gewünschten Dateien auf dem Server mit `sim-runner.sh pack <Projekt> <Umfang>`
+zu einem einzigen `tar.gz`, lädt dieses mit **einem** scp-Aufruf herunter und entpackt es lokal mit `tar.exe`.
+Über das VPN spart das Zeit und verhindert Hänger bei vielen Einzelverbindungen.
+
+### Drei Umfänge: Standard, -Champion, -All
+
+#### 1. Nur das Ergebnis (Standard)
 
 ```powershell
 .\scripts\sim.ps1 fetch
 ```
 
-Holt `Simulation_Results.csv` und `simulation.log` — zusammen wenige KB.
-Das ist der Normalfall: die CSV *ist* das Ergebnis der Optimierung.
+Holt `Simulation_Results.csv`, `effective-config.json`, das Projekt-Log, `Analyseergebnisse/Verlaeufe/`,
+`Kalibrierung/` und `Verifikation.csv` (jede Datei nur wenn vorhanden).
+Das ist der Normalfall: wenige KB bis MB, schnell über VPN. Fehlt die CSV nach dem Entpacken, bricht
+das Skript mit einer roten Fehlermeldung und der Liste aller auf dem Server vorhandenen Projektergebnisse ab.
 
-### Der komplette Ergebnisse-Ordner
+#### 2. Mit Champion-Dateien (-Champion)
+
+```powershell
+.\scripts\sim.ps1 fetch -Champion
+```
+
+Holt den Standard-Umfang plus die ParaView-VTU-Dateien des Champions und Top-N (`Surface_GenX_VarY.vtu`
+und `Volume_GenX_VarY.vtu` laut `simulation.log` sowie alle `*Champion*.vtu`).
+
+#### 3. Der komplette Ergebnisse-Ordner (-All)
 
 ```powershell
 .\scripts\sim.ps1 fetch -All
 ```
 
-Kopiert alles: Geometrien, Netze, ParaView-Dateien, SU2-Arbeitsdateien.
+Kopiert alles: alle Geometrien (STL), Netze (.su2), ParaView-Dateien (.vtu) und Arbeitsdateien.
 
 > **Größe beachten.** Pro Variante fallen rund 15–20 MB an (STL 1–3 MB,
 > SU2-Netz 4–8 MB, zwei `.vtu` 4–9 MB). Ein Probelauf mit 2 Varianten liegt bei

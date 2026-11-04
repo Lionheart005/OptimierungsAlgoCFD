@@ -13,6 +13,9 @@
   //
   // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
   // (gitignored). Sollstand ist, dass es keine gibt.
+  //
+  // Randbedingungen (Fernfeld am Kanal, Haftwand am Modell) und Gleichungen
+  // (inkompressible RANS, SA) werden im Code erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
 
   // --- Fluideigenschaften ---
   "Density": 1025.0,          // kg/m³, Meerwasser

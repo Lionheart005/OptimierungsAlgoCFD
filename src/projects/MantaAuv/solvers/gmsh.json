@@ -12,6 +12,9 @@
   //
   // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
   // daneben (gitignored). Sollstand ist, dass es keine gibt.
+  //
+  // Randbedingungen: Die SU2-Markernamen ("Farfield" fuer den Kanal, "Wall" fuer
+  // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
 
   // --- Windkanal (Simulationsdomäne) in mm ---
   // "Box" = Quader aus TunnelSize*, "Cylinder" = Zylinder mit Achse entlang X

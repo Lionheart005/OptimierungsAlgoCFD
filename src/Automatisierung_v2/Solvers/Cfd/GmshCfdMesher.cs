@@ -84,7 +84,35 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             string outputMeshPath = Path.Combine(workingDirectory, $"Model_Gen{iteration}_Var{variant}.su2");
             string geoScriptPath = Path.Combine(workingDirectory, $"Meshing_Gen{iteration}_Var{variant}.geo");
-            
+
+            WriteGeoScript(geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor);
+
+            Process mesher = new Process();
+            mesher.StartInfo.FileName = config.GmshPath; 
+            mesher.StartInfo.Arguments = $"\"{geoScriptPath}\" -3 -nt {config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"";
+            mesher.StartInfo.UseShellExecute = false;
+            mesher.StartInfo.CreateNoWindow = true;
+
+            mesher.Start();
+            mesher.WaitForExit();
+
+            if (!File.Exists(outputMeshPath))
+                throw new Exception($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen.");
+
+            Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
+            return outputMeshPath;
+        }
+
+        /// <summary>
+        /// Schreibt das .geo-Skript für Gmsh auf die Festplatte (TODO-34).
+        /// </summary>
+        public void WriteGeoScript(
+            string geoScriptPath,
+            string modelStlPath,
+            string tunnelStlPath,
+            SimulationConfig config,
+            float scaleFactor)
+        {
             string safeModelPath = modelStlPath.Replace("\\", "/");
             string safeTunnelPath = tunnelStlPath.Replace("\\", "/"); 
             string scaleString = scaleFactor.ToString(CultureInfo.InvariantCulture);
@@ -109,13 +137,15 @@ namespace MyPicoGkProject.Solvers.Cfd
                 "Volume(1) = {1, 2};",
                 
                 "// D) Physische SU2 Marker",
+                "// Dieser Name ist der SU2-Marker: Farfield -> MARKER_FAR",
                 "Physical Surface(\"Farfield\") = {tunnel_surfs[]};",
+                "// Dieser Name ist der SU2-Marker: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING",
                 "Physical Surface(\"Wall\") = {model_surfs[]};",
                 "// Physical Volume(\"Fluid\") = {1};",
                 "Mesh.SaveAll = 1;",
 
                 "// ==========================================",
-                "// E) DISTANZFELD FÜR GRENZSCHICHT (WANDNÄHE)",
+                "// E) DISTANZFELD FUER GRENZSCHICHT (WANDNAEHE)",
                 "// ==========================================",
                 "Field[1] = Distance;",
                 "Field[1].SurfacesList = {model_surfs[]};", 
@@ -165,21 +195,6 @@ namespace MyPicoGkProject.Solvers.Cfd
             };
 
             File.WriteAllLines(geoScriptPath, geoContent);
-
-            Process mesher = new Process();
-            mesher.StartInfo.FileName = config.GmshPath; 
-            mesher.StartInfo.Arguments = $"\"{geoScriptPath}\" -3 -nt {config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"";
-            mesher.StartInfo.UseShellExecute = false;
-            mesher.StartInfo.CreateNoWindow = true;
-
-            mesher.Start();
-            mesher.WaitForExit();
-
-            if (!File.Exists(outputMeshPath))
-                throw new Exception($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen.");
-
-            Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
-            return outputMeshPath;
         }
 
         /// <summary>Zahlen fürs .geo-Skript immer mit Punkt als Dezimaltrenner.</summary>

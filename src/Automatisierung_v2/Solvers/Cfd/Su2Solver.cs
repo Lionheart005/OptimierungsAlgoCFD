@@ -37,6 +37,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// sich zwischen den Varianten nicht, und im Log soll sie trotzdem stehen (TODO-38).
         /// </summary>
         private bool _velocityReported;
+        private bool _unknownResultAveragingReported;
 
         /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
         public Su2Solver(Su2SolverOptions? options = null)
@@ -123,6 +124,9 @@ namespace MyPicoGkProject.Solvers.Cfd
                     // projektspezifische Begriff im Solver. Der IFitnessCalculator wertet
                     // das Flag ohnehin zuerst aus.
                     record.SimulationFailed = true;
+                    string errorBase = ArchiveBaseName(record);
+                    TryCopyArchiveFile(historyPath, Path.Combine(errorLogDirectory, $"History_{errorBase}.csv"));
+                    TryCopyArchiveFile(configPath, Path.Combine(errorLogDirectory, $"Config_{errorBase}.cfg"));
                     return;
                 }
 
@@ -137,6 +141,13 @@ namespace MyPicoGkProject.Solvers.Cfd
                 string defaultVolumeVtu = Path.Combine(workingDirectory, "vol_solution.vtu");
                 string savedVolumeVtu = Path.Combine(analysisResultsDir, $"Volume_Gen{record.Iteration}_Var{record.Variant}.vtu");
                 if (File.Exists(defaultVolumeVtu)) File.Copy(defaultVolumeVtu, savedVolumeVtu, true);
+
+                // Verlauf und Konfiguration sichern (TODO-35)
+                string verlaeufeDir = Path.Combine(analysisResultsDir, "Verlaeufe");
+                Directory.CreateDirectory(verlaeufeDir);
+                string archiveBase = ArchiveBaseName(record);
+                TryCopyArchiveFile(historyPath, Path.Combine(verlaeufeDir, $"History_{archiveBase}.csv"));
+                TryCopyArchiveFile(configPath, Path.Combine(verlaeufeDir, $"Config_{archiveBase}.cfg"));
             }
             catch (Exception e)
             {
@@ -144,7 +155,7 @@ namespace MyPicoGkProject.Solvers.Cfd
             }
 
             // Setzt bei einer nicht lesbaren Größe selbst record.SimulationFailed.
-            ReadMetricsFromHistory(historyPath, record);
+            ReadMetricsFromHistory(historyPath, record, config);
         }
 
         /// <summary>
@@ -198,7 +209,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <see cref="ModelRecord.SimulationFailed"/>. Wer eine Größe konfiguriert, braucht sie —
         /// eine Fitness aus halben Daten wäre schlimmer als ein ausgemustertes Modell.
         /// </remarks>
-        public void ReadMetricsFromHistory(string historyPath, ModelRecord record)
+        public void ReadMetricsFromHistory(string historyPath, ModelRecord record, SimulationConfig? config = null)
         {
             Dictionary<string, string> wanted = _options.ResultMetrics;
 
@@ -232,6 +243,51 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             string[] headers = SplitCsvLine(lines[0]);
             string[] finalValues = SplitCsvLine(lines[lines.Length - 1]);
+
+            // Verlauf analysieren (TODO-35)
+            SimulationConfig effectiveConfig = config ?? new SimulationConfig();
+            var metricCols = wanted.Values.Distinct().ToList();
+            var historyOptions = new Su2HistoryOptions(effectiveConfig.Su2MaxIterations, effectiveConfig.CauchyElements, metricCols);
+            Su2HistoryResult historyResult = Su2HistoryAnalyzer.Evaluate(lines, historyOptions);
+
+            if (config != null)
+            {
+                record.PassiveParameters["Su2_Iterations"] = historyResult.Iterations;
+                record.PassiveParameters["Su2_Converged"] = historyResult.Converged ? 1.0f : 0.0f;
+
+                foreach (KeyValuePair<string, string> entry in wanted)
+                {
+                    string metricName = (entry.Key ?? string.Empty).Trim();
+                    string columnName = (entry.Value ?? string.Empty).Trim();
+                    if (metricName.Length > 0 && historyResult.Oscillation.TryGetValue(columnName, out float osc))
+                    {
+                        record.PassiveParameters[$"Su2_Osc_{metricName}"] = osc;
+                    }
+                }
+            }
+
+            if (!historyResult.Converged)
+            {
+                string convCol = ResolveConvergenceColumn(wanted);
+                Console.WriteLine($"[WARNUNG] SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, ohne dass das Kriterium erfüllt war – {convCol} ist der Stand bei Iteration {historyResult.Iterations}, kein konvergierter Wert.");
+
+                if (_options.TreatUnconvergedAsFailed)
+                {
+                    record.SimulationFailed = true;
+                }
+            }
+
+            foreach (KeyValuePair<string, string> entry in wanted)
+            {
+                string metricName = (entry.Key ?? string.Empty).Trim();
+                string columnName = (entry.Value ?? string.Empty).Trim();
+                if (historyResult.Oscillation.TryGetValue(columnName, out float osc) && osc > _options.OscillationWarnLimit)
+                {
+                    float percent = osc * 100f;
+                    string shownName = metricName.Length > 0 ? metricName : columnName;
+                    Console.WriteLine($"[WARNUNG] {shownName} schwingt um ±{percent.ToString("0.#", CultureInfo.InvariantCulture)} % – Hinweis auf instationäre Strömung (Wirbelablösung).");
+                }
+            }
 
             bool complete = true;
 
@@ -283,8 +339,27 @@ namespace MyPicoGkProject.Solvers.Cfd
                     continue;
                 }
 
-                record.PassiveParameters[metricName] = value;
-                Console.WriteLine($"    -> Analyse erfolgreich. {metricName} ({columnName}): {value:F5}");
+                float finalMetricValue = value;
+                string averaging = (_options.ResultAveraging ?? string.Empty).Trim();
+                if (averaging.Equals("CauchyWindowMean", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (historyResult.WindowMeans.TryGetValue(columnName, out float meanVal) &&
+                        float.IsFinite(meanVal))
+                    {
+                        finalMetricValue = meanVal;
+                    }
+                }
+                else if (!averaging.Equals("Last", StringComparison.OrdinalIgnoreCase) && averaging.Length > 0)
+                {
+                    if (!_unknownResultAveragingReported)
+                    {
+                        Console.WriteLine($"[WARNUNG] Unbekanntes ResultAveraging '{_options.ResultAveraging}' — nutze 'Last'.");
+                        _unknownResultAveragingReported = true;
+                    }
+                }
+
+                record.PassiveParameters[metricName] = finalMetricValue;
+                Console.WriteLine($"    -> Analyse erfolgreich. {metricName} ({columnName}): {finalMetricValue:F5}");
             }
 
             if (!complete) record.SimulationFailed = true;
@@ -342,7 +417,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// Zerlegt eine Zeile der history.csv und räumt Anführungszeichen und die Auffüll-
         /// Leerzeichen weg, mit denen SU2 seine Spalten ausrichtet.
         /// </summary>
-        private static string[] SplitCsvLine(string line)
+        public static string[] SplitCsvLine(string line)
         {
             string[] fields = line.Split(',');
 
@@ -367,6 +442,52 @@ namespace MyPicoGkProject.Solvers.Cfd
             Console.WriteLine("          Die Zuordnung steht unter 'ResultMetrics' in der su2.json; welche Spalten");
             Console.WriteLine("          SU2 überhaupt schreibt, steuert 'HistoryOutput' (AERO_COEFF liefert die Beiwerte).");
             Console.WriteLine("          Dieses Modell wird als fehlgeschlagen gewertet.");
+        }
+
+        /// <summary>
+        /// Bildet den Dateinamen-Stamm für die Archivierung von Verlaufs- und Konfigurationsdateien (TODO-35).
+        /// Format: <c>Gen{i}_Var{v}</c> bzw. <c>Gen{i}_Var{v}_{tag}</c>.
+        /// </summary>
+        public static string ArchiveBaseName(ModelRecord record, string? tag = null)
+        {
+            if (record == null) throw new ArgumentNullException(nameof(record));
+
+            return string.IsNullOrWhiteSpace(tag)
+                ? $"Gen{record.Iteration}_Var{record.Variant}"
+                : $"Gen{record.Iteration}_Var{record.Variant}_{tag.Trim()}";
+        }
+
+        private static void TryCopyArchiveFile(string source, string destination)
+        {
+            try
+            {
+                if (File.Exists(source))
+                {
+                    File.Copy(source, destination, overwrite: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARNUNG] Datei konnte nicht archiviert werden ({Path.GetFileName(source)} -> {destination}): {ex.Message}");
+            }
+        }
+
+        private string ResolveConvergenceColumn(Dictionary<string, string> wanted)
+        {
+            string convField = (_options.ConvergenceField ?? string.Empty).Trim();
+            if (convField.Length > 0)
+            {
+                foreach (var entry in wanted)
+                {
+                    if (entry.Key.Equals(convField, StringComparison.OrdinalIgnoreCase) ||
+                        entry.Value.Equals(convField, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return entry.Value;
+                    }
+                }
+            }
+
+            return wanted.Values.FirstOrDefault() ?? "CD";
         }
     }
 }

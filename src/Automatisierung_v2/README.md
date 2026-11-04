@@ -383,6 +383,9 @@ Die Formel selbst steht im Code, nicht in der JSON — siehe
 | `ResultMetrics` | `{ "Drag": "CD" }` | **Welche Ergebnisgrößen ankommen**, siehe unten |
 | `ConvergenceField` | `"DRAG"` | SU2 `CONV_FIELD` — woran SU2 seine Konvergenz misst |
 | `HistoryOutput` | `["ITER","RMS_RES","AERO_COEFF"]` | Welche Spaltengruppen SU2 schreibt |
+| `OscillationWarnLimit` | `0.02` | Schwelle für relative Schwingungswarnung (2 %) |
+| `TreatUnconvergedAsFailed` | `false` | Unkonvergierte Läufe bei `ITER` als gescheitert werten |
+| `ResultAveraging` | `"Last"` | `"Last"` (letzte Zeile) oder `"CauchyWindowMean"` (Mittelwert) |
 | `CflNumber` | `5.0` | Schrittweite des Lösers. Höher = schneller, aber instabiler |
 | `CflAdapt` | `true` | Schrittweite automatisch anpassen |
 | `CflAdaptFactorDown` / `…Up` | `0.5` / `1.2` | Faktoren beim Verkleinern/Vergrößern |
@@ -396,6 +399,25 @@ tatsächlich vorhandenen Metriknamen auf.
 
 Das Framework rechnet durchgehend in **Millimetern**; die Umrechnung mm² → m² für
 SU2 passiert automatisch.
+
+### Was SU2 rechnet
+
+SU2 löst die **inkompressiblen Reynolds-gemittelten Navier-Stokes-Gleichungen** (`SOLVER= INC_RANS`)
+mit konstanter Dichte und Viskosität ohne Energiegleichung. Als Turbulenzmodell dient
+Spalart-Allmaras (`KIND_TURB_MODEL= SA`) mit einer Transportgleichung für $\tilde{\nu}$.
+Die Rechnung ist **stationär** und iteriert in einer Pseudozeit (Euler implizit mit adaptiver
+CFL-Zahl), bis die Abbruchkriterien greifen (`ITER`, Residuum $< 10^{-8}$ oder Cauchy-Konvergenz
+auf `CONV_FIELD`).
+
+Die Randbedingungen sind im Solver fest verdrahtet und koppeln an Gmsh über die Namen der
+`Physical Surface`-Gruppen:
+* **`MARKER_FAR = ( Farfield )`:** Fernfeld-Randbedingung an der gesamten Außenhülle des Kanals.
+  Ob Fluid ein- oder ausströmt, folgt allein aus der Richtung von $\vec{v}_\infty$ relativ zur
+  Flächennormale (bei Anströmung in $+x$-Richtung Einlass an $x_\text{min}$, Auslass an $x_\text{max}$).
+* **`MARKER_HEATFLUX = ( Wall, 0.0 )`:** Haftbedingung ($v = 0$, $\tilde{\nu} = 0$) an der
+  adiabaten Bauteilwand. Da keine Energiegleichung gelöst wird, wirkt allein die Haftung.
+* **`MARKER_MONITORING = ( Wall )` / `MARKER_PLOTTING = ( Wall )`:** Die Bauteilwand ist die
+  Integrationsfläche für Beiwerte ($C_D$, $C_L$, …) und die Ausgabefläche für `surface.vtu`.
 
 ### Mehr als nur Widerstand auslesen
 
@@ -436,6 +458,27 @@ Wer eine Größe konfiguriert, sollte sie auch in `RequiredMetrics` seines
 Fitness-Rechners nennen: der Controller prüft diese Liste **nach der ersten
 gerechneten Variante** und bricht dort ab, statt stundenlang mit einer
 Ersatz-Fitness weiterzurechnen.
+
+### Verlauf-Archiv und Konvergenzbewertung (TODO-35)
+
+Nach jeder Simulation archiviert der Solver den vollständigen Verlauf (`history.csv`
+und `current_config.cfg`) unter `Analyseergebnisse/Verlaeufe/History_Gen{i}_Var{v}.csv`
+bzw. `Config_...` (im Fehlerfall in `FehlerLogs/`).
+
+Die reine Analyseklasse `Su2HistoryAnalyzer` wertet die Verlaufsdaten aus und ergänzt
+in `record.PassiveParameters` (und damit in der Ergebnis-CSV):
+* **`Su2_Iterations`:** tatsächlich gerechnete Iterationen.
+* **`Su2_Converged`:** `1.0`, wenn SU2 vor `ITER` über das Cauchy- oder Residuen-Kriterium
+  konvergiert ist; `0.0`, wenn bei `ITER` abgebrochen wurde.
+* **`Su2_Osc_<Metrik>`:** relative Schwingungsbreite `(max - min) / |mean|` über das
+  Cauchy-Fenster (z. B. `Su2_Osc_Drag`).
+
+Wurde `ITER` ohne Konvergenz erreicht, warnt der Solver. Mit `TreatUnconvergedAsFailed: true`
+können unkonvergierte Rechnungen automatisch als Fehlversuch gewertet werden.
+Bei instationären Strömungen mit periodischer Wirbelablösung schwankt der Beiwert;
+liegt die Schwankung über `OscillationWarnLimit` (Vorgabe 0,02 = 2 %), warnt der Solver,
+und mit `ResultAveraging: "CauchyWindowMean"` kann der Mittelwert über das Cauchy-Fenster
+als robuster Ersatzwert übernommen werden.
 
 ## `solvers/gmsh.json` — Vernetzer
 

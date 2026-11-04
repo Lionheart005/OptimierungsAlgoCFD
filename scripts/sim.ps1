@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Steuert den Optimierungslauf auf dem Linux-Rechner der Hochschule von Windows aus.
 
@@ -21,7 +21,7 @@
     status   Laeuft was? Wie lange? Letzte Logzeilen
     log      Logdatei live mitlesen (Strg+C beendet nur das Mitlesen, nicht den Lauf)
     stop     Lauf, tmux-Sitzung und haengende Kindprozesse beenden
-    fetch    Ergebnisse vom Server nach Windows holen
+    fetch    Ergebnisse vom Server nach Windows holen (Standard, -Champion oder -All)
     doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
     build    Nur bauen, nicht starten
     projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
@@ -46,8 +46,16 @@
     Rueckfrage. Vorher mit fetch holen, was man behalten will.
 
 .EXAMPLE
+    .\scripts\sim.ps1 fetch
+    Holt Standard-Ergebnisse (CSV, effective-config.json, Log, Verlaeufe) nach .\Serverergebnisse\
+
+.EXAMPLE
+    .\scripts\sim.ps1 fetch -Champion
+    Holt Standard-Ergebnisse plus VTU-Dateien des Champions nach .\Serverergebnisse\
+
+.EXAMPLE
     .\scripts\sim.ps1 fetch -All
-    Holt den kompletten Ergebnisse-Ordner (inkl. vtu-Dateien) nach .\Serverergebnisse\
+    Holt den kompletten Ergebnisse-Ordner (inkl. aller 3D-Dateien) nach .\Serverergebnisse\
 #>
 [CmdletBinding()]
 param(
@@ -80,6 +88,9 @@ param(
 
     # fetch: kompletten Ergebnisse-Ordner statt nur CSV und Log
     [switch]$All,
+
+    # fetch: Champion- und Top-N-VTUs mitnehmen
+    [switch]$Champion,
 
     # log/status: wie viele Zeilen
     [int]$Lines = 40,
@@ -200,6 +211,7 @@ function Invoke-Remote {
         $output = & ssh @SshOptions $Server $remote 2>$null
         $code = $LASTEXITCODE
     }
+
     else {
         # Out-Host, nicht einfach "& ssh ...": die Ausgabe eines nativen Programms
         # landet sonst im Erfolgs-Stream der Funktion und wuerde vom | Out-Null
@@ -233,6 +245,14 @@ function Assert-RemoteDeployed {
 
     throw ("Auf $Server liegt unter '$RemoteDir' noch kein Stand. " +
            "Erst hochladen mit:  .\scripts\sim.ps1 deploy -Server $Server")
+}
+
+function Get-RemoteLastProject {
+    $result = Invoke-Remote -CommandLine "$RunnerCall lastproject" -Quiet -AllowFailure
+    if ($result.ExitCode -ne 0 -or -not $result.Output) { return $null }
+    $last = ($result.Output | Select-Object -Last 1).ToString().Trim()
+    if ($last) { return $last }
+    return $null
 }
 
 function Get-RemoteHash {
@@ -373,31 +393,65 @@ function Invoke-Start {
 
 function Invoke-Fetch {
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $target = Join-Path $RepoRoot (Join-Path $Out "${Server}_$stamp")
+    $scope = if ($All) { 'all' } elseif ($Champion) { 'champion' } else { 'standard' }
+    $target = Join-Path $RepoRoot (Join-Path $Out "${Server}_${Project}_$stamp")
     New-Item -ItemType Directory -Path $target -Force | Out-Null
 
-    Write-Step "Hole Ergebnisse nach $target"
+    Write-Step "Packe Ergebnisse fuer '$Project' auf $Server (Umfang: $scope)"
 
-    # Ergebnisse liegen seit TODO-25 unter Ergebnisse/<Projekt>/ -- geholt wird also
-    # gezielt das Projekt, nicht der gemeinsame Topf.
-    $remoteResults = "$RemoteDir/Ergebnisse/$Project"
-
-    if ($All) {
-        & scp @SshOptions -q -r "${Server}:$remoteResults" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner von '$Project' konnte nicht geholt werden." }
-    }
-    else {
-        & scp @SshOptions -q "${Server}:$remoteResults/Simulation_Results.csv" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf von '$Project' gemacht?)." }
-
-        # Die effective-config.json ist klein und beantwortet spaeter die Frage, womit
-        # dieser Datensatz entstanden ist -- sie gehoert zur CSV dazu.
-        & scp @SshOptions -q "${Server}:$remoteResults/effective-config.json" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "effective-config.json konnte nicht geholt werden." }
+    $packResult = Invoke-Remote -CommandLine "$RunnerCall pack '$Project' '$scope'" -Quiet -AllowFailure
+    if ($packResult.ExitCode -ne 0 -or -not $packResult.Output) {
+        throw "Packen auf $Server fehlgeschlagen (Exit-Code $($packResult.ExitCode))."
     }
 
-    & scp @SshOptions -q "${Server}:$RemoteDir/simulation.log" $target
-    if ($LASTEXITCODE -ne 0) { Write-Warn "simulation.log konnte nicht geholt werden." }
+    $remoteArchive = ($packResult.Output | Select-Object -Last 1).ToString().Trim()
+    if (-not $remoteArchive) {
+        throw "Der Server hat keinen Archivpfad zurueckgegeben."
+    }
+
+    $localArchive = Join-Path $env:TEMP "sim-fetch-${Project}-$stamp.tar.gz"
+
+    try {
+        Write-Step "Uebertrage Archiv von $Server"
+        & scp @SshOptions -q "${Server}:$remoteArchive" $localArchive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Herunterladen des Archivs von $Server fehlgeschlagen."
+        }
+
+        Write-Step "Entpacke Ergebnisse nach $target"
+        & tar.exe -xzf $localArchive -C $target
+        if ($LASTEXITCODE -ne 0) {
+            throw "Entpacken mit tar.exe fehlgeschlagen (Exit-Code $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $localArchive -Force -ErrorAction SilentlyContinue
+        & ssh @SshOptions $Server "rm -f '$remoteArchive'" 2>$null
+    }
+
+    $logPath = Join-Path $target 'simulation.log'
+    if (Test-Path -LiteralPath $logPath) {
+        $logLines = Get-Content -LiteralPath $logPath -TotalCount 30 -ErrorAction SilentlyContinue
+        $match = $logLines | Select-String -Pattern '^\s*Projekt:\s*(.+)$' | Select-Object -First 1
+        if ($match) {
+            $logProject = $match.Matches[0].Groups[1].Value.Trim()
+            if ($logProject -and $logProject -ne $Project) {
+                Write-Warn "Das geholte Log gehoert laut Kopfzeile zu Projekt '$logProject', nicht zum gewaehlten '$Project'."
+            }
+        }
+    }
+
+    $csvPath = Join-Path $target 'Simulation_Results.csv'
+    if (-not (Test-Path -LiteralPath $csvPath)) {
+        Write-Host ""
+        Write-Host "FEHLER: Simulation_Results.csv fuer Projekt '$Project' fehlt nach dem Entpacken." -ForegroundColor Red
+        Write-Host "Auf $Server liegen Ergebnisse fuer folgende Projekte:" -ForegroundColor Red
+        $projectsResult = Invoke-Remote -CommandLine "$RunnerCall projects" -Quiet -AllowFailure
+        if ($projectsResult.Output) {
+            $projectsResult.Output | ForEach-Object { Write-Host "    $_" }
+        }
+        exit 1
+    }
 
     Get-ChildItem -Path $target -Recurse -File | ForEach-Object {
         Write-Host ("    {0,10:N1} KB  {1}" -f ($_.Length / 1KB), $_.Name)
@@ -445,15 +499,27 @@ function Invoke-Delete {
 try {
     # Sagen, mit welchem Projekt gerechnet wird, wenn der Aufruf es nicht nennt. Auf der
     # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
-    # bequem und darf bleiben -- aber nicht stumm. Die Liste der Befehle ist genau die,
-    # bei denen der Projektname das Ergebnis aendert (log liest die eine globale
-    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen,
-    # delete raeumt alle Projekte zugleich ab).
-    $projectBoundCommands = @('deploy', 'run', 'status', 'fetch', 'doctor')
-
-    if ($projectBoundCommands -contains $Command -and -not $PSBoundParameters.ContainsKey('Project')) {
-        Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
-        Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+    # bequem und darf bleiben -- aber nicht stumm.
+    #
+    # Bei fetch und status fragen wir das zuletzt auf dem Server gerechnete Projekt ab
+    # (TODO-31); bei deploy, run und doctor gilt weiterhin die Standardvorgabe.
+    if (-not $PSBoundParameters.ContainsKey('Project')) {
+        if (@('status', 'fetch') -contains $Command) {
+            Assert-RemoteDeployed
+            $remoteLast = Get-RemoteLastProject
+            if ($remoteLast) {
+                $Project = $remoteLast
+                Write-Host "Kein -Project angegeben - letzter Lauf auf $Server war '$Project', nehme dieses." -ForegroundColor Yellow
+            }
+            else {
+                Write-Warn "Kein -Project angegeben und kein letzter Lauf auf $Server ermittelt, es gilt die Vorgabe '$Project'."
+                Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+            }
+        }
+        elseif (@('deploy', 'run', 'doctor') -contains $Command) {
+            Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
+            Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+        }
     }
 
     switch ($Command) {

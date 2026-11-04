@@ -19,6 +19,7 @@ Serverergebnisse/
 # Stand des zuletzt auf den Server geschobenen Codes (liegt nur dort)
 .deploy_hash
 .last_exit
+.last_project
 
 # OS generated files
 .DS_Store

@@ -17,12 +17,12 @@
 
 | Block | Schritt | Inhalt | Status |
 | --- | --- | --- | --- |
-| A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe; SSH-Zeitgrenzen | [~] Zeitgrenzen erledigt |
+| A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe; SSH-Zeitgrenzen | [x] |
 | A | TODO-32 | Keine Geheimnisse im Repo: Hygiene-Test, `.gitignore` | [x] |
 | A | TODO-33 | Kleinkram: wackelige Tests (prozessweiter Zustand + Parallelität), doppelt kodiertes UTF-8, vollständige Namensliste bei unbekanntem Schlüssel | [x] |
 | F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [~] erste Fassung erledigt, wächst mit jedem Schritt |
-| B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [ ] |
-| C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [ ] |
+| B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [x] |
+| C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [x] |
 | C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [ ] |
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [~] m/s erledigt, MantaAuv auf 2 m/s |
@@ -248,7 +248,7 @@ spezifiziert), **S** = Sonnet (braucht Urteilsvermögen).
 
 ### Block A — Skripte und Hygiene
 
-#### TODO-31 — `fetch` holt das richtige Projekt *(Worker: S)*
+#### TODO-31 — `fetch` holt das richtige Projekt ✅ *(erledigt 04.11.2026)*
 
 1. **`sim-runner.sh`:** `cmd_foreground` schreibt den Projektnamen nach `.last_project` (neben
    `.last_exit`, `sim-runner.sh:405`). Neuer Befehl `lastproject`, ohne `require_project`.
@@ -332,7 +332,7 @@ schützt:
 
 ### Block B — SU2 verstehen
 
-#### TODO-34 — Randbedingungen und Gleichungen kommentieren *(Worker: S)*
+#### TODO-34 — Randbedingungen und Gleichungen kommentieren ✅ *(erledigt 04.11.2026)*
 
 Inhalt ist der Abschnitt „Antworten auf die Verständnisfragen", kurz gefasst. Er kommt an vier
 Stellen hin:
@@ -353,7 +353,7 @@ kommentierter cfg rechnet dieselben Zahlen.
 
 ### Block C — Kennwert-Verlauf je Simulation (E1)
 
-#### TODO-35 — `history.csv` je Variante sichern und bewerten *(Worker: S)*
+#### TODO-35 — `history.csv` je Variante sichern und bewerten ✅ *(erledigt 04.11.2026)*
 
 1. **Sichern:** Nach jedem SU2-Lauf wird `history.csv` nach
    `Analyseergebnisse/Verlaeufe/History_Gen{i}_Var{v}[_{Tag}].csv` kopiert und `current_config.cfg`
