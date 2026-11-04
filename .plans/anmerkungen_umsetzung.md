@@ -3,24 +3,29 @@
 > **Stand: 04.11.2026** — Branch `MajorPhysikFixes`. Quelle ist `.plans/Anmerkungen.txt`, und zwar
 > alles **außer** dem Block „Erweiterungen" (KI/ML, FEM). Die Nummerierung setzt
 > `projektbuendel.md` fort (letzter Schritt dort: TODO-30), hier also **TODO-31 ff.**
-> **Status: nur Plan, noch nichts umgesetzt.** Die Rückfragen sind beantwortet (siehe
-> „Entscheidungen"). Offen ist nur noch ein Zahlenwert (die Anströmgeschwindigkeit von MantaAuv,
-> siehe „Offene Fragen").
+> **Status (04.11.2026, zweite Runde):** Alle Rückfragen sind beantwortet, auch die zweite Runde
+> (siehe „Entscheidungen" E5–E9). Die **Kleinigkeiten sind umgesetzt**: TODO-32, TODO-33,
+> die SSH-Zeitgrenzen aus TODO-31 und der erste Teil von TODO-38 (MantaAuv rechnet jetzt mit
+> 2 m/s). Neu im Plan: **TODO-48** (2D-Vorkalibrierung für 3D-Läufe) und **TODO-49**
+> (Bedienhandbuch). Alles andere ist noch Plan.
 
 ---
 
 ## Fortschritt (für die Übergabe)
 
+`[x]` erledigt, `[~]` teilweise erledigt (der Rest steht im jeweiligen Abschnitt), `[ ]` offen.
+
 | Block | Schritt | Inhalt | Status |
 | --- | --- | --- | --- |
-| A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe | [ ] |
-| A | TODO-32 | Sensible Daten: `~`-Pfade statt Benutzername, IP raus, Hygiene-Test | [ ] |
-| A | TODO-33 | Kleinkram: wackeliger Test (Umgebungsvariable + Parallelität), doppelt kodiertes UTF-8 in `JsonConfigLoader` | [ ] |
+| A | TODO-31 | `fetch`/`status` nehmen das Projekt des letzten Laufs, ein Archiv statt vieler scp-Aufrufe; SSH-Zeitgrenzen | [~] Zeitgrenzen erledigt |
+| A | TODO-32 | Keine Geheimnisse im Repo: Hygiene-Test, `.gitignore` | [x] |
+| A | TODO-33 | Kleinkram: wackelige Tests (prozessweiter Zustand + Parallelität), doppelt kodiertes UTF-8, vollständige Namensliste bei unbekanntem Schlüssel | [x] |
+| F | TODO-49 | **Bedienhandbuch** für Nicht-Programmierer + Test, der jeden Schlüssel darin verlangt | [ ] |
 | B | TODO-34 | Randbedingungen und Gleichungen als Kommentar in cfg, geo und JSON | [ ] |
 | C | TODO-35 | `history.csv` je Variante sichern, Konvergenz und Schwingung bewerten | [ ] |
 | C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [ ] |
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
-| D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [ ] |
+| D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [~] m/s erledigt, MantaAuv auf 2 m/s |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [ ] |
 | D | TODO-40 | Prismen-Grenzschicht mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [ ] |
@@ -30,8 +35,15 @@
 | E | TODO-45 | `Gmsh2DMesher` mit strukturierter Quad-Grenzschicht | [ ] |
 | E | TODO-46 | SU2 in 2D: Anstellwinkel, Bezugslänge statt -fläche, `Cfd2DProjectDefinition` | [ ] |
 | E | TODO-47 | Projekt `Naca2D` + `_Vorlage2D` + Validierung gegen NASA-TMR-Referenzdaten | [ ] |
+| E | TODO-48 | 2D-Vorkalibrierung als Startpunkt für die 3D-Kalibrierung (Schalter `Use2DPrecalibration`, 3D bestätigt immer) | [ ] |
 
-**Verifikationsstand vor Beginn (04.11.2026):** siehe Abschnitt „Ausgangslage", letzte Zeile.
+**Verifikationsstand vor Beginn (04.11.2026):** 260 Tests, einer davon wackelig (siehe
+„Ausgangslage", letzte Zeile).
+**Verifikationsstand nach der zweiten Runde (04.11.2026):** `dotnet build` ergibt 0 Fehler und
+0 Warnungen. `dotnet test` ergibt **274/274**, und zwar **20-mal hintereinander grün**; vorher war
+etwa jeder zweite Lauf rot. `sim.ps1` hat 0 Parser-Fehler. **Auf dem Server noch nicht
+geprüft:** die SSH-Zeitgrenzen (einmal `.\scripts\sim.ps1 status` reicht) und ein Lauf von
+MantaAuv mit 2 m/s.
 
 ---
 
@@ -48,7 +60,11 @@ Die Anmerkungen fallen in fünf Gruppen:
    Netze um den Körper und im Nachlauf, eine Gitterstudie zur Wahl der Netzfeinheit und eine
    Nachrechnung der Gewinner in feinerer Auflösung.
 5. **2D-Simulation:** detailliert und schnell — mit einer Empfehlung, wie das am elegantesten und
-   zukunftsfähigsten geht.
+   zukunftsfähigsten geht. *(Zweite Runde:)* Dazu die Frage, ob eine 2D-Kalibrierung als
+   Grundlage für 3D-Läufe sauber ist (TODO-48).
+6. *(Zweite Runde)* **Bedienbarkeit:** Es gibt inzwischen sehr viele Einstellungen. Ein
+   übersichtliches **Bedienhandbuch**, das auch ohne Programmierkenntnisse erklärt, wo man was
+   einstellt und was jede Einstellung bewirkt (TODO-49).
 
 ---
 
@@ -58,7 +74,7 @@ Die Anmerkungen fallen in fünf Gruppen:
 | --- | --- | --- | --- |
 | 1 | **`fetch` holt das falsche Projekt.** Die drei Ordner `Serverergebnisse/BIC_12_20261023_*` enthalten nur `simulation.log`, keine CSV. Im Kopf des Logs steht `Projekt: TestprojektNACA`, `fetch` lief aber ohne `-Project` und hat die Vorgabe `MantaAuv` genommen. | `sim.ps1:72` (Vorgabe), `sim.ps1:364-372` (sucht `Ergebnisse/MantaAuv/`), `sim.ps1:380` (das Log ist global und kommt deshalb trotzdem) | Es sieht halb erfolgreich aus: zwei gelbe Warnungen, das Log kommt trotzdem. Deshalb wurde es dreimal wiederholt. |
 | 2 | **Keine Geheimnisse im Repo.** Es gibt keine Passwörter, Tokens oder Schlüssel, weder im Arbeitsstand noch in der Historie. Gesucht wurde in allen Branches über 71 Commits, nach Inhalten (`passw`, `token=`, `api_key`, `PRIVATE KEY`, `ghp_`, `github_pat_`, `sshpass`, `secret=`) und nach Dateinamen (`id_rsa`, `.pem`, `.key`, `.env`, `*.local.json`, `*.log`, `*.csv`). | — | Hier gibt es nichts zu bereinigen. |
-| 3 | **Personen- und infrastrukturbezogene Angaben** (keine Geheimnisse): der Server-Benutzername steht in absoluten Pfaden, dazu kommt eine interne IP. | `src/projects/MantaAuv/simulation.json:40-42`, `src/projects/TestprojektNACA/simulation.json:9-11`, `scripts/sim.ps1:58` (`192.168.122.121`), Kommentare in `SimulationConfig.cs:12`, `ServerHochschuleEinrichten.txt:35`, `.plans/*.md` | Nur dann relevant, wenn `github.com/Lionheart005/OptimierungsAlgoCFD` öffentlich ist. Mit `~`-Pfaden bleibt die Server-Eigenheit abgedeckt, ohne dass der Name im Repo steht. |
+| 3 | **Personen- und infrastrukturbezogene Angaben** (keine Geheimnisse): der Server-Benutzername steht in absoluten Pfaden, dazu kommt eine interne IP. | `src/projects/MantaAuv/simulation.json:40-42`, `src/projects/TestprojektNACA/simulation.json:9-11`, `scripts/sim.ps1:58` (`192.168.122.121`), Kommentare in `SimulationConfig.cs:12`, `ServerHochschuleEinrichten.txt:35`, `.plans/*.md` | **Bleibt so** (E5). |
 | 4 | `.claude/settings.local.json` ist nur **zufällig** ignoriert, nämlich über das Muster `*.local.json`. | `git check-ignore -v` → `.gitignore:10` | Sollte ausdrücklich in der `.gitignore` stehen. |
 | 5 | **Doppelt kodiertes UTF-8 steht auch in Ausgabetexten**, nicht nur in Kommentaren. Im Server-Log steht deshalb „nicht vorhanden, Ã¼bersprungen". | `JsonConfigLoader.cs:96`, `:113` | `projektbuendel.md` behauptet „keine Codezeile betroffen". Das stimmt nicht. |
 | 6 | **Der Verlauf einer Simulation geht verloren.** SU2 schreibt `history.csv` mit jeder Iteration, aber vor jeder Variante wird die Datei gelöscht, und danach wird nur die letzte Zeile gelesen. | `Su2Solver.cs:56`, `:221` | Für Feature „Kennwert-Verlauf" sind die Daten schon da. Sie müssen nur aufgehoben werden. |
@@ -67,10 +83,10 @@ Die Anmerkungen fallen in fünf Gruppen:
 | 9 | **y+ ist weder gleichmäßig noch passend.** Ausgewertet wurde `Serverergebnisse/Testlauf/Surface_Gen1_Var1.vtu` (NACA, Sehne 50 mm): **y+ min 2,3, p05 30,6, Median 45,9, p95 67,4, max 95,7**. Die Oberflächenkanten sind im Median 0,50 mm lang, das ist die Voxelgröße. | einmalige Auswertung der VTU (Rohdaten im appended-Format) | SA ohne Wandfunktion braucht y+ ≈ 1. Die Wandschubspannung und damit der Reibungswiderstand sind so **nicht belastbar**, und die Streuung beträgt Faktor 40. Das bestätigt die Anmerkung. |
 | 10 | **Der Nachlauf wird nicht verfeinert.** Der Wake-Box-Block ist auskommentiert. | `GmshCfdMesher.cs:130-158` | Wirbel und Nachlauf werden mit Fernfeldzellen (bis 120 mm) aufgelöst. |
 | 11 | **Das Gebiet ist knapp.** Der Kanal misst 600 × 300 × 300 mm um einen Körper von etwa 50 mm, der mittig sitzt: stromauf und stromab je 6 L, seitlich 3 L. | `gmsh.json` beider Projekte | Für den Nachlauf sind ≥ 10 L stromab üblich. Das gehört in die Kalibrierung (Domänenprüfung). |
-| 12 | **Die Anströmung von MantaAuv ist physikalisch fragwürdig.** v = MachNumber 0,1 × `SpeedOfSound` 343,2 m/s (Schallgeschwindigkeit in **Luft**) = 34,3 m/s, und das in **Wasser** (ρ = 1025) bei einem 50 mm langen Körper. Das ergibt Re ≈ 1,8·10⁶ und etwa 67 Knoten. | `Su2ConfigGenerator.cs:20`, `SimulationConfig.cs:46`, `MantaAuv/su2.json:17-20` | Laut Rückmeldung nicht gewollt (siehe Entscheidungen). |
+| 12 | **Die Anströmung von MantaAuv ist physikalisch fragwürdig.** v = MachNumber 0,1 × `SpeedOfSound` 343,2 m/s (Schallgeschwindigkeit in **Luft**) = 34,3 m/s, und das in **Wasser** (ρ = 1025) bei einem 50 mm langen Körper. Das ergibt Re ≈ 1,8·10⁶ und etwa 67 Knoten. | `Su2ConfigGenerator.cs:20`, `SimulationConfig.cs:46`, `MantaAuv/su2.json:17-20` | Laut Rückmeldung nicht gewollt. **Seit dem 04.11.2026 2 m/s** (E4, TODO-38). |
 | 13 | Die Server-Logs zeigen für NACA CD 0,31, CL 1,58, Gleitzahl 5,1. **Bezugsfläche ist die Stirnfläche** (260 mm²), nicht die Grundrissfläche (≈ 2150 mm²). Der Flügel ist ein 3D-Segment mit freien Enden (Seitenverhältnis ≈ 0,9). | `simulation.log`, `TestprojektNACA/su2.json` | Kein Rechenfehler (siehe `architektur_kritikpunkte_naca.md` Punkt 5), aber ein starkes Argument für echtes 2D, wenn ein Profil optimiert werden soll. |
 | 14 | Die Werkzeuge haben sich geändert: Das **Bash-Tool läuft jetzt** (GNU bash 5.3, cygwin), damit ist `bash -n scripts/sim-runner.sh` möglich. git liegt unter `GitHubDesktop\app-3.6.10`. | — | Shell-Skripte sind jetzt syntaktisch prüfbar, nicht mehr nur strukturell. |
-| 15 | **Build und Tests vor Beginn:** Der Build ist grün, es gibt **260 Tests**, aber **ein Test ist wackelig.** `ProjectLayoutTests.MantaAuv_Names_All_Three_Program_Paths_Explicitly` ist in 2 von 4 Läufen rot und einzeln immer grün. Die Ursache: `ConfigLayerTests.The_Environment_Variable_Is_Used_When_No_Path_Is_Given` setzt die **prozessweite** Variable `SIM_PROJECTS_DIR` auf einen Testordner mit einer falschen `MantaAuv`. xUnit führt Testklassen parallel aus, und `MantaProjectFiles.Directory` löst den Ordner über genau diese Variable auf. | `ConfigLayerTests.cs:473-486`, `MantaProjectFiles.cs:26-38` | Das wird vor allem anderen behoben (TODO-33), sonst ist „alle Tests grün" als Abnahme nichts wert. |
+| 15 | **Build und Tests vor Beginn:** Der Build ist grün, es gibt **260 Tests**, aber **ein Test ist wackelig.** `ProjectLayoutTests.MantaAuv_Names_All_Three_Program_Paths_Explicitly` ist in 2 von 4 Läufen rot und einzeln immer grün. Die Ursache: `ConfigLayerTests.The_Environment_Variable_Is_Used_When_No_Path_Is_Given` setzt die **prozessweite** Variable `SIM_PROJECTS_DIR` auf einen Testordner mit einer falschen `MantaAuv`. xUnit führt Testklassen parallel aus, und `MantaProjectFiles.Directory` löst den Ordner über genau diese Variable auf. | `ConfigLayerTests.cs:473-486`, `MantaProjectFiles.cs:26-38` | **Behoben** (TODO-33). Dabei fiel ein zweiter, seltenerer Fall desselben Musters auf: `Console.SetOut`, etwa einer von zehn Läufen. |
 
 ---
 
@@ -148,7 +164,17 @@ gerechnet. Schluss ist nach `ITER` Iterationen **oder** wenn `CONV_FIELD` (DRAG)
 | **E1** | Was heißt „instationäre Auswertung"? | **Erst der Iterationsverlauf** der stationären Rechnung je Variante: sichern, plotten, Konvergenz und Schwingung bewerten (TODO-35/36). **Später** eine echte zeitgenaue Rechnung (URANS) als optionaler Modus nur für Einzelprüfungen, z. B. den Champion (TODO-37). |
 | **E2** | Wie wird die Gitterstudie eingebunden? | **Beides.** (a) Ein eigener Befehl `calibrate`, der allein läuft. (b) Ein kompletter Lauf mit Kalibrierung am Anfang, dessen Ergebnis **automatisch** übernommen wird. **Bedingung:** Es muss im Nachhinein klar und übersichtlich sein, welche Werte genutzt wurden. Im Auto-Modus lassen sich die kalibrierten Größen **nicht** mehr von Hand eintragen, einzutragen ist nur noch die akzeptable Abweichung. |
 | **E3** | Welche Gewinner werden fein nachgerechnet? | **Je Lauf einstellbar**, mit genau den Optionen aus der Rückfrage: nur Endchampion, Top-N am Ende (Vorgabe N = 3), Gewinner jeder Iteration, dazu „aus". |
-| **E4** | Sind 34,3 m/s Anströmung bei MantaAuv gewollt? | **Nein.** Die Geschwindigkeit wird direkt in m/s angegeben. **Der Wert fehlt noch** (siehe Offene Fragen). |
+| **E4** | Sind 34,3 m/s Anströmung bei MantaAuv gewollt? | **Nein.** Die Geschwindigkeit wird direkt in m/s angegeben. In der zweiten Runde: „nimm eine Standardgeschwindigkeit" → **2,0 m/s** (≈ 4 kn, übliche AUV-Reisegeschwindigkeit; Re ≈ 1·10⁵ bei 50 mm). **Umgesetzt** (TODO-38). |
+
+### Zweite Runde (04.11.2026)
+
+| # | Frage | Entscheidung |
+| --- | --- | --- |
+| **E5** | Benutzername und PDF im Repo? | **Beide bleiben.** TODO-32 schrumpft deshalb auf das, was wirklich schützt: ein Test gegen eingecheckte Geheimnisse und die ausdrückliche `.gitignore`-Zeile. Die `~`-Expansion für Programmpfade bleibt als *Portabilitäts*-Idee in Kritikpunkt 7 von `architektur_kritikpunkte_naca.md` und gehört nicht mehr zu diesem Plan. |
+| **E6** | SSH-Zeitgrenzen? | Du hast berichtet, dass es früher mit Zeitgrenzen *immer* Abbrüche gab, wenn der Server unter Last rechnete, obwohl alles in Ordnung war. Meine Empfehlung deshalb: **ja, aber großzügig.** Eine Minute für den Verbindungsaufbau, und abgebrochen wird erst nach **3 Minuten** ohne jedes Lebenszeichen. Die Lebenszeichen beantwortet sshd selbst, auch während der Befehl drüben lange still ist; ein gesunder, langsamer Befehl wird also nicht abgebrochen. Ein Abbruch trifft nur die Verbindung von Windows aus, **nie den Lauf in tmux**. Damit bringt das keine neuen Fehlerbilder, nur ein Ende statt eines ewigen Hängers. **Umgesetzt** (TODO-31 Punkt 6). |
+| **E7** | 2D kalibrieren, dann 3D rechnen: geht das, oder ist das unsauber? | **Den 2D-Faktor direkt für 3D zu übernehmen, wäre unsauber**, weil 2D keine Spannweitenrichtung, keine Randwirbel und kein Tetraedervolumen kennt. **Sauber ist es als Vorkalibrierung:** 2D liefert in Minuten den Startpunkt und prüft die Wandschicht, und 3D bestätigt mit wenigen Stufen. Die Abnahme bleibt damit in 3D. Details stehen in TODO-48. |
+| **E8** | Übersicht der Einstellungen | Ein **Bedienhandbuch** unter `src/projects/BEDIENHANDBUCH.md`, also dort, wo die Einstellungen liegen, und **nicht** im Haupt-README. Die anderen READMEs und jeder JSON-Kopf verweisen darauf. Ein Test verlangt, dass jeder Schlüssel darin erklärt ist (TODO-49). |
+| **E9** | Kleinigkeiten gleich umsetzen und committen | Erledigt sind TODO-32, TODO-33, die SSH-Zeitgrenzen und der m/s-Teil von TODO-38. Committet wird auf `MajorPhysikFixes`. |
 
 ### Folgerungen und eigene Festlegungen
 
@@ -242,57 +268,64 @@ spezifiziert), **S** = Sonnet (braucht Urteilsvermögen).
    Server Ergebnisse liegen (Logik aus `cmd_projects`), und Exit-Code 1. Bisher war es ein gelber
    Nebensatz.
 5. **Der Zielordner nennt das Projekt:** `Serverergebnisse/<Server>_<Projekt>_<Zeitstempel>/`.
-6. *Optional, nur mit deiner Zustimmung (siehe Offene Fragen):* Allen ssh- und scp-Aufrufen in
-   `sim.ps1` werden zentral `-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4`
-   mitgegeben. Am 19.09. war das für `~/.ssh/config` ausdrücklich nicht gewollt. Im Skript wirkt
-   es nur auf diese Aufrufe.
+6. ✅ **SSH-Zeitgrenzen (erledigt 04.11.2026, E6):** `$SshOptions` oben in `sim.ps1` setzt
+   `ConnectTimeout=60`, `ServerAliveInterval=30` und `ServerAliveCountMax=6`, also Abbruch erst
+   nach 3 Minuten Funkstille. Die Optionen hängen an **allen** elf ssh- und scp-Aufrufen.
+   `~/.ssh/config` bleibt unangetastet. Die Begründung steht im Skriptkommentar und in
+   `scripts/README.md` („Stolperfallen"). Zwei neue Tests in `ScriptContractTests` sichern das
+   ab: `Every_Ssh_And_Scp_Call_Carries_The_Timeouts` (kein Aufruf ohne Grenzen) und
+   `The_Ssh_Timeouts_Stay_Generous` (≥ 60 s Aufbau, ≥ 3 min Funkstille).
+   **Offen:** die Server-Probe, einmal `.\scripts\sim.ps1 status`, gern während ein Lauf
+   rechnet. Die Punkte 1–5 sind noch offen.
 
 **Abnahme:** `ScriptContractTests` werden erweitert: `fetch` fragt `lastproject` ab,
 `.last_project` steht in der `.gitignore`, der Zielordner enthält den Projektnamen, `pack` kennt
 die drei Umfänge. Dazu laufen Parser-Check und `bash -n`. **Server:** Nach einem NACA-Lauf liefert
 `.\scripts\sim.ps1 fetch` **ohne** `-Project` die CSV.
 
-#### TODO-32 — Sensible Daten *(Worker: H für 2–5, S für 1)*
+#### TODO-32 — Keine Geheimnisse im Repo ✅ *(erledigt 04.11.2026)*
 
-1. **`~` in Programmpfaden** (der Teil von Kritikpunkt 7 aus `architektur_kritikpunkte_naca.md`,
-   der hier gebraucht wird): Ein Helfer `ExecutablePath.Expand` macht aus einem führenden `~/`
-   `$HOME/`. Angewendet wird er dort, wo `MpiRunPath`, `Su2Path` und `GmshPath` benutzt werden
-   (`Su2Solver.cs:63-64`, `GmshCfdMesher.cs:170`), **und** in der Ausgabe von `--print-config`,
-   damit `doctor` den aufgelösten Pfad prüft. Das muss in C# passieren, weil `Process` mit
-   `UseShellExecute=false` keine Shell startet und `~` sonst niemand auflöst. Beide Projekt-JSONs
-   bekommen danach `"~/software/bin/SU2_CFD"` usw. Der Benutzername verschwindet aus dem Repo, die
-   Pfade bleiben absolut, und die Server-Eigenheit ist weiter abgedeckt.
-2. Die IP aus dem Kommentar `sim.ps1:58` entfernen (der Name aus `~/.ssh/config` reicht).
-3. In Kommentaren und Doku den Benutzernamen durch `~` bzw. `<benutzer>` ersetzen:
-   `SimulationConfig.cs:12`, `ServerHochschuleEinrichten.txt:35`, `.plans/*.md`.
-4. In die `.gitignore` ausdrücklich `.claude/settings.local.json` eintragen.
-5. **Neuer Test `RepositoryHygieneTests`:** Er durchsucht alle versionierten Textdateien unter
-   `src/`, `scripts/` und `config/` nach Schlüsselmustern (`PRIVATE KEY`, `ghp_`, `github_pat_`,
-   `password=`), nach `/home/<name>/` und nach IPv4-Literalen. Damit kommt das nicht still zurück.
-6. **Du:** Prüfe, ob `src/projects/MantaAuv/OptimierungsAlgoTestlaufBericht.pdf` etwas enthält, das
-   nicht öffentlich sein soll. Den Inhalt habe ich nicht geprüft.
-7. **Die Historie bleibt unverändert.** Der Benutzername steht zwar in alten Commits, aber er ist
-   kein Geheimnis. Ein Umschreiben der Historie (`git filter-repo` plus Force-Push) gibt es nur auf
-   ausdrücklichen Wunsch.
+Nach E5 bleiben Benutzername, interne IP und PDF im Repo. Umgesetzt ist, was tatsächlich
+schützt:
 
-**Abnahme:** `dotnet run -- MantaAuv --print-config` zeigt aufgelöste Pfade ohne `~`. Der
-Hygiene-Test ist grün, und die Suche nach `lpleissner` unter `src/` und `scripts/` findet nichts
-mehr. **Server:** `doctor` meldet alle drei Programme mit `[ OK ]`.
+1. **`.gitignore`** führt `.claude/settings.local.json` jetzt ausdrücklich. Vorher fiel die Datei
+   nur zufällig unter `*.local.json`.
+2. **Neuer Test `RepositoryHygieneTests`:** Er durchsucht alle Textdateien unter `src/`,
+   `scripts/` und `config/` (ohne `bin/`, `obj/` und `*.local.json`) nach privaten Schlüsseln,
+   GitHub-Tokens (`ghp_`, `github_pat_`), AWS-Schlüsseln, `sk-`-API-Schlüsseln und nach
+   *Zuweisungen* wie `password = "…"`. Gesucht wird nach der Zuweisung und nicht nach dem Wort, denn
+   „Passwort eingeben" in einer Anleitung ist harmlos. Weitere Tests prüfen, dass die Muster echte
+   Treffer erkennen, normale Doku *nicht* anschlagen lassen und dass der Scan überhaupt Dateien
+   sieht.
+3. **Die Historie bleibt unverändert**, weil sie nachweislich kein Geheimnis enthält
+   (Ausgangslage Nr. 2).
 
-#### TODO-33 — Kleinkram: wackeliger Test, UTF-8 *(Worker: S für 1, H für 2)*
+#### TODO-33 — Kleinkram ✅ *(erledigt 04.11.2026)*
 
-Diesen Schritt **zuerst** erledigen, damit jede spätere Abnahme „alle Tests grün" belastbar ist.
+1. **Wackelige Tests.** Es waren zwei Fälle mit derselben Ursache: Tests verändern
+   **prozessweiten** Zustand, während xUnit andere Testklassen parallel laufen lässt.
+   * `ProjectPathsTests` setzt `SIM_PROJECTS_DIR`. Dadurch las
+     `ProjectLayoutTests.MantaAuv_Names_All_Three_Program_Paths_Explicitly` eine falsche
+     `MantaAuv`, in etwa jedem zweiten Lauf.
+   * `ConfigLayerTests` und `Su2ReferenceAreaTests` biegen beide `Console.Out` um. Dadurch las
+     `The_Warning_Block_Names_File_Key_And_Both_Values` die Ausgabe der anderen Klasse, in etwa
+     einem von zehn Läufen.
 
-1. **Wackeliger Test** (Ausgangslage Nr. 15): Jeder Test, der prozessweiten Zustand verändert
-   (`Environment.SetEnvironmentVariable`, Arbeitsverzeichnis), kommt in eine xUnit-Collection mit
-   `DisableParallelization = true`. Das betrifft heute `ConfigLayerTests` (die Umgebungsvariable)
-   und alle Leser von `MantaProjectFiles`. Sauberer, aber größer wäre es,
-   `ProjectPaths.ResolveProjectsRoot` die Umgebung als Parameter zu übergeben. Die Entscheidung
-   fällt beim Umsetzen. **Abnahme:** `dotnet test` ist zehnmal hintereinander grün.
-2. **UTF-8:** `JsonConfigLoader.cs` wird einmal als UTF-8 neu kodiert (aus „LÃ¤dt" wird „Lädt").
-   Betroffen sind auch die Ausgabetexte in Zeile 96 und 113. Die Bemerkung „keine Codezeile
-   betroffen" in `projektbuendel.md` wird richtiggestellt. **Abnahme:** Die Suche nach `Ã` bzw.
-   `Â` unter `src/` findet nichts mehr.
+   **Lösung:** Die neue Collection `ProcessWideStateCollection` mit
+   `DisableParallelization = true` umfasst diese drei Klassen. Sie laufen erst, wenn alle
+   parallelen fertig sind, und dann der Reihe nach. Die Regel für künftige Tests steht im
+   Kommentar der Collection. **Nachweis:** 20 Läufe hintereinander grün.
+2. **UTF-8:** `JsonConfigLoader.cs` ist neu kodiert (46 Zeilen; aus „LÃ¤dt" wurde „Lädt"). Das
+   betrifft auch die beiden Ausgabetexte, die im Server-Log als „Ã¼bersprungen" standen.
+   Repariert wurde zeilenweise (cp1252 zurück, dann UTF-8). Eine schon korrekte Zeile blieb
+   unberührt, und die Suche nach `Ã`, `Â` und `â€` findet unter `src/`, `scripts/` und `tests/`
+   nichts mehr. Die falsche Bemerkung in `projektbuendel.md` ist richtiggestellt.
+3. **Unbekannter Schlüssel → vollständige Liste** (gefunden durch TODO-38): Hat ein unbekannter
+   Schlüssel keinen ähnlichen Namen, kürzte `ConfigSchema` die Liste der gültigen Namen nach 15
+   ab, und zwar alphabetisch. Mit `FreestreamVelocity` als 16. SU2-Schlüssel fiel so ausgerechnet
+   `TurbulenceModel` heraus. Jetzt steht immer die volle Liste in der Meldung. Mit den vielen
+   neuen Schlüsseln aus diesem Plan wäre das sonst ständig passiert.
+   `ConfigLayerTests.An_Unknown_Key_Without_A_Near_Match_Lists_Valid_Names` prüft jetzt jeden Namen.
 
 ### Block B — SU2 verstehen
 
@@ -386,26 +419,39 @@ verbauen.
 
 ### Block D — Netz und Physik
 
-#### TODO-38 — Anströmung in m/s, Reynoldszahl ins Log *(Worker: S)*
+#### TODO-38 — Anströmung in m/s, Reynoldszahl ins Log *(Worker: S)* — teilweise erledigt
 
-1. **`Su2SolverOptions.FreestreamVelocity`** in m/s, neben `Density` und `DynamicViscosity`: Das
-   ist der Fluidzustand und gehört zusammen. Die Vorgabe `0` bedeutet „nicht gesetzt", dann gilt
-   das alte Verhalten Mach × `SpeedOfSound` **mit Hinweis im Log**. Ist der Wert > 0, gewinnt er,
-   und ein ausdrücklich gesetztes `MachNumber` wird als „wirkungslos" gemeldet.
+1. ✅ **`Su2SolverOptions.FreestreamVelocity`** in m/s, neben `Density` und `DynamicViscosity`
+   (*erledigt 04.11.2026*). Die Vorgabe `0` bedeutet „nicht gesetzt", dann gilt das alte
+   Verhalten Mach × `SpeedOfSound`. Ist der Wert > 0, gewinnt er. Aufgelöst wird an einer Stelle,
+   `Su2ConfigGenerator.ResolveVelocity`, für Freistrom **und** Startfeld. Das Log nennt die
+   Anströmung **einmal je Lauf** samt Herkunft, z. B.
+   `Anströmung: 2 m/s (FreestreamVelocity aus der su2.json …)`. Dazu kamen drei Tests in
+   `SolverOptionsTests`, und `_Vorlage/solvers/su2.json` führt den Schlüssel mit Erklärung.
+   *Noch offen:* Ein **ausdrücklich** gesetztes `MachNumber` soll als „wirkungslos" gemeldet
+   werden. Dafür braucht es den `ConfigLoadReport`, denn heute steht der Hinweis nur im Log-Text
+   und im Kommentar von `MantaAuv/simulation.json`.
 2. **Ein Record `FlowConditions`** (Geschwindigkeit, Dichte, Viskosität) wird in der
    `CfdProjectDefinition` gebaut und an Mesher **und** Solver gegeben. Die Grenzschichtberechnung
    im Mesher (TODO-40) braucht dieselben Zahlen wie SU2, und sie sollen nur an einer Stelle stehen.
 3. **Log je Variante:** `Anströmung 2.0 m/s, Re_L = 1.0e5 (L = 50.0 mm aus der Bounding Box)`.
 4. **Die Projekte:**
-   * MantaAuv bekommt den Wert, den du nennst (Offene Fragen).
-   * TestprojektNACA bekommt ausdrücklich 68,64 m/s, also den heutigen Wert, nur eben explizit.
+   * ✅ MantaAuv: **2,0 m/s** (E4), mit Begründung im Kommentar der `su2.json`. Ein Test hält den
+     Wert fest (`MantaAuv_Sets_A_Realistic_Velocity_In_Water`). **Die Ergebnisse sind damit
+     nicht mehr mit Läufen vor dem 04.11.2026 vergleichbar**, weil die Reynoldszahl von etwa
+     1,8·10⁶ auf etwa 1·10⁵ fällt.
+   * TestprojektNACA bleibt beim Weg über Mach 0,2 × 343,2 = 68,64 m/s. In Luft ist das
+     physikalisch stimmig, und ein Umstellen hätte nur die Mach-Zahl in dessen `simulation.json`
+     wirkungslos gemacht.
 
 **Hinweis zur Physik:** Ein 50 mm langer Körper in Wasser bei 1–3 m/s liegt bei Re ≈ 0,5–1,5·10⁵.
 Das ist **laminar bis transitional**. SA rechnet voll turbulent und überschätzt dort die Reibung.
 Ein Transitionsmodell gehört nicht in diesen Plan, steht aber unter Risiken.
 
-**Abnahme:** Tests für explizite Geschwindigkeit, den Rückfall auf Mach, die Warnung bei
-wirkungslosem `MachNumber` und den cfg-Inhalt. Dazu `SolverOptionsTests` für den neuen Schlüssel.
+**Abnahme:** ✅ Tests für explizite Geschwindigkeit, den Rückfall auf Mach und den cfg-Inhalt.
+Noch offen: die Warnung bei wirkungslosem `MachNumber` und die Reynoldszahl im Log. **Server:**
+Beim nächsten MantaAuv-Lauf muss im Log `Anströmung: 2 m/s` stehen, und die cfg muss
+`FREESTREAM_VELOCITY= ( 2, 0.0, 0.0 )` enthalten.
 
 #### TODO-39 — `MeshRequest`, ein Netzfaktor, Nachlauf, Zellzahl *(Worker: S)*
 
@@ -520,6 +566,8 @@ TODO-41 liegen im Band (p95 ≤ 2 bei Ziel 1).
 2. **Im Auto-Modus ist nur `Tolerance` einstellbar.** Verfeinerungsverhältnis und Stufenzahl sind
    Code-Konstanten (siehe unten) und in der JSON nicht vorgesehen. Ein solcher Schlüssel ist dort
    ein unbekannter Schlüssel und bricht ab (Entscheidung 8 aus `projektbuendel.md`).
+   *Einzige Ergänzung* ist `Use2DPrecalibration` aus TODO-48. Er wählt nur das **Verfahren** und
+   ist kein Netzwert, kann also nicht mit einem kalibrierten Wert in Konflikt geraten.
 3. **Jeder Start sagt im Kopf, woher der Faktor kommt.** Im Auto-Modus zum Beispiel:
    `Netzfaktor: 0.71 (KALIBRIERT am Laufanfang, Toleranz 2 %, Stufe 3 von 5, Bericht:
    Ergebnisse/X/Kalibrierung/20261104_101500/)`. Im manuellen Modus:
@@ -727,29 +775,160 @@ Bezugslängen-Umrechnung und dafür, dass 3D-Projekte unverändert bleiben.
 **Abnahme:** `ProjectsOnDiskTests` und `TemplateProjectTests` gelten auch für die 2D-Vorlage.
 **Server:** Validierungslauf und Kalibrierung von `Naca2D`, die Ergebnisse kommen in diesen Plan.
 
+#### TODO-48 — 2D-Vorkalibrierung für 3D-Läufe (E7) *(Worker: S)*
+
+**Die Frage war:** Kann man am Anfang in 2D kalibrieren und dann in 3D rechnen, oder ist das
+unsauber?
+
+**Antwort: Den 2D-Netzfaktor einfach in 3D zu übernehmen, wäre unsauber.** 2D kennt vieles von
+dem nicht, was in 3D die nötige Netzfeinheit bestimmt:
+* die Auflösung in Spannweitenrichtung,
+* Randwirbel an Flügelenden,
+* Querströmung und dreidimensionale Ablösung,
+* das Tetraedervolumen, dessen Diskretisierungsfehler sich anders verhält als bei den
+  Quad-Zellen in 2D.
+
+Eine 3D-Rechnung mit einem Faktor, der nur in 2D geprüft wurde, hätte keinen
+Netzunabhängigkeitsnachweis.
+
+**Sauber ist es als Vorkalibrierung.** 2D liefert billig den *Startpunkt*, 3D bestätigt mit
+wenigen Stufen, und die **Abnahme bleibt in 3D**. In der Praxis ist das ein übliches Vorgehen,
+denn Grenzschicht und Konturauflösung lassen sich am Schnitt in Minuten untersuchen. Der Gewinn
+liegt weniger in der Rechenzeit (geschätzt 30–50 % der 3D-Kalibrierung) als in Sicherheit: Die
+3D-Studie beginnt nahe am Ziel, und die Wandschicht ist schon geprüft, bevor eine teure
+3D-Rechnung läuft.
+
+**Voraussetzungen:**
+1. **Das Projekt hat einen repräsentativen 2D-Schnitt.** Die Projektdefinition bietet dafür eine
+   optionale Schnittstelle an, z. B. `IHasRepresentativeSection` mit
+   `IGeometryGenerator CreateSection2D(ProjectContext)`. Das passt für schlanke oder extrudierte
+   Formen wie Flügel, Profile oder Leitbleche; TestprojektNACA kann den Generator von `Naca2D`
+   wiederverwenden. **Für MantaAuv passt es nicht:** Der Schnitt durch die Symmetrieebene eines
+   3D-Körpers ist keine 2D-Strömung. Der Modus bricht dort mit einer Erklärung ab.
+2. **Beide Mesher beziehen ihre Zellgrößen auf dieselbe Bezugslänge L**, zum Beispiel
+   Oberflächenzelle = L/100 auf Stufe 1,0. Erst dann heißt Faktor 0,71 in 2D und in 3D dieselbe
+   Auflösung entlang der Kontur. **Das ist eine Entwurfsvorgabe für TODO-39 und TODO-45** und muss
+   dort von Anfang an so angelegt werden.
+3. Die Wandschicht kommt in 2D und 3D aus demselben `BoundaryLayerCalculator` (TODO-40). Was 2D
+   über y+ und Schichtzahl herausfindet, gilt damit unverändert auch in 3D.
+
+**Ablauf:**
+1. **2D-Stufe:** die volle Kalibrierung aus TODO-42 (fünf Stufen, Referenz auf der feinsten) am
+   Schnitt. Das liefert f₂D und eine Prüfung von y+ und Schichtzahl.
+2. **3D-Bestätigung:** drei Stufen um f₂D, nämlich f₂D·√2, f₂D und f₂D/√2; die feinste ist die
+   3D-Referenz. Erfüllt f₂D die Toleranz gegenüber der Referenz, gilt f₂D. Erfüllt sie schon
+   f₂D·√2, gilt diese gröbere und billigere Stufe. Erfüllt sie keine, geht es wie in TODO-42
+   weiter verfeinert.
+3. **Unsicherheit:** GCI aus den drei 3D-Stufen.
+4. **Bericht:** Beide Tabellen, 2D und 3D, mit der ausdrücklichen Überschrift
+   „2D-Vorkalibrierung + 3D-Bestätigung". Der Log-Kopf zeigt dann z. B.
+   `Netzfaktor: 0.71 (KALIBRIERT: 2D-Vorkalibrierung, in 3D bestätigt, Toleranz 2 %)`.
+
+**Konfiguration:** in `simulation.json`, gleiche Regeln wie TODO-42 (kein `MeshRefinementFactor`
+im Auto-Modus):
+
+```jsonc
+"MeshCalibration": { "Mode": "Auto", "Tolerance": 0.02, "Use2DPrecalibration": true }
+```
+
+Derselbe Schalter gilt für den eigenen Befehl `calibrate`. Es gibt also eine Quelle (F1) und
+keinen zusätzlichen Kommandozeilenschalter.
+
+**Abnahme:**
+* Evaluator-Tests für die Drei-Stufen-Bestätigung: f₂D passt, die gröbere passt, keine passt.
+* Konfigurationstest: `Use2DPrecalibration` bei einem Projekt ohne Schnitt bricht mit Meldung ab.
+* **Server:** TestprojektNACA einmal mit und einmal ohne Vorkalibrierung. Gewählter Faktor,
+  Zahl der 3D-Läufe und Gesamtzeit kommen in diesen Plan.
+
+### Block F — Bedienung
+
+#### TODO-49 — Bedienhandbuch (E8) *(Worker: S, Durchsicht durch den Supervisor)*
+
+**Warum:** Es gibt inzwischen vier JSON-Dateien je Projekt, Code-Standards, local-Notausgänge,
+und bald Kalibrier- und Verifikationsmodi. Ohne eine Übersicht weiß irgendwann niemand mehr,
+auch du nicht, was wo eingestellt wird und was sinnvoll ist.
+
+**Ort:** `src/projects/BEDIENHANDBUCH.md`, also dort, wo die Einstellungen liegen, und **nicht**
+im Haupt-README. Verwiesen wird darauf:
+* mit je einer Zeile aus dem Haupt-README, `src/projects/README.md`, `scripts/README.md`,
+  `src/Automatisierung_v2/README.md`, `config/README.md` und `_Vorlage/README.md`,
+* und aus dem Kommentarkopf **jeder** Projekt-JSON: `Was jeder Schlüssel bewirkt:
+  src/projects/BEDIENHANDBUCH.md`.
+
+**Zielgruppe:** jemand, der keinen Code liest. Kein C#, keine Klassennamen im Fließtext, jeder
+Fachbegriff wird beim ersten Auftreten erklärt.
+
+**Aufbau:**
+1. **Auf einen Blick:** Ein Bild des Ablaufs (Geometrie → Netz → SU2 → Fitness → Optimierer →
+   Bouncer → Feinprüfung) und dazu, welche Datei welchen Schritt steuert.
+2. **Wo Einstellungen leben:** `project.json`, `simulation.json`, `solvers/su2.json` und
+   `solvers/gmsh.json`, dazu der Code-Standard und der `*.local.json`-Notausgang. Die drei Regeln
+   in Klartext: *Fehlt ein Schlüssel, gilt der Standard. Ein Tippfehler bricht den Start ab. Im
+   Auto-Modus werden Netzwerte nicht eingetippt.*
+3. **„Ich will …"-Tabelle**, aufgabenorientiert, etwa 20 Zeilen, je Zeile Datei, Schlüssel und
+   Beispiel. Zum Beispiel:
+   * einen kurzen Testlauf, genauer rechnen, schneller rechnen,
+   * eine andere Geschwindigkeit, Wasser statt Luft, Auftrieb mitnehmen,
+   * das Netz kalibrieren (manuell oder automatisch), Gewinner fein prüfen,
+   * den Optimierer wechseln, Parametergrenzen ändern, ein neues Projekt anlegen,
+   * Ergebnisse holen, eine Rechnung von Hand prüfen, das Projekt wechseln.
+4. **Alle Einstellungen, Datei für Datei**, als Tabelle mit den Spalten: Schlüssel · Bedeutung in
+   Klartext · Einheit · Standard · sinnvoller Bereich · Wirkung (Genauigkeit / Rechenzeit) · wann
+   anfassen. Für die letzte Spalte gibt es drei Stufen: 🟢 *oft*, 🟡 *gelegentlich*,
+   🔴 *nur mit Grund*.
+5. **Welche Werte galten wirklich?** Wie man nach einem Lauf nachprüft, womit gerechnet wurde:
+   Log-Kopf, `effective-config.json`, Kalibrier-Bericht und die Spalten in
+   `Simulation_Results.csv`. Das ist die Nachvollziehbarkeits-Forderung aus E2.
+6. **Befehle** (`sim.ps1`) in Klartext, eine Zeile je Befehl, mit Verweis auf `scripts/README.md`.
+7. **Häufige Meldungen und was zu tun ist:** unbekannter Schlüssel, Warnblock bei einer
+   local-Datei, fehlende Referenzfläche, nicht konvergiert, y+ zu hoch, Kalibrierung veraltet,
+   Ergebnis netzabhängig.
+8. **Glossar:** y+, Reynoldszahl, Grenzschicht, Netzfaktor, Cauchy-Kriterium, CFL, Fernfeld,
+   Bouncer, GCI, RSM/EA, Voxel.
+
+**Damit es nicht veraltet:** Ein neuer Test `HandbookCoverageTests` liest per Reflection jeden
+Schlüssel aus `SimulationConfig`, `Su2SolverOptions`, `GmshMesherOptions` und den
+Projekt-Manifesten (später auch aus den 2D-Optionen) sowie jeden Befehl aus `sim.ps1`. Er
+verlangt, dass jeder davon im Handbuch steht. **Ein neuer Schlüssel ohne Erklärung bricht damit
+`dotnet test`.** Ab jetzt gehört zu jeder Abnahme in diesem Plan außerdem der Satz
+„Bedienhandbuch nachgezogen".
+
+**Wann:** Die **erste Fassung kommt sofort als nächster Schritt** und beschreibt den heutigen
+Stand. Danach wächst sie mit jedem TODO mit, und der Test erzwingt das.
+
+**Abnahme:** `HandbookCoverageTests` ist grün. Alle Verweise sind gesetzt. **Du** liest die
+„Ich will …"-Tabelle einmal gegen und sagst, was fehlt oder unverständlich ist.
+
 ---
 
 ## Reihenfolge und Abhängigkeiten
 
-```
-A: TODO-31, 32, 33  ─┐   unabhängig, sofort nützlich
-B: TODO-34          ─┤   unabhängig
-C: TODO-35 → 36     ─┤   35 ist Voraussetzung für die Kalibrierung (Konvergenzprüfung)
-                     │
-D: TODO-38 → 39 → 40 → 41 → 42 → 43
-             │                 ↑
-E:           └→ 44 → 45 → 46 → 47 (Validierung)
-                     (45 nutzt den BoundaryLayerCalculator aus 40, Punkt 1)
+```text
+A: TODO-31 (Rest), 32 ✅, 33 ✅   unabhängig, sofort nützlich
+F: TODO-49 (erste Fassung)        sofort danach, wächst mit jedem weiteren Schritt mit
+B: TODO-34                        unabhängig
+C: TODO-35 → 36                   35 ist Voraussetzung für die Kalibrierung (Konvergenzprüfung)
+
+D: TODO-38 (Rest) → 39 → 40 → 41 → 42 → 43
+                     │                  ↑
+E:                   └→ 44 → 45 → 46 → 47 (Validierung) → 48 (2D-Vorkalibrierung, braucht 42)
+                            (45 nutzt den BoundaryLayerCalculator aus 40, Punkt 1;
+                             39 und 45 legen die Zellgrößen auf dieselbe Bezugslänge, für 48)
 
 später: TODO-37 (URANS), hängt an 35 und 43
 ```
 
-**Empfohlene Reihenfolge:** Ganz zuerst TODO-33 Punkt 1 (der wackelige Test), dann der Rest von
-A sowie B. Dann C, dann 38 und 39. Danach sollte **E vor dem
-3D-Teil (40–41)** kommen, denn 2D ist der billige Prüfstand: Grenzschicht, y+-Auswertung und
-Kalibrierlogik lassen sich dort in Minuten statt Stunden testen, und TODO-47 beweist mit der
-Validierung, dass die Kette physikalisch stimmt. Erst dann die riskante 3D-Extrusion (40), danach
-42 und 43 für beide Welten.
+**Empfohlene Reihenfolge** (Stand nach der zweiten Runde):
+1. **TODO-49**, die erste Fassung des Bedienhandbuchs mit dem heutigen Stand. Das war deine
+   größte Sorge, und es wird mit jedem weiteren Schritt teurer, das nachzuholen.
+2. Der Rest von **TODO-31** (fetch), denn das war der ursprüngliche Ärger.
+3. **B**, dann **C**.
+4. Der Rest von **38**, dann **39**.
+5. **E vor dem 3D-Teil (40–41)**, denn 2D ist der billige Prüfstand: Grenzschicht, y+-Auswertung
+   und Kalibrierlogik lassen sich dort in Minuten statt Stunden testen, und TODO-47 beweist mit
+   der Validierung, dass die Kette physikalisch stimmt.
+6. Erst dann die riskante 3D-Extrusion (40), danach 42 und 43 für beide Welten, und **zuletzt 48**.
+   Es braucht sowohl die Kalibrierung als auch die 2D-Kette.
 
 Die Blöcke D und E berühren kaum dieselben Dateien. Gemeinsam sind nur `MeshRequest`,
 `GeometryResult` und `Su2SolverOptions`, diese kommen also zuerst. Danach können zwei Worker
@@ -773,21 +952,28 @@ parallel arbeiten.
 | Neue Spalten in `PassiveParameters` verlängern die Champion-Ausgabe | Die Ausgabe wird nach Gruppen sortiert (Geometrie, Solver, Netz, Prüfung) |
 | `MeshRequest` bricht die Signatur von `IMeshGenerator` | Nur das Framework und die Tests implementieren die Schnittstelle, Projekte nicht. Alles wird in TODO-39 auf einmal mitgezogen |
 | Kalibrier-Bericht und eingetragener Wert laufen auseinander | Fingerabdruck plus Hinweis beim Start (TODO-42 Regeln 5 und 6) |
-| `fetch` über das VPN bleibt hängen | Ein Archiv statt vieler Verbindungen. Timeouts nur mit Zustimmung (Offene Fragen) |
+| `fetch` über das VPN bleibt hängen | ✅ Großzügige SSH-Zeitgrenzen (E6). Später zusätzlich ein Archiv statt vieler Verbindungen (TODO-31 Punkt 3) |
+| SSH-Zeitgrenzen brechen unter Serverlast eine gesunde Verbindung ab (das frühere Erlebnis) | Die Werte sind bewusst weit (60 s Aufbau, 3 min Funkstille), und ein Test verhindert, dass sie verschärft werden. Ein Abbruch trifft nie den Lauf in tmux. Gibt es trotzdem Abbrüche, werden die Werte gelockert und nicht entfernt |
 | Kommentare in der cfg ändern ungewollt einen Wert | Regressionstest: alle Zeilen ohne `%` bleiben unverändert (TODO-34) |
+| Ein 2D-Faktor wird in 3D ungeprüft übernommen | Ist nicht vorgesehen: TODO-48 verlangt immer die 3D-Bestätigung, und ohne repräsentativen Schnitt bricht der Modus ab |
+| Das Bedienhandbuch veraltet, weil neue Schlüssel nicht erklärt werden | `HandbookCoverageTests` bricht `dotnet test` bei jedem unerklärten Schlüssel oder Befehl (TODO-49) |
+| MantaAuv-Ergebnisse vor und nach dem 04.11.2026 werden verglichen | Sie sind nicht vergleichbar (34,3 → 2 m/s, Re ≈ 1,8·10⁶ → 1·10⁵). Das steht im Kommentar der `su2.json` und in TODO-38 |
 
 ---
 
 ## Offene Fragen
 
-1. **Anströmgeschwindigkeit MantaAuv in m/s?** Typisch für ein AUV sind 0,5–3 m/s. Der Wert
-   bestimmt Re und damit die Höhe der ersten Zelle (TODO-38/40). Ohne Wert bleibt TODO-38 umsetzbar,
-   MantaAuv rechnet dann aber weiter mit 34,3 m/s und Hinweis.
-2. **SSH-Timeouts in `sim.ps1`** (TODO-31 Punkt 6): einverstanden? Am 19.09. ging es um
-   `~/.ssh/config`, das wäre jetzt nur das Skript.
-3. **Ist das GitHub-Repo öffentlich?** Davon hängt ab, wie wichtig TODO-32 Punkt 3 ist. Ein
-   Umschreiben der Historie ist ohnehin nicht vorgesehen.
-4. **PDF-Bericht:** darf er im Repo bleiben (TODO-32 Punkt 6)?
+Zurzeit gibt es keine. Alle Fragen der ersten Runde sind in der zweiten beantwortet:
+
+* Geschwindigkeit → 2 m/s (E4)
+* SSH-Zeitgrenzen → großzügig, umgesetzt (E6)
+* Benutzername und PDF → bleiben (E5)
+* öffentliches Repo → damit nicht mehr relevant
+
+**Was du auf dem Server prüfen solltest**, sobald du das nächste Mal dort rechnest:
+1. `.\scripts\sim.ps1 status`, gern während ein Lauf rechnet. Das ist die Probe für die
+   SSH-Zeitgrenzen.
+2. Ein kurzer MantaAuv-Lauf. Im Log muss `Anströmung: 2 m/s` stehen.
 
 ---
 
@@ -798,8 +984,9 @@ parallel arbeiten.
   Optimierer oder Simulation durch ein Modell, FEM). Der 2D-Kernel ist bewusst so angelegt, dass er
   dafür später taugt (siehe Empfehlung).
 * **Aus `architektur_kritikpunkte_naca.md` aufgegriffen werden nur:** Punkt 4 (Anstellwinkel, in
-  TODO-46), Punkt 5 (Bezugsgröße in 2D, in TODO-46) und von Punkt 7 nur die `~`-Expansion
-  (TODO-32). Die Punkte 1–3 und 6 sowie die Fallback-Kette aus Punkt 7 bleiben dort offen.
+  TODO-46) und Punkt 5 (Bezugsgröße in 2D, in TODO-46). Die Punkte 1–3, 6 und 7 bleiben dort
+  offen. Die `~`-Expansion aus Punkt 7 war ursprünglich für TODO-32 vorgesehen und ist mit E5
+  wieder herausgefallen.
 * **Getrennte Ein- und Auslassränder** im Windkanal (`MARKER_INLET`/`OUTLET`/`SYM`) sind nur als
   Kommentar erwähnt (TODO-34) und werden nicht umgesetzt.
 * **Wandfunktionen** (y+ 30–100) kommen erst, wenn feststeht, dass SU2 7.5.1 sie im INC-Löser kann
