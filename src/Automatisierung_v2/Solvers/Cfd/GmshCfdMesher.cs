@@ -79,23 +79,25 @@ namespace MyPicoGkProject.Solvers.Cfd
                 center);
         }
 
-        public string GenerateMesh(
-            string modelStlPath,
-            int iteration, int variant,
-            SimulationConfig config,
-            float scaleFactor,
-            string workingDirectory)
+        public string GenerateMesh(MeshRequest request)
         {
-            string tunnelStlPath = EnsureTunnel(workingDirectory);
+            string tunnelStlPath = EnsureTunnel(request.WorkingDirectory);
 
-            string outputMeshPath = Path.Combine(workingDirectory, $"Model_Gen{iteration}_Var{variant}.su2");
-            string geoScriptPath = Path.Combine(workingDirectory, $"Meshing_Gen{iteration}_Var{variant}.geo");
+            string suffix = request.BaseSuffix;
+            string outputMeshPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}.su2");
+            string geoScriptPath = Path.Combine(request.WorkingDirectory, $"Meshing_{suffix}.geo");
 
-            WriteGeoScript(geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor);
+            WriteGeoScript(
+                geoScriptPath,
+                request.GeometryPath,
+                tunnelStlPath,
+                request.Config,
+                request.ScaleFactor,
+                request.RefinementFactor);
 
             Process mesher = new Process();
-            mesher.StartInfo.FileName = config.GmshPath; 
-            mesher.StartInfo.Arguments = $"\"{geoScriptPath}\" -3 -nt {config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"";
+            mesher.StartInfo.FileName = request.Config.GmshPath; 
+            mesher.StartInfo.Arguments = $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"";
             mesher.StartInfo.UseShellExecute = false;
             mesher.StartInfo.CreateNoWindow = true;
 
@@ -109,8 +111,18 @@ namespace MyPicoGkProject.Solvers.Cfd
             return outputMeshPath;
         }
 
+        public string GenerateMesh(
+            string modelStlPath,
+            int iteration, int variant,
+            SimulationConfig config,
+            float scaleFactor,
+            string workingDirectory)
+        {
+            return GenerateMesh(new MeshRequest(modelStlPath, iteration, variant, config, scaleFactor, workingDirectory));
+        }
+
         /// <summary>
-        /// Schreibt das .geo-Skript für Gmsh auf die Festplatte (TODO-34).
+        /// Schreibt das .geo-Skript für Gmsh auf die Festplatte (TODO-34, TODO-39).
         /// </summary>
         public void WriteGeoScript(
             string geoScriptPath,
@@ -119,11 +131,30 @@ namespace MyPicoGkProject.Solvers.Cfd
             SimulationConfig config,
             float scaleFactor)
         {
+            WriteGeoScript(geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor, 1.0f);
+        }
+
+        /// <summary>
+        /// Schreibt das .geo-Skript für Gmsh auf die Festplatte mit konfigurierbarem Netzfaktor (TODO-39).
+        /// </summary>
+        public void WriteGeoScript(
+            string geoScriptPath,
+            string modelStlPath,
+            string tunnelStlPath,
+            SimulationConfig config,
+            float scaleFactor,
+            float refinementFactor)
+        {
             string safeModelPath = modelStlPath.Replace("\\", "/");
             string safeTunnelPath = tunnelStlPath.Replace("\\", "/"); 
             string scaleString = scaleFactor.ToString(CultureInfo.InvariantCulture);
 
-            string[] geoContent = {
+            float factor = refinementFactor > 0f ? refinementFactor : 1.0f;
+            float sizeMin = _options.BoundaryLayerSizeMin * factor;
+            float sizeMax = _options.BoundaryLayerSizeMax * factor;
+
+            var geoLines = new List<string>
+            {
                 "// --- ALLGEMEINE NETZ-EINSTELLUNGEN ---",
                 "Mesh.Optimize = 1;",                 
                 "Mesh.OptimizeNetgen = 0;",         
@@ -158,49 +189,59 @@ namespace MyPicoGkProject.Solvers.Cfd
                 
                 "Field[2] = Threshold;",
                 "Field[2].InField = 1;",
-                $"Field[2].SizeMin = {Format(_options.BoundaryLayerSizeMin)};",
-                $"Field[2].SizeMax = {Format(_options.BoundaryLayerSizeMax)};",
+                $"Field[2].SizeMin = {Format(sizeMin)};",
+                $"Field[2].SizeMax = {Format(sizeMax)};",
                 $"Field[2].DistMin = {Format(_options.BoundaryLayerDistMin)};",
-                $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};",
-                
-                /*
-                "// ==========================================",
-                "// F) DYNAMISCHE WAKE-BOX (NACHLAUF)",
-                "// ==========================================",
-                "bbox() = BoundingBox Surface {model_surfs[]};",
-                "minX = bbox(0); minY = bbox(1); minZ = bbox(2);",
-                "maxX = bbox(3); maxY = bbox(4); maxZ = bbox(5);",
-                "",
-                "lenX = maxX - minX;",
-                "lenY = maxY - minY;",
-                "lenZ = maxZ - minZ;",
-                "",
-                "Field[3] = Box;",
-                "Field[3].XMin = minX - (0.1 * lenX);",      
-                "Field[3].XMax = maxX + (2.0 * lenX);",       
-                "Field[3].YMin = minY - (0.5 * lenY);",      
-                "Field[3].YMax = maxY + (0.5 * lenY);",
-                "Field[3].ZMin = minZ - (0.5 * lenZ);",
-                "Field[3].ZMax = maxZ + (0.5 * lenZ);",
-                "",
-                "Field[3].VIn = lenX / 6.0;",
-                "Field[3].VOut = 120.0;",
-
-                "// ==========================================",
-                "// G) FELDER INTELLIGENT KOMBINIEREN",
-                "// ==========================================",
-                "Field[4] = Min;",
-                "Field[4].FieldsList = {2, 3};",
-                */
-                "Background Field = 2;",
-                "Mesh.CharacteristicLengthExtendFromBoundary = 0;", 
-                $"General.NumThreads = {config.GmshCores};",
-
-                "// H) Re-Skalierung",
-                $"Mesh.ScalingFactor = (1.0 / {scaleString}) * 0.001;"
+                $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};"
             };
 
-            File.WriteAllLines(geoScriptPath, geoContent);
+            if (_options.WakeRefinement)
+            {
+                geoLines.Add("// ==========================================");
+                geoLines.Add("// F) DYNAMISCHE WAKE-BOX (NACHLAUF)");
+                geoLines.Add("// ==========================================");
+                geoLines.Add("bbox() = BoundingBox Surface {model_surfs[]};");
+                geoLines.Add("minX = bbox(0); minY = bbox(1); minZ = bbox(2);");
+                geoLines.Add("maxX = bbox(3); maxY = bbox(4); maxZ = bbox(5);");
+                geoLines.Add("lenX = maxX - minX;");
+                geoLines.Add("lenY = maxY - minY;");
+                geoLines.Add("lenZ = maxZ - minZ;");
+                geoLines.Add("Field[3] = Box;");
+                geoLines.Add("Field[3].XMin = minX - (0.1 * lenX);");
+                geoLines.Add($"Field[3].XMax = maxX + ({Format(_options.WakeLengthFactor)} * lenX);");
+                geoLines.Add($"Field[3].YMin = minY - ({Format(_options.WakeWidthFactor)} * lenY);");
+                geoLines.Add($"Field[3].YMax = maxY + ({Format(_options.WakeWidthFactor)} * lenY);");
+                geoLines.Add($"Field[3].ZMin = minZ - ({Format(_options.WakeWidthFactor)} * lenZ);");
+                geoLines.Add($"Field[3].ZMax = maxZ + ({Format(_options.WakeWidthFactor)} * lenZ);");
+                string vIn = _options.WakeCellSize > 0f
+                    ? Format(_options.WakeCellSize * factor)
+                    : $"(lenX / 6.0) * {Format(factor)}";
+                geoLines.Add($"Field[3].VIn = {vIn};");
+                geoLines.Add($"Field[3].VOut = {Format(sizeMax)};");
+                geoLines.Add("// ==========================================");
+                geoLines.Add("// G) FELDER INTELLIGENT KOMBINIEREN");
+                geoLines.Add("// ==========================================");
+                geoLines.Add("Field[4] = Min;");
+                geoLines.Add("Field[4].FieldsList = {2, 3};");
+                geoLines.Add("Background Field = 4;");
+            }
+            else
+            {
+                geoLines.Add("Background Field = 2;");
+            }
+
+            geoLines.Add("Mesh.CharacteristicLengthExtendFromBoundary = 0;");
+
+            if (_options.MeshSizeFromCurvature)
+            {
+                geoLines.Add("Mesh.MeshSizeFromCurvature = 1;");
+            }
+
+            geoLines.Add($"General.NumThreads = {config.GmshCores};");
+            geoLines.Add("// H) Re-Skalierung");
+            geoLines.Add($"Mesh.ScalingFactor = (1.0 / {scaleString}) * 0.001;");
+
+            File.WriteAllLines(geoScriptPath, geoLines);
         }
 
         /// <summary>Zahlen fürs .geo-Skript immer mit Punkt als Dezimaltrenner.</summary>

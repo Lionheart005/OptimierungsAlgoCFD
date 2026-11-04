@@ -61,6 +61,11 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.BoundaryLayerSizeMax, loaded.BoundaryLayerSizeMax);
             Assert.Equal(defaults.BoundaryLayerDistMin, loaded.BoundaryLayerDistMin);
             Assert.Equal(defaults.BoundaryLayerDistMax, loaded.BoundaryLayerDistMax);
+            Assert.Equal(defaults.WakeRefinement, loaded.WakeRefinement);
+            Assert.Equal(defaults.WakeLengthFactor, loaded.WakeLengthFactor);
+            Assert.Equal(defaults.WakeWidthFactor, loaded.WakeWidthFactor);
+            Assert.Equal(defaults.WakeCellSize, loaded.WakeCellSize);
+            Assert.Equal(defaults.MeshSizeFromCurvature, loaded.MeshSizeFromCurvature);
         }
 
         /// <summary>

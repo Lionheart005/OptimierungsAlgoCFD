@@ -44,6 +44,14 @@ namespace MyPicoGkProject.Core
 
         // 2. CFD & SU2 Einstellungen
         public float MachNumber { get; set; } = 0.1f;
+
+        /// <summary>
+        /// Globaler Netzverfeinerungsfaktor. Standard ist 1.0 (Basisgrößen aus gmsh.json).
+        /// Werte &lt; 1.0 verfeinern das Netz (z. B. 0.5 halbiert alle Zielzellgrößen),
+        /// Werte &gt; 1.0 vergröbern es für schnelle Vorabläufe.
+        /// </summary>
+        public float MeshRefinementFactor { get; set; } = 1.0f;
+
         public int Su2MaxIterations { get; set; } = 500;
         public int CauchyElements { get; set; } = 150;
         public string CauchyTolerance { get; set; } = "1e-4";

@@ -249,14 +249,24 @@ namespace MyPicoGkProject.Core
                 {
                     if (!meshCache.TryGetValue(stage.Mesher, out string? meshPath))
                     {
-                        meshPath = stage.Mesher.GenerateMesh(
+                        var meshRequest = new MeshRequest(
                             geoResult.StlPath, iteration, variant,
                             _context.Config, scaler.ShrinkFactor,
-                            _context.WorkingDirectory);
+                            _context.WorkingDirectory,
+                            _context.EffectiveMeshRefinementFactor,
+                            _context.CurrentRunTag);
+
+                        meshPath = stage.Mesher.GenerateMesh(meshRequest);
                         meshCache[stage.Mesher] = meshPath;
 
                         // ModelRecord führt genau einen Mesh-Pfad — den der ersten Stufe.
                         if (string.IsNullOrEmpty(record.MeshPath)) record.MeshPath = meshPath;
+
+                        int cellCount = MeshMetrics.ReadSu2CellCount(meshPath);
+                        if (cellCount > 0)
+                        {
+                            record.PassiveParameters["MeshCells"] = cellCount;
+                        }
                     }
 
                     stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
@@ -351,4 +361,3 @@ namespace MyPicoGkProject.Core
         }
     }
 }
-

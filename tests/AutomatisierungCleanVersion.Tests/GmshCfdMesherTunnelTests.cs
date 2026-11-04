@@ -104,6 +104,183 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(written, File.GetLastWriteTimeUtc(second));
         }
 
+        /// <summary>
+        /// TODO-39: Mit Faktor 1,0 und ausgeschalteten neuen Optionen ist das .geo byteweise
+        /// identisch zur vorherigen Version (Regression).
+        /// </summary>
+        [Fact]
+        public void WriteGeoScript_Default_Options_And_Factor_1_Produces_Exact_Regression_Lines()
+        {
+            string path = Path.Combine(_workingDirectory, "regression.geo");
+            var mesher = new GmshCfdMesher();
+            var config = SimulationConfig.CreateDefault();
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
+
+            string[] lines = File.ReadAllLines(path);
+            string[] expected = new[]
+            {
+                "// --- ALLGEMEINE NETZ-EINSTELLUNGEN ---",
+                "Mesh.Optimize = 1;",
+                "Mesh.OptimizeNetgen = 0;",
+                "// A) Windkanal importieren",
+                "Merge \"tunnel.stl\";",
+                "tunnel_surfs[] = Surface{:};",
+                "// B) Bauteil importieren",
+                "Merge \"model.stl\";",
+                "model_surfs[] = Surface{:};",
+                "model_surfs[] -= tunnel_surfs[];",
+                "// C) Hohlraum definieren",
+                "Surface Loop(1) = {tunnel_surfs[]};",
+                "Surface Loop(2) = {model_surfs[]};",
+                "Volume(1) = {1, 2};",
+                "// D) Physische SU2 Marker",
+                "// Dieser Name ist der SU2-Marker: Farfield -> MARKER_FAR",
+                "Physical Surface(\"Farfield\") = {tunnel_surfs[]};",
+                "// Dieser Name ist der SU2-Marker: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING",
+                "Physical Surface(\"Wall\") = {model_surfs[]};",
+                "// Physical Volume(\"Fluid\") = {1};",
+                "Mesh.SaveAll = 1;",
+                "// ==========================================",
+                "// E) DISTANZFELD FUER GRENZSCHICHT (WANDNAEHE)",
+                "// ==========================================",
+                "Field[1] = Distance;",
+                "Field[1].SurfacesList = {model_surfs[]};",
+                "Field[2] = Threshold;",
+                "Field[2].InField = 1;",
+                "Field[2].SizeMin = 1.2;",
+                "Field[2].SizeMax = 120;",
+                "Field[2].DistMin = 3;",
+                "Field[2].DistMax = 40;",
+                "Background Field = 2;",
+                "Mesh.CharacteristicLengthExtendFromBoundary = 0;",
+                $"General.NumThreads = {config.GmshCores};",
+                "// H) Re-Skalierung",
+                "Mesh.ScalingFactor = (1.0 / 1) * 0.001;"
+            };
+
+            Assert.Equal(expected, lines);
+        }
+
+        /// <summary>
+        /// TODO-39: Netzverfeinerungsfaktor skaliert SizeMin und SizeMax sowie Wake-Box-Zellgrößen.
+        /// </summary>
+        [Fact]
+        public void WriteGeoScript_RefinementFactor_Scales_Sizes()
+        {
+            string path = Path.Combine(_workingDirectory, "refined.geo");
+            var options = new GmshMesherOptions
+            {
+                WakeRefinement = true,
+                WakeCellSize = 6.0f
+            };
+            var mesher = new GmshCfdMesher(options);
+            var config = SimulationConfig.CreateDefault();
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, refinementFactor: 0.5f);
+
+            string[] lines = File.ReadAllLines(path);
+            Assert.Contains(lines, l => l.Trim() == "Field[2].SizeMin = 0.6;");
+            Assert.Contains(lines, l => l.Trim() == "Field[2].SizeMax = 60;");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].VIn = 3;");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].VOut = 60;");
+        }
+
+        /// <summary>
+        /// TODO-39: Bei aktiver Wake-Refinement-Option werden Field[3] (Box) und Field[4] (Min) eingefügt.
+        /// </summary>
+        [Fact]
+        public void WriteGeoScript_WakeRefinement_Generates_WakeBox_And_MinField()
+        {
+            string path = Path.Combine(_workingDirectory, "wake.geo");
+            var options = new GmshMesherOptions
+            {
+                WakeRefinement = true,
+                WakeLengthFactor = 3.5f,
+                WakeWidthFactor = 0.75f,
+                WakeCellSize = 0.0f
+            };
+            var mesher = new GmshCfdMesher(options);
+            var config = SimulationConfig.CreateDefault();
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, refinementFactor: 1.0f);
+
+            string[] lines = File.ReadAllLines(path);
+            Assert.Contains(lines, l => l.Trim() == "Field[3] = Box;");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].XMax = maxX + (3.5 * lenX);");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].YMin = minY - (0.75 * lenY);");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].YMax = maxY + (0.75 * lenY);");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].ZMin = minZ - (0.75 * lenZ);");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].ZMax = maxZ + (0.75 * lenZ);");
+            Assert.Contains(lines, l => l.Trim() == "Field[3].VIn = (lenX / 6.0) * 1;");
+            Assert.Contains(lines, l => l.Trim() == "Field[4] = Min;");
+            Assert.Contains(lines, l => l.Trim() == "Field[4].FieldsList = {2, 3};");
+            Assert.Contains(lines, l => l.Trim() == "Background Field = 4;");
+        }
+
+        /// <summary>
+        /// TODO-39: MeshSizeFromCurvature fügt Mesh.MeshSizeFromCurvature = 1 ein.
+        /// </summary>
+        [Fact]
+        public void WriteGeoScript_MeshSizeFromCurvature_Adds_Curvature_Option()
+        {
+            string path = Path.Combine(_workingDirectory, "curvature.geo");
+            var options = new GmshMesherOptions
+            {
+                MeshSizeFromCurvature = true
+            };
+            var mesher = new GmshCfdMesher(options);
+            var config = SimulationConfig.CreateDefault();
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
+
+            string[] lines = File.ReadAllLines(path);
+            int idx = Array.FindIndex(lines, l => l.Trim() == "Mesh.MeshSizeFromCurvature = 1;");
+            Assert.True(idx >= 0);
+            Assert.Equal("Mesh.CharacteristicLengthExtendFromBoundary = 0;", lines[idx - 1].Trim());
+        }
+
+        /// <summary>
+        /// TODO-39: MeshRequest bildet den BaseSuffix mit optionalem Tag.
+        /// </summary>
+        [Fact]
+        public void MeshRequest_BaseSuffix_Formats_With_And_Without_Tag()
+        {
+            var config = SimulationConfig.CreateDefault();
+            var reqWithoutTag = new MeshRequest("model.stl", 1, 2, config, 1.0f, _workingDirectory);
+            Assert.Equal("Gen1_Var2", reqWithoutTag.BaseSuffix);
+
+            var reqWithTag = new MeshRequest("model.stl", 1, 1, config, 1.0f, _workingDirectory, Tag: "Kal3");
+            Assert.Equal("Gen1_Var1_Kal3", reqWithTag.BaseSuffix);
+
+            var reqWithWhitespaceTag = new MeshRequest("model.stl", 2, 4, config, 1.0f, _workingDirectory, Tag: "  Verif  ");
+            Assert.Equal("Gen2_Var4_Verif", reqWithWhitespaceTag.BaseSuffix);
+        }
+
+        /// <summary>
+        /// TODO-39: MeshMetrics.ReadSu2CellCount liest NELEM aus SU2-Kopfzeilen.
+        /// </summary>
+        [Fact]
+        public void MeshMetrics_ReadSu2CellCount_Parses_Cell_Count_From_Su2_Header()
+        {
+            string path = Path.Combine(_workingDirectory, "mesh.su2");
+            File.WriteAllLines(path, new[]
+            {
+                "NDIME= 3",
+                "NELEM= 48120",
+                "NPOIN= 9200"
+            });
+
+            int cellCount = MeshMetrics.ReadSu2CellCount(path);
+            Assert.Equal(48120, cellCount);
+        }
+
+        [Fact]
+        public void MeshMetrics_ReadSu2CellCount_Returns_Zero_When_File_Missing_Or_Empty()
+        {
+            Assert.Equal(0, MeshMetrics.ReadSu2CellCount("non_existent_file.su2"));
+
+            string emptyPath = Path.Combine(_workingDirectory, "empty.su2");
+            File.WriteAllText(emptyPath, "");
+            Assert.Equal(0, MeshMetrics.ReadSu2CellCount(emptyPath));
+        }
+
         private static (Vector3 Min, Vector3 Max) BoundingBox(
             List<(Vector3 Normal, StlTriangle Triangle)> triangles)
         {

@@ -169,6 +169,7 @@ bestraft. Höhere Fitness = besser.
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
 | `MachNumber` | **Alter Weg** zur Geschwindigkeit: Geschwindigkeit = `MachNumber` × `SpeedOfSound` (aus `su2.json`). Wirkt **nur**, wenn in `su2.json` `FreestreamVelocity` 0 ist. Bei MantaAuv wirkt sie nicht mehr. | `0.1` | 🎯 | 🟡 |
+| `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. | `1.0` | ⏱🎯 | 🟡 |
 | `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. | `500` | ⏱🎯 | 🟡 |
 | `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `150` | ⏱🎯 | 🔴 |
 | `CauchyTolerance` | Wie wenig er sich dabei noch ändern darf. **In Anführungszeichen**, z. B. `"1e-4"`. Kleiner = genauer, länger. | `"1e-4"` | ⏱🎯 | 🟡 |
@@ -263,7 +264,7 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `TunnelSizeX` | Länge des Quaders in Strömungsrichtung (mm). | `600` | 🎯⏱ | 🟡 |
 | `TunnelSizeY` | Breite des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
 | `TunnelSizeZ` | Höhe des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
-| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf. | `0` | 🎯 | 🟡 |
+| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf (Empfehlung: ≥ 10 Modelllängen hinter dem Modell). | `0` | 🎯 | 🟡 |
 | `TunnelCenterY` | Mittelpunkt, y (mm). | `0` | 🎯 | 🔴 |
 | `TunnelCenterZ` | Mittelpunkt, z (mm). | `0` | 🎯 | 🔴 |
 | `TunnelDiameter` | Durchmesser des Zylinders (mm), nur bei `"Cylinder"`. | `300` | 🎯⏱ | 🟡 |
@@ -273,6 +274,11 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `BoundaryLayerSizeMax` | Größte Zellgröße weit weg vom Modell (mm). | `120` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMin` | Bis zu diesem Abstand vom Modell gilt die kleinste Zellgröße (mm). | `3.0` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMax` | Ab diesem Abstand gilt die größte Zellgröße; dazwischen wird übergeblendet (mm). | `40` | 🎯⏱ | 🟡 |
+| `WakeRefinement` | Nachlauf-Verfeinerung an/aus. Bei `true` wird eine dynamische Nachlauf-Box hinter dem Modell eingefügt. | `false` | 🎯⏱ | 🟡 |
+| `WakeLengthFactor` | Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge `lenX`. | `2.0` | 🎯⏱ | 🟡 |
+| `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
+| `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
+| `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
 
 **Faustregeln für den Windkanal:** vor dem Modell ≥ 5 Modelllängen, dahinter ≥ 10, seitlich ≥ 3.
 Heute (600 mm bei 50 mm Modell, mittig) sind es vorn und hinten je 6 Längen.
@@ -293,7 +299,7 @@ inzwischen geändert sind:
 | --- | --- |
 | **Kopf des Logs** (`simulation.log`) | Projekt, Code-Stand, und für jede Datei, welche Einstellungen *aus ihr* kamen (`[CONFIG] Herkunft der wirksamen Werte`). Alles Ungenannte war der Standardwert. Darunter die Anströmung (`Anströmung: 2 m/s (…)`) |
 | **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster) |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf) |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
 | **`.\scripts\sim.ps1 doctor -Project <Name>`** | *Vor* einem Lauf: welche Programmpfade wirklich gelten und ob die Programme gefunden werden |
 

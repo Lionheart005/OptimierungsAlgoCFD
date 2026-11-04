@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Numerics;
 
 namespace MyPicoGkProject.Core
@@ -166,6 +168,44 @@ namespace MyPicoGkProject.Core
         /// <summary>Hüllquader des Netzes.</summary>
         public static MeshBounds Bounds(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).Bounds;
+
+        /// <summary>
+        /// Liest die Anzahl der Volumenelemente (Zellen) aus dem Kopf einer SU2-Netzdatei (.su2).
+        /// Sucht zeilenweise nach der ersten Zeile mit "NELEM=" und parst die Zahl dahinter.
+        /// Gibt 0 zurück, wenn die Datei nicht existiert oder kein NELEM gefunden wurde.
+        /// </summary>
+        public static int ReadSu2CellCount(string su2MeshPath)
+        {
+            if (string.IsNullOrWhiteSpace(su2MeshPath) || !File.Exists(su2MeshPath))
+                return 0;
+
+            try
+            {
+                foreach (string line in File.ReadLines(su2MeshPath))
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("NELEM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int eqIdx = trimmed.IndexOf('=');
+                        if (eqIdx >= 0 && trimmed.Substring(0, eqIdx).Trim().Equals("NELEM", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string valuePart = trimmed.Substring(eqIdx + 1).Trim();
+                            if (int.TryParse(valuePart, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
+                            {
+                                return count;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Bei Lesefehlern oder gesperrter Datei defensiv 0 zurückgeben
+                return 0;
+            }
+
+            return 0;
+        }
 
         /// <summary>
         /// Das mit Vorzeichen versehene Volumen des Tetraeders Ursprung–A–B–C.

@@ -252,6 +252,7 @@ eine Validierung je Iteration**. Vorgabe also 10 × 10 + 10 = 110 Läufe.
 | Schlüssel | Vorgabe | Bedeutung |
 |---|---|---|
 | `MachNumber` | `0.1` | Anströmung; wird mit `SpeedOfSound` aus `su2.json` in m/s umgerechnet |
+| `MeshRefinementFactor` | `1.0` | Globaler Faktor für alle Zellgrößen (1.0 = Basis, < 1.0 = feiner, > 1.0 = gröber) |
 | `Su2MaxIterations` | `500` | Obergrenze der SU2-Iterationen je Simulation |
 | `CauchyElements` | `150` | Über so viele Iterationen muss der Widerstand ruhig sein |
 | `CauchyTolerance` | `"1e-4"` | Wie ruhig. Kleiner = genauer = langsamer |
@@ -488,7 +489,7 @@ als robuster Ersatzwert übernommen werden.
 |---|---|---|
 | `TunnelShape` | `"Box"` | `"Box"` oder `"Cylinder"` |
 | `TunnelSizeX` / `Y` / `Z` | `600` / `300` / `300` | Kantenlängen des Quaders in mm |
-| `TunnelCenterX` / `Y` / `Z` | `0` / `0` / `0` | Mittelpunkt; das Modell sitzt im Ursprung |
+| `TunnelCenterX` / `Y` / `Z` | `0` / `0` / `0` | Mittelpunkt; das Modell sitzt im Ursprung (Empfehlung für Nachlauf: TunnelCenterX so setzen, dass stromabwärts >= 10 Modelllängen Platz sind) |
 | `TunnelDiameter` | `300` | Nur bei `"Cylinder"`: Durchmesser quer zur Strömung |
 | `TunnelLength` | `600` | Nur bei `"Cylinder"`: Länge entlang X (Strömungsrichtung) |
 | `TunnelSegments` | `64` | Nur bei `"Cylinder"`: Feinheit des Mantels |
@@ -505,6 +506,11 @@ beeinflussen die Ränder das Ergebnis.
 | `BoundaryLayerSizeMax` | `120.0` | Größte Zellgröße weit weg vom Modell |
 | `BoundaryLayerDistMin` | `3.0` | Bis zu diesem Wandabstand gilt die feine Größe |
 | `BoundaryLayerDistMax` | `40.0` | Ab diesem Abstand gilt die grobe |
+| `WakeRefinement` | `false` | Dynamische Nachlauf-Box stromabwärts an/aus |
+| `WakeLengthFactor` | `2.0` | Länge der Nachlauf-Box als Vielfaches von `lenX` |
+| `WakeWidthFactor` | `0.5` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ` |
+| `WakeCellSize` | `0.0` | Zellgröße in der Nachlauf-Box in mm (`0.0` = automatisch `lenX / 6.0`) |
+| `MeshSizeFromCurvature` | `false` | Krümmungsabhängige Netzverfeinerung aktivieren |
 
 Dazwischen wird linear vergröbert. Das ist der wirksamste Hebel für die Rechenzeit:
 `BoundaryLayerSizeMin` zu halbieren vervielfacht die Zellenzahl.
@@ -525,7 +531,7 @@ war es ein gemeinsamer Topf, und ein zweites Projekt überschrieb die CSV des er
 |---|---|
 | `Iteration`, `Variant` | Woher die Zeile stammt. `Variant 99` = Kontrollrechnung des Türstehers |
 | `Length`, `Width`, … | Die **aktiven** Parameter — was der Algorithmus eingestellt hat |
-| `Volume`, `FrontalArea`, `SensorDistance` | **Passive** Messwerte aus der Geometrie |
+| `Volume`, `FrontalArea`, `SensorDistance`, `MeshCells` | **Passive** Messwerte aus der Geometrie und Vernetzung (`MeshCells`: Anzahl SU2-Zellen) |
 | `ScaleFactor` | Mit welchem Faktor geschrumpft wurde (1 = Scaler aus) |
 | `Drag` | Widerstandsbeiwert CD aus SU2 |
 | `Fitness` | Die Bewertung. Größer ist besser |

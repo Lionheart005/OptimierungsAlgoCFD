@@ -124,6 +124,24 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(5f, context.CurrentDeviations["Length"]);
         }
 
+        [Fact]
+        public void EffectiveMeshRefinementFactor_Initializes_From_Config_And_Resets()
+        {
+            var config = new SimulationConfig { MeshRefinementFactor = 0.5f };
+            var context = new SimulationContext(config, Project());
+
+            Assert.Equal(0.5f, context.EffectiveMeshRefinementFactor);
+            Assert.Equal("", context.CurrentRunTag);
+
+            context.EffectiveMeshRefinementFactor = 0.25f;
+            context.CurrentRunTag = "Kal1";
+
+            context.ResetRuntimeState();
+
+            Assert.Equal(0.5f, context.EffectiveMeshRefinementFactor);
+            Assert.Equal("", context.CurrentRunTag);
+        }
+
         /// <summary>
         /// Auch der RSM sampelt um den Laufzeit-Arbeitspunkt und fasst die Konfiguration nicht an.
         /// </summary>

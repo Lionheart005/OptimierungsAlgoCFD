@@ -26,7 +26,7 @@
 | C | TODO-36 | `scripts/plot_history.py` + fetch-Anbindung | [x] |
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [x] |
-| D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [ ] |
+| D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [x] |
 | D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [ ] |
 | D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [ ] |
@@ -456,7 +456,7 @@ Noch offen: die Warnung bei wirkungslosem `MachNumber` und die Reynoldszahl im L
 Beim nächsten MantaAuv-Lauf muss im Log `Anströmung: 2 m/s` stehen, und die cfg muss
 `FREESTREAM_VELOCITY= ( 2, 0.0, 0.0 )` enthalten.
 
-#### TODO-39 — `MeshRequest`, ein Netzfaktor, Nachlauf, Zellzahl *(Worker: S)*
+#### TODO-39 — `MeshRequest`, ein Netzfaktor, Nachlauf, Zellzahl ✅ *(erledigt 04.11.2026)*
 
 Dieser Schritt ist Voraussetzung für TODO-40 bis 43 und für die 2D-Mesher.
 

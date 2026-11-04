@@ -8,6 +8,10 @@
   // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
 
   // --- Windkanal (Simulationsdomäne) in mm ---
+  // Empfehlung fuer Nachlauf-Erfassung: Den Tunnelmittelpunkt stromabwaerts verschieben
+  // (positives TunnelCenterX), sodass hinter dem Modell mindestens 10 Koerperlaengen (>= 10 L)
+  // Platz bleiben (z. B. bei 50 mm Modell: TunnelCenterX = 100 mm im 600 mm Tunnel ergibt
+  // 4 L vorn und 8 L hinten, oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L hinten).
   "TunnelShape": "Box",
   "TunnelSizeX": 600.0,
   "TunnelSizeY": 300.0,
