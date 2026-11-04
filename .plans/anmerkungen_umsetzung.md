@@ -27,7 +27,7 @@
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [ ] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [~] m/s erledigt, MantaAuv auf 2 m/s |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [ ] |
-| D | TODO-40 | Prismen-Grenzschicht mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
+| D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [ ] |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [ ] |
 | D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [ ] |
 | D | TODO-43 | Gewinner in feinerer Auflösung nachrechnen (Modus je Lauf wählbar) | [ ] |
@@ -176,6 +176,7 @@ gerechnet. Schluss ist nach `ITER` Iterationen **oder** wenn `CONV_FIELD` (DRAG)
 | **E8** | Übersicht der Einstellungen | Ein **Bedienhandbuch** unter `src/projects/BEDIENHANDBUCH.md`, also dort, wo die Einstellungen liegen, und **nicht** im Haupt-README. Die anderen READMEs und jeder JSON-Kopf verweisen darauf. Ein Test verlangt, dass jeder Schlüssel darin erklärt ist (TODO-49). |
 | **E9** | Kleinigkeiten gleich umsetzen und committen | Erledigt sind TODO-32, TODO-33, die SSH-Zeitgrenzen und der m/s-Teil von TODO-38. Committet wird auf `MajorPhysikFixes`. |
 | **E10** | *(Dritte Runde)* Kann ich komplette 2D-Durchläufe machen, ganz ohne 3D? | **Ja, das ist ausdrücklich das Ziel von Block E.** Ein 2D-Projekt ist ein eigenständiges Projekt wie MantaAuv: `.\scripts\sim.ps1 run -Project Naca2D` fährt die **ganze** Optimierung (Optimierer, Bouncer, Kalibrierung, Feinprüfung, CSV, fetch) mit 2D-Geometrie, 2D-Netz und 2D-SU2. Es braucht dafür kein PicoGK, kein Xvfb und keine einzige 3D-Rechnung. Ein neues 2D-Projekt legt `new-project.ps1 <Name> -Template 2D` an (TODO-47). Die 2D-Vorkalibrierung für 3D (TODO-48) ist nur eine *zusätzliche* Möglichkeit, keine Voraussetzung. |
+| **E12** | *(Vierte Runde, Empfehlung des CFD-Professors)* Rechteckige, längliche Quader statt Prismen in der Wandschicht? | **Ja, wird der Standard.** Gmsh kann das: Die Oberfläche wird in Vierecke vernetzt und dann mit `Recombine` extrudiert, so entstehen Hexaeder. An schwierigen Stellen bleiben einzelne Prismen (quad-dominant). Prismen gibt es nur noch als bewusst gewählte Rückfallebene. Details in TODO-40. |
 | **E11** | *(Dritte Runde)* Handbuch für den heutigen Stand **vor** allen weiteren Änderungen | **Erste Fassung erledigt** (TODO-49): `src/projects/BEDIENHANDBUCH.md`, mit Verweisen aus allen READMEs und allen zwölf Projekt-JSONs und mit `HandbookCoverageTests`. |
 
 ### Folgerungen und eigene Festlegungen
@@ -489,7 +490,26 @@ heute (Regression). Ein Test prüft, dass alle Größen mit dem Faktor multipliz
 werden außerdem die Wake-Box aus einer Bounding Box, das Lesen von `MeshCells` aus einem Beispielkopf
 und Dateinamen mit Tag.
 
-#### TODO-40 — Prismen-Grenzschicht mit vorgegebenem y+ (3D) *(Worker: S, Spike durch dich)*
+#### TODO-40 — Strukturierte Quader-Grenzschicht mit vorgegebenem y+ (3D) *(Worker: S, Spike durch dich)*
+
+> **Korrektur vom 04.11.2026 (Empfehlung deines CFD-Professors, E12):** Die Wandschicht besteht
+> standardmäßig aus **Hexaedern**, also rechteckigen, flachen, länglichen Quadern, und nicht aus
+> Prismen (dreieckigen Säulen). **Gmsh kann das.** Eine Extrusion übernimmt die Form des
+> Oberflächennetzes: Aus Dreiecken werden Prismen, aus **Vierecken werden Hexaeder**. Der Weg ist
+> also: Oberfläche zuerst in Vierecke vernetzen (Recombine), dann mit `Recombine` extrudieren.
+>
+> **Was die Quader bringen:** Die Zellen sind orthogonal zur Wand und liegen in Strömungsrichtung
+> sauber hintereinander. Dadurch werden die Gradienten in der Grenzschicht genauer, es gibt
+> weniger numerische Diffusion und weniger Zellen bei gleicher Auflösung. Die *erste Zellhöhe*,
+> also das, was y+ direkt festlegt, ist bei Prismen und Quadern dieselbe; die gleichmäßigere
+> Zellform macht die Wandwerte aber ruhiger.
+>
+> **Die ehrliche Einschränkung:** Eine Oberfläche aus dem Voxel-STL vollständig in saubere
+> Vierecke zu zerlegen, ist schwieriger als in Dreiecke. Gmsh erzeugt an schwierigen Stellen
+> (enge Krümmung, Spitzen) einzelne Dreiecke, die Schicht wird dort also „quad-dominant" mit ein
+> paar Prismen dazwischen. Das ist üblich und für SU2 kein Problem: SU2 rechnet Hexaeder,
+> Prismen, Pyramiden und Tetraeder gemischt. Wie hoch der Quader-Anteil bei Manta und NACA
+> tatsächlich wird, zeigt der Spike.
 
 1. **`BoundaryLayerCalculator`** ist eine reine Funktion. Aus ρ, U, μ, L und dem y+-Ziel berechnet
    sie:
@@ -503,34 +523,58 @@ und Dateinamen mit Tag.
    Richtwerte: NACA (Luft, 68,6 m/s, c = 50 mm) ergibt y₁ ≈ 0,004 mm und N ≈ 24. MantaAuv bei
    2 m/s ergibt y₁ ≈ 0,01 mm und N ≈ 20.
 2. **Spike zuerst, auf dem Server (du), noch vor dem eigentlichen Code:** Der Mesher bekommt einen
-   Schalter `BoundaryLayerMode` mit `"Threshold"` (Vorgabe, wie heute) und `"Prism"`. Im
-   Prism-Modus schreibt er:
+   Schalter `BoundaryLayerMode` mit drei Werten: `"Threshold"` (Vorgabe, wie heute), `"Hexa"`
+   (Quader, **Ziel**) und `"Prism"` (Prismen, Rückfallebene). In den Modi `"Hexa"` und `"Prism"`
+   schreibt er:
    * `ClassifySurfaces{…}; CreateGeometry;` für das Modell-STL. Danach ist die Oberfläche neu
      vernetzbar, ihre Feinheit ist von der Voxelgröße entkoppelt, und
      `MeshSizeFromCurvature` greift.
-   * Eine Grenzschicht-Extrusion entlang der Normalen
+   * **Nur bei `"Hexa"`:** Die Oberfläche wird in Vierecke vernetzt (`Mesh.RecombineAll = 1` bzw.
+     `Recombine Surface{…}`, ein Quad-Verfahren über `Mesh.RecombinationAlgorithm` und
+     `Mesh.Algorithm` = 8 „Frontal-Delaunay for Quads"; *die Werte gegen Gmsh 4.11.1 prüfen*).
+   * Eine Grenzschicht-Extrusion entlang der Normalen mit `Recombine`
      (`Extrude{ Surface{…}; Layers{ {1,…}, {h₁, h₁+h₂, …} }; Recombine; }`,
-     *Syntax gegen Gmsh 4.11.1 prüfen*).
-   * Tetraeder zwischen der Oberkante der Grenzschicht und dem Kanal.
+     *Syntax gegen Gmsh 4.11.1 prüfen*). Aus Vierecken werden Hexaeder, aus übrig gebliebenen
+     Dreiecken Prismen.
+   * Tetraeder zwischen der Oberkante der Grenzschicht und dem Kanal. Wo Viereckflächen auf
+     Tetraeder treffen, braucht es **Pyramiden** als Übergang. *Prüfen, ob Gmsh 4.11.1 sie selbst
+     einsetzt*; sonst bekommt die oberste Schicht Dreiecke, und die Hexaeder enden darunter.
    * Die Marker bleiben unverändert: `"Wall"` ist die ursprüngliche Oberfläche.
 
-   Getestet wird an je einem STL von Manta und NACA. Zu prüfen ist: Gmsh läuft durch, es gibt keine
-   negativen Volumina (`Mesh.QualityType`), SU2 startet, und es gibt eine y+-Statistik. **Das
-   Ergebnis kommt in diesen Plan, bevor es weitergeht.**
+   Getestet wird an je einem STL von Manta und NACA, **beide Modi** (`"Hexa"` und `"Prism"`).
+   Zu prüfen ist:
+   * Gmsh läuft durch, und es gibt keine negativen Volumina (`Mesh.QualityType`).
+   * Wie hoch ist der **Quader-Anteil** in der Wandschicht? Gmsh meldet die Elementzahlen je Typ.
+   * SU2 startet.
+   * Die y+-Statistik, Hexa gegen Prism verglichen.
+
+   **Das Ergebnis kommt in diesen Plan, bevor es weitergeht.** Liefert `"Hexa"` auf dem
+   Voxel-STL kein brauchbares Netz, bleibt `"Prism"` die Rückfallebene. Das muss dann **bewusst**
+   in der `gmsh.json` gewählt werden.
 3. **Optionen in `gmsh.json`:** `BoundaryLayerMode`, `TargetYPlus` (1,0), `BoundaryLayerMinLayers`
    (4), `BoundaryLayerGrowthRate` (1,2), `BoundaryLayerLayers` (0 = automatisch nach δ),
    `SurfaceCellSize` (mm, Stufe 1,0), `CurvatureElements`, `ClassifyAngleDeg` (40°). Die
-   bestehenden `BoundaryLayerSize*` bleiben und steuern im Prism-Modus die Übergangszone außerhalb
-   der Prismen.
-4. **Log je Variante:** `Grenzschicht: y₁ = 0.0044 mm (y⁺ 1 bei Re 2.3e5), 24 Schichten, Dicke 1.6 mm`.
-5. **Rückfall:** Scheitert Gmsh im Prism-Modus, gilt die Variante als fehlgeschlagen
-   (`SimulationFailed`), und das `.geo` liegt in `FehlerLogs/`. **Kein** stiller Rückfall auf
-   Threshold, weil sonst Varianten mit verschiedenen Wandmodellen verglichen würden.
+   bestehenden `BoundaryLayerSize*` bleiben und steuern in den Modi `"Hexa"` und `"Prism"` die
+   Übergangszone außerhalb der Wandschicht. Im Bedienhandbuch wird erklärt, warum `"Hexa"` die
+   Empfehlung ist.
+4. **Log je Variante:** `Grenzschicht: Hexa, y₁ = 0.0044 mm (y⁺ 1 bei Re 2.3e5), 24 Schichten,
+   Dicke 1.6 mm, 94 % Quader`. Der Quader-Anteil kommt auch als `BoundaryLayerHexShare` in die CSV.
+5. **Rückfall:** Scheitert Gmsh im gewählten Modus, gilt die Variante als fehlgeschlagen
+   (`SimulationFailed`), und das `.geo` liegt in `FehlerLogs/`. **Kein** stiller Rückfall von
+   Hexa auf Prism oder auf Threshold, weil sonst Varianten mit verschiedenen Wandnetzen verglichen
+   würden.
 
-**Abnahme:** Der Rechner stimmt mit handgerechneten Werten auf 1 % überein, die Mindestschichtzahl
-greift, unsinnige Eingaben werfen `ArgumentOutOfRangeException`. Der `.geo`-Inhalt im Prism-Modus
-wird getestet, der Threshold-Modus bleibt byteweise unverändert. **Server:** Die y+-Werte aus
-TODO-41 liegen im Band (p95 ≤ 2 bei Ziel 1).
+**Abnahme:**
+* Der Rechner stimmt mit handgerechneten Werten auf 1 % überein, die Mindestschichtzahl greift, und
+  unsinnige Eingaben werfen `ArgumentOutOfRangeException`.
+* Der `.geo`-Inhalt wird für Hexa (Recombine an Oberfläche **und** Extrusion) und für Prism getestet.
+  Der Threshold-Modus bleibt byteweise unverändert.
+* **Server:** Die y+-Werte aus TODO-41 liegen im Band (p95 ≤ 2 bei Ziel 1). Der Quader-Anteil steht
+  im Spike-Ergebnis.
+* Bedienhandbuch nachgezogen.
+
+**2D (TODO-45)** ist davon nicht betroffen: Dort ist die Wandschicht mit `Quads = 1` ohnehin aus
+rechteckigen Zellen, und anders als in 3D gelingt das dort praktisch immer vollständig.
 
 #### TODO-41 — y+ nach jeder Rechnung prüfen *(Worker: S)*
 
@@ -952,7 +996,9 @@ parallel arbeiten.
 | --- | --- |
 | Die Grenzschicht-Extrusion auf einem Voxel-STL faltet sich in konkaven Ecken oder engen Spalten (verrauschte Normalen) | Erst der Spike (TODO-40 Punkt 2). StlSmoother bleibt an. Die Gesamtdicke der Grenzschicht wird gegen den kleinsten Krümmungsradius bzw. die kleinste Spaltweite geprüft. Kein stiller Rückfall |
 | `ClassifySurfaces` zerlegt das Voxel-STL in sehr viele Flächen | Der Winkel `ClassifyAngleDeg` ist einstellbar, der Spike prüft das an Manta und NACA |
-| Prismen vervielfachen die Zellzahl (3D, 20–25 Schichten) | Die Zellzahl steht je Variante in der CSV. Die Kalibrierung rechnet die feinste Stufe hoch und bricht vorher ab. 2D ist der billige Weg für Profilfragen |
+| Die Oberfläche aus dem Voxel-STL lässt sich nur schlecht in Vierecke zerlegen, und die Quader verzerren sich | Der Spike misst Quader-Anteil und Qualität. Die Rückfallebene `"Prism"` wählt man bewusst, ein stiller Wechsel ist ausgeschlossen. StlSmoother und `ClassifyAngleDeg` helfen. Der Anteil steht je Variante in der CSV (`BoundaryLayerHexShare`) |
+| Am Übergang von Quadern zu Tetraedern fehlen Pyramiden, und das Netz ist ungültig | Im Spike prüfen, ob Gmsh 4.11.1 sie selbst einsetzt. Sonst endet die Quaderzone eine Schicht unter dem Übergang |
+| Die Wandschicht vervielfacht die Zellzahl (3D, 20–25 Schichten) | Die Zellzahl steht je Variante in der CSV. Die Kalibrierung rechnet die feinste Stufe hoch und bricht vorher ab. 2D ist der billige Weg für Profilfragen |
 | Bei Re ≈ 10⁵ (Manta in Wasser) ist die Strömung laminar bis transitional, SA rechnet voll turbulent | Als Hinweis im Log neben der Reynoldszahl (TODO-38). Ein Transitionsmodell ist ein eigener späterer Schritt *(prüfen, was SU2 7.5.1 bietet)* |
 | Die Kalibrierung an der Startgeometrie gilt nicht für die optimierte Form | Genau dafür gibt es TODO-43. Bei großer Abweichung kommt eine laute Warnung |
 | Die Voxelauflösung ist eine zweite „Netz"-Achse, weil sie die Geometrie selbst verändert | Sie bleibt in der Kalibrierung fest. Der Bericht nennt sie. Eine eigene Voxelstudie ist möglich, aber nicht Teil dieses Plans |
