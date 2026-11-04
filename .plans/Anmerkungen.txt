@@ -1,0 +1,30 @@
+Skript:
+Fetch funktioniert irgendwie nicht so richtig
+
+
+SU2 Verständinsfragen
+Randbdingungen wo wird gesagt wo ein und ausströmt? un Randbedingungen gesetzt für lösung der gleichung?
+
+
+Neue Features:
+- instationäre datenauswertung, also über die zeit schauen wie sicht z.B. der drag verändert und das Plotten innerhalb von einer einzelnen Simulation
+    Von SU2 als auch den verlauf der Kennwerte holen um simulation händisch zu überprüfen
+-2D Simulation detailliert und schnell 
+
+
+Rechnungen sind nicht Physikalisch akkurat: 
+- strukturiertes gitter an rand des Objektes nutzen (gleiche y+ werte) also quasi gleichmäßige quader mindestens 4s schichten hoch 
+- generell viel detailierter, um objekt und dort wo wirbel entstehen werden. Um detailgrad rauszufinden für beste mischung aus pyhsikalisch akkurat und dennoch möglichst wenig rechnung: 
+--> anfangsmodell einmal sehr detailiert und einmal grob rechnen (auf gitterzellen bezogen) und das grobe modell stufenweise verfeinern bis unterschiede nicht mehr sigifikant sind, dann diesen detailgrad nutzen für restliche simulation (braucht am anfang längere kalibrierungsphase, aber dafür dann auch belastbare ergebnisse.)
+- gewinner der simulation immer nochmal überprüfen in detailierter auflösung. 
+
+
+
+
+#####################
+Erweiterungen:
+####################
+Ganz neue Programteile Schreiben:
+Um Rechenzet zu sparen und ergebnisse zu verbessern und out of the box zu denken, überlege ich KI bzw MaschineLearing in das Programm zu übertragen.
+(Frage: Gäbe es auch eine möglichkeit ein Physical Informed LLM direkt den c# code bearbeiten zu lassen um die Geometrien ganz neu Anzupassen? Wie umfangreich wäre es den wirkflow von Leap71 mit Nyron und PicoGK komplett nachzubauen, also dass das ganze Framework von KI aus erzuegt wird?)
+(Frage: Gingen es dass ein KI Modell sowohl den Optimierungsalgorithmus als auch die Simulation ersetzt? oder müssen das zwei eigene sein. Macht das überhaupt sinn?)
