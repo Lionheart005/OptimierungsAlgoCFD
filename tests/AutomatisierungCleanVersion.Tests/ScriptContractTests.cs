@@ -163,5 +163,47 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Contains("*.local.json", sim);
             Assert.Contains(JsonConfigLoader.MachineSpecificSuffix, sim);
         }
+
+        /// <summary>
+        /// TODO-31: Jeder ssh- und scp-Aufruf trägt die Zeitgrenzen. Ein einziger Aufruf ohne
+        /// sie genügt, damit eine tote VPN-Verbindung wieder unbegrenzt und stumm hängt — und
+        /// zwar genau an der Stelle, die man beim Nachrüsten vergessen hat.
+        /// </summary>
+        [Fact]
+        public void Every_Ssh_And_Scp_Call_Carries_The_Timeouts()
+        {
+            string code = WithoutComments(Read("sim.ps1"));
+
+            var calls = Regex.Matches(code, @"&\s*(ssh|scp)\b[^\r\n]*");
+            Assert.NotEmpty(calls);
+
+            foreach (Match call in calls)
+            {
+                Assert.True(call.Value.Contains("@SshOptions"),
+                    $"Dieser Aufruf in scripts/sim.ps1 hat keine Zeitgrenzen: {call.Value.Trim()}");
+            }
+        }
+
+        /// <summary>
+        /// Die Zeitgrenzen sind bewusst großzügig: unter Volllast antwortet der Server träge, und
+        /// zu knappe Werte haben früher gesunde Verbindungen abgebrochen. Wer sie verschärft, soll
+        /// an diesem Test vorbei — und dabei die Begründung im Skript lesen.
+        /// </summary>
+        [Fact]
+        public void The_Ssh_Timeouts_Stay_Generous()
+        {
+            string sim = Read("sim.ps1");
+
+            int Value(string option)
+            {
+                Match match = Regex.Match(sim, $@"'{option}=(\d+)'");
+                Assert.True(match.Success, $"{option} fehlt in $SshOptions (scripts/sim.ps1).");
+                return int.Parse(match.Groups[1].Value);
+            }
+
+            Assert.True(Value("ConnectTimeout") >= 60, "ConnectTimeout unter 60 s bricht unter Volllast gesunde Verbindungen ab.");
+            Assert.True(Value("ServerAliveInterval") * Value("ServerAliveCountMax") >= 180,
+                "Unter 3 Minuten Funkstille sollte keine Verbindung als tot gelten.");
+        }
     }
 }

@@ -96,6 +96,25 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $RunnerCall = "bash scripts/sim-runner.sh"
 
+# SSH-Zeitgrenzen fuer JEDEN ssh- und scp-Aufruf dieses Skripts -- bewusst grosszuegig
+# (Entscheidung vom 04.11.2026, siehe .plans/anmerkungen_umsetzung.md, TODO-31):
+#
+#   ConnectTimeout=60       Verbindungsaufbau samt Schluesselaustausch darf eine volle
+#                           Minute dauern -- auch dann, wenn der Server unter Volllast
+#                           rechnet und sshd entsprechend traege antwortet.
+#   ServerAliveInterval=30  kommt 30 s lang nichts, schickt ssh ein winziges Lebenszeichen ...
+#   ServerAliveCountMax=6   ... und gibt erst nach 6 unbeantworteten auf, also nach
+#                           3 Minuten echter Funkstille.
+#
+# Ohne diese Werte wartet eine tote VPN-Verbindung UNBEGRENZT und ohne Meldung. Die
+# Lebenszeichen beantwortet sshd selbst, auch wenn der Befehl drueben lange nichts
+# ausgibt (Build, stop) -- ein stiller, aber gesunder Befehl wird also nicht abgebrochen.
+# Nebenbei halten sie den VPN-Tunnel bei "log" aktiv, der sonst im Leerlauf trennen kann.
+#
+# Bricht hier etwas ab, betrifft das NUR die Verbindung von diesem Rechner aus. Ein Lauf
+# in der tmux-Sitzung auf dem Server rechnet davon unberuehrt weiter.
+$SshOptions = @('-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=6')
+
 # Verzeichnisse, die auf den Server gehoeren. tests/ bleibt hier: der Server soll
 # rechnen, nicht testen -- und ohne tests/ wuerde die .sln dort nicht bauen,
 # deshalb bauen wir drueben gezielt die csproj.
@@ -178,14 +197,14 @@ function Invoke-Remote {
         # Bewusst 2>$null statt 2>&1: PowerShell 5.1 verpackt den stderr eines
         # nativen Programms bei 2>&1 in ErrorRecords, was zusammen mit
         # $ErrorActionPreference='Stop' auch bei Exit-Code 0 eine Ausnahme wirft.
-        $output = & ssh $Server $remote 2>$null
+        $output = & ssh @SshOptions $Server $remote 2>$null
         $code = $LASTEXITCODE
     }
     else {
         # Out-Host, nicht einfach "& ssh ...": die Ausgabe eines nativen Programms
         # landet sonst im Erfolgs-Stream der Funktion und wuerde vom | Out-Null
         # des Aufrufers mit verschluckt. Out-Host schreibt direkt auf die Konsole.
-        & ssh $Server $remote | Out-Host
+        & ssh @SshOptions $Server $remote | Out-Host
         $code = $LASTEXITCODE
         $output = $null
     }
@@ -205,7 +224,7 @@ function Test-RemoteRunning {
 # Liegt auf dem Server ueberhaupt schon ein Stand? Ohne diese Pruefung scheitern
 # status/stop/log/fetch beim allerersten Mal an einem nackten "cd: No such file".
 function Test-RemoteDeployed {
-    & ssh $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
+    & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -251,10 +270,10 @@ function Push-Sources {
         $sizeKb = [math]::Round((Get-Item $tarFile).Length / 1KB, 1)
         Write-Host "    Archiv: $sizeKb KB - uebertrage nach ${Server}:$RemoteDir"
 
-        & ssh $Server "mkdir -p '$RemoteDir'"
+        & ssh @SshOptions $Server "mkdir -p '$RemoteDir'"
         if ($LASTEXITCODE -ne 0) { throw "Konnte $RemoteDir auf $Server nicht anlegen." }
 
-        & scp -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
+        & scp @SshOptions -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
         if ($LASTEXITCODE -ne 0) { throw "scp ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
 
         # Verwaiste Dateien entfernen, BEVOR entpackt wird.
@@ -364,20 +383,20 @@ function Invoke-Fetch {
     $remoteResults = "$RemoteDir/Ergebnisse/$Project"
 
     if ($All) {
-        & scp -q -r "${Server}:$remoteResults" $target
+        & scp @SshOptions -q -r "${Server}:$remoteResults" $target
         if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner von '$Project' konnte nicht geholt werden." }
     }
     else {
-        & scp -q "${Server}:$remoteResults/Simulation_Results.csv" $target
+        & scp @SshOptions -q "${Server}:$remoteResults/Simulation_Results.csv" $target
         if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf von '$Project' gemacht?)." }
 
         # Die effective-config.json ist klein und beantwortet spaeter die Frage, womit
         # dieser Datensatz entstanden ist -- sie gehoert zur CSV dazu.
-        & scp -q "${Server}:$remoteResults/effective-config.json" $target
+        & scp @SshOptions -q "${Server}:$remoteResults/effective-config.json" $target
         if ($LASTEXITCODE -ne 0) { Write-Warn "effective-config.json konnte nicht geholt werden." }
     }
 
-    & scp -q "${Server}:$RemoteDir/simulation.log" $target
+    & scp @SshOptions -q "${Server}:$RemoteDir/simulation.log" $target
     if ($LASTEXITCODE -ne 0) { Write-Warn "simulation.log konnte nicht geholt werden." }
 
     Get-ChildItem -Path $target -Recurse -File | ForEach-Object {
@@ -500,7 +519,7 @@ try {
                 Write-Host "Strg+C beendet nur die Anzeige - der Lauf auf dem Server laeuft weiter." -ForegroundColor Yellow
             }
             # Direkt ohne Wrapper, damit Strg+C sauber durchschlaegt.
-            & ssh $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
+            & ssh @SshOptions $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
         }
     }
 }

@@ -280,6 +280,17 @@ Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
   Nutzers. `stop` killt gezielt `Automatisierung_v2.dll` und dessen Kindprozesse.
 - **Xvfb-Reste** werden bewusst nicht abgeschossen: `xvfb-run -a` sucht sich eine
   freie Display-Nummer. Wenn doch nötig: `pkill -9 -f Xvfb`.
+- **Tote VPN-Verbindung hängt ewig:** Ohne Zeitgrenze wartet ssh/scp bei einem
+  abgerissenen AnyConnect-Tunnel unbegrenzt und ohne Meldung. Seit dem 04.11.2026 gibt
+  `sim.ps1` jedem Aufruf großzügige Grenzen mit (`$SshOptions` oben im Skript): eine
+  Minute für den Verbindungsaufbau, Abbruch erst nach **3 Minuten** ohne jedes
+  Lebenszeichen. Das ist bewusst weit gefasst: Unter Volllast antwortet der Server
+  träge, und knappe Werte haben früher gesunde Verbindungen abgebrochen. Ein stiller,
+  aber laufender Befehl (Build, `stop`) wird dadurch nicht abgebrochen, weil sshd die
+  Lebenszeichen selbst beantwortet. **Bricht die Verbindung ab, rechnet ein Lauf in
+  tmux auf dem Server trotzdem weiter.** Der Test
+  `ScriptContractTests.Every_Ssh_And_Scp_Call_Carries_The_Timeouts` passt auf, dass
+  kein neuer Aufruf ohne Grenzen dazukommt.
 
 ## Wenn etwas klemmt
 
