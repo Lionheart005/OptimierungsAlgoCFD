@@ -19,7 +19,12 @@ Rechnungen sind nicht Physikalisch akkurat:
 - gewinner der simulation immer nochmal überprüfen in detailierter auflösung. 
 
 
+---> bis hier her gerade in bearbeitung
 
+
+----> dann einmal alles testen auf Server
+
+----> dann plan erarbeiten für folgende erweiterungen:
 
 #####################
 Erweiterungen:
