@@ -89,7 +89,7 @@ bleibt:
 4. **Kennwertnamen eindeutig je Physik.** Bestehende Namen wie `Drag` bleiben. Neue Kennwerte anderer
    Physik bekommen ein Präfix, etwa `Fem_MaxVonMises` oder `Fem_Mass`.
 5. **Fitness nur über `RequiredMetrics` und vorhandene Kennwerte.** Die Fitness rechnet nur mit dem,
-   was sie deklariert. Das hilft auch dem KI-Plan (Modus „Metrics", TODO-53): Ein FEM-Kennwert bekommt
+   was sie deklariert. Das hilft auch dem KI-Plan (Modus „Metrics", TODO-56): Ein FEM-Kennwert bekommt
    dort automatisch ein eigenes Ersatzmodell, der KI-Teil ist also von selbst FEM-fähig.
 6. **Neue Projekte: Wandstärke und Anbindungspunkte mitdenken.** Das heißt nicht modellieren. Es
    heißt nur: Wo ein Bauteil gehalten wird, lässt sich im Generator als Bereich benennen.
