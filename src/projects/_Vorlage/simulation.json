@@ -90,6 +90,11 @@
   // zurueck.
   "OptimizationAlgorithm": "Rsm",
 
+  // Startwert des Zufalls. 0 = bei jedem Lauf neu ziehen (steht dann im Log und in
+  // Ergebnisse/<Name>/run-info.json). Fuer eine exakte Wiederholung den Wert von dort
+  // hier eintragen.
+  "RandomSeed": 0,
+
   // --- Evolutionaerer Algorithmus (wirkt nur bei "Evolution") ---
   "MinimalDeviationExploration": 1.0,
   "MinimalDeviationExploitation": 0.05,

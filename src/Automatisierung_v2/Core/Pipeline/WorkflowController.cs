@@ -26,11 +26,25 @@ namespace MyPicoGkProject.Core
         // Rechner — sonst zöge TODO-26 die mit TODO-13 entfernte Abhängigkeit wieder ein.
         private readonly IReadOnlyCollection<string> _requiredMetrics;
 
+        // Lauf-Journal für die Wiederaufnahme (TODO-51). null = Verhalten exakt wie vor TODO-51.
+        private readonly RunJournal? _journal;
+
+        /// <summary>
+        /// Der letzte Aufruf von <see cref="RunPipeline"/> kam aus dem Journal und hat nichts
+        /// gerechnet. Die Restzeit-Schätzung lässt solche Varianten aus (TODO-51).
+        /// </summary>
+        public bool LastCallWasReplayed { get; private set; }
+
         /// <param name="requiredMetrics">
         /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
         /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
         /// erfolgreich gerechneten Variante, bricht der Lauf ab (TODO-26). <c>null</c> oder
         /// leer = keine Prüfung.
+        /// </param>
+        /// <param name="journal">
+        /// Optionales Lauf-Journal (TODO-51): jedes Ergebnis von <see cref="RunPipeline"/> wird
+        /// mitgeschrieben, und im Wiedergabe-Modus antwortet es statt der Rechnung. Alle
+        /// Controller eines Laufs teilen sich eine Instanz.
         /// </param>
         public WorkflowController(
             IGeometryGenerator geometry,
@@ -38,8 +52,10 @@ namespace MyPicoGkProject.Core
             IModelValidator validator,
             IOptimizationAlgorithm optimizer,
             SimulationContext context,
-            IReadOnlyCollection<string>? requiredMetrics = null)
+            IReadOnlyCollection<string>? requiredMetrics = null,
+            RunJournal? journal = null)
         {
+            _journal = journal;
             _geometry = geometry;
             _stages = stages;
             _validator = validator;
@@ -57,6 +73,7 @@ namespace MyPicoGkProject.Core
             int totalVariants = _context.Config.MaxIterations * _context.Config.VariantsPerIteration;
             int completedVariants = 0;
             double totalSecondsPassed = 0;
+            int liveVariants = 0;
             
             // Gewinner der zuletzt gelaufenen Iteration. Nur für die Schlussmeldung
             // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
@@ -92,6 +109,7 @@ namespace MyPicoGkProject.Core
 
                     // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
                     ModelRecord record = RunPipeline(activeParams, iter, var);
+                    bool replayed = LastCallWasReplayed;
 
                     // 6a. Liefert die Pipeline überhaupt, was die Fitness-Formel braucht?
                     if (!requiredMetricsChecked && !record.SimulationFailed)
@@ -105,7 +123,7 @@ namespace MyPicoGkProject.Core
                     currentIterationRecords.Add(record);
                     _context.ExportToCsv(); 
 
-                    UpdateTimer(timer, ref completedVariants, ref totalSecondsPassed, totalVariants);
+                    UpdateTimer(timer, replayed, ref completedVariants, ref liveVariants, ref totalSecondsPassed, totalVariants);
                 } 
 
                 // =========================================================
@@ -245,7 +263,26 @@ namespace MyPicoGkProject.Core
                     _context.CurrentRunTag = customTag;
                 }
 
-                return RunPipelineCore(parameters, iteration, variant);
+                LastCallWasReplayed = false;
+                if (_journal == null) return RunPipelineCore(parameters, iteration, variant);
+
+                // Wiederaufnahme (TODO-51): erst das Journal fragen, sonst rechnen und anhängen.
+                // Faktor und Tag sind hier schon die wirksamen (nach TODO-42/43).
+                float factor = _context.EffectiveMeshRefinementFactor;
+                string tag = _context.CurrentRunTag ?? "";
+
+                if (_journal.TryReplay(iteration, variant, factor, tag, parameters, out ModelRecord? replayed)
+                    && replayed != null)
+                {
+                    LastCallWasReplayed = true;
+                    return replayed;
+                }
+
+                ModelRecord record = RunPipelineCore(parameters, iteration, variant);
+
+                // Sofort bei der Rückgabe: die Aufrufer verändern den Datensatz danach noch.
+                _journal.Append(iteration, variant, factor, tag, parameters, record);
+                return record;
             }
             finally
             {
@@ -358,13 +395,19 @@ namespace MyPicoGkProject.Core
             Console.WriteLine();
         }
 
-        private void UpdateTimer(Stopwatch timer, ref int completed, ref double totalSeconds, int totalVariants)
+        private void UpdateTimer(Stopwatch timer, bool replayed, ref int completed, ref int live, ref double totalSeconds, int totalVariants)
         {
             timer.Stop();
             completed++;
+
+            // Wiedergegebene Varianten dauern Millisekunden und würden die Schätzung
+            // verfälschen (TODO-51) — sie zählen nur als erledigt, nicht in den Schnitt.
+            if (replayed) return;
+
+            live++;
             totalSeconds += timer.Elapsed.TotalSeconds;
             
-            double avgSeconds = totalSeconds / completed;
+            double avgSeconds = totalSeconds / live;
             int variantsLeft = totalVariants - completed;
             TimeSpan timeLeft = TimeSpan.FromSeconds(variantsLeft * avgSeconds);
             

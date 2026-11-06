@@ -6,6 +6,7 @@ using System.Reflection;
 using System.IO;
 using System.Text.RegularExpressions;
 
+using MyPicoGkProject.Composition;
 using MyPicoGkProject.Core;
 using MyPicoGkProject.Solvers.Cfd;
 
@@ -30,9 +31,11 @@ namespace MyPicoGkProject
         private const string PrintConfigFlag = "--print-config";
         private const string CalibrateFlag = "--calibrate";
         private const string RecheckFlag = "--recheck";
+        private const string ResumeFlag = "--resume";
 
         /// <summary>
-        /// Aufruf: <c>&lt;Projektname&gt; [Projektverzeichnis] [--list-projects] [--print-config]</c>
+        /// Aufruf: <c>&lt;Projektname&gt; [Projektverzeichnis] [--list-projects] [--print-config]
+        /// [--calibrate] [--recheck[=Variante]] [--resume]</c>
         /// </summary>
         /// <returns>
         /// 0 bei Erfolg, 1 bei Abbruch. Vor TODO-23 fing diese Methode jede Ausnahme ab und
@@ -135,7 +138,7 @@ namespace MyPicoGkProject
                     return 0;
                 }
 
-                RunOptimization(definition, context);
+                RunOptimization(definition, context, args, resume: flags.Contains(ResumeFlag));
                 return 0;
             }
             catch (Exception e)
@@ -236,10 +239,16 @@ namespace MyPicoGkProject
             return context;
         }
 
-        /// <summary>Verdrahtet die Bausteine des Projekts und startet den Lauf im Geometrie-Kernel.</summary>
-        private static void RunOptimization(IProjectDefinition definition, ProjectContext context)
+        /// <summary>
+        /// Verdrahtet die Bausteine des Projekts und startet den Lauf im Geometrie-Kernel.
+        /// Mit <paramref name="resume"/> wird ein abgebrochener Lauf aus dem Journal fortgesetzt
+        /// (TODO-52), sonst beginnt ein neuer Lauf mit neuem Journal (das alte wird archiviert).
+        /// </summary>
+        private static void RunOptimization(IProjectDefinition definition, ProjectContext context, string[] args, bool resume)
         {
-            Console.WriteLine($"[SYSTEM] Starte Projekt: {context.Name}");
+            Console.WriteLine(resume
+                ? $"[SYSTEM] Setze abgebrochenen Lauf fort: {context.Name}"
+                : $"[SYSTEM] Starte Projekt: {context.Name}");
 
             IGeometryGenerator geometry = definition.CreateGeometry(context);
             IFitnessCalculator fitness = definition.CreateFitness(context);
@@ -259,13 +268,60 @@ namespace MyPicoGkProject
             MeshCalibration.ValidateConfig(context.Simulation, simulationReport, context.Name);
             MeshCalibration.ValidatePrecalibrationSupport(context.Simulation, definition);
 
+            // Reproduzierbarkeit und Wiederaufnahme (TODO-50 bis TODO-52). Der Fingerabdruck
+            // entsteht NACH CreateStages, sonst fehlen die Solver-Dateien darin.
+            string workingDirectory = simulationContext.WorkingDirectory;
+            SortedDictionary<string, string> configurationSections = ConfigFingerprint.Sections(context);
+            RunInfoSource source = RunInfoWriter.ReadSourceState(RepositoryRootOf(context));
+
+            int seed;
+            RunJournal journal;
+
+            if (resume)
+            {
+                ResumePlan plan = RunResume.Prepare(
+                    workingDirectory, context.Name, configurationSections, context.Simulation.RandomSeed, source);
+
+                if (plan.AlreadyCompleted || plan.Journal == null)
+                {
+                    Console.WriteLine("[WIEDERAUFNAHME] Der Lauf ist bereits abgeschlossen, nichts zu tun.");
+                    return;
+                }
+
+                seed = plan.Seed;
+                journal = plan.Journal;
+                Console.WriteLine($"[WIEDERAUFNAHME] {plan.StoredSimulations} Rechnung(en) gesichert, Zufalls-Seed {seed} aus dem Journal.");
+                RunInfoWriter.AddResume(workingDirectory, plan.StoredSimulations);
+            }
+            else
+            {
+                seed = RunSeed.Resolve(context.Simulation.RandomSeed);
+                Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
+
+                journal = RunJournal.StartNew(
+                    workingDirectory,
+                    RunResume.CreateHeader(context.Name, seed, configurationSections, source),
+                    out string? archived);
+                if (archived != null)
+                    Console.WriteLine($"[SYSTEM] Vorheriges Journal archiviert: {JsonConfigLoader.Label(archived)}");
+
+                int copied = RunInfoWriter.CopyProjectSources(context.ProjectDirectory, workingDirectory);
+                Console.WriteLine($"[SYSTEM] Quellstand gesichert: {copied} Datei(en) nach {RunInfoWriter.SourceSnapshotDirectoryName}/");
+
+                RunInfo info = RunInfoWriter.Create(
+                    context.Name, seed, args, source,
+                    ToolVersionProbe.Probe(context.Simulation),
+                    ConfigFingerprint.Combine(configurationSections));
+                RunInfoWriter.Write(workingDirectory, info);
+            }
+
             // Der Bouncer ist Framework-Bestandteil und prüft die Fitness, nicht eine
             // projektspezifische Metrik (Entscheidung 6).
-            IModelValidator validator = new ChampionValidator(fitness);
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
 
             // Optimierungsverfahren: steht als "OptimizationAlgorithm" in der simulation.json.
-            IOptimizationAlgorithm optimizer =
-                OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);
+            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
+                context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
 
             // Die Pflicht-Metriken gehen als reine Namensliste hinein, nicht als Rechner:
             // der Controller bewertet nichts selbst (TODO-13).
@@ -275,49 +331,72 @@ namespace MyPicoGkProject
                 validator,
                 optimizer,
                 simulationContext,
-                fitness.RequiredMetrics);
+                fitness.RequiredMetrics,
+                journal);
 
             kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
             {
-                if (context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    var (decision, reportRelPath) = ExecuteCalibration(
-                        definition, context, simulationContext, controller, fitness, validator, optimizer);
-
-                    if (!decision.Success || decision.SelectedStage == null)
+                    if (context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new InvalidOperationException(
-                            $"[KALIBRIERUNG] Automatische Netzkalibrierung fehlgeschlagen: {decision.SummaryMessage}");
+                        var (decision, reportRelPath) = ExecuteCalibration(
+                            definition, context, simulationContext, controller, fitness, validator, optimizer, journal);
+
+                        if (!decision.Success || decision.SelectedStage == null)
+                        {
+                            throw new InvalidOperationException(
+                                $"[KALIBRIERUNG] Automatische Netzkalibrierung fehlgeschlagen: {decision.SummaryMessage}");
+                        }
+
+                        simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
+                        if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
+                            || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
+                        {
+                            simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                        }
+                        simulationContext.CalibrationReportPath = reportRelPath;
+
+                        Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                    }
+                    else
+                    {
+                        MeshCalibration.CheckManualCalibrationHints(context, simulationContext.WorkingDirectory);
+                        Console.WriteLine($"Netzfaktor: {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)} (MANUELL aus simulation.json)");
                     }
 
-                    simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
-                    if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
-                        || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
-                    {
-                        simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
-                    }
-                    simulationContext.CalibrationReportPath = reportRelPath;
+                    string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
 
-                    Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                    Console.WriteLine("==================================================");
+                    Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
+                    Console.WriteLine($"  Projekt:          {context.Name}");
+                    Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
+                    Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
+                    Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
+                    Console.WriteLine("==================================================");
+
+                    controller.RunOptimization();
+
+                    journal.MarkCompleted();
+                    RunInfoWriter.Finish(workingDirectory, RunInfo.StatusCompleted);
                 }
-                else
+                catch (Exception)
                 {
-                    MeshCalibration.CheckManualCalibrationHints(context, simulationContext.WorkingDirectory);
-                    Console.WriteLine($"Netzfaktor: {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)} (MANUELL aus simulation.json)");
+                    // Ein harter Abbruch (Neustart, kill) kommt hier nie an; dann bleibt "laeuft"
+                    // stehen, und status erkennt den Fall am Journal ohne Schlusszeile (TODO-52).
+                    RunInfoWriter.Finish(workingDirectory, RunInfo.StatusAborted);
+                    throw;
                 }
-
-                string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
-
-                Console.WriteLine("==================================================");
-                Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
-                Console.WriteLine($"  Projekt:          {context.Name}");
-                Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
-                Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
-                Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
-                Console.WriteLine("==================================================");
-
-                controller.RunOptimization();
             });
+        }
+
+        /// <summary>Repo-Wurzel zum Projektordner (dort liegen .git bzw. deploy-info.json).</summary>
+        private static string? RepositoryRootOf(ProjectContext context)
+        {
+            string? projectsRoot = string.IsNullOrEmpty(context.ProjectDirectory)
+                ? null
+                : Path.GetDirectoryName(context.ProjectDirectory);
+            return ProjectPaths.ResolveRepositoryRoot(projectsRoot);
         }
 
         /// <summary>
@@ -339,8 +418,12 @@ namespace MyPicoGkProject
 
             EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
 
-            IModelValidator validator = new ChampionValidator(fitness);
-            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);
+            int seed = RunSeed.Resolve(context.Simulation.RandomSeed);
+            Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
+
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
+            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
+                context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
             var controller = new WorkflowController(
                 geometry,
                 stages,
@@ -369,7 +452,8 @@ namespace MyPicoGkProject
             WorkflowController controller3D,
             IFitnessCalculator fitness,
             IModelValidator validator,
-            IOptimizationAlgorithm optimizer)
+            IOptimizationAlgorithm optimizer,
+            RunJournal? journal = null)
         {
             Func<float, string, ModelRecord> runStage3D = (factor, tag) =>
             {
@@ -400,7 +484,8 @@ namespace MyPicoGkProject
                     validator,
                     optimizer,
                     simulationContext,
-                    fitness.RequiredMetrics);
+                    fitness.RequiredMetrics,
+                    journal);   // dieselbe Instanz wie der 3D-Controller (TODO-51)
 
                 return MeshCalibration.RunWithPrecalibration2D(
                     context,
@@ -531,8 +616,12 @@ namespace MyPicoGkProject
                 }
             }
 
-            IModelValidator validator = new ChampionValidator(fitness);
-            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(context.Simulation.OptimizationAlgorithm, fitness);
+            int seed = RunSeed.Resolve(context.Simulation.RandomSeed);
+            Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
+
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
+            IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
+                context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
             var controller = new WorkflowController(
                 geometry,
                 stages,

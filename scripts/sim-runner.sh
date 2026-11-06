@@ -467,6 +467,54 @@ cmd_start() {
     return 1
 }
 
+# Setzt einen abgebrochenen Lauf fort (TODO-52). Aufgebaut wie cmd_start, aber mit
+# --resume: das Programm liest Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl, nimmt
+# den Seed von dort und spielt die gesicherten Rechnungen wieder ab, statt sie neu zu
+# rechnen. Gebaut wird hier NICHT neu, wenn eine DLL da ist: resume rechnet bewusst mit
+# dem Stand weiter, der auf dem Server liegt (F28).
+cmd_resume() {
+    require_project resume
+    load_env
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+    echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --resume"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Fortsetzung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Die Fortsetzung ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
 cmd_calibrate() {
     require_project calibrate
     load_env
@@ -637,6 +685,16 @@ cmd_status() {
 
     if has_session; then say "tmux:  Sitzung '$SESSION' vorhanden"; else say "tmux:  keine Sitzung '$SESSION'"; fi
 
+    # Abgebrochener Lauf (TODO-52): nichts laeuft, aber das Journal hat keine Schlusszeile.
+    # Das ist der Fall nach einem Server-Neustart, einem Stromausfall oder einem 'stop'.
+    # Die Eintraege beginnen mit {"Index", die Schlusszeile mit {"Ende".
+    local journal="$RESULT_DIR/Wiederaufnahme/journal.jsonl"
+    if ! is_running && [ -f "$journal" ] && ! tail -n 1 "$journal" | grep -q '^{"Ende"'; then
+        local saved
+        saved="$(grep -c '^{"Index"' "$journal" || true)"
+        say "Abgebrochener Lauf gefunden: ${saved:-0} Rechnungen gesichert. Fortsetzen mit: .\\scripts\\sim.ps1 resume -Project $PROJECT_NAME"
+    fi
+
     say "Ergebnisse: Ergebnisse/$PROJECT_NAME/"
 
     if [ -f "$RESULT_CSV" ]; then
@@ -802,8 +860,9 @@ cmd_lastproject() {
 # Gibt als letzte Zeile auf stdout den Pfad des Archivs aus.
 #
 # Umfaenge:
-#   standard: CSV, effective-config.json, simulation.log, Analyseergebnisse/Verlaeufe/,
-#             Kalibrierung/, Verifikation.csv (jede Datei/jeder Ordner nur wenn vorhanden)
+#   standard: CSV, effective-config.json, run-info.json, Quellstand/, simulation.log,
+#             Analyseergebnisse/Verlaeufe/, Kalibrierung/, Verifikation.csv
+#             (jede Datei/jeder Ordner nur wenn vorhanden)
 #   champion: standard + VTUs des Champions / Top-N (Surface_GenX_VarY.vtu,
 #             Volume_GenX_VarY.vtu aus simulation.log sowie *[Cc]hampion*.vtu)
 #   all:      gesamter Projektordner Ergebnisse/<Projekt>/ plus simulation.log
@@ -851,6 +910,8 @@ cmd_pack() {
         local std_items=(
             "Simulation_Results.csv"
             "effective-config.json"
+            "run-info.json"
+            "Quellstand"
             "Analyseergebnisse/Verlaeufe"
             "Kalibrierung"
             "Verifikation.csv"
@@ -924,6 +985,7 @@ Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
   doctor              Prueft Werkzeuge und Pfade, bevor ein Lauf startet   [Projekt]
   build               dotnet build + libpicogk.so neben die DLL legen
   start               Startet den Lauf in einer tmux-Sitzung (baut bei Bedarf) [Projekt]
+  resume              Setzt einen abgebrochenen Lauf aus dem Journal fort       [Projekt]
   calibrate           Startet isolierte Netzkalibrierung in tmux          [Projekt]
   recheck [var] [fin] [--unsteady] Rechnet eine Variante fein nach in tmux [Projekt]
   stop                Beendet Lauf, tmux-Sitzung und haengende Kindprozesse
@@ -954,6 +1016,7 @@ case "${1:-}" in
     build)      cmd_build ;;
     projects)   cmd_projects ;;
     start)      cmd_start ;;
+    resume)     cmd_resume ;;
     stop)       cmd_stop ;;
     status)     cmd_status "${2:-12}" ;;
     log)        cmd_log "${2:-40}" "${3:-yes}" ;;

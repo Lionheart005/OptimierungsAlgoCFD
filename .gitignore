@@ -18,6 +18,7 @@ Serverergebnisse/
 
 # Stand des zuletzt auf den Server geschobenen Codes (liegt nur dort)
 .deploy_hash
+deploy-info.json
 .last_exit
 .last_project
 

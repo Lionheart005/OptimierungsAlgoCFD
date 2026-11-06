@@ -78,6 +78,7 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
                             # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
+.\scripts\sim.ps1 resume    # Abgebrochenen Lauf fortsetzen (ohne Upload, ohne Build)
 .\scripts\sim.ps1 calibrate # Netzkalibrierung starten (ermittelt optimalen MeshRefinementFactor)
 .\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Einzelne Variante auf feinerem Netz nachrechnen
 .\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
@@ -102,6 +103,30 @@ die Vorgabe `MantaAuv` (mit Hinweis). `fetch` und `status` fragen dagegen automa
 das zuletzt gerechnete Projekt (`lastproject`) auf dem Server ab, sodass nach einem Lauf
 kein manuelles `-Project` nötig ist.
 
+### Abgebrochenen Lauf fortsetzen (`resume`)
+
+tmux schützt nur dagegen, dass die Konsole zugeht oder die SSH-Verbindung abreißt —
+nicht gegen einen Neustart des Servers, einen Stromausfall oder einen Absturz. Dafür
+schreibt jeder Lauf ein Journal (`Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl`):
+eine Zeile je fertiger Rechnung, sofort auf die Platte gebracht.
+
+```powershell
+.\scripts\sim.ps1 status -Project Naca2D   # meldet "Abgebrochener Lauf gefunden: … Rechnungen gesichert"
+.\scripts\sim.ps1 resume -Project Naca2D   # setzt dort fort
+```
+
+`resume` startet das Programm mit `--resume`. Es läuft mit demselben Zufalls-Seed von
+vorn, nimmt die gesicherten Ergebnisse aber aus dem Journal, statt sie neu zu rechnen
+(Log: `[WIEDERAUFNAHME] … übernommen`). Das dauert Sekunden; danach wird normal
+weitergerechnet. Verloren geht höchstens die Variante, die beim Abbruch gerade lief.
+
+* `resume` lädt **nichts hoch und baut nicht**. Weicht der lokale Code vom Server ab,
+  gibt es nur eine Warnung: neuer Code braucht einen neuen Lauf (`run`).
+* Hat sich die Konfiguration des Projekts geändert, bricht `resume` ab und nennt die
+  Datei. Ein geänderter Seed in `simulation.json` wird gemeldet, es gilt der aus dem Journal.
+* Ein neues `run` (auch ein Neustart durch `deploy`) archiviert das alte Journal als
+  `journal_<Zeitstempel>.jsonl` und beginnt frisch.
+
 `sim-runner.sh` auf dem Server hat **keinen** stillen Standard mehr — von Hand aufgerufen
 verlangt es `SIM_PROJECT=<Name>` (außer bei `lastproject`, `projects`, `delete`, `stop`, `running`, `hash`),
 weil ein Vertipper dort sonst klaglos ein anderes Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
@@ -124,7 +149,7 @@ zu einem einzigen `tar.gz`, lädt dieses mit **einem** scp-Aufruf herunter und e
 .\scripts\sim.ps1 fetch
 ```
 
-Holt `Simulation_Results.csv`, `effective-config.json`, das Projekt-Log, `Analyseergebnisse/Verlaeufe/`,
+Holt `Simulation_Results.csv`, `effective-config.json`, `run-info.json`, `Quellstand/`, das Projekt-Log, `Analyseergebnisse/Verlaeufe/`,
 `Kalibrierung/` und `Verifikation.csv` (jede Datei nur wenn vorhanden).
 Das ist der Normalfall: wenige KB bis MB, schnell über VPN. Fehlt die CSV nach dem Entpacken, bricht
 das Skript mit einer roten Fehlermeldung und der Liste aller auf dem Server vorhandenen Projektergebnisse ab.
@@ -193,6 +218,9 @@ Alles unterhalb von `Ergebnisse/<Projekt>/`:
 |---|---|
 | `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
 | `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
+| `run-info.json` | Fahrtenschreiber: Code-Stand (Commit, Branch, Deploy-Hash), Programmversionen, Zufalls-Seed, Rechner, Status, Wiederaufnahmen |
+| `Quellstand/` | Kopie von `src/projects/<Projekt>/` (`*.cs`, `*.json`) zum Start des Laufs |
+| `Wiederaufnahme/journal.jsonl` | Lauf-Journal für `resume`; ältere als `journal_<Zeitstempel>.jsonl` |
 | `Analyseergebnisse/Verlaeufe/` | Gespeicherte Konvergenzverläufe (`History_*.csv`) und Konfigurationen (`Config_*.cfg`) |
 | `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
 | `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
@@ -332,6 +360,10 @@ die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung
    laufenden Prozess die DLL unter den Füßen wegziehen.
 5. `dotnet build` und danach `libpicogk.so` neben die DLL kopieren (der Build
    räumt den Ordner gelegentlich auf).
+6. Erst nach erfolgreichem Build: `.deploy_hash` und `deploy-info.json` schreiben.
+   `deploy-info.json` enthält Commit, Branch, Deploy-Zeit und — wenn ein git gefunden
+   wird (PATH oder GitHub Desktop) — ob es nicht-committete Änderungen gab. Das Programm
+   übernimmt das in `run-info.json`, denn auf dem Server gibt es kein `.git`.
 
 **Verwaiste Dateien werden vor dem Entpacken entfernt.** Ein Deploy überschreibt nur,
 es löscht nicht — eine umbenannte oder verschobene Datei lag danach doppelt auf dem

@@ -41,6 +41,9 @@
   // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
   "OptimizationAlgorithm": "Rsm",
 
+  // --- Startwert des Zufalls: 0 = bei jedem Lauf neu ziehen (siehe run-info.json) ---
+  "RandomSeed": 0,
+
   // --- Evolutionaerer Algorithmus ---
   "MinimalDeviationExploration": 1.0,
   "MinimalDeviationExploitation": 0.05,

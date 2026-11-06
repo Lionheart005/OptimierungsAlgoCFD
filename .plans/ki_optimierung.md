@@ -5,7 +5,9 @@
 > 05.11.2026. Die Nummerierung geht hier mit **TODO-50** weiter, Entscheidungen mit **E13**,
 > Festlegungen mit **F9**.
 >
-> **Status:** Noch nichts umgesetzt. FEM ist zurückgestellt, siehe `.plans/fem_ausblick.md`.
+> **Status (06.11.2026):** Block V (TODO-50 bis TODO-52) ist im Code umgesetzt und lokal geprüft,
+> offen ist nur der Server-Praxistest von TODO-52. Der KI-Teil ab TODO-53 ist noch nicht begonnen.
+> FEM ist zurückgestellt, siehe `.plans/fem_ausblick.md`.
 >
 > **Reihenfolge (Nachtrag vom 05.11.2026):** **Zuerst Block V, die Vorarbeiten TODO-50 bis TODO-52**
 > (Reproduzierbarkeit und Wiederaufnahme abgebrochener Läufe), **danach** der KI-Teil ab TODO-53.
@@ -24,9 +26,9 @@
 
 | Block | Schritt | Inhalt | Wo | Status |
 | --- | --- | --- | --- | --- |
-| V | TODO-50 | Zufalls-Seed, Fahrtenschreiber `run-info.json`, Kopie des Projekt-Quellstands | lokal | [ ] |
-| V | TODO-51 | Lauf-Journal und Wiedergabe: der Kern der Wiederaufnahme | lokal | [ ] |
-| V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [ ] |
+| V | TODO-50 | Zufalls-Seed, Fahrtenschreiber `run-info.json`, Kopie des Projekt-Quellstands | lokal | [x] |
+| V | TODO-51 | Lauf-Journal und Wiedergabe: der Kern der Wiederaufnahme | lokal | [x] |
+| V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [~] Code fertig, Praxistest offen |
 | G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [ ] |
 | G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [ ] |
 | H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [ ] |
@@ -36,9 +38,9 @@
 | I | TODO-59 | Bedienhandbuch, READMEs, Kommentarköpfe der JSON-Dateien | lokal | [ ] |
 | I | TODO-60 | Vergleichslauf Rsm, Evolution und Bayes auf dem Server | **Server (du)** | [ ] |
 
-**Verifikationsstand vor Beginn:** laut `anmerkungen_umsetzung.md` 443/443 Tests grün,
-0 Warnungen. Vor TODO-50 einmal `dotnet test Automatisierung.sln` laufen lassen und die Zahl hier
-eintragen.
+**Verifikationsstand:** vor Beginn (06.11.2026) 443/443 Tests grün, 0 Warnungen. Nach Block V
+**481/481 grün, 0 Warnungen** (neu: `tests/…/ReproducibilityAndResumeTests.cs`). `sim.ps1` ohne
+Parser-Fehler, `bash -n scripts/sim-runner.sh` fehlerfrei.
 
 ---
 
@@ -305,6 +307,39 @@ Der Praxistest darf nachgeholt werden. Der KI-Teil kann schon vorher beginnen.
 | Jemand ändert die Konfiguration und ruft dann `resume`. | Abbruch mit Nennung der Datei (F27). |
 | Code wurde neu deployt, dann `resume` | Warnung. F26 fängt tatsächliche Abweichungen ab. |
 | Das Journal wird groß. | Wenige KB je Variante, also bei mehreren hundert Varianten unter 1 MB. |
+
+### Umsetzungsstand und Abweichungen vom Plan (06.11.2026)
+
+Umgesetzt wie beschrieben, mit diesen bewussten Abweichungen und Erkenntnissen:
+
+* **Neue Dateien:** `Core/Utilities/RunSeed.cs`, `Core/Utilities/GitInfo.cs`, `Core/Models/RunInfo.cs`,
+  `Core/Configuration/RunInfoWriter.cs`, `Core/Configuration/ConfigFingerprint.cs`,
+  `Core/Pipeline/RunJournal.cs`, `Core/Pipeline/RunResume.cs`, `Composition/ToolVersionProbe.cs`.
+* **`ResolveSeed` liegt als `RunSeed.Resolve` in `Core`**, nicht in `Program.cs`: `Program` ist
+  intern und ohne Kernel nicht testbar. Ebenso liegt die Logik von `--resume` (Journal suchen,
+  Konfiguration und Seed prüfen) in `RunResume.Prepare`. `Program` ruft sie nur auf.
+* **Exit-Code von `--resume` ohne Journal:** `RunResume.Prepare` wirft eine Meldung mit
+  `[WIEDERAUFNAHME]`, die `Program.Report` als Bedienfehler ausgibt (Exit-Code 1). Getestet ist die
+  Meldung. Den Exit-Code habe ich einmal von Hand mit der gebauten DLL geprüft.
+* **Konfigurations-Hash:** je Datei ein SHA-256 über die `"Werte"` aus `EffectiveConfigWriter.Build`.
+  Die Kopfzeile des Journals speichert alle Abschnitte, so dass die Meldung die geänderte Datei
+  nennt. **`RandomSeed` ist ausgenommen**, sonst würde ein nachträglich eingetragener Seed jeden
+  Lauf für geändert erklären (Schritt 4 von TODO-52 wäre nie erreichbar). Einzelne Schlüssel nennt
+  die Meldung nicht, nur Dateien.
+* **SU2-Version:** nur über den Aufruf ohne Argumente (in einem leeren Temp-Ordner, damit SU2 keine
+  `default.cfg` findet). Den Nachtrag aus dem Banner der ersten Variante gibt es nicht:
+  `Su2Solver` sichert die Konsolenausgabe nur im Fehlerfall. Sonst steht `"unbekannt"` da.
+* **`deploy-info.json`** wird als Base64 übertragen (`printf … | base64 -d`), weil PowerShell 5.1
+  Anführungszeichen in ssh-Argumenten nicht sauber weiterreicht. Sie steht in `.gitignore`.
+* **Journal:** `Record` enthält auch `Fitness` (zum Zeitpunkt der Rückgabe immer 0), das schadet
+  nicht. Beim Wiedergeben bekommt der Datensatz das übergebene Parameter-Wörterbuch selbst, genau
+  wie im echten Lauf. NaN-Kennwerte gehen dank `AllowNamedFloatingPointLiterals` durch.
+* **Kernprüfung bestanden:** Für Rsm und Evolution, mit echtem Türsteher (streng eingestellt) und
+  Feinprüfung `"Final"`, ruft ein fortgesetzter Lauf den Solver genau N − k Mal auf, und die
+  `Simulation_Results.csv` ist bytegleich mit dem ununterbrochenen Lauf. Das gilt auch mit halber
+  letzter Zeile und bei einer Abweichung in Eintrag j.
+
+**Nächster Schritt:** Praxistest von TODO-52 auf dem Server (siehe oben), danach TODO-53.
 
 ---
 

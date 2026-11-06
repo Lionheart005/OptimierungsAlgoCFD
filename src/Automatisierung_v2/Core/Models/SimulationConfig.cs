@@ -66,6 +66,14 @@ namespace MyPicoGkProject.Core
         /// </summary>
         public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
 
+        /// <summary>
+        /// Startwert aller Zufallsquellen des Laufs (TODO-50, F23). <c>0</c> = beim Start
+        /// automatisch ziehen; der gezogene Wert steht im Log und in <c>run-info.json</c>.
+        /// Ein fester Wert ≠ 0 macht den Lauf exakt wiederholbar. Optimierer bekommen
+        /// <c>new Random(seed)</c>, der Türsteher <c>new Random(seed + 1)</c>.
+        /// </summary>
+        public int RandomSeed { get; set; } = 0;
+
         // 3a. Algorithmus-Spezifische Einstellungen (Evolution)
         public float MinimalDeviationExploration { get; set; } = 1.0f;
         public float MinimalDeviationExploitation { get; set; } = 0.05f;

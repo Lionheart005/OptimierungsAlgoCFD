@@ -116,7 +116,9 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project TestprojektNACA` |
 | … **Ergebnisse holen** | — | `.\scripts\sim.ps1 fetch -Project <Name>` | **`-Project` immer angeben**, sonst wird MantaAuv geholt (siehe Abschnitt 7) |
 | … eine **Rechnung von Hand prüfen** | — | `fetch`, dann `plot_history.py` | Konvergenz prüfen; bei Bedarf `fetch -Champion` und ParaView für die VTUs (Details in `scripts/README.md`) |
-| … nachsehen, **womit ein Lauf gerechnet hat** | — | `effective-config.json` | siehe [Abschnitt 5](#5-welche-werte-galten-wirklich) |
+| … nachsehen, **womit ein Lauf gerechnet hat** | — | `effective-config.json`, `run-info.json` | siehe [Abschnitt 5](#5-welche-werte-galten-wirklich) |
+| … einen Lauf **exakt wiederholen** | `simulation.json` | `RandomSeed` | den Seed aus `run-info.json` (oder der Logzeile `Zufalls-Seed`) eintragen |
+| … einen **abgebrochenen Lauf fortsetzen** (Server-Neustart, Stromausfall) | — | `.\scripts\sim.ps1 resume -Project <Name>` | siehe [Abschnitt 6.1](#61-abgebrochenen-lauf-fortsetzen) |
 
 ---
 
@@ -193,6 +195,7 @@ TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\si
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `OptimizationAlgorithm` | `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. Ein unbekannter Name führt zu einer Warnung und `"Rsm"`. | `"Rsm"` | 🟡 |
+| `RandomSeed` | Startwert des Zufalls (Optimierer und Türsteher). `0` = bei jedem Lauf neu ziehen; der gezogene Wert steht im Log (`[SYSTEM] Zufalls-Seed: …`) und in `run-info.json`. Wer einen Lauf **exakt wiederholen** will, trägt diesen Wert hier ein. | `0` | 🟢 |
 
 *Nur für `"Rsm"`:*
 
@@ -371,6 +374,9 @@ inzwischen geändert sind:
 | --- | --- |
 | **Kopf des Logs** (`simulation.log`) | Projekt, Code-Stand, und für jede Datei, welche Einstellungen *aus ihr* kamen (`[CONFIG] Herkunft der wirksamen Werte`). Alles Ungenannte war der Standardwert. Darunter die Anströmung (`Anströmung: 2 m/s (…)`) |
 | **`Ergebnisse/<Projekt>/effective-config.json`** | Alle wirksamen Werte des Laufs, `WirksamerNetzfaktor`, `NetzfaktorQuelle`, `KalibrierBericht`, je Einstellung mit der Datei, aus der sie kam, plus jede `*.local.json`-Überschreibung (`MaschinenspezifischeUeberschreibungen`). **Das ist die Akte eines Laufs.** `fetch` holt sie immer mit |
+| **`Ergebnisse/<Projekt>/run-info.json`** | Der **Fahrtenschreiber** des Laufs: Code-Stand (`Commit`, `Branch`, `DeployHash`, `DeployZeit`, `UncommittedChanges`), Programmversionen (SU2, Gmsh, mpirun, PicoGK), `ZufallsSeed`, Rechner, Aufruf, `Status` (`laeuft`/`abgeschlossen`/`abgebrochen`) und jede Wiederaufnahme. Steht nach einem Server-Neustart noch `laeuft` darin, wurde der Lauf hart unterbrochen. `fetch` holt sie immer mit |
+| **`Ergebnisse/<Projekt>/Quellstand/`** | Kopie des Projektcodes (`*.cs` und `*.json` aus `src/projects/<Projekt>/`) zum Start des Laufs. Damit ist auch Monate später klar, mit welcher Geometrie und welcher Bewertungsformel gerechnet wurde. `fetch` holt sie immer mit |
+| **`Ergebnisse/<Projekt>/Wiederaufnahme/`** | Lauf-Journal `journal.jsonl` für `resume` (eine Zeile je fertiger Rechnung). Ältere Journale heißen `journal_<Zeitstempel>.jsonl` |
 | **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf); seit TODO-40/41: `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) |
 | **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
 | **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` |
@@ -387,6 +393,7 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 | Befehl | Was er tut |
 | --- | --- |
 | `run` | Der Alltagsbefehl: Code hochladen, bauen, Lauf starten. Danach kann das Fenster zu. |
+| `resume` | Einen abgebrochenen Lauf fortsetzen (nach Server-Neustart, Stromausfall, Absturz oder `stop`). Lädt nichts hoch und baut nicht. Siehe [6.1](#61-abgebrochenen-lauf-fortsetzen). |
 | `calibrate` | Netzkalibrierung starten (TODO-42): ermittelt den optimalen `MeshRefinementFactor` für die Startgeometrie und gibt die empfohlene Zeile aus. |
 | `recheck` | Einzelne Variante (`-Variant Gen3_Var2`) auf feinerem Netz (`-Finer 1`) re-simulieren und vergleichen (TODO-43). |
 | `deploy` | Nur hochladen und bauen. Läuft schon etwas und hat sich der Code geändert, wird neu gestartet (außer mit `-NoRestart`). |
@@ -402,6 +409,39 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 Weitere Schalter: `-Project` (welches Projekt; bei `run`/`deploy`/`doctor` gilt ohne Angabe `MantaAuv`, bei `fetch`/`status` wird automatisch das letzte Projekt vom Server abgefragt), `-Champion` (`fetch`: VTUs des Champions/Top-N mitnehmen), `-All` (`fetch`: kompletten Ergebnisordner holen), `-Server` (Standard `BIC_12`), `-RemoteDir` (Zielordner auf dem Server), `-Force` (hochladen erzwingen bzw. ohne Rückfrage löschen), `-Out` (Zielordner für `fetch`).
 
 Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
+
+### 6.1 Abgebrochenen Lauf fortsetzen
+
+Die tmux-Sitzung schützt einen Lauf nur davor, dass die Konsole zugeht oder die Verbindung
+abreißt. **Ein Neustart des Servers, ein Stromausfall oder ein Absturz beendet ihn trotzdem.**
+Deshalb schreibt jeder Lauf ein Journal mit: nach jeder fertigen Rechnung eine Zeile.
+
+**Was tun nach einem Server-Neustart?**
+
+1. `.\scripts\sim.ps1 status -Project <Name>` meldet
+   `Abgebrochener Lauf gefunden: 37 Rechnungen gesichert. Fortsetzen mit: …`.
+2. `.\scripts\sim.ps1 resume -Project <Name>` setzt den Lauf fort.
+3. Im Log stehen zuerst Zeilen wie `[WIEDERAUFNAHME] Gen3_Var4 aus dem Journal übernommen (37/52)`.
+   Das geht in Sekunden. Danach wird ganz normal weitergerechnet.
+
+**Was geht verloren?** Höchstens die eine Variante, die beim Abbruch gerade gerechnet wurde.
+Sie wird neu gerechnet. Am Ende sind CSV und Ergebnis genau so, als wäre der Lauf nie
+unterbrochen worden.
+
+**Warum klappt das?** Der Lauf läuft mit demselben Zufalls-Seed noch einmal von vorn. Der
+Optimierer schlägt deshalb dieselben Varianten vor, und deren Ergebnisse stehen schon im
+Journal. Erst wo das Journal endet, wird wieder gerechnet.
+
+**Warum braucht geänderter Code oder eine geänderte Einstellung einen neuen Lauf?**
+
+* Hat sich eine Einstellung geändert (z. B. Netz oder Anströmung in `simulation.json` oder
+  `solvers/su2.json`), wären die alten und neuen Rechnungen nicht vergleichbar. `resume`
+  bricht dann ab und nennt die Datei. Entweder die Änderung zurücknehmen oder mit `run` neu
+  starten. Ausgenommen ist `RandomSeed`: beim Fortsetzen gilt immer der Seed aus dem Journal.
+* `resume` lädt keinen Code hoch. Liegt lokal neuerer Code, gibt es nur eine Warnung, und es
+  wird mit dem Stand auf dem Server weitergerechnet. Neuer Code heißt neuer Lauf: `run`.
+* Ein neues `run` beginnt immer frisch. Das alte Journal wird dabei nicht gelöscht, sondern
+  als `journal_<Zeitstempel>.jsonl` aufgehoben.
 
 ---
 
@@ -424,6 +464,10 @@ Ein neues Projekt: `.\scripts\new-project.ps1 <Name>`.
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |
 | `[ABGELEHNT] Modell ist instabil. Disqualifiziert.` | Der Bouncer hat einen Zufallstreffer aussortiert. Das ist normal. | Passiert es fast immer: `BouncerTolerance` lockern oder `BouncerJitter` verkleinern. |
+| `[WIEDERAUFNAHME] Kein abgebrochener Lauf gefunden` | Für dieses Projekt gibt es kein Journal (noch nie gerechnet, oder Ergebnisse mit `delete` gelöscht). | Neu starten mit `.\scripts\sim.ps1 run -Project <Name>`. |
+| `[WIEDERAUFNAHME] Die Konfiguration hat sich seit dem Start des Laufs geändert: …` | Eine der genannten Dateien hat andere Werte als beim Start. Ein Weiterrechnen würde Ergebnisse mischen. | Die Änderung zurücknehmen (die Werte des Laufs stehen in `effective-config.json`) oder mit `run` neu starten. |
+| `[WIEDERAUFNAHME] Der Lauf ist bereits abgeschlossen, nichts zu tun.` | Der Lauf ist regulär zu Ende gegangen. | Nichts. Ergebnisse mit `fetch` holen. |
+| `[WARNUNG] Wiederaufnahme: Aufruf … weicht vom Journal ab` | Beim Fortsetzen hat das Programm eine andere Variante vorgeschlagen als beim ersten Mal (meist: anderer Code). | Nichts. Alles bis dahin wurde übernommen, ab dort wird neu gerechnet. Das alte Journal liegt als `journal_abweichung_<Zeitstempel>.jsonl` daneben. |
 | `Unbekanntes Projekt '…'` | Projektname vertippt (Groß-/Kleinschreibung zählt). | `.\scripts\sim.ps1 projects` zeigt die gültigen Namen. |
 | `sim.ps1` bricht nach ein bis drei Minuten mit einem SSH-Fehler ab | Die Verbindung (VPN) war tot. | VPN prüfen, Befehl wiederholen. **Ein laufender Lauf auf dem Server rechnet trotzdem weiter.** |
 | `[KONFIGURATION] Im Auto-Modus wird der Netzfaktor kalibriert. Bitte 'MeshRefinementFactor' aus … entfernen` | Im Auto-Modus kalibriert das Framework den Netzfaktor selbst; ein fester Faktor würde dem widersprechen. | `MeshRefinementFactor` aus der genannten Datei löschen und nur `Tolerance` unter `MeshCalibration` angeben. |

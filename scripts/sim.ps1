@@ -18,6 +18,8 @@
 .PARAMETER Command
     deploy   Code hochladen und bauen (startet bei Bedarf neu, siehe oben)
     run      deploy + starten  -- der Alltagsbefehl
+    resume   Abgebrochenen Lauf fortsetzen (nach Server-Neustart, Absturz oder stop).
+             Laedt nichts hoch und baut nicht: rechnet mit dem Stand auf dem Server weiter.
     status   Laeuft was? Wie lange? Letzte Logzeilen
     log      Logdatei live mitlesen (Strg+C beendet nur das Mitlesen, nicht den Lauf)
     stop     Lauf, tmux-Sitzung und haengende Kindprozesse beenden
@@ -60,7 +62,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete', 'calibrate', 'recheck')]
+    [ValidateSet('deploy', 'run', 'resume', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete', 'calibrate', 'recheck')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -204,6 +206,79 @@ function Get-LocalHash {
 
 # Fuehrt einen Befehl auf dem Server aus. Die Umgebung (PATH, LD_LIBRARY_PATH)
 # setzt sich sim-runner.sh selbst -- ~/.bashrc greift bei "ssh host befehl" nicht.
+# Commit und Branch fuer deploy-info.json (TODO-50). Direkt aus den Dateien unter .git
+# gelesen: lokal liegt git nur im Ordner von GitHub Desktop und nicht im PATH.
+function Get-GitState {
+    $state = [ordered]@{ Commit = $null; Branch = $null }
+    $gitDir = Join-Path $RepoRoot '.git'
+    $headFile = Join-Path $gitDir 'HEAD'
+    if (-not (Test-Path -LiteralPath $headFile)) { return $state }
+
+    $head = (Get-Content -LiteralPath $headFile -Raw).Trim()
+    if ($head -match '^ref:\s*(.+)$') {
+        $ref = $Matches[1].Trim()
+        $state.Branch = $ref -replace '^refs/heads/', ''
+
+        $loose = Join-Path $gitDir ($ref -replace '/', '\')
+        if (Test-Path -LiteralPath $loose) {
+            $state.Commit = (Get-Content -LiteralPath $loose -Raw).Trim()
+        }
+        else {
+            $packed = Join-Path $gitDir 'packed-refs'
+            if (Test-Path -LiteralPath $packed) {
+                foreach ($line in Get-Content -LiteralPath $packed) {
+                    $parts = $line.Split(' ')
+                    if ($parts.Count -eq 2 -and $parts[1] -eq $ref) { $state.Commit = $parts[0]; break }
+                }
+            }
+        }
+    }
+    elseif ($head -match '^[0-9a-f]{40}$') {
+        $state.Commit = $head
+    }
+
+    return $state
+}
+
+# "true"/"false" nur, wenn ein git gefunden wird (PATH oder GitHub Desktop), sonst "unbekannt".
+function Get-UncommittedChanges {
+    try {
+        $git = $null
+        $command = Get-Command git -ErrorAction SilentlyContinue
+        if ($command) { $git = $command.Source }
+        elseif ($env:LOCALAPPDATA -and (Test-Path (Join-Path $env:LOCALAPPDATA 'GitHubDesktop'))) {
+            $found = Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Filter git.exe -Recurse -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($found) { $git = $found.FullName }
+        }
+        if (-not $git) { return 'unbekannt' }
+
+        $changes = & $git -C $RepoRoot status --porcelain 2>$null
+        if ($LASTEXITCODE -ne 0) { return 'unbekannt' }
+        if ($changes) { return 'true' }
+        return 'false'
+    }
+    catch { return 'unbekannt' }
+}
+
+# Schreibt deploy-info.json neben .deploy_hash (TODO-50). Das Programm liest daraus den
+# Code-Stand fuer run-info.json -- auf dem Server gibt es kein .git. Uebertragen wird der
+# Inhalt als Base64: PowerShell 5.1 reicht Anfuehrungszeichen in Argumenten an ssh nicht
+# sauber durch, und JSON besteht aus Anfuehrungszeichen.
+function Write-RemoteDeployInfo([string]$LocalHash) {
+    $git = Get-GitState
+    $info = [ordered]@{
+        Commit             = $git.Commit
+        Branch             = $git.Branch
+        DeployHash         = $LocalHash
+        DeployZeit         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+        UncommittedChanges = Get-UncommittedChanges
+    }
+    $json = $info | ConvertTo-Json -Compress
+    $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+    Invoke-Remote -CommandLine "printf '%s' '$base64' | base64 -d > deploy-info.json" | Out-Null
+}
+
 function Invoke-Remote {
     param(
         [Parameter(Mandatory)][string]$CommandLine,
@@ -387,6 +462,11 @@ function Invoke-Deploy {
     # waehrend alles danach aussah, als sei der neue Stand drueben.
     Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
+    # Zum selben Zeitpunkt: Commit, Branch und Deploy-Zeit fuer den Fahrtenschreiber.
+    # Nur Information -- scheitert das, darf der Deploy trotzdem gelten.
+    try { Write-RemoteDeployInfo -LocalHash $localHash }
+    catch { Write-Warn "deploy-info.json konnte nicht geschrieben werden: $($_.Exception.Message)" }
+
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
     }
@@ -398,6 +478,24 @@ function Invoke-Deploy {
 function Invoke-Start {
     Write-Step "Starte Lauf '$Project' auf $Server"
     Invoke-Runner -Arguments 'start'
+    Write-Host ""
+    Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
+# Abgebrochenen Lauf fortsetzen (TODO-52). Bewusst KEIN Push und KEIN Build (F28): neuer
+# Code heisst neuer Lauf. Weicht der lokale Stand ab, wird nur gewarnt.
+function Invoke-Resume {
+    Write-Step "Setze abgebrochenen Lauf '$Project' auf $Server fort"
+
+    $localHash = Get-LocalHash
+    $remoteHash = Get-RemoteHash
+    if ($localHash -ne $remoteHash) {
+        Write-Warn "Lokaler Code weicht vom Server ab. resume rechnet mit dem Stand auf dem Server weiter; neuer"
+        Write-Warn "Code braucht einen neuen Lauf (run)."
+    }
+
+    Invoke-Runner -Arguments 'resume'
     Write-Host ""
     Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
     Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
@@ -548,7 +646,7 @@ try {
                 Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
             }
         }
-        elseif (@('deploy', 'run', 'doctor', 'calibrate', 'recheck') -contains $Command) {
+        elseif (@('deploy', 'run', 'resume', 'doctor', 'calibrate', 'recheck') -contains $Command) {
             Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
             Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
         }
@@ -558,6 +656,10 @@ try {
         'deploy' { Invoke-Deploy }
         'run' { Invoke-Deploy -ThenStart }
         'calibrate' { Invoke-Deploy -ThenCalibrate }
+        'resume' {
+            Assert-RemoteDeployed
+            Invoke-Resume
+        }
         'recheck' {
             Assert-RemoteDeployed
             Invoke-Recheck
