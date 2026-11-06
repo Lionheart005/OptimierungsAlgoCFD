@@ -59,10 +59,12 @@ namespace AutomatisierungCleanVersion.Tests
             var loaded = MantaProjectFiles.Load(new GmshMesherOptions(), "solvers/gmsh.json");
 
             Assert.Equal(defaults.TunnelShape, loaded.TunnelShape);
-            Assert.Equal(defaults.TunnelSizeX, loaded.TunnelSizeX);
+            // MantaAuv weicht seit 06.11.2026 (TODO-W8) bewusst von den Code-Vorgaben ab: Kanal 1200 mm mit Modell
+            // 300 mm hinter der Mitte (~18 L Nachlauf), Prismen-Wandschicht (y+ ~ 1) und Nachlauf-Box.
+            Assert.Equal(1200.0f, loaded.TunnelSizeX);
             Assert.Equal(defaults.TunnelSizeY, loaded.TunnelSizeY);
             Assert.Equal(defaults.TunnelSizeZ, loaded.TunnelSizeZ);
-            Assert.Equal(defaults.TunnelCenterX, loaded.TunnelCenterX);
+            Assert.Equal(300.0f, loaded.TunnelCenterX);
             Assert.Equal(defaults.TunnelCenterY, loaded.TunnelCenterY);
             Assert.Equal(defaults.TunnelCenterZ, loaded.TunnelCenterZ);
             Assert.Equal(defaults.TunnelDiameter, loaded.TunnelDiameter);
@@ -72,12 +74,12 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.BoundaryLayerSizeMax, loaded.BoundaryLayerSizeMax);
             Assert.Equal(defaults.BoundaryLayerDistMin, loaded.BoundaryLayerDistMin);
             Assert.Equal(defaults.BoundaryLayerDistMax, loaded.BoundaryLayerDistMax);
-            Assert.Equal(defaults.WakeRefinement, loaded.WakeRefinement);
+            Assert.True(loaded.WakeRefinement);
             Assert.Equal(defaults.WakeLengthFactor, loaded.WakeLengthFactor);
             Assert.Equal(defaults.WakeWidthFactor, loaded.WakeWidthFactor);
             Assert.Equal(defaults.WakeCellSize, loaded.WakeCellSize);
             Assert.Equal(defaults.MeshSizeFromCurvature, loaded.MeshSizeFromCurvature);
-            Assert.Equal(defaults.BoundaryLayerMode, loaded.BoundaryLayerMode);
+            Assert.Equal("Prism", loaded.BoundaryLayerMode);
             Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
             Assert.Equal(defaults.BoundaryLayerMinLayers, loaded.BoundaryLayerMinLayers);
             Assert.Equal(defaults.BoundaryLayerGrowthRate, loaded.BoundaryLayerGrowthRate);

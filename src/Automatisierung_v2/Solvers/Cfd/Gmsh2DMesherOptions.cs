@@ -12,10 +12,12 @@ namespace MyPicoGkProject.Solvers.Cfd
         // --- Fernfeld (Simulationsdomäne) ---
 
         /// <summary>
-        /// Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge c (Vorgabe 50, da in 2D die
-        /// Zirkulation mit 1/r abklingt und ein zu kleines Fernfeld den Auftrieb verfälscht).
+        /// Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge c (Vorgabe 500 wie die NASA-TMR-Gitter;
+        /// in 2D klingt die Zirkulation nur mit 1/r ab, ein zu kleines Fernfeld verfälscht den Auftrieb).
+        /// Die Zellen wachsen nach außen (<see cref="NearfieldGrowthDistanceFactor"/>), das große Fernfeld
+        /// kostet deshalb nur wenige tausend Zellen. Bis TODO-W6 war die Vorgabe 50.
         /// </summary>
-        public float FarfieldRadiusFactor { get; set; } = 50.0f;
+        public float FarfieldRadiusFactor { get; set; } = 500.0f;
 
         /// <summary>Anzahl der Segmente für die Fernfeld-Kreisbögen.</summary>
         public int FarfieldCircleSegments { get; set; } = 64;
@@ -49,8 +51,18 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <summary>Nahfeld-Zellgröße als Bruchteil von L auf Stufe 1.0 (z. B. 0.04 = L/25).</summary>
         public float NearfieldCellSizeFactor { get; set; } = 0.04f;
 
-        /// <summary>Fernfeld-Zellgröße als Bruchteil von L auf Stufe 1.0 (z. B. 2.5 = 2.5 * L).</summary>
-        public float FarfieldCellSizeFactor { get; set; } = 2.5f;
+        /// <summary>
+        /// Fernfeld-Zellgröße als Vielfaches von L auf Stufe 1.0 (Vorgabe 25; bei Radius 500 c sind das
+        /// ~1,3 Tausend Zellen im Fernfeld). Faustregel: Radius / 20.
+        /// </summary>
+        public float FarfieldCellSizeFactor { get; set; } = 25.0f;
+
+        /// <summary>
+        /// Abstand vom Körper (als Vielfaches von L), über den die Zellgröße vom Nahfeld auf die
+        /// Fernfeldgröße wächst. 0 = automatisch 0,4 · <see cref="FarfieldRadiusFactor"/>. Ein langer,
+        /// gleichmäßiger Übergang vermeidet verzerrte Zellen und spart Zellen (TODO-W6).
+        /// </summary>
+        public float NearfieldGrowthDistanceFactor { get; set; } = 0.0f;
 
         // --- Nachlauf-Verfeinerung (Wake Box) ---
 
@@ -65,5 +77,36 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         /// <summary>Zellgröße in der Nachlauf-Box als Bruchteil von L auf Stufe 1.0 (Standard 0.04).</summary>
         public float WakeCellSizeFactor { get; set; } = 0.04f;
+
+        // --- Detailbox um und hinter dem Modell (TODO-W6) ---
+
+        /// <summary>
+        /// Sehr feine Box um und hinter dem Profil, damit Nachlauf und Wirbel in Modellnähe stimmen.
+        /// Gilt für jede Rechnung (keine Sonderbehandlung des Anstellwinkels). Skaliert mit dem
+        /// Netzfaktor, die Kalibrierung prüft sie also mit. Standard an.
+        /// </summary>
+        public bool DetailBox { get; set; } = true;
+
+        /// <summary>Länge der Detailbox hinter der Hinterkante als Vielfaches von L (Standard 1.0).</summary>
+        public float DetailBoxLengthFactor { get; set; } = 1.0f;
+
+        /// <summary>Überstand der Detailbox ober- und unterhalb des Profils als Vielfaches von L (Standard 0.25).</summary>
+        public float DetailBoxWidthFactor { get; set; } = 0.25f;
+
+        /// <summary>Zellgröße in der Detailbox als Bruchteil von L auf Stufe 1.0 (Standard 0.01 = L/100).</summary>
+        public float DetailBoxCellSizeFactor { get; set; } = 0.01f;
+
+        // --- Vorder- und Hinterkante ---
+
+        /// <summary>
+        /// Faktor für die Wandzellgröße an Vorder- und Hinterkante (Standard 0.25 = ein Viertel der
+        /// Konturzellgröße). Die Saugspitze an der Vorderkante und die Hinterkante bestimmen Auftrieb
+        /// und Widerstand am stärksten (NASA-TMR: Auflösung an der Hinterkante ist der wichtigste
+        /// Einfluss auf die Genauigkeit). 1 = keine Sonderverfeinerung.
+        /// </summary>
+        public float EdgeRefinementFactor { get; set; } = 0.25f;
+
+        /// <summary>Abstand um Vorder- und Hinterkante (als Vielfaches von L), über den die Verfeinerung ausläuft (Standard 0.1).</summary>
+        public float EdgeRefinementDistanceFactor { get; set; } = 0.1f;
     }
 }

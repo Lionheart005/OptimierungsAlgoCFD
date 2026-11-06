@@ -427,7 +427,11 @@ function Invoke-Deploy {
         if ($ThenStart -and -not $wasRunning) {
             Invoke-Start
         }
-        elseif ($ThenStart) {
+        elseif ($ThenCalibrate -and -not $wasRunning) {
+            # Frueher fehlte dieser Zweig: "calibrate" ohne Code-Aenderung tat gar nichts.
+            Invoke-Calibrate
+        }
+        elseif ($ThenStart -or $ThenCalibrate) {
             Write-Host "    Der laufende Lauf bleibt unangetastet." -ForegroundColor Green
         }
         return

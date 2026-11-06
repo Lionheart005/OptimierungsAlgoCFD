@@ -322,6 +322,10 @@ namespace AutomatisierungCleanVersion.Tests
                 Assert.Contains("INNER_ITER= 20", lines);
                 Assert.Contains("WINDOW_START_ITER= 180", lines); // 300 * 0.6 = 180
                 Assert.Contains("WINDOW_FUNCTION= HANN_SQUARE", lines);
+                // SU2 7.5.1 verbietet ITER im zeitgenauen Modus (Servertest 06.11.2026).
+                Assert.DoesNotContain(lines, l => l.StartsWith("ITER="));
+                // Zeitmittel mitschreiben, sonst gibt es nur den Momentanwert.
+                Assert.Contains(lines, l => l.StartsWith("HISTORY_OUTPUT=") && l.Contains("TAVG_AERO_COEFF"));
             }
             finally
             {
@@ -355,6 +359,62 @@ namespace AutomatisierungCleanVersion.Tests
             {
                 if (File.Exists(path)) File.Delete(path);
             }
+        }
+
+        [Fact]
+        public void Urans_Restart_From_Steady_Uses_Absolute_Time_Indices_And_Limits_Output()
+        {
+            // Servertest 06.11.2026: TIME_ITER ist ein absoluter Endindex (60 bei Neustart ab 2 = 58 Schritte),
+            // und SU2 schrieb ohne OUTPUT_WRT_FREQ in jedem Zeitschritt eine 6-MB-Restart-Datei.
+            string path = Path.Combine(Path.GetTempPath(), "su2_urans_restart_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions();
+                options.TimeDomain.Enabled = true;
+                options.TimeDomain.TimeStep = 0.0001f;
+                options.TimeDomain.TimeIterations = 1000;
+                options.TimeDomain.AveragingStartFraction = 0.5f;
+                options.TimeDomain.RestartIteration = 2;
+
+                Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options);
+                string[] lines = File.ReadAllLines(path);
+
+                Assert.Contains("TIME_ITER= 1002", lines);          // 2 + 1000
+                Assert.Contains("WINDOW_START_ITER= 502", lines);   // 2 + 500: letzte 10 von 20 Perioden
+                Assert.Contains("RESTART_SOL= YES", lines);
+                Assert.Contains("RESTART_ITER= 2", lines);
+                Assert.Contains("SOLUTION_FILENAME= restart.dat", lines);
+                Assert.Contains("OUTPUT_WRT_FREQ= 100000", lines);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        [Fact]
+        public void Urans_From_Freestream_Has_No_Restart_Lines()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "su2_urans_cold_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions();
+                options.TimeDomain.Enabled = true;
+                options.TimeDomain.TimeStep = 0.0001f;
+
+                Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options);
+                string[] lines = File.ReadAllLines(path);
+
+                Assert.DoesNotContain(lines, l => l.StartsWith("RESTART_SOL="));
+                Assert.Contains("TIME_ITER= 1000", lines);
+                Assert.Contains("WINDOW_START_ITER= 500", lines);
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        [Fact]
+        public void Urans_Defaults_Cover_Twenty_Periods()
+        {
+            var d = new Su2TimeDomainOptions();
+            Assert.Equal(20, d.TimeIterations / d.StepsPerPeriod);
+            Assert.Equal(10, (int)(d.TimeIterations * (1 - d.AveragingStartFraction)) / d.StepsPerPeriod);
         }
 
         [Fact]

@@ -15,6 +15,9 @@ namespace MyPicoGkProject.Solvers.Cfd
     /// </summary>
     public static class Su2ConfigGenerator
     {
+        /// <summary>SU2-Ausgabegruppe der zeitgemittelten Beiwerte (Spalten <c>tavg[CD]</c> usw.).</summary>
+        public const string TimeAveragedHistoryGroup = "TAVG_AERO_COEFF";
+
         public static void Generate(
             string configPath,
             string meshPath,
@@ -211,19 +214,47 @@ namespace MyPicoGkProject.Solvers.Cfd
                     dt = period / steps;
                 }
 
-                int windowStart = (int)MathF.Round(options.TimeDomain.TimeIterations * Math.Clamp(options.TimeDomain.AveragingStartFraction, 0f, 0.95f));
+                // TIME_ITER und WINDOW_START_ITER sind ABSOLUTE Zeitindizes: bei Neustart ab Index n zählen
+                // die gerechneten Schritte erst ab n (Servertest 06.11.2026: TIME_ITER 60 und Neustart bei 2 = 58 Schritte).
+                int restartIter = Math.Max(0, options.TimeDomain.RestartIteration);
+                int timeSteps = options.TimeDomain.TimeIterations;
+                int windowStart = restartIter + (int)MathF.Round(timeSteps * Math.Clamp(options.TimeDomain.AveragingStartFraction, 0f, 0.95f));
 
                 cfgContent.Add("%");
                 cfgContent.Add("% =============================================================================");
                 cfgContent.Add("% ZEITGENAUER MODUS (URANS / DUAL-TIME-STEPPING, TODO-37)");
                 cfgContent.Add("% =============================================================================");
+                // SU2 7.5.1 bricht ab, wenn neben TIME_ITER/INNER_ITER noch ITER steht
+                // ("ITER must not be used when running multizone and/or unsteady problems",
+                // Servertest 06.11.2026).
+                int iterIdx = cfgContent.FindIndex(l => l.StartsWith("ITER=", StringComparison.Ordinal));
+                if (iterIdx >= 0)
+                    cfgContent[iterIdx] = $"% ITER= {config.Su2MaxIterations} entfällt im zeitgenauen Modus (siehe TIME_ITER/INNER_ITER)";
+
+                // Zeitgemittelte Beiwerte (tavg[CD] usw. ab WINDOW_START_ITER) mitschreiben. Ohne sie
+                // läse der Solver nur den Momentanwert des letzten Zeitschritts.
+                int histIdx = cfgContent.FindIndex(l => l.StartsWith("HISTORY_OUTPUT=", StringComparison.Ordinal));
+                if (histIdx >= 0 && !historyFields.Any(f => f.Trim().Equals(TimeAveragedHistoryGroup, StringComparison.OrdinalIgnoreCase)))
+                    cfgContent[histIdx] = $"HISTORY_OUTPUT= ({historyOutput}, {TimeAveragedHistoryGroup})";
                 cfgContent.Add("TIME_DOMAIN= YES");
                 cfgContent.Add("TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER");
                 cfgContent.Add($"TIME_STEP= {dt.ToString("G6", CultureInfo.InvariantCulture)}");
-                cfgContent.Add($"TIME_ITER= {options.TimeDomain.TimeIterations}");
+                cfgContent.Add($"TIME_ITER= {restartIter + timeSteps}");
                 cfgContent.Add($"INNER_ITER= {options.TimeDomain.InnerIterations}");
                 cfgContent.Add($"WINDOW_START_ITER= {windowStart}");
                 cfgContent.Add("WINDOW_FUNCTION= HANN_SQUARE");
+                // Ohne diese Zeile schreibt SU2 in jedem Zeitschritt eine Restart-Datei (6 MB je Schritt in 2D,
+                // bei 1000 Schritten 6 GB). Die Endausgabe schreibt es trotzdem (TODO-W7).
+                cfgContent.Add("OUTPUT_WRT_FREQ= 100000");
+
+                if (restartIter > 0)
+                {
+                    // Neustart aus der stationären Lösung: restart_00000.dat und restart_00001.dat müssen
+                    // im Arbeitsordner liegen (legt Program.RunRecheck an).
+                    cfgContent.Add("RESTART_SOL= YES");
+                    cfgContent.Add($"RESTART_ITER= {restartIter}");
+                    cfgContent.Add("SOLUTION_FILENAME= restart.dat");
+                }
             }
 
             File.WriteAllLines(configPath, cfgContent);

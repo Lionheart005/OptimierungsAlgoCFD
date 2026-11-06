@@ -521,7 +521,7 @@ beeinflussen die Ränder das Ergebnis.
 | `WakeWidthFactor` | `0.5` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ` |
 | `WakeCellSize` | `0.0` | Zellgröße in der Nachlauf-Box in mm (`0.0` = automatisch `lenX / 6.0`) |
 | `MeshSizeFromCurvature` | `false` | Krümmungsabhängige Netzverfeinerung aktivieren |
-| `BoundaryLayerMode` | `"Threshold"` | `"Threshold"` (unstrukturiert), `"Hexa"` (Quader, Empfehlung), `"Prism"` (Prismen) |
+| `BoundaryLayerMode` | `"Threshold"` | `"Threshold"` (unstrukturiert, y+ ≈ 30–70), `"Prism"` (Prismen-Wandschicht, y+ ≈ 1, Empfehlung für Voxel-Körper), `"Hexa"` (Quader-Wandschicht, nur glatte Körper; siehe BEDIENHANDBUCH 4.4) |
 | `TargetYPlus` | `1.0` | Ziel-y+ für die erste Zellhöhe y1 an der Wand |
 | `BoundaryLayerMinLayers` | `4` | Mindestanzahl an Schichten in der Grenzschicht |
 | `BoundaryLayerGrowthRate` | `1.2` | Wachstumsfaktor von Schicht zu Schicht |

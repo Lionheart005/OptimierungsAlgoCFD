@@ -44,11 +44,15 @@ namespace MyPicoGkProject.Core
                 var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                     "ScaleFactor", "MeshCells", "MeshRefinementFactor", "FineVerified", "FineDeviation",
-                    "Su2_Iterations", "Su2_Converged", "Su2_Osc_Drag", "Su2_Osc_Lift",
-                    "YPlus_Median", "YPlus_P95", "YPlus_Max", "BoundaryLayerHexShare"
+                    "BoundaryLayerHexShare", "ReynoldsNumber"
                 };
 
-                metricsToCheck.AddRange(normalRecord.PassiveParameters.Keys.Where(k => !excluded.Contains(k)));
+                // Su2_* (Iterationen, Konvergenz, Schwingung, iterativer Fehler) und YPlus_* sind
+                // Rechnungs-Metadaten, keine Kennwerte der Geometrie.
+                metricsToCheck.AddRange(normalRecord.PassiveParameters.Keys.Where(k =>
+                    !excluded.Contains(k)
+                    && !k.StartsWith("Su2_", StringComparison.OrdinalIgnoreCase)
+                    && !k.StartsWith("YPlus_", StringComparison.OrdinalIgnoreCase)));
             }
 
             if (metricsToCheck.Count == 0)
@@ -69,6 +73,36 @@ namespace MyPicoGkProject.Core
             }
 
             return maxDev;
+        }
+
+        /// <summary>
+        /// Größte <b>normierte</b> Abweichung (TODO-W1): <c>|fein − normal| / (Toleranz·|normal| + Mindestbetrag)</c>
+        /// über alle Kennwerte; höchstens 1 = innerhalb der Toleranz. Bei Werten nahe 0 zählt der Mindestbetrag
+        /// aus <see cref="MetricTolerance"/>, bei großen Werten die relative Abweichung. Ohne Kennwerte: Fitness.
+        /// </summary>
+        public static float ComputeMaxNormalizedDeviation(
+            ModelRecord normalRecord,
+            ModelRecord fineRecord,
+            IReadOnlyCollection<string>? monitoredMetrics,
+            float tolerance,
+            IReadOnlyDictionary<string, float>? absoluteTolerances)
+        {
+            var metrics = monitoredMetrics != null && monitoredMetrics.Count > 0
+                ? monitoredMetrics
+                : (IReadOnlyCollection<string>)Array.Empty<string>();
+
+            if (metrics.Count == 0)
+                return MetricTolerance.Normalized(fineRecord.Fitness, normalRecord.Fitness, tolerance, 0f);
+
+            float max = 0f;
+            foreach (string metric in metrics)
+            {
+                if (!normalRecord.PassiveParameters.TryGetValue(metric, out float qNormal)) continue;
+                float qFine = fineRecord.PassiveParameters.TryGetValue(metric, out float qf) ? qf : 0f;
+                float n = MetricTolerance.Normalized(qFine, qNormal, tolerance, MetricTolerance.AbsoluteFor(metric, absoluteTolerances));
+                if (n > max) max = n;
+            }
+            return max;
         }
 
         /// <summary>
@@ -98,18 +132,20 @@ namespace MyPicoGkProject.Core
             evaluateFitness(fineRecord);
 
             float maxRelDev = ComputeMaxRelativeDeviation(winner, fineRecord, monitoredMetrics);
+            float maxNorm = ComputeMaxNormalizedDeviation(winner, fineRecord, monitoredMetrics,
+                context.Config.ChampionVerification.Tolerance, context.Config.MeshCalibration.AbsoluteTolerances);
 
             // Dokumentation am Record
             winner.PassiveParameters["FineVerified"] = 1f;
             winner.PassiveParameters["FineDeviation"] = maxRelDev;
 
-            Console.WriteLine($"       -> Normale Fitness: {winner.Fitness:F4} | Feine Fitness: {fineRecord.Fitness:F4} | Max. Kennwert-Abweichung: {maxRelDev * 100:0.1} %");
+            Console.WriteLine($"       -> Normale Fitness: {winner.Fitness:F4} | Feine Fitness: {fineRecord.Fitness:F4} | Max. Kennwert-Abweichung: {maxRelDev * 100:0.0} %");
 
-            if (maxRelDev > context.Config.ChampionVerification.Tolerance)
+            if (maxNorm > 1.0f)
             {
                 Console.WriteLine(
-                    $"[WARNUNG] Ergebnis netzabhängig – Abweichung im feinen Netz beträgt {maxRelDev * 100:0.1} % "
-                    + $"(Erlaubt: {context.Config.ChampionVerification.Tolerance * 100:0.1} %) – Kalibrierung prüfen!");
+                    $"[WARNUNG] Ergebnis netzabhängig – Abweichung im feinen Netz beträgt {maxRelDev * 100:0.0} % "
+                    + $"(Erlaubt: {context.Config.ChampionVerification.Tolerance * 100:0.0} % plus Mindestbetrag; normiert {maxNorm:0.0}, erlaubt höchstens 1) – Kalibrierung prüfen!");
             }
         }
 
@@ -163,7 +199,8 @@ namespace MyPicoGkProject.Core
             for (int i = 0; i < itemsToVerify.Count; i++)
             {
                 var candidate = itemsToVerify[i];
-                string tag = $"Fein{i + 1}";
+                // Der Tag nennt den Kandidaten (Fein1_Gen5_Var1): sonst hießen alle Dateien Gen99_Var99_Fein1.
+                string tag = $"Fein{i + 1}_Gen{candidate.Iteration}_Var{candidate.Variant}";
 
                 Console.WriteLine($"\n[VERIFIKATION] Prüfe Kandidat {i + 1}/{itemsToVerify.Count}: Iteration {candidate.Iteration}, Variante {candidate.Variant}...");
 
@@ -171,8 +208,12 @@ namespace MyPicoGkProject.Core
                 evaluateFitness(fineRecord);
 
                 float maxDev = ComputeMaxRelativeDeviation(candidate, fineRecord, monitoredMetrics);
+                float maxNorm = ComputeMaxNormalizedDeviation(candidate, fineRecord, monitoredMetrics,
+                    context.Config.ChampionVerification.Tolerance, context.Config.MeshCalibration.AbsoluteTolerances);
 
-                candidate.PassiveParameters["FineVerified"] = 1f;
+                // Eine gescheiterte feine Rechnung (Vernetzung oder SU2) verifiziert nichts.
+                // Vorher stand dann FineVerified = 1 und "Rangfolge hält" (Servertest 06.11.2026).
+                candidate.PassiveParameters["FineVerified"] = fineRecord.SimulationFailed ? 0f : 1f;
                 candidate.PassiveParameters["FineDeviation"] = maxDev;
 
                 results.Add(new VerificationRow
@@ -182,7 +223,8 @@ namespace MyPicoGkProject.Core
                     NormalRank = i + 1,
                     NormalFitness = candidate.Fitness,
                     FineFitness = fineRecord.Fitness,
-                    MaxDeviation = maxDev
+                    MaxDeviation = maxDev,
+                    MaxNormalized = maxNorm
                 });
             }
 
@@ -193,7 +235,8 @@ namespace MyPicoGkProject.Core
                 fineRanked[r].FineRank = r + 1;
             }
 
-            bool rankingHolds = results.All(r => r.NormalRank == r.FineRank);
+            int failedFine = results.Count(r => r.FineRecord.SimulationFailed);
+            bool rankingHolds = failedFine == 0 && results.All(r => r.NormalRank == r.FineRank);
 
             // Verifikation.csv schreiben
             WriteVerificationCsv(Path.Combine(context.WorkingDirectory, VerificationCsvFileName), results, rankingHolds, monitoredMetrics);
@@ -205,18 +248,22 @@ namespace MyPicoGkProject.Core
             Console.WriteLine("\n==================================================");
             Console.WriteLine(" VERIFIKATIONSERGEBNIS");
             Console.WriteLine("==================================================");
-            Console.WriteLine($"Rangfolge stabil im feinen Netz: {(rankingHolds ? "JA (Rangfolge hält)" : "NEIN (Rangfolge geändert)")}");
-            Console.WriteLine("Iter | Var | Normal-Rang | Fein-Rang | Normal-Score | Fein-Score | Max. Abw.");
-            Console.WriteLine("-------------------------------------------------------------------------");
+            if (failedFine > 0)
+            {
+                Console.WriteLine($"[WARNUNG] {failedFine} von {results.Count} feinen Rechnungen sind gescheitert – für sie ist nichts verifiziert (FineVerified = 0).");
+            }
+            Console.WriteLine($"Rangfolge stabil im feinen Netz: {(rankingHolds ? "JA (Rangfolge hält)" : failedFine > 0 ? "NICHT PRÜFBAR (feine Rechnung gescheitert)" : "NEIN (Rangfolge geändert)")}");
+            Console.WriteLine("Iter | Var | Normal-Rang | Fein-Rang | Normal-Score | Fein-Score | Max. Abw. | normiert (<= 1 ok)");
+            Console.WriteLine("--------------------------------------------------------------------------------------------------");
 
             bool anyWarning = false;
             foreach (var row in results)
             {
                 Console.WriteLine(
                     $"{row.Candidate.Iteration,4} | {row.Candidate.Variant,3} | {row.NormalRank,11} | {row.FineRank,9} | "
-                    + $"{row.NormalFitness,12:F4} | {row.FineFitness,10:F4} | {row.MaxDeviation * 100,8:0.1} %");
+                    + $"{row.NormalFitness,12:F4} | {row.FineFitness,10:F4} | {row.MaxDeviation * 100,8:0.0} % | {row.MaxNormalized,8:0.00}");
 
-                if (row.MaxDeviation > context.Config.ChampionVerification.Tolerance)
+                if (row.MaxNormalized > 1.0f)
                 {
                     anyWarning = true;
                 }
@@ -244,7 +291,7 @@ namespace MyPicoGkProject.Core
                 : new List<string> { "Drag" };
 
             // Header
-            sb.Append("Iteration;Variant;NormalRank;FineRank;NormalFitness;FineFitness;MaxMetricDeviation;RankingHolds");
+            sb.Append("Iteration;Variant;NormalRank;FineRank;NormalFitness;FineFitness;MaxMetricDeviation;RankingHolds;MaxNormalizedDeviation");
             foreach (var m in metrics)
             {
                 sb.Append($";{m}_Normal;{m}_Fine");
@@ -258,6 +305,7 @@ namespace MyPicoGkProject.Core
                 sb.Append($"{r.FineFitness.ToString("F5", CultureInfo.InvariantCulture)};");
                 sb.Append($"{r.MaxDeviation.ToString("P2", CultureInfo.InvariantCulture)};");
                 sb.Append(rankingHolds ? "1" : "0");
+                sb.Append($";{r.MaxNormalized.ToString("F3", CultureInfo.InvariantCulture)}");
 
                 foreach (var m in metrics)
                 {
@@ -280,6 +328,7 @@ namespace MyPicoGkProject.Core
             public float NormalFitness { get; set; }
             public float FineFitness { get; set; }
             public float MaxDeviation { get; set; }
+            public float MaxNormalized { get; set; }
         }
     }
 }

@@ -401,7 +401,10 @@ cmd_foreground() {
     # Nur noch der Projektname. Das zweite Argument war frueher das config-Verzeichnis;
     # seit TODO-24 waere es das PROJEKT-Verzeichnis, und das findet das Programm selbst,
     # indem es von hier aus nach src/projects/ aufwaerts sucht.
-    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$@" >>"$LOG_FILE" 2>&1 || rc=$?
+    # LP_NUM_THREADS=1: der PicoGK-Viewer rendert unter Xvfb per Software-OpenGL (llvmpipe)
+    # ununterbrochen, sonst auf allen Kernen -- gemessen ~10 Kerne, die SU2 und Gmsh fehlten
+    # (Servertest 06.11.2026). Zu sehen ist das Fenster ohnehin nicht.
+    LP_NUM_THREADS=1 xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$@" >>"$LOG_FILE" 2>&1 || rc=$?
 
     echo "$rc" >"$EXIT_FILE"
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"

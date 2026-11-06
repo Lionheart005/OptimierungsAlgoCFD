@@ -175,19 +175,35 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <summary>Physikalischer Zeitschritt in Sekunden (0 = automatisch aus StrouhalEstimate und StepsPerPeriod).</summary>
         public float TimeStep { get; set; } = 0.0f;
 
-        /// <summary>Zeitschritte pro Wirbelablöseperiode, wenn TimeStep = 0 ist.</summary>
-        public int StepsPerPeriod { get; set; } = 25;
+        /// <summary>
+        /// Zeitschritte pro Wirbelablöseperiode, wenn TimeStep = 0 ist (Vorgabe 50; bis TODO-W7 waren es 25).
+        /// </summary>
+        public int StepsPerPeriod { get; set; } = 50;
 
         /// <summary>Geschätzte Strouhal-Zahl f = St * U / L für die automatische Zeitschrittwahl.</summary>
         public float StrouhalEstimate { get; set; } = 0.2f;
 
-        /// <summary>Anzahl der äußeren physikalischen Zeitschritte (TIME_ITER).</summary>
-        public int TimeIterations { get; set; } = 200;
+        /// <summary>
+        /// Anzahl der physikalischen Zeitschritte, die gerechnet werden (bei Neustart aus der stationären Lösung
+        /// zusätzlich zu <see cref="RestartIteration"/> gezählt). Vorgabe 1000 = 20 Perioden bei 50 Schritten je
+        /// Periode (bis TODO-W7: 200 = 8 Perioden, die Mittelung begann mitten im Einschwingen).
+        /// </summary>
+        public int TimeIterations { get; set; } = 1000;
 
         /// <summary>Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (INNER_ITER).</summary>
         public int InnerIterations { get; set; } = 30;
 
-        /// <summary>Bruchteil der Gesamtzeit Schritte, ab dem die Zeitmittelung startet (WINDOW_START_ITER).</summary>
+        /// <summary>
+        /// Bruchteil der Zeitschritte, ab dem die Zeitmittelung startet (WINDOW_START_ITER). 0.5 bei 20 Perioden =
+        /// Mittel über die letzten 10 Perioden.
+        /// </summary>
         public float AveragingStartFraction { get; set; } = 0.5f;
+
+        /// <summary>
+        /// Neustart aus einer stationären Lösung (TODO-W7): 0 = Start aus dem Freistrom (wie bisher), 2 = Start aus
+        /// <c>restart_00000.dat</c> und <c>restart_00001.dat</c> (SU2 braucht für die 2. Ordnung zwei Zeitstände).
+        /// Der Recheck legt die Dateien aus der stationären Rechnung selbst an und setzt diesen Wert.
+        /// </summary>
+        public int RestartIteration { get; set; } = 0;
     }
 }

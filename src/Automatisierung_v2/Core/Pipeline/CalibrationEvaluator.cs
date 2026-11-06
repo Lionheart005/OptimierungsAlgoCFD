@@ -26,7 +26,9 @@ namespace MyPicoGkProject.Core
         float GciFinePercent,
         float GciSelectedPercent,
         bool IsMonotonic,
-        string? Warning);
+        string? Warning,
+        float ExtrapolatedValue = float.NaN,
+        float ExtrapolatedDeviationPercent = float.NaN);
 
     /// <summary>
     /// Entscheidung und vollständige Auswertung einer Netzkalibrierung (TODO-42).
@@ -38,7 +40,8 @@ namespace MyPicoGkProject.Core
         IReadOnlyList<CalibrationStageData> AllStages,
         IReadOnlyDictionary<int, IReadOnlyDictionary<string, float>> RelativeDeviationsToRef,
         GciResult? Gci,
-        string SummaryMessage);
+        string SummaryMessage,
+        IReadOnlyDictionary<int, IReadOnlyDictionary<string, float>>? NormalizedDeviationsToRef = null);
 
     /// <summary>
     /// Reine Bewertungslogik für die Netzkalibrierung (Abbruchkriterium, GCI, Monotonie).
@@ -97,16 +100,63 @@ namespace MyPicoGkProject.Core
             float gciFine = (denom > 1e-9f) ? (safetyFactorFs * ea21 / denom) * 100.0f : 0f;
             float gciSelected = (denom > 1e-9f) ? (safetyFactorFs * ea32 / denom) * 100.0f : 0f;
 
-            return new GciResult(p, gciFine, gciSelected, isMonotonic, warning);
+            // Richardson-Extrapolation: Schätzung des netzunabhängigen Werts aus den zwei feinsten Stufen
+            // (nur bei monotoner Folge sinnvoll). Der Bericht zeigt, wie weit das feinste Netz davon entfernt ist.
+            float extrapolated = float.NaN;
+            float extrapolatedDeviation = float.NaN;
+            if (isMonotonic && denom > 1e-9f)
+            {
+                extrapolated = f1Fine + (f1Fine - f2Medium) / denom;
+                extrapolatedDeviation = Math.Abs(f1Fine - extrapolated) / Math.Max(Math.Abs(extrapolated), 1e-7f) * 100.0f;
+            }
+
+            return new GciResult(p, gciFine, gciSelected, isMonotonic, warning, extrapolated, extrapolatedDeviation);
+        }
+
+        /// <summary>
+        /// Abweichungen aller Stufen zur Referenzstufe: relativ (für Berichte) und normiert nach
+        /// <see cref="MetricTolerance"/> (für die Entscheidung; höchstens 1 = in Ordnung, TODO-W1).
+        /// </summary>
+        public static (Dictionary<int, IReadOnlyDictionary<string, float>> Relative,
+                       Dictionary<int, IReadOnlyDictionary<string, float>> Normalized)
+            ComputeDeviations(
+                IReadOnlyList<CalibrationStageData> stages,
+                CalibrationStageData refStage,
+                IReadOnlyList<string> metrics,
+                float tolerance,
+                IReadOnlyDictionary<string, float>? absoluteTolerances)
+        {
+            var relative = new Dictionary<int, IReadOnlyDictionary<string, float>>();
+            var normalized = new Dictionary<int, IReadOnlyDictionary<string, float>>();
+
+            foreach (var stage in stages)
+            {
+                var rel = new Dictionary<string, float>();
+                var norm = new Dictionary<string, float>();
+                foreach (string metric in metrics)
+                {
+                    float refVal = refStage.Metrics.TryGetValue(metric, out float rv) ? rv : 0f;
+                    float stageVal = stage.Metrics.TryGetValue(metric, out float sv) ? sv : 0f;
+                    rel[metric] = MetricTolerance.Relative(stageVal, refVal);
+                    norm[metric] = MetricTolerance.Normalized(
+                        stageVal, refVal, tolerance, MetricTolerance.AbsoluteFor(metric, absoluteTolerances));
+                }
+                relative[stage.LevelIndex] = rel;
+                normalized[stage.LevelIndex] = norm;
+            }
+
+            return (relative, normalized);
         }
 
         /// <summary>
         /// Wertet eine Kalibrierungsfolge aus und wählt die gröbste Stufe, die innerhalb der Toleranz liegt.
+        /// Zulässig ist <c>|Δ| ≤ Toleranz · |Referenz| + Mindestbetrag</c> (<see cref="MetricTolerance"/>).
         /// </summary>
         public static CalibrationDecision EvaluateCalibration(
             IReadOnlyList<CalibrationStageData> stages,
             IReadOnlyCollection<string> monitoredMetrics,
-            float tolerance)
+            float tolerance,
+            IReadOnlyDictionary<string, float>? absoluteTolerances = null)
         {
             if (stages == null || stages.Count == 0)
                 throw new InvalidOperationException("[KALIBRIERUNG] Keine Stufen zur Auswertung übergeben.");
@@ -118,20 +168,8 @@ namespace MyPicoGkProject.Core
             // Referenzstufe ist die feinste gerechnete Stufe (kleinster Faktor)
             var refStage = stages.OrderBy(s => s.Factor).First();
 
-            // Relative Abweichungen aller Stufen zur Referenz berechnen
-            var deviations = new Dictionary<int, IReadOnlyDictionary<string, float>>();
-            foreach (var stage in stages)
-            {
-                var stageDevs = new Dictionary<string, float>();
-                foreach (string metric in metricsToMonitor)
-                {
-                    float refVal = refStage.Metrics.TryGetValue(metric, out float rv) ? rv : 0f;
-                    float stageVal = stage.Metrics.TryGetValue(metric, out float sv) ? sv : 0f;
-                    float dev = Math.Abs(stageVal - refVal) / Math.Max(Math.Abs(refVal), 1e-7f);
-                    stageDevs[metric] = dev;
-                }
-                deviations[stage.LevelIndex] = stageDevs;
-            }
+            // Abweichungen aller Stufen zur Referenz: relativ (Bericht) und normiert (Entscheidung)
+            var (deviations, normalizedDeviations) = ComputeDeviations(stages, refStage, metricsToMonitor, tolerance, absoluteTolerances);
 
             // GCI berechnen, falls mindestens 3 Stufen vorliegen
             GciResult? gci = null;
@@ -170,7 +208,8 @@ namespace MyPicoGkProject.Core
                     stages,
                     deviations,
                     gci,
-                    $"[KALIBRIERUNG] Kalibrierung fehlgeschlagen: {reason}");
+                    $"[KALIBRIERUNG] Kalibrierung fehlgeschlagen: {reason}",
+                    normalizedDeviations);
             }
 
             // Kandidatensuche von grob nach fein (unter Ausschluss der Referenzstufe selbst)
@@ -186,9 +225,9 @@ namespace MyPicoGkProject.Core
                 bool withinTolerance = true;
                 foreach (string metric in metricsToMonitor)
                 {
-                    if (deviations[candidate.LevelIndex].TryGetValue(metric, out float dev))
+                    if (normalizedDeviations[candidate.LevelIndex].TryGetValue(metric, out float dev))
                     {
-                        if (dev > tolerance)
+                        if (dev > 1.0f)
                         {
                             withinTolerance = false;
                             break;
@@ -206,12 +245,12 @@ namespace MyPicoGkProject.Core
             if (selected != null)
             {
                 string msg = $"Stufe {selected.LevelIndex} (Faktor {selected.Factor:0.00}) erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber Referenzstufe {refStage.Factor:0.00}.";
-                return new CalibrationDecision(true, selected, refStage, stages, deviations, gci, msg);
+                return new CalibrationDecision(true, selected, refStage, stages, deviations, gci, msg, normalizedDeviations);
             }
             else
             {
                 string msg = $"Keine Grobstufe erreicht die Toleranz von {tolerance * 100:0.0} % gegenüber der Referenzstufe {refStage.Factor:0.00}.";
-                return new CalibrationDecision(false, null, refStage, stages, deviations, gci, msg);
+                return new CalibrationDecision(false, null, refStage, stages, deviations, gci, msg, normalizedDeviations);
             }
         }
 
@@ -237,7 +276,8 @@ namespace MyPicoGkProject.Core
             float factor2D,
             IReadOnlyList<CalibrationStageData> stages3D,
             IReadOnlyCollection<string> monitoredMetrics,
-            float tolerance)
+            float tolerance,
+            IReadOnlyDictionary<string, float>? absoluteTolerances = null)
         {
             if (stages3D == null || stages3D.Count == 0)
                 throw new InvalidOperationException("[KALIBRIERUNG 3D] Keine 3D-Stufen zur Auswertung übergeben.");
@@ -250,20 +290,7 @@ namespace MyPicoGkProject.Core
             var sortedAsc = stages3D.OrderBy(s => s.Factor).ToList();
             var refStage = sortedAsc[0]; // feinste Stufe (kleinster Faktor, ca. f2D / √2)
 
-            // Relative Abweichungen aller Stufen zur Referenz berechnen
-            var deviations = new Dictionary<int, IReadOnlyDictionary<string, float>>();
-            foreach (var stage in stages3D)
-            {
-                var stageDevs = new Dictionary<string, float>();
-                foreach (string metric in metricsToMonitor)
-                {
-                    float refVal = refStage.Metrics.TryGetValue(metric, out float rv) ? rv : 0f;
-                    float stageVal = stage.Metrics.TryGetValue(metric, out float sv) ? sv : 0f;
-                    float dev = Math.Abs(stageVal - refVal) / Math.Max(Math.Abs(refVal), 1e-7f);
-                    stageDevs[metric] = dev;
-                }
-                deviations[stage.LevelIndex] = stageDevs;
-            }
+            var (deviations, normalizedDeviations) = ComputeDeviations(stages3D, refStage, metricsToMonitor, tolerance, absoluteTolerances);
 
             // GCI berechnen aus den 3 Stufen
             GciResult? gci = null;
@@ -301,7 +328,8 @@ namespace MyPicoGkProject.Core
                     stages3D,
                     deviations,
                     gci,
-                    $"[KALIBRIERUNG 3D] 3D-Bestätigung fehlgeschlagen: {reason}");
+                    $"[KALIBRIERUNG 3D] 3D-Bestätigung fehlgeschlagen: {reason}",
+                    normalizedDeviations);
             }
 
             // Stufen identifizieren: coarse (größter Faktor) und medium (mittlerer Faktor)
@@ -312,10 +340,10 @@ namespace MyPicoGkProject.Core
             bool StageMatches(CalibrationStageData c)
             {
                 if (!c.Converged || !c.YPlusOk) return false;
-                if (!deviations.TryGetValue(c.LevelIndex, out var devDict)) return false;
+                if (!normalizedDeviations.TryGetValue(c.LevelIndex, out var devDict)) return false;
                 foreach (string metric in metricsToMonitor)
                 {
-                    if (devDict.TryGetValue(metric, out float d) && d > tolerance)
+                    if (devDict.TryGetValue(metric, out float d) && d > 1.0f)
                         return false;
                 }
                 return true;
@@ -324,17 +352,17 @@ namespace MyPicoGkProject.Core
             if (coarseStage != null && StageMatches(coarseStage))
             {
                 string msg = $"Grobe 3D-Stufe (Faktor {coarseStage.Factor:0.00}, Stufe {coarseStage.LevelIndex}) erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
-                return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg);
+                return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
             }
 
             if (mediumStage != null && StageMatches(mediumStage))
             {
                 string msg = $"2D-Stufe (Faktor {mediumStage.Factor:0.00}, Stufe {mediumStage.LevelIndex}) in 3D bestätigt: erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
-                return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, msg);
+                return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
             }
 
             string failMsg = $"Weder die grobe 3D-Stufe noch der 2D-Faktor ({factor2D:0.00}) erreichen in 3D die Toleranz von {tolerance * 100:0.0} % gegenüber der 3D-Referenzstufe {refStage.Factor:0.00}.";
-            return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg);
+            return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations);
         }
     }
 }

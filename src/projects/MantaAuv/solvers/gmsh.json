@@ -24,10 +24,12 @@
   // Platz bleiben (z. B. bei 50 mm Modell: TunnelCenterX = 100 mm im 600 mm Tunnel ergibt
   // 4 L vorn und 8 L hinten, oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L hinten).
   "TunnelShape": "Box",
-  "TunnelSizeX": 600.0,
+  // 1200 mm lang, Modell (~100 mm) 300 mm hinter der Mitte: ~6 L davor, ~18 L dahinter fuer den Nachlauf
+  // (Faustregel >= 10 L; Servertest 06.11.2026).
+  "TunnelSizeX": 1200.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
-  "TunnelCenterX": 0.0,
+  "TunnelCenterX": 300.0,
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
 
@@ -40,5 +42,11 @@
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
-  "BoundaryLayerDistMax": 40.0
+  "BoundaryLayerDistMax": 40.0,
+
+  // --- Wandschicht und Nachlauf (TODO-40, TODO-W6) ---
+  // "Prism": flache Prismenschichten an der Wand (y+ ~ 1, am Manta gemessen: SU2 konvergiert).
+  // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
+  "BoundaryLayerMode": "Prism",
+  "WakeRefinement": true
 }

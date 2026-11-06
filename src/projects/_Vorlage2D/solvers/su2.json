@@ -54,13 +54,16 @@
 
   // --- Zeitgenauer Modus / URANS (TODO-37) ---
   // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).
+  // Vorgaben seit TODO-W7: 1000 Zeitschritte = 20 Perioden (50 je Periode), Mittelung ueber die letzten 10.
+  // RestartIteration: 0 = Start aus dem Freistrom; 2 = Neustart aus der stationaeren Loesung (setzt der Recheck selbst).
   "TimeDomain": {
     "Enabled": false,
     "TimeStep": 0.0,
-    "StepsPerPeriod": 25,
+    "StepsPerPeriod": 50,
     "StrouhalEstimate": 0.2,
-    "TimeIterations": 200,
+    "TimeIterations": 1000,
     "InnerIterations": 30,
-    "AveragingStartFraction": 0.5
+    "AveragingStartFraction": 0.5,
+    "RestartIteration": 0
   }
 }

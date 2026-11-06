@@ -338,5 +338,19 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal("Gen2_Var4_Calib", Su2Solver.ArchiveBaseName(record, "Calib"));
             Assert.Equal("Gen2_Var4_Verification", Su2Solver.ArchiveBaseName(record, "  Verification  "));
         }
+
+        [Fact]
+        public void ArchiveBaseNameFromMesh_Takes_Tag_From_Mesh_Name()
+        {
+            // Servertest 06.11.2026: alle fünf Kalibrierstufen schrieben in dieselbe History_Gen1_Var1.csv.
+            var record = new ModelRecord { Iteration = 1, Variant = 1 };
+
+            Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("/x/Model_Gen1_Var1.su2", record));
+            Assert.Equal("Gen1_Var1_Kal5", Su2Solver.ArchiveBaseNameFromMesh("/x/Model_Gen1_Var1_Kal5.su2", record));
+            Assert.Equal("Gen1_Var1_Recheck", Su2Solver.ArchiveBaseNameFromMesh("Model_Gen1_Var1_Recheck.su2", record));
+            // Fremde Namen: ohne Tag wie bisher.
+            Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("netz.su2", record));
+            Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("Model_Gen1_Var10.su2", record));
+        }
     }
 }

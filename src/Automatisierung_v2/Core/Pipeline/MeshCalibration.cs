@@ -89,6 +89,19 @@ namespace MyPicoGkProject.Core
                     sb.Append("su2:");
                     sb.Append(File.ReadAllText(su2Path));
                 }
+
+                // Maschinenspezifische Überschreibungen (*.local.json) verändern die Physik genauso und
+                // gehören in den Fingerabdruck; sonst bliebe eine Kalibrierung trotz geänderter Netz- oder
+                // Strömungswerte "aktuell" (TODO-W9).
+                foreach (string local in new[] { "gmsh.local.json", "su2.local.json" })
+                {
+                    string localPath = Path.Combine(context.ProjectDirectory, "solvers", local);
+                    if (File.Exists(localPath))
+                    {
+                        sb.Append(local).Append(':');
+                        sb.Append(File.ReadAllText(localPath));
+                    }
+                }
             }
 
             using var sha = SHA256.Create();
@@ -144,7 +157,8 @@ namespace MyPicoGkProject.Core
             SimulationContext simulationContext,
             Func<float, string, ModelRecord> runStage,
             IReadOnlyCollection<string>? monitoredMetrics = null,
-            long maxEstimatedFineCells = 50_000_000)
+            long maxEstimatedFineCells = 50_000_000,
+            int dimensions = 3)
         {
             var metricsToMonitor = (monitoredMetrics != null && monitoredMetrics.Count > 0)
                 ? monitoredMetrics.ToList()
@@ -158,67 +172,31 @@ namespace MyPicoGkProject.Core
             Console.WriteLine("==================================================");
 
             var stages = new List<CalibrationStageData>();
-            var timer = new Stopwatch();
+            var cal = context.Simulation.MeshCalibration;
+            long maxCells = dimensions == 2 ? cal.MaxCells2D : Math.Min(maxEstimatedFineCells, cal.MaxCells3D);
 
             // Stufe 1: Grob (2.0f, Tag: "Kal1")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
-            timer.Restart();
-            ModelRecord recCoarse = runStage(2.0f, "Kal1");
-            timer.Stop();
-
-            int coarseCells = (int)(recCoarse.PassiveParameters.TryGetValue("MeshCells", out float cc) ? cc : 0);
-            float coarseP95 = recCoarse.PassiveParameters.TryGetValue("YPlus_P95", out float cp95) ? cp95 : 0f;
-            bool coarseConv = !recCoarse.SimulationFailed && (!recCoarse.PassiveParameters.TryGetValue("Su2_Converged", out float cconv) || cconv > 0.5f);
-            bool coarseYPlusOk = coarseP95 <= 0f || coarseP95 <= 3.0f; // Bei grobem Netz oft höher
-
-            var stage1 = new CalibrationStageData(
-                LevelIndex: 1,
-                Factor: 2.0f,
-                MeshCells: coarseCells,
-                DurationSeconds: timer.Elapsed.TotalSeconds,
-                Metrics: ExtractMetrics(recCoarse, metricsToMonitor),
-                Fitness: recCoarse.Fitness,
-                Converged: coarseConv,
-                YPlusP95: coarseP95,
-                YPlusOk: coarseYPlusOk);
+            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, 3.0f); // bei grobem Netz y+ oft höher
             stages.Add(stage1);
 
-            // Sicherheitsprüfung: Zellzahl der feinsten Stufe hochrechnen (in 3D Faktor (2.0 / 0.5)^3 = 64)
-            if (coarseCells > 0)
+            // Sicherheitsprüfung: Zellzahl der feinsten Stufe hochrechnen (Faktor (2.0 / 0.5)^Dimension)
+            if (stage1.MeshCells > 0)
             {
-                long estimatedFineCells = (long)coarseCells * 64;
-                Console.WriteLine($"       -> Zellen grob: {coarseCells:N0} | Hochgerechnet für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
+                long estimatedFineCells = EstimateCells(stage1.MeshCells, 2.0f, 0.5f, dimensions);
+                Console.WriteLine($"       -> Zellen grob: {stage1.MeshCells:N0} | Hochgerechnet für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
 
-                if (estimatedFineCells > maxEstimatedFineCells)
+                if (estimatedFineCells > maxCells)
                 {
                     throw new InvalidOperationException(
                         $"[KALIBRIERUNG] Hochgerechnete Zellzahl für die feinste Stufe ({estimatedFineCells:N0} Zellen) "
-                        + $"überschreitet das Limit von {maxEstimatedFineCells:N0}. Kalibrierung abgebrochen.");
+                        + $"überschreitet das Limit von {maxCells:N0}. Kalibrierung abgebrochen.");
                 }
             }
 
             // Stufe 5: Sehr feine Referenz (0.50f, Tag: "Kal5")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
-            timer.Restart();
-            ModelRecord recRef = runStage(0.5f, "Kal5");
-            timer.Stop();
-
-            int refCells = (int)(recRef.PassiveParameters.TryGetValue("MeshCells", out float rc) ? rc : 0);
-            float refP95 = recRef.PassiveParameters.TryGetValue("YPlus_P95", out float rp95) ? rp95 : 0f;
-            bool refConv = !recRef.SimulationFailed && (!recRef.PassiveParameters.TryGetValue("Su2_Converged", out float rconv) || rconv > 0.5f);
-            bool refYPlusOk = refP95 <= 0f || refP95 <= 2.5f;
-
-            var stage5 = new CalibrationStageData(
-                LevelIndex: 5,
-                Factor: 0.5f,
-                MeshCells: refCells,
-                DurationSeconds: timer.Elapsed.TotalSeconds,
-                Metrics: ExtractMetrics(recRef, metricsToMonitor),
-                Fitness: recRef.Fitness,
-                Converged: refConv,
-                YPlusP95: refP95,
-                YPlusOk: refYPlusOk);
-            stages.Add(stage5);
+            stages.Add(RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 2.5f));
 
             // Zwischenstufen von grob nach fein: 1.41 (Kal2), 1.0 (Kal3), 0.71 (Kal4)
             var intermediateConfigs = new[]
@@ -231,31 +209,12 @@ namespace MyPicoGkProject.Core
             foreach (var inter in intermediateConfigs)
             {
                 Console.WriteLine($"\n[KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                timer.Restart();
-                ModelRecord recInter = runStage(inter.Factor, inter.Tag);
-                timer.Stop();
-
-                int iCells = (int)(recInter.PassiveParameters.TryGetValue("MeshCells", out float ic) ? ic : 0);
-                float iP95 = recInter.PassiveParameters.TryGetValue("YPlus_P95", out float ip95) ? ip95 : 0f;
-                bool iConv = !recInter.SimulationFailed && (!recInter.PassiveParameters.TryGetValue("Su2_Converged", out float iconv) || iconv > 0.5f);
-                bool iYPlusOk = iP95 <= 0f || iP95 <= 2.5f;
-
-                var stage = new CalibrationStageData(
-                    LevelIndex: inter.Index,
-                    Factor: inter.Factor,
-                    MeshCells: iCells,
-                    DurationSeconds: timer.Elapsed.TotalSeconds,
-                    Metrics: ExtractMetrics(recInter, metricsToMonitor),
-                    Fitness: recInter.Fitness,
-                    Converged: iConv,
-                    YPlusP95: iP95,
-                    YPlusOk: iYPlusOk);
-                stages.Add(stage);
+                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 2.5f));
 
                 // Frühabstiegsprüfung: Wenn diese Stufe innerhalb der Toleranz liegt und wir mindestens 3 Stufen für GCI haben
                 if (stages.Count >= 3)
                 {
-                    var tempDecision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+                    var tempDecision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
                     if (tempDecision.Success && tempDecision.SelectedStage != null && tempDecision.SelectedStage.LevelIndex == inter.Index)
                     {
                         Console.WriteLine($"       -> Stufe {inter.Index} erfüllt bereits die Toleranz!");
@@ -264,8 +223,11 @@ namespace MyPicoGkProject.Core
                 }
             }
 
+            // Hält die Toleranz bei Faktor 0.5 noch nicht, entscheidet die Kalibrierung selbst, wie fein es sein muss (TODO-W5).
+            RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells);
+
             // Vollständige Auswertung
-            var decision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+            var decision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
 
             // Berichte schreiben
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
@@ -307,56 +269,19 @@ namespace MyPicoGkProject.Core
             Console.WriteLine("==================================================");
 
             var timer = new Stopwatch();
+            var cal2 = context.Simulation.MeshCalibration;
 
             // -------------------------------------------------------------
-            // 1. 2D-Vorkalibrierung (fünf Stufen am Schnitt)
+            // 1. 2D-Vorkalibrierung (fünf Stufen am Schnitt, bei Bedarf weiter verfeinert)
             // -------------------------------------------------------------
             Console.WriteLine("\n--- TEIL 1: 2D-VORKALIBRIERUNG AM QUERSCHNITT ---");
             var stages2D = new List<CalibrationStageData>();
 
-            // Stufe 1: Grob (2.00, Tag: Kal2D_1)
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 1/5: Grobes 2D-Netz (Faktor 2.00)...");
-            timer.Restart();
-            ModelRecord rec2D_1 = runStage2D(2.0f, "Kal2D_1");
-            timer.Stop();
+            stages2D.Add(RunCalibrationStage(runStage2D, 1, 2.0f, "Kal2D_1", metricsToMonitor, 3.0f));
 
-            int coarseCells2D = (int)(rec2D_1.PassiveParameters.TryGetValue("MeshCells", out float c2c) ? c2c : 0);
-            float coarseP95_2D = rec2D_1.PassiveParameters.TryGetValue("YPlus_P95", out float c2p) ? c2p : 0f;
-            bool coarseConv2D = !rec2D_1.SimulationFailed && (!rec2D_1.PassiveParameters.TryGetValue("Su2_Converged", out float c2cv) || c2cv > 0.5f);
-            bool coarseYPlusOk2D = coarseP95_2D <= 0f || coarseP95_2D <= 3.0f;
-
-            stages2D.Add(new CalibrationStageData(
-                LevelIndex: 1,
-                Factor: 2.0f,
-                MeshCells: coarseCells2D,
-                DurationSeconds: timer.Elapsed.TotalSeconds,
-                Metrics: ExtractMetrics(rec2D_1, metricsToMonitor),
-                Fitness: rec2D_1.Fitness,
-                Converged: coarseConv2D,
-                YPlusP95: coarseP95_2D,
-                YPlusOk: coarseYPlusOk2D));
-
-            // Stufe 5: Feines Referenznetz (0.50, Tag: Kal2D_5)
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 5/5: Feines 2D-Referenznetz (Faktor 0.50)...");
-            timer.Restart();
-            ModelRecord rec2D_5 = runStage2D(0.5f, "Kal2D_5");
-            timer.Stop();
-
-            int refCells2D = (int)(rec2D_5.PassiveParameters.TryGetValue("MeshCells", out float r2c) ? r2c : 0);
-            float refP95_2D = rec2D_5.PassiveParameters.TryGetValue("YPlus_P95", out float r2p) ? r2p : 0f;
-            bool refConv2D = !rec2D_5.SimulationFailed && (!rec2D_5.PassiveParameters.TryGetValue("Su2_Converged", out float r2cv) || r2cv > 0.5f);
-            bool refYPlusOk2D = refP95_2D <= 0f || refP95_2D <= 2.5f;
-
-            stages2D.Add(new CalibrationStageData(
-                LevelIndex: 5,
-                Factor: 0.5f,
-                MeshCells: refCells2D,
-                DurationSeconds: timer.Elapsed.TotalSeconds,
-                Metrics: ExtractMetrics(rec2D_5, metricsToMonitor),
-                Fitness: rec2D_5.Fitness,
-                Converged: refConv2D,
-                YPlusP95: refP95_2D,
-                YPlusOk: refYPlusOk2D));
+            stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, 2.5f));
 
             // Zwischenstufen 2D: 1.41 (Kal2D_2), 1.00 (Kal2D_3), 0.71 (Kal2D_4)
             var intermediateConfigs2D = new[]
@@ -369,29 +294,11 @@ namespace MyPicoGkProject.Core
             foreach (var inter in intermediateConfigs2D)
             {
                 Console.WriteLine($"\n[2D-KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                timer.Restart();
-                ModelRecord recInter = runStage2D(inter.Factor, inter.Tag);
-                timer.Stop();
-
-                int iCells = (int)(recInter.PassiveParameters.TryGetValue("MeshCells", out float ic) ? ic : 0);
-                float iP95 = recInter.PassiveParameters.TryGetValue("YPlus_P95", out float ip95) ? ip95 : 0f;
-                bool iConv = !recInter.SimulationFailed && (!recInter.PassiveParameters.TryGetValue("Su2_Converged", out float iconv) || iconv > 0.5f);
-                bool iYPlusOk = iP95 <= 0f || iP95 <= 2.5f;
-
-                stages2D.Add(new CalibrationStageData(
-                    LevelIndex: inter.Index,
-                    Factor: inter.Factor,
-                    MeshCells: iCells,
-                    DurationSeconds: timer.Elapsed.TotalSeconds,
-                    Metrics: ExtractMetrics(recInter, metricsToMonitor),
-                    Fitness: recInter.Fitness,
-                    Converged: iConv,
-                    YPlusP95: iP95,
-                    YPlusOk: iYPlusOk));
+                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 2.5f));
 
                 if (stages2D.Count >= 3)
                 {
-                    var tempDec = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+                    var tempDec = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, cal2.Tolerance, cal2.AbsoluteTolerances);
                     if (tempDec.Success && tempDec.SelectedStage != null && tempDec.SelectedStage.LevelIndex == inter.Index)
                     {
                         Console.WriteLine($"       -> 2D-Stufe {inter.Index} erfüllt bereits die Toleranz!");
@@ -400,7 +307,9 @@ namespace MyPicoGkProject.Core
                 }
             }
 
-            var decision2D = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+            RefineAdaptively(stages2D, runStage2D, "Kal2D_", "2D-KALIBRIERUNG", metricsToMonitor, cal2, 2, cal2.MaxCells2D);
+
+            var decision2D = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
             float factor2D = decision2D.SelectedStage?.Factor ?? 1.0f;
             Console.WriteLine($"\n[2D-KALIBRIERUNG] Ermittelter 2D-Faktor: f2D = {factor2D:0.00} (Erfolg={decision2D.Success})");
 
@@ -492,7 +401,7 @@ namespace MyPicoGkProject.Core
                 YPlusOk: m3YPlusOk));
 
             // Auswertung der 3-stufigen 3D-Bestätigung
-            var decision3D = CalibrationEvaluator.EvaluateConfirmation3D(factor2D, stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+            var decision3D = CalibrationEvaluator.EvaluateConfirmation3D(factor2D, stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
 
             // Falls weder f2D * √2 noch f2D bestätigen, weiter verfeinern (f2D / 2.0)
             if (!decision3D.Success)
@@ -521,7 +430,7 @@ namespace MyPicoGkProject.Core
                         YPlusP95: rP95,
                         YPlusOk: rYPlusOk));
 
-                    decision3D = CalibrationEvaluator.EvaluateCalibration(stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance);
+                    decision3D = CalibrationEvaluator.EvaluateCalibration(stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
                 }
             }
 
@@ -564,7 +473,107 @@ namespace MyPicoGkProject.Core
             return (decision3D, calibSubdir.Replace('\\', '/'));
         }
 
-        private static List<string> ResolveMonitoredMetrics(ProjectContext context)
+        // ===================================================================
+        //  Gemeinsame Stufenlogik (TODO-W5)
+        // ===================================================================
+
+        /// <summary>Weitere Verfeinerungsstufen nach den fünf Standardstufen (0.35, 0.25, 0.18, 0.13).</summary>
+        public const int MaxAdditionalStages = 4;
+
+        /// <summary>Kleinster Netzfaktor, der noch versucht wird.</summary>
+        public const float MinRefinementFactor = 0.1f;
+
+        /// <summary>Hochgerechnete Zellzahl bei Wechsel von <paramref name="fromFactor"/> auf <paramref name="toFactor"/>.</summary>
+        public static long EstimateCells(int cells, float fromFactor, float toFactor, int dimensions)
+            => (long)(cells * Math.Pow(fromFactor / Math.Max(toFactor, 1e-3f), dimensions));
+
+        /// <summary>Nächstfeinerer Faktor: ÷ √2, auf zwei Stellen gerundet (0.50 → 0.35 → 0.25 → 0.18 → 0.13).</summary>
+        public static float NextFinerFactor(float factor)
+            => (float)Math.Round(factor / Math.Sqrt(2.0), 2);
+
+        /// <summary>Rechnet eine Kalibrierstufe und fasst Zellzahl, Konvergenz und y+ zusammen.</summary>
+        private static CalibrationStageData RunCalibrationStage(
+            Func<float, string, ModelRecord> runStage,
+            int level,
+            float factor,
+            string tag,
+            List<string> metricsToMonitor,
+            float yPlusLimit)
+        {
+            var timer = Stopwatch.StartNew();
+            ModelRecord rec = runStage(factor, tag);
+            timer.Stop();
+
+            int cells = (int)(rec.PassiveParameters.TryGetValue("MeshCells", out float c) ? c : 0);
+            float p95 = rec.PassiveParameters.TryGetValue("YPlus_P95", out float y) ? y : 0f;
+            bool converged = !rec.SimulationFailed
+                && (!rec.PassiveParameters.TryGetValue("Su2_Converged", out float cv) || cv > 0.5f);
+            bool yPlusOk = p95 <= 0f || p95 <= yPlusLimit;
+
+            return new CalibrationStageData(
+                LevelIndex: level,
+                Factor: factor,
+                MeshCells: cells,
+                DurationSeconds: timer.Elapsed.TotalSeconds,
+                Metrics: ExtractMetrics(rec, metricsToMonitor),
+                Fitness: rec.Fitness,
+                Converged: converged,
+                YPlusP95: p95,
+                YPlusOk: yPlusOk);
+        }
+
+        /// <summary>
+        /// Verfeinert weiter (0.35, 0.25, …), solange keine gröbere Stufe die Toleranz gegenüber der
+        /// feinsten hält (TODO-W5). Die Kalibrierung entscheidet damit selbst, wie fein das Netz sein muss.
+        /// Abbruch, wenn die Toleranz hält, die feinste Stufe selbst nicht konvergiert bzw. y+ verletzt
+        /// (feiner hilft dann nicht), die Zellzahl die Grenze überschreitet oder
+        /// <see cref="MaxAdditionalStages"/> erreicht ist.
+        /// </summary>
+        private static void RefineAdaptively(
+            List<CalibrationStageData> stages,
+            Func<float, string, ModelRecord> runStage,
+            string tagPrefix,
+            string label,
+            List<string> metricsToMonitor,
+            MeshCalibrationConfig cal,
+            int dimensions,
+            long maxCells)
+        {
+            for (int extra = 0; extra < MaxAdditionalStages; extra++)
+            {
+                var decision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
+                if (decision.Success) return;
+
+                var refStage = stages.OrderBy(s => s.Factor).First();
+                if (!refStage.Converged)
+                {
+                    Console.WriteLine($"       -> [{label}] Feinste Stufe ist nicht auskonvergiert – feiner rechnen hilft nicht, die Iterationen reichen nicht.");
+                    return;
+                }
+                if (!refStage.YPlusOk)
+                {
+                    Console.WriteLine($"       -> [{label}] y+ der feinsten Stufe liegt außerhalb der Toleranz – ein feineres Netz ändert daran nichts (Wandschicht prüfen).");
+                    return;
+                }
+
+                float next = NextFinerFactor(refStage.Factor);
+                if (next < MinRefinementFactor) return;
+
+                long estimated = EstimateCells(refStage.MeshCells, refStage.Factor, next, dimensions);
+                if (refStage.MeshCells > 0 && estimated > maxCells)
+                {
+                    Console.WriteLine($"       -> [{label}] Nächste Stufe (Faktor {next:0.00}) hätte ~{estimated:N0} Zellen und überschreitet die Grenze von {maxCells:N0} – Verfeinerung endet.");
+                    return;
+                }
+
+                int level = stages.Max(s => s.LevelIndex) + 1;
+                Console.WriteLine($"\n[{label}] Toleranz von {cal.Tolerance * 100:0.0} % noch nicht erreicht – zusätzliche Stufe {level} (Faktor {next:0.00}, ~{estimated:N0} Zellen)...");
+                stages.Add(RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, 2.5f));
+            }
+        }
+
+        /// <summary>Überwachte Größen = Schlüssel von <c>ResultMetrics</c> aus <c>solvers/su2.json</c>, sonst "Drag".</summary>
+        public static List<string> ResolveMonitoredMetrics(ProjectContext context)
         {
             var list = new List<string>();
             if (context.ProjectDirectory != null)
@@ -574,7 +583,15 @@ namespace MyPicoGkProject.Core
                 {
                     try
                     {
-                        var node = JsonNode.Parse(File.ReadAllText(su2Path));
+                        // Die Projektdateien tragen //-Kommentare. Ohne CommentHandling scheiterte
+                        // das Parsen still, und es wurde nur "Drag" ueberwacht (Servertest 06.11.2026).
+                        var node = JsonNode.Parse(
+                            File.ReadAllText(su2Path),
+                            documentOptions: new JsonDocumentOptions
+                            {
+                                CommentHandling = JsonCommentHandling.Skip,
+                                AllowTrailingCommas = true,
+                            });
                         if (node?["ResultMetrics"] is JsonObject rm)
                         {
                             foreach (var entry in rm) list.Add(entry.Key);
@@ -606,7 +623,7 @@ namespace MyPicoGkProject.Core
             var csv = new StringBuilder();
             csv.Append("Stufe;Faktor;MeshCells;Dauer_s;");
             foreach (var m in metrics) csv.Append($"{m};");
-            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok");
+            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok;NormiertRef");
 
             foreach (var s in decision.AllStages.OrderBy(st => st.LevelIndex))
             {
@@ -623,7 +640,15 @@ namespace MyPicoGkProject.Core
                     maxDev = devs.Count > 0 ? devs.Values.Max() : 0f;
                 }
 
-                csv.AppendLine($"{maxDev.ToString("P2", CultureInfo.InvariantCulture)};{(s.Converged ? 1 : 0)};{s.YPlusP95.ToString("F2", CultureInfo.InvariantCulture)};{(s.YPlusOk ? 1 : 0)}");
+                // Normiert nach MetricTolerance (TODO-W1): höchstens 1 = innerhalb der Toleranz inkl. Mindestbetrag.
+                float maxNorm = 0f;
+                if (decision.NormalizedDeviationsToRef != null
+                    && decision.NormalizedDeviationsToRef.TryGetValue(s.LevelIndex, out var norms) && norms.Count > 0)
+                {
+                    maxNorm = norms.Values.Max();
+                }
+
+                csv.AppendLine($"{maxDev.ToString("P2", CultureInfo.InvariantCulture)};{(s.Converged ? 1 : 0)};{s.YPlusP95.ToString("F2", CultureInfo.InvariantCulture)};{(s.YPlusOk ? 1 : 0)};{maxNorm.ToString("F2", CultureInfo.InvariantCulture)}");
             }
 
             File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
@@ -684,7 +709,10 @@ namespace MyPicoGkProject.Core
                     ["GciFinePercent"] = decision3D.Gci.GciFinePercent,
                     ["GciSelectedPercent"] = decision3D.Gci.GciSelectedPercent,
                     ["IsMonotonic"] = decision3D.Gci.IsMonotonic,
-                    ["Warning"] = decision3D.Gci.Warning
+                    ["Warning"] = decision3D.Gci.Warning,
+                    // Richardson-Extrapolation der Hauptgröße (null, wenn die Folge nicht monoton ist)
+                    ["ExtrapolatedValue"] = float.IsFinite(decision3D.Gci.ExtrapolatedValue) ? decision3D.Gci.ExtrapolatedValue : null,
+                    ["ExtrapolatedDeviationPercent"] = float.IsFinite(decision3D.Gci.ExtrapolatedDeviationPercent) ? decision3D.Gci.ExtrapolatedDeviationPercent : null
                 };
             }
 
@@ -728,7 +756,10 @@ namespace MyPicoGkProject.Core
                     ["GciFinePercent"] = decision.Gci.GciFinePercent,
                     ["GciSelectedPercent"] = decision.Gci.GciSelectedPercent,
                     ["IsMonotonic"] = decision.Gci.IsMonotonic,
-                    ["Warning"] = decision.Gci.Warning
+                    ["Warning"] = decision.Gci.Warning,
+                    // Richardson-Extrapolation der Hauptgröße (null, wenn die Folge nicht monoton ist)
+                    ["ExtrapolatedValue"] = float.IsFinite(decision.Gci.ExtrapolatedValue) ? decision.Gci.ExtrapolatedValue : null,
+                    ["ExtrapolatedDeviationPercent"] = float.IsFinite(decision.Gci.ExtrapolatedDeviationPercent) ? decision.Gci.ExtrapolatedDeviationPercent : null
                 };
             }
 
@@ -755,6 +786,11 @@ namespace MyPicoGkProject.Core
                 Console.WriteLine($"   Beobachtete Ordnung p:        {decision.Gci.ObservedOrderP:F2}");
                 Console.WriteLine($"   GCI (Feinstes Netz):          {decision.Gci.GciFinePercent:F2} %");
                 Console.WriteLine($"   GCI (Gewähltes/Mittleres):    {decision.Gci.GciSelectedPercent:F2} %");
+                if (float.IsFinite(decision.Gci.ExtrapolatedValue))
+                {
+                    Console.WriteLine($"   Extrapolierter netzunabhängiger Wert (Hauptgröße): {decision.Gci.ExtrapolatedValue.ToString("0.#####", CultureInfo.InvariantCulture)} "
+                        + $"(feinstes Netz weicht {decision.Gci.ExtrapolatedDeviationPercent:0.0} % davon ab)");
+                }
                 if (!decision.Gci.IsMonotonic && decision.Gci.Warning != null)
                 {
                     Console.WriteLine($"   [WARNUNG] {decision.Gci.Warning}");

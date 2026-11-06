@@ -38,3 +38,24 @@ Um Rechenzet zu sparen und ergebnisse zu verbessern und out of the box zu denken
 
 FEM: 
 Eine open source FEM tool, ähnliches Kaliber wie SU2 für FEM simulationen / kombinierte probleme integrieren.
+
+
+^ bis hierhin alles alt, bzw schon in plänen vorhanden. 
+6.11.26
+neue prompts für die zukungt
+
+es wurde in diesem branch wirklich viel neu gemacht und umgesetzt. 
+es muss noch geschaut werden ob der neue testlauf vom manta auv mit neuem netz auch gut funktioniert. und tut was er soll. 
+es wurde alles einmal getestet, aber es ist auf jeden fall viel was auch noch unsauber sein kann, deshalb möchte ich dass nochmal ein starkes model rüberschaut und nach fehlern sucht. 
+z.b. soll natürlich nichts hardcoded und alles problemunabhängig sein, so, wie z.b. die option im nachlauf nach dem modell eine box mit detailiertem netzt mit genau den gleichen maßen wie das boxvolumen des körpers als on/off option die standardmäßig funktioniert
+generell hat das meshing viele probleme gemacht und ich bin mir nicht sicher ob alles so sauber gemeshed wurde. 
+auch soll z.b. nach anstellwinkel optimiert werden können. geht das schon? ich bin mir nicht sicher...
+Warung mit der Machnummer ist total nervig uns sinnlos. ich würde sagen wir entfernen die machnummer einfach komplett aus der eingabe. 
+die konsolenausgabe im logg einmal ein bisschen schöner und anschaulicher machen
+wenn alle fehler behoben und erkannt wurden; 
+ich würde dann gerne nochmal einen kleinen 5x5 testlauf in 2d mit allen neuen funktionen, wie z.b. kalibrierung und neuem besseren netz usw. 
+und da kurz einen kleinen bericht mit bildern und plots zu wie in manta auv.
+dann die KI pläne und integration umsetzten und dann genau den lauf nochmal starten
+
+dann nochmal eine wirklich schöne umfangreiche und dennoch nicht zu technisch detailierte latexdokumentation  über einen neuen lauf von mantaauv in 3d und dem naca profil in 2d (ist das egentlich korrekt von der form her? irgendwie sieht es nicht ganz korrekt aus) von einem durchlauf wo alles einmal richtig schön präsentiert wird mit tollen bildern, vergleichen zwischen optimierungsalgorithmen, prinzipien und kalibrierungs zeug usw  also einmal alle register ziehen und zeigen was das programm bis jetzt kann. 
+in diesem zuge wäre es auch geil unter scripts ein paar python skripte zu schreiben, die allgemein vorlagen für auswertung von den daten sind, also konvergenz und residuen von einzelnen rechnungen, aber auch die fitness über die varianten der optimierung. sodass die auswertung einfacher fällt. 

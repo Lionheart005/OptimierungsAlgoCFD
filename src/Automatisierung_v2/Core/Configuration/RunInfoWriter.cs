@@ -106,6 +106,32 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
+        /// Trägt die Version eines Programms unter <c>Programme</c> nach, wenn dort noch nichts oder
+        /// "unbekannt" steht (TODO-W2: SU2 kennt keinen Versionsschalter, die Version steht erst im
+        /// Banner der ersten Rechnung). Fehlt <c>run-info.json</c>, passiert nichts. Wirft nie.
+        /// </summary>
+        public static void SetProgramVersion(string workingDirectory, string program, string version)
+        {
+            try
+            {
+                RunInfo? info = Read(workingDirectory);
+                if (info == null) return;
+
+                if (info.Programme.TryGetValue(program, out string? known)
+                    && !string.IsNullOrWhiteSpace(known)
+                    && !known.Equals("unbekannt", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                info.Programme[program] = version;
+                Write(workingDirectory, info);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine($"[WARNUNG] {FileName}: Version von {program} konnte nicht eingetragen werden: {exception.Message}");
+            }
+        }
+
+        /// <summary>
         /// Vermerkt eine Wiederaufnahme (TODO-52): Eintrag unter <c>Wiederaufnahmen</c>,
         /// <c>Status</c> wieder auf <c>laeuft</c>. Wirft nie.
         /// </summary>

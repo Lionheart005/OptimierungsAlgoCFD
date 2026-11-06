@@ -329,6 +329,21 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal("Kalibrierung/latest_calibration.json", doc["KalibrierBericht"]!.GetValue<string>());
         }
 
+        [Fact]
+        public void ResolveMonitoredMetrics_Reads_ResultMetrics_From_Commented_Su2Json()
+        {
+            // Wie die echten Projektdateien: Kommentare und ein abschliessendes Komma.
+            // Vor dem Servertest vom 06.11.2026 scheiterte das Parsen still -> nur "Drag".
+            var projectDir = Path.Combine(_workingDirectory, "MetricsProject");
+            Directory.CreateDirectory(Path.Combine(projectDir, "solvers"));
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                "{\n  // Kommentar\n  \"ResultMetrics\": {\n    \"Drag\": \"CD\", // Widerstand\n    \"Lift\": \"CL\",\n  },\n}\n");
+
+            var context = new ProjectContext("MetricsProject", projectDir, null, new SimulationConfig(), new ProjectConfig());
+
+            Assert.Equal(new[] { "Drag", "Lift" }, MeshCalibration.ResolveMonitoredMetrics(context));
+        }
+
         #endregion
 
         #region Part 4: ChampionFineVerifier Tests
@@ -371,6 +386,33 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Equal(0, runsCalled);
             Assert.False(champion.PassiveParameters.ContainsKey("FineVerified"));
+        }
+
+        [Fact]
+        public void VerifyFinal_FailedFineSimulation_Is_Not_Counted_As_Verified()
+        {
+            // Servertest 06.11.2026: alle drei feinen Rechnungen scheiterten an Gmsh, trotzdem
+            // stand "Rangfolge hält" und FineVerified = 1 in der CSV.
+            var config = new SimulationConfig
+            {
+                MeshRefinementFactor = 1.0f,
+                ChampionVerification = new ChampionVerificationConfig { Mode = "Final", RefinementSteps = 1, Tolerance = 0.05f }
+            };
+            var simContext = new SimulationContext(config, new ProjectConfig { ProjectName = "TestProj" }, _workingDirectory);
+            var champion = new ModelRecord
+            {
+                Iteration = 1, Variant = 1, Fitness = 10.0f,
+                PassiveParameters = new Dictionary<string, float> { ["Drag"] = 100.0f }
+            };
+            simContext.History.Add(champion);
+
+            ChampionFineVerifier.VerifyFinal(
+                simContext,
+                (p, factor, tag) => new ModelRecord { Iteration = 1, Variant = 1, SimulationFailed = true },
+                evaluateFitness: r => { },
+                monitoredMetrics: new[] { "Drag" });
+
+            Assert.Equal(0f, champion.PassiveParameters["FineVerified"]);
         }
 
         [Fact]
@@ -423,7 +465,7 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Equal(1, runsCalled);
             Assert.Equal(initialHistoryCount, simContext.History.Count); // History bleibt unberührt!
-            Assert.Equal("Fein1", capturedTag);
+            Assert.Equal("Fein1_Gen1_Var1", capturedTag);
             Assert.InRange(capturedFactor, 0.70f, 0.71f);
 
             Assert.True(champion.PassiveParameters.ContainsKey("FineVerified"));
@@ -483,7 +525,7 @@ namespace AutomatisierungCleanVersion.Tests
                     capturedTags.Add(tag);
                     return new ModelRecord
                     {
-                        Fitness = tag == "Fein1" ? 14.8f : 11.9f,
+                        Fitness = tag.StartsWith("Fein1") ? 14.8f : 11.9f,
                         PassiveParameters = new Dictionary<string, float> { ["Drag"] = 51.0f }
                     };
                 },
@@ -492,8 +534,8 @@ namespace AutomatisierungCleanVersion.Tests
 
             // Genau 2 Varianten (TopN = 2) gerechnet
             Assert.Equal(2, capturedTags.Count);
-            Assert.Equal("Fein1", capturedTags[0]);
-            Assert.Equal("Fein2", capturedTags[1]);
+            Assert.Equal("Fein1_Gen1_Var1", capturedTags[0]);
+            Assert.Equal("Fein2_Gen1_Var2", capturedTags[1]);
             Assert.True(r1.PassiveParameters.ContainsKey("FineVerified"));
             Assert.True(r2.PassiveParameters.ContainsKey("FineVerified"));
             Assert.False(r3.PassiveParameters.ContainsKey("FineVerified"));

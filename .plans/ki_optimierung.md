@@ -6,7 +6,8 @@
 > Festlegungen mit **F9**.
 >
 > **Status (06.11.2026):** Block V (TODO-50 bis TODO-52) ist im Code umgesetzt und lokal geprüft,
-> offen ist nur der Server-Praxistest von TODO-52. Der KI-Teil ab TODO-53 ist noch nicht begonnen.
+> der Server-Praxistest von TODO-52 ist am 06.11.2026 bestanden. **Vor dem KI-Teil kommt Block W
+> (`.plans/physik_feinschliff.md`, TODO-W1 bis W10).** Der KI-Teil ab TODO-53 ist noch nicht begonnen.
 > FEM ist zurückgestellt, siehe `.plans/fem_ausblick.md`.
 >
 > **Reihenfolge (Nachtrag vom 05.11.2026):** **Zuerst Block V, die Vorarbeiten TODO-50 bis TODO-52**
@@ -28,7 +29,7 @@
 | --- | --- | --- | --- | --- |
 | V | TODO-50 | Zufalls-Seed, Fahrtenschreiber `run-info.json`, Kopie des Projekt-Quellstands | lokal | [x] |
 | V | TODO-51 | Lauf-Journal und Wiedergabe: der Kern der Wiederaufnahme | lokal | [x] |
-| V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [~] Code fertig, Praxistest offen |
+| V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [x] Praxistest am 06.11.2026 bestanden (`servertest_2026-11-06.md`) |
 | G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [ ] |
 | G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [ ] |
 | H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [ ] |
@@ -339,7 +340,7 @@ Umgesetzt wie beschrieben, mit diesen bewussten Abweichungen und Erkenntnissen:
   `Simulation_Results.csv` ist bytegleich mit dem ununterbrochenen Lauf. Das gilt auch mit halber
   letzter Zeile und bei einer Abweichung in Eintrag j.
 
-**Nächster Schritt:** Praxistest von TODO-52 auf dem Server (siehe oben), danach TODO-53.
+**Nächster Schritt:** TODO-53. (Praxistest von TODO-52 am 06.11.2026 bestanden: stop nach 4 Rechnungen, status meldet sie, resume übernimmt 4/4 aus dem Journal und rechnet weiter.)
 
 ---
 

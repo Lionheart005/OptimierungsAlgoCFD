@@ -67,6 +67,15 @@ fi
 # Ausführrechte zur Sicherheit nochmal erzwingen
 chmod +x $HOME/software/bin/SU2_CFD
 
+# SU2 aus dem offiziellen "-mpi"-Paket ist STATISCH mit MPICH gebaut. Es braucht deshalb
+# ein MPICH-mpiexec (Hydra), nicht das OpenMPI oben: unter OpenMPI startet "-n 12" zwoelf
+# unabhaengige serielle Kopien, die sich die Dateien ueberschreiben (Servertest 06.11.2026).
+# Eigenes Environment, damit das OpenMPI im Basis-Environment unberuehrt bleibt.
+# Die Projekte tragen "MpiRunPath": "$HOME/miniconda/envs/mpich/bin/mpiexec" ein.
+if [ ! -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ]; then
+    conda create -y -n mpich -c conda-forge mpich
+fi
+
 # Gmsh 4.11.1
 if [ ! -d "$HOME/software/gmsh-4.11.1-Linux64" ]; then
     wget https://gmsh.info/bin/Linux/gmsh-4.11.1-Linux64.tgz

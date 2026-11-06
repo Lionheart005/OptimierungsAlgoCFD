@@ -27,7 +27,7 @@
 | C | TODO-37 | *Später:* zeitgenauer Modus (URANS) für Einzelprüfungen | [x] |
 | D | TODO-38 | Anströmung in m/s statt Mach × Schallgeschwindigkeit, Reynoldszahl ins Log | [x] |
 | D | TODO-39 | `MeshRequest` + ein Netzfaktor für alle Zellgrößen, Nachlauf-Verfeinerung, Zellzahl | [x] |
-| D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [x] Code & Tests erledigt (Server-Spike offen) |
+| D | TODO-40 | Strukturierte **Quader**-Grenzschicht (Hexaeder, Prismen nur als Rückfall) mit vorgegebenem y+ (3D), Server-Spike zuerst | [x] Servertest 06.11.2026: auf Zwei-Schritt-Verfahren umgebaut (B11 in `servertest_2026-11-06.md`). „Prism“ am Manta: y+ ≈ 1, SU2 konvergiert. „Hexa“ nur für glatte Körper |
 | D | TODO-41 | y+ nach jeder Rechnung auswerten und melden | [x] |
 | D | TODO-42 | Netzkalibrierung: eigener Befehl **und** Auto-Modus am Laufanfang | [x] |
 | D | TODO-43 | Gewinner in feinerer Auflösung nachrechnen (Modus je Lauf wählbar) | [x] |
@@ -43,7 +43,7 @@
 0 Fehler und 0 Warnungen. `dotnet test` ergibt **443/443 Tests grün** (von 260 auf 443 gewachsen).
 `scripts/sim.ps1` und `scripts/new-project.ps1` haben 0 Parser-Fehler, `scripts/sim-runner.sh` hat
 0 Syntax-Fehler (`bash -n`), `scripts/plot_history.py` kompiliert fehlerfrei (`py_compile`).
-**Auf dem Server durchzuführen (sobald du wieder am PC bist):** siehe Abschnitt „Offene Fragen / Server-Checkliste".
+**Servertest 06.11.2026:** durchgeführt, siehe `.plans/servertest_2026-11-06.md` (11 Befunde, 10 behoben; offen: 3D-Wandschicht TODO-40).
 
 ---
 

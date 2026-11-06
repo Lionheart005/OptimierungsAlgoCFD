@@ -10,7 +10,8 @@
 
   // --- Fernfeld (Simulationsdomäne) ---
   // Kreisförmiges Fernfeld als Vielfaches der Sehne c (in 2D mind. 50 c).
-  "FarfieldRadiusFactor": 50.0,
+  // 500 wie die NASA-TMR-Gitter; die Zellen wachsen nach aussen, das Fernfeld kostet nur wenige tausend Zellen.
+  "FarfieldRadiusFactor": 500.0,
   "FarfieldCircleSegments": 64,
 
   // --- Grenzschicht-Auflösung (BoundaryLayer Field) ---
@@ -21,14 +22,29 @@
   "BoundaryLayerLayers": 0,
 
   // --- Zellgrößen relativ zur Sehne c ---
-  "SurfaceCellSizeFactor": 0.01,
+  "SurfaceCellSizeFactor": 0.005,
   "SurfaceCellSizeMm": 0.0,
-  "NearfieldCellSizeFactor": 0.04,
-  "FarfieldCellSizeFactor": 2.5,
+  "NearfieldCellSizeFactor": 0.02,
+  // Faustregel: Radius / 20.
+  "FarfieldCellSizeFactor": 25.0,
+  // Abstand (x c), ueber den die Zellgroesse bis zur Fernfeldgroesse waechst; 0 = automatisch 0,4 x Radius.
+  "NearfieldGrowthDistanceFactor": 0.0,
 
   // --- Nachlauf-Verfeinerung (Wake Box) ---
   "WakeRefinement": true,
   "WakeLengthFactor": 3.0,
   "WakeWidthFactor": 0.6,
-  "WakeCellSizeFactor": 0.04
+  "WakeCellSizeFactor": 0.02,
+
+  // --- Detailbox um und hinter dem Profil (TODO-W6) ---
+  // Sehr feine Box fuer Nachlauf und Wirbel in Modellnaehe; gilt fuer jede Rechnung, skaliert mit dem Netzfaktor.
+  "DetailBox": true,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSizeFactor": 0.01,
+
+  // --- Vorder- und Hinterkante (TODO-W6) ---
+  // Wandzellgroesse dort = EdgeRefinementFactor x Konturzellgroesse (1 = keine Sonderverfeinerung).
+  "EdgeRefinementFactor": 0.25,
+  "EdgeRefinementDistanceFactor": 0.1
 }

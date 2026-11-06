@@ -75,6 +75,10 @@ namespace AutomatisierungCleanVersion.Tests
                 Assert.Contains(lines, l => l.Contains("Field[1].Quads = 1;"));
                 Assert.Contains(lines, l => l.Contains("Field[1].FanPointsList"));
                 Assert.Contains(lines, l => l.Contains("Field[1].FanNodesList"));
+                // Ohne Thickness und ohne Anmeldung erzeugt Gmsh 4.11 keine bzw. nur eine Schicht
+                // (Servertest 06.11.2026).
+                Assert.Contains(lines, l => l.StartsWith("Field[1].Thickness = "));
+                Assert.Contains(lines, l => l.Trim() == "BoundaryLayer Field = 1;");
 
                 // 4. Physikalische Marker für SU2
                 Assert.Contains(lines, l => l.Contains("Physical Curve(\"Wall\")"));
@@ -88,6 +92,41 @@ namespace AutomatisierungCleanVersion.Tests
             {
                 if (Directory.Exists(tempDir))
                     Directory.Delete(tempDir, true);
+            }
+        }
+
+        [Fact]
+        public void Gmsh2DMesher_RemoveMarker_Strips_Fluid_Block_And_Decrements_NMARK()
+        {
+            // Aufbau wie der SU2-Export von Gmsh 4.11 in 2D: das Fluidgebiet steht als dritter Marker drin.
+            string path = Path.Combine(Path.GetTempPath(), "rm_marker_" + Guid.NewGuid().ToString("N") + ".su2");
+            File.WriteAllLines(path, new[]
+            {
+                "NDIME= 2", "NELEM= 2", "5 0 1 2 0", "5 1 3 2 1",
+                "NPOIN= 4", "0 0 0", "1 0 1", "1 1 2", "0 1 3",
+                "NMARK= 3",
+                "MARKER_TAG= Farfield", "MARKER_ELEMS= 1", "3 0 1",
+                "MARKER_TAG= Wall", "MARKER_ELEMS= 1", "3 2 3",
+                "MARKER_TAG= Fluid", "MARKER_ELEMS= 2", "5 0 1 2", "5 1 3 2",
+            });
+
+            try
+            {
+                Assert.True(Gmsh2DMesher.RemoveMarker(path, Gmsh2DMesher.FluidMarkerName));
+                string[] lines = File.ReadAllLines(path);
+
+                Assert.Contains("NMARK= 2", lines);
+                Assert.DoesNotContain(lines, l => l.Contains("Fluid"));
+                Assert.Equal("3 2 3", lines[^1]);
+                Assert.Equal(16, lines.Length);
+
+                // Zweiter Aufruf: nichts mehr zu tun, Datei bleibt gleich.
+                Assert.False(Gmsh2DMesher.RemoveMarker(path, Gmsh2DMesher.FluidMarkerName));
+                Assert.Equal(lines, File.ReadAllLines(path));
+            }
+            finally
+            {
+                File.Delete(path);
             }
         }
 

@@ -73,6 +73,23 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// </summary>
         public float WakeCellSize { get; set; } = 0.0f;
 
+        // --- Detailbox um und hinter dem Modell (TODO-W6) ---
+        /// <summary>
+        /// Feine Box um und hinter dem Modell (Nachlauf und Wirbel in Modellnähe). Standard aus: in 3D
+        /// kostet sie viele Zellen (Manta: einige hunderttausend). Bei Bedarf einschalten; die
+        /// Zellgröße skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit.
+        /// </summary>
+        public bool DetailBox { get; set; } = false;
+
+        /// <summary>Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge lenX (Standard 1.0).</summary>
+        public float DetailBoxLengthFactor { get; set; } = 1.0f;
+
+        /// <summary>Überstand in Y und Z als Vielfaches von lenY bzw. lenZ (Standard 0.25).</summary>
+        public float DetailBoxWidthFactor { get; set; } = 0.25f;
+
+        /// <summary>Zellgröße in der Detailbox in mm auf Stufe 1.0; 0 = automatisch 2,5 × Oberflächen-Zellgröße.</summary>
+        public float DetailBoxCellSize { get; set; } = 0.0f;
+
         // --- Krümmungsabhängige Netzverfeinerung ---
         /// <summary>
         /// Mesh.MeshSizeFromCurvature aktivieren; wirkt bei Neuvernetzung der Oberfläche in TODO-40.

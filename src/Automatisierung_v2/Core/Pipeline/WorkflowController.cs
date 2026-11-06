@@ -416,9 +416,22 @@ namespace MyPicoGkProject.Core
 
         private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
         {
+            // Eine Optimierung, in der keine einzige Variante gerechnet werden konnte, ist nicht
+            // "erfolgreich" (Servertest 06.11.2026: Gmsh scheiterte an jeder Variante, die Meldung blieb) (TODO-W9).
+            int valid = _context.History.Count(r => !r.SimulationFailed);
+            bool anySucceeded = valid > 0;
+
             Console.WriteLine("\n==================================================");
-            Console.WriteLine(" OPTIMIERUNG ERFOLGREICH BEENDET");
+            Console.WriteLine(anySucceeded
+                ? " OPTIMIERUNG ERFOLGREICH BEENDET"
+                : " OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
             Console.WriteLine("==================================================");
+
+            if (!anySucceeded)
+            {
+                Console.WriteLine($"[WARNUNG] Alle {_context.History.Count} Varianten sind gescheitert (Vernetzung oder SU2). Die Fehlerprotokolle liegen unter FehlerLogs/.");
+                return;
+            }
 
             if (champion != null)
             {

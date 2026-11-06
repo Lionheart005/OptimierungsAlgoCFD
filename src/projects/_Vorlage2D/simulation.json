@@ -61,11 +61,29 @@
   "BouncerTolerance": 0.2,
   "BouncerJitter": 0.01,
 
+  // --- Genauigkeit der Konvergenz (TODO-W3, TODO-W4) ---
+  // IterativeToleranceFraction: wie weit der ITERATIVE Fehler einer normalen Variante unter der
+  //   Netz-Toleranz liegen muss (0.25 = ein Viertel). Gemessen wird die Drift der Kennwerte im
+  //   Endfenster, nicht das Residuum.
+  // ControlRuns: strenges Profil NUR fuer Kontrollrechnungen (Netzkalibrierung, Feinpruefung, Recheck):
+  //   Su2MaxIterations, CauchyElements, CauchyTolerance und IterativeToleranceFraction (0.1 = ein Zehntel,
+  //   Celik et al. 2008). Es gilt nie weniger als bei normalen Varianten.
+  "IterativeToleranceFraction": 0.25,
+  "ControlRuns": {
+    "Su2MaxIterations": 20000,
+    "CauchyElements": 500,
+    "CauchyTolerance": "1e-6",
+    "IterativeToleranceFraction": 0.1
+  },
+
   // --- Netzkalibrierung (TODO-42) ---
   "MeshCalibration": {
     "Mode": "Manual",
     "Tolerance": 0.02,
-    "Use2DPrecalibration": false
+    "Use2DPrecalibration": false,
+    "AbsoluteTolerances": {},
+    "MaxCells2D": 2000000,
+    "MaxCells3D": 50000000
   },
 
   // --- Verifikation des Champions (TODO-43) ---

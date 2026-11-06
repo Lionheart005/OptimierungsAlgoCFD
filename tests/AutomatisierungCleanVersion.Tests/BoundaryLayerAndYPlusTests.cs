@@ -143,20 +143,59 @@ namespace AutomatisierungCleanVersion.Tests
 
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, scaleFactor: 1.0f);
 
+            // Zwei Schritte (Servertest 06.11.2026): Wandoberfläche, dann Wandschicht + Volumen.
+            string wallPath = GmshCfdMesher.WallScriptPath(path);
+            Assert.Equal(Path.Combine(_workingDirectory, "Wall_hexa.geo"), wallPath);
+            string[] wall = File.ReadAllLines(wallPath);
             string[] lines = File.ReadAllLines(path);
 
-            // ClassifySurfaces und CreateGeometry
-            Assert.Contains(lines, l => l.Contains("ClassifySurfaces{"));
-            Assert.Contains(lines, l => l.Contains("CreateGeometry;"));
-            // Surface quad recombination
-            Assert.Contains(lines, l => l.Trim() == "Mesh.RecombineAll = 1;");
-            Assert.Contains(lines, l => l.Trim() == "Mesh.Algorithm = 8; // Frontal-Delaunay for Quads");
-            Assert.Contains(lines, l => l.Trim() == "Mesh.RecombinationAlgorithm = 2;");
-            // Structured boundary layer extrusion with Recombine
-            Assert.Contains(lines, l => l.Contains("Extrude { Surface{model_surfs[]}; Layers{") && l.Contains("Recombine;"));
-            // Surface sizing
-            Assert.Contains(lines, l => l.Trim() == "Mesh.CharacteristicLengthMin = 1.25;");
+            // Schritt 1: klassifizieren, Vierecke NUR auf der Wand, als eine Fläche speichern
+            Assert.Contains(wall, l => l.Contains("ClassifySurfaces{"));
+            Assert.Contains(wall, l => l.Contains("CreateGeometry;"));
+            Assert.Contains(wall, l => l.Trim() == "Recombine Surface{wall[]};");
+            Assert.Contains(wall, l => l.Trim() == "Mesh.Algorithm = 8; // Frontal-Delaunay for Quads");
+            Assert.Contains(wall, l => l.Trim() == "Mesh.RecombinationAlgorithm = 2;");
+            Assert.Contains(wall, l => l.Trim() == "Mesh.MeshSizeMax = 2.5;");
+            Assert.Contains(wall, l => l.Trim() == "Physical Surface(1) = {wall[]};");
+            Assert.Contains(wall, l => l.Trim() == "Mesh.SaveElementTagType = 2;");
+            // RecombineAll gälte global (auch für den Kanal) und überschrieb sich in Tests gegenseitig
+            Assert.DoesNotContain(wall.Concat(lines), l => !l.TrimStart().StartsWith("//") && l.Contains("RecombineAll"));
+
+            // Schritt 2: Wand einlesen, extrudieren, DANACH den Kanal, Volumen auf den Oberseiten
+            int mergeWall = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_hexa.mesh"));
+            int extrude = Array.FindIndex(lines, l => l.Contains("Extrude { Surface{wall[]}; Layers{") && l.Contains("Recombine;"));
+            int mergeTunnel = Array.FindIndex(lines, l => l.Trim() == "Merge \"tunnel.stl\";");
+            Assert.True(mergeWall >= 0 && extrude > mergeWall && mergeTunnel > extrude,
+                $"Reihenfolge Wand ({mergeWall}) < Extrusion ({extrude}) < Kanal ({mergeTunnel}) verletzt.");
+            Assert.Contains(lines, l => l.Contains("Surface Loop(sl_bl) = {tops[]};"));
             Assert.Contains(lines, l => l.Trim() == "Field[2].SizeMin = 2.5;");
+            // Globales Maximum = Fernfeldgröße, NICHT die Wandgröße (sonst rechnet Gmsh endlos)
+            Assert.Contains(lines, l => l.Trim() == "Mesh.MeshSizeMax = 120;");
+        }
+
+        [Fact]
+        public void WriteGeoScript_LayerOverride_Drops_Outer_Layers()
+        {
+            string path = Path.Combine(_workingDirectory, "Meshing_Gen1_Var1.geo");
+            var options = new GmshMesherOptions { BoundaryLayerMode = "Prism", TargetYPlus = 1.0f };
+            var mesher = new GmshCfdMesher(options, new FlowConditions(2.0f, 1025f, 0.001001f, "test"));
+            var config = SimulationConfig.CreateDefault();
+
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 1.0f, layerCountOverride: 5);
+
+            string extrude = File.ReadAllLines(path).Single(l => l.StartsWith("Extrude {"));
+            Assert.Contains("Layers{ {1, 1, 1, 1, 1}, {", extrude);
+            Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.geo"), GmshCfdMesher.WallScriptPath(path));
+            Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.mesh"), GmshCfdMesher.WallMeshPath(path));
+        }
+
+        [Fact]
+        public void NextLayerCount_Drops_A_Quarter_Each_Time()
+        {
+            // Manta (Servertest 06.11.2026): 21 und 16 Schichten durchdringen sich, 12 gehen.
+            var seq = new List<int> { 21 };
+            while (seq[^1] > 4) seq.Add(GmshCfdMesher.NextLayerCount(seq[^1]));
+            Assert.Equal(new[] { 21, 16, 12, 9, 7, 6, 5, 4 }, seq);
         }
 
         [Fact]
@@ -174,14 +213,16 @@ namespace AutomatisierungCleanVersion.Tests
 
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, scaleFactor: 1.0f);
 
+            string[] wall = File.ReadAllLines(GmshCfdMesher.WallScriptPath(path));
             string[] lines = File.ReadAllLines(path);
 
-            // ClassifySurfaces vorhanden
-            Assert.Contains(lines, l => l.Contains("ClassifySurfaces{"));
-            // Prismen-Extrusion OHNE RecombineAll und OHNE Recombine im Extrude
-            Assert.Contains(lines, l => l.Contains("Extrude { Surface{model_surfs[]}; Layers{"));
-            Assert.DoesNotContain(lines, l => l.Contains("Mesh.RecombineAll = 1;"));
-            Assert.DoesNotContain(lines, l => l.Contains("Recombine;"));
+            // Schritt 1: klassifizieren, aber Dreiecke behalten (keine Vierecke)
+            Assert.Contains(wall, l => l.Contains("ClassifySurfaces{"));
+            Assert.DoesNotContain(wall, l => l.Contains("Recombine"));
+            // Schritt 2: Extrusion MIT "Recombine;" – bei Dreiecken heißt das Prismen statt je drei
+            // Tetraedern; ohne das Schlüsselwort bricht Gmsh ab ("Unable to subdivide extruded mesh").
+            Assert.Contains(lines, l => l.Contains("Extrude { Surface{wall[]}; Layers{") && l.Contains("Recombine;"));
+            Assert.DoesNotContain(lines, l => l.Contains("RecombineAll"));
         }
 
         [Fact]

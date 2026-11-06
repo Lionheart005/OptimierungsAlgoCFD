@@ -43,7 +43,32 @@ namespace MyPicoGkProject.Solvers.Cfd
         bool Converged,
         float ResidualDrop,
         IReadOnlyDictionary<string, float> Oscillation,
-        IReadOnlyDictionary<string, float> WindowMeans);
+        IReadOnlyDictionary<string, float> WindowMeans)
+    {
+        /// <summary>
+        /// Länge des Endfensters in Zeilen, über das <see cref="TailMeans"/>, <see cref="WindowDrift"/>
+        /// und <see cref="OscillationAmplitude"/> gebildet sind: <c>min(CauchyElems, Zeilen / 2)</c>.
+        /// Nie mehr als die halbe Historie, damit der Anlauf das Fenster nicht verfälscht (TODO-W3).
+        /// </summary>
+        public int TailRows { get; init; }
+
+        /// <summary>Mittelwert je Kennwert über das Endfenster (ohne Anlaufphase).</summary>
+        public IReadOnlyDictionary<string, float> TailMeans { get; init; } = new Dictionary<string, float>();
+
+        /// <summary>
+        /// Absolute Drift je Kennwert: Unterschied der Mittelwerte von erster und zweiter Hälfte des
+        /// Endfensters. Maß für den iterativen Fehler (TODO-W3): Pendeln um einen festen Wert ergibt
+        /// ~0, ein langsames Weiterwandern einen deutlichen Wert.
+        /// </summary>
+        public IReadOnlyDictionary<string, float> WindowDrift { get; init; } = new Dictionary<string, float>();
+
+        /// <summary>
+        /// Echte Schwingungsamplitude je Kennwert: Spannweite der Werte im Endfenster <b>nach Abzug
+        /// des linearen Trends</b>, bezogen auf |Mittelwert|. Anders als <see cref="Su2HistoryResult.Oscillation"/>
+        /// enthält sie keine Drift und eignet sich für die Warnung vor Wirbelablösung.
+        /// </summary>
+        public IReadOnlyDictionary<string, float> OscillationAmplitude { get; init; } = new Dictionary<string, float>();
+    }
 
     /// <summary>
     /// Reine Analysefunktion für den SU2-Konvergenzverlauf ohne Datei- oder Konsolen-I/O (TODO-35).
@@ -143,6 +168,11 @@ namespace MyPicoGkProject.Solvers.Cfd
             var oscillation = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             var windowMeans = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
+            var tailMeans = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var drift = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var amplitude = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            int tailRows = Math.Min(options.CauchyElems > 0 ? options.CauchyElems : dataRows.Count, dataRows.Count / 2);
+
             var columnsToEvaluate = options.MetricColumns ?? Array.Empty<string>();
             foreach (string metricCol in columnsToEvaluate)
             {
@@ -186,9 +216,71 @@ namespace MyPicoGkProject.Solvers.Cfd
                     }
                     oscillation[metricCol] = osc;
                 }
+
+                // Endfenster: nie mehr als die halbe Historie (TODO-W3).
+                if (tailRows >= 4)
+                {
+                    var tail = new List<float>(tailRows);
+                    for (int i = dataRows.Count - tailRows; i < dataRows.Count; i++)
+                    {
+                        string[] row = dataRows[i];
+                        if (colIndex < row.Length &&
+                            float.TryParse(row[colIndex], NumberStyles.Float, CultureInfo.InvariantCulture, out float tv) &&
+                            float.IsFinite(tv))
+                        {
+                            tail.Add(tv);
+                        }
+                    }
+
+                    if (tail.Count >= 4)
+                    {
+                        float tailMean = tail.Average();
+                        tailMeans[metricCol] = tailMean;
+
+                        int half = tail.Count / 2;
+                        float firstHalf = tail.Take(half).Average();
+                        float secondHalf = tail.Skip(tail.Count - half).Average();
+                        drift[metricCol] = Math.Abs(secondHalf - firstHalf);
+
+                        amplitude[metricCol] = DetrendedPeakToPeak(tail) / Math.Max(Math.Abs(tailMean), 1e-7f);
+                    }
+                }
             }
 
-            return new Su2HistoryResult(iterations, converged, residualDrop, oscillation, windowMeans);
+            return new Su2HistoryResult(iterations, converged, residualDrop, oscillation, windowMeans)
+            {
+                TailRows = tailRows,
+                TailMeans = tailMeans,
+                WindowDrift = drift,
+                OscillationAmplitude = amplitude,
+            };
+        }
+
+        /// <summary>Spannweite der Abweichungen von der Ausgleichsgeraden (kleinste Quadrate).</summary>
+        private static float DetrendedPeakToPeak(IReadOnlyList<float> values)
+        {
+            int n = values.Count;
+            double meanX = (n - 1) / 2.0;
+            double meanY = 0;
+            for (int i = 0; i < n; i++) meanY += values[i];
+            meanY /= n;
+
+            double sxy = 0, sxx = 0;
+            for (int i = 0; i < n; i++)
+            {
+                sxy += (i - meanX) * (values[i] - meanY);
+                sxx += (i - meanX) * (i - meanX);
+            }
+            double slope = sxx > 0 ? sxy / sxx : 0.0;
+
+            double min = double.MaxValue, max = double.MinValue;
+            for (int i = 0; i < n; i++)
+            {
+                double residual = values[i] - (meanY + slope * (i - meanX));
+                if (residual < min) min = residual;
+                if (residual > max) max = residual;
+            }
+            return (float)(max - min);
         }
     }
 }

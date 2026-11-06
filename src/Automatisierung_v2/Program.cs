@@ -473,6 +473,9 @@ namespace MyPicoGkProject
                 var gmsh2D = new Gmsh2DMesherOptions();
                 var su2Options2D = context.LoadSolverOptions<Su2SolverOptions>("su2");
                 su2Options2D.Dimensions = 2;
+                // Der 2D-Schnitt bezieht sich auf die Sehne, nicht auf die Stirnfläche des 3D-Projekts
+                // (sonst waren die Beiwerte des Testprojekts um Faktor ~8 zu groß, Servertest 06.11.2026).
+                su2Options2D.ReferenceAreaMetric = "Chord";
                 FlowConditions flow2D = FlowConditions.From(context.Simulation, su2Options2D);
                 var stages2D = new[]
                 {
@@ -504,7 +507,9 @@ namespace MyPicoGkProject
                     runStage3D);
             }
 
-            return MeshCalibration.Run(context, simulationContext, runStage3D);
+            // Dimension aus der su2.json des Projekts: 2D-Projekte (Naca2D) rechnen Zellzahlen mit Faktor^2.
+            int dimensions = context.LoadSolverOptions<Su2SolverOptions>("su2").Dimensions == 2 ? 2 : 3;
+            return MeshCalibration.Run(context, simulationContext, runStage3D, dimensions: dimensions);
         }
 
         /// <summary>
@@ -605,16 +610,8 @@ namespace MyPicoGkProject
             IFitnessCalculator fitness = definition.CreateFitness(context);
             IGeometryKernel kernel = definition.CreateKernel();
             SolverStage[] stages = definition.CreateStages(context);
-            if (isUnsteady)
-            {
-                foreach (var stage in stages)
-                {
-                    if (stage.Solver is Su2Solver su2)
-                    {
-                        su2.Options.TimeDomain.Enabled = true;
-                    }
-                }
-            }
+            // Bei --unsteady rechnet der Recheck erst stationär und startet die zeitgenaue Rechnung danach aus
+            // dieser Lösung (TODO-W7); die Zeitdomäne wird deshalb erst nach der ersten Stufe eingeschaltet.
 
             int seed = RunSeed.Resolve(context.Simulation.RandomSeed);
             Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
@@ -630,7 +627,13 @@ namespace MyPicoGkProject
                 simulationContext,
                 fitness.RequiredMetrics);
 
-            float fineFactor = context.Simulation.MeshRefinementFactor / MathF.Pow(MathF.Sqrt(2.0f), Math.Max(1, finer));
+            // Ausgangsfaktor = der Faktor, mit dem DIESE Variante gerechnet wurde (Spalte MeshRefinementFactor der CSV).
+            // Nach einer automatischen Kalibrierung steht in der Konfiguration nur der Vorgabewert 1.0, der
+            // tatsächliche Faktor wurde kalibriert (Servertest 06.11.2026, TODO-W8).
+            float baseFactor = originalMetrics.TryGetValue("MeshRefinementFactor", out float usedFactor) && usedFactor > 0f
+                ? usedFactor
+                : context.Simulation.MeshRefinementFactor;
+            float fineFactor = baseFactor / MathF.Pow(MathF.Sqrt(2.0f), Math.Max(1, finer));
 
             Console.WriteLine($"[RECHECK] Gefundene Variante Gen{targetIter}_Var{targetVar}: Original-Fitness={originalFitness:F4}, Recheck-Netzfaktor={fineFactor:0.00}");
 
@@ -645,15 +648,43 @@ namespace MyPicoGkProject
 
                 fitness.CalculateFitness(record, context.Simulation);
 
+                ModelRecord? steadyRecord = null;
+                if (isUnsteady)
+                {
+                    steadyRecord = record;
+                    Console.WriteLine("\n[RECHECK] Stationäre Stufe fertig. Starte die zeitgenaue Rechnung (URANS) aus dieser Lösung ...");
+
+                    // SU2 braucht für die 2. Ordnung zwei Zeitstände: die stationäre Lösung wird zweimal bereitgestellt.
+                    PrepareUnsteadyRestart(simulationContext.WorkingDirectory);
+                    foreach (var stage in stages)
+                    {
+                        if (stage.Solver is Su2Solver su2)
+                        {
+                            su2.Options.TimeDomain.Enabled = true;
+                            su2.Options.TimeDomain.RestartIteration = 2;
+                        }
+                    }
+
+                    record = controller.RunPipeline(
+                        activeParams,
+                        targetIter,
+                        targetVar,
+                        customRefinementFactor: fineFactor,
+                        customTag: "RecheckURANS");
+                    fitness.CalculateFitness(record, context.Simulation);
+
+                    CleanUnsteadyRestartFiles(simulationContext.WorkingDirectory);
+                }
+
                 float relDev = Math.Abs(record.Fitness - originalFitness) / Math.Max(Math.Abs(originalFitness), 1e-7f);
 
                 Console.WriteLine("\n==================================================");
                 Console.WriteLine(" RECHECK ERGEBNIS");
                 Console.WriteLine("==================================================");
                 Console.WriteLine($"Variante:             Gen{targetIter}_Var{targetVar}");
-                Console.WriteLine($"Original-Fitness:     {originalFitness:F4} (Faktor: {context.Simulation.MeshRefinementFactor:0.00})");
+                Console.WriteLine($"Original-Fitness:     {originalFitness:F4} (Faktor: {baseFactor:0.00})");
                 Console.WriteLine($"Recheck-Fitness:      {record.Fitness:F4} (Faktor: {fineFactor:0.00})");
-                Console.WriteLine($"Fitness-Abweichung:   {relDev * 100:0.1} %");
+                Console.WriteLine($"Fitness-Abweichung:   {relDev * 100:0.0} %");
 
                 foreach (var m in originalMetrics.Keys)
                 {
@@ -661,11 +692,59 @@ namespace MyPicoGkProject
                     {
                         float origVal = originalMetrics[m];
                         float mDev = Math.Abs(rVal - origVal) / Math.Max(Math.Abs(origVal), 1e-7f);
-                        Console.WriteLine($"   {m}: Original={origVal:F5}, Recheck={rVal:F5} (Abweichung: {mDev * 100:0.1} %)");
+                        string steadyPart = steadyRecord != null && steadyRecord.PassiveParameters.TryGetValue(m, out float sVal)
+                            ? $", stationär fein={sVal:F5}"
+                            : string.Empty;
+                        Console.WriteLine($"   {m}: Original={origVal:F5}{steadyPart}, Recheck={rVal:F5} (Abweichung: {mDev * 100:0.0} %)");
                     }
+                }
+
+                if (steadyRecord != null)
+                {
+                    Console.WriteLine("\nStationär (feines Netz) gegen zeitgemittelt (URANS, letzte Hälfte der Zeitschritte):");
+                    foreach (var m in originalMetrics.Keys)
+                    {
+                        if (steadyRecord.PassiveParameters.TryGetValue(m, out float sv)
+                            && record.PassiveParameters.TryGetValue(m, out float uv)
+                            && !m.StartsWith("Su2_", StringComparison.OrdinalIgnoreCase)
+                            && !m.StartsWith("YPlus_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            float d = Math.Abs(uv - sv) / Math.Max(Math.Abs(sv), 1e-7f);
+                            Console.WriteLine($"   {m}: stationär={sv:F5}, zeitgemittelt={uv:F5} (Unterschied {d * 100:0.0} %)");
+                        }
+                    }
+                    foreach (var kv in record.PassiveParameters.Where(k => k.Key.StartsWith("Su2_Osc_", StringComparison.OrdinalIgnoreCase)))
+                        Console.WriteLine($"   Schwingungsamplitude {kv.Key.Substring("Su2_Osc_".Length)}: ±{kv.Value * 50:0.0} % (Spannweite {kv.Value * 100:0.0} %)");
+                    Console.WriteLine("   Ein großer Unterschied zwischen stationär und zeitgemittelt heißt: die Strömung ist instationär,");
+                    Console.WriteLine("   der stationäre Wert ist dann nur eine Näherung.");
                 }
                 Console.WriteLine("==================================================\n");
             });
+        }
+
+        /// <summary>
+        /// Legt aus der stationären Lösung (<c>restart.dat</c>) die zwei Zeitstände <c>restart_00000.dat</c> und
+        /// <c>restart_00001.dat</c> an, aus denen SU2 die zeitgenaue Rechnung 2. Ordnung neu startet (TODO-W7).
+        /// </summary>
+        internal static void PrepareUnsteadyRestart(string workingDirectory)
+        {
+            string steady = Path.Combine(workingDirectory, "restart.dat");
+            if (!File.Exists(steady))
+                throw new FileNotFoundException(
+                    "[RECHECK] Die stationäre Stufe hat keine restart.dat hinterlassen; ohne sie kann die zeitgenaue Rechnung nicht daraus starten.", steady);
+
+            CleanUnsteadyRestartFiles(workingDirectory);
+            File.Copy(steady, Path.Combine(workingDirectory, "restart_00000.dat"), overwrite: true);
+            File.Copy(steady, Path.Combine(workingDirectory, "restart_00001.dat"), overwrite: true);
+        }
+
+        /// <summary>Entfernt die nummerierten Zeitstände (<c>restart_00000.dat</c> …), <c>restart.dat</c> bleibt.</summary>
+        internal static void CleanUnsteadyRestartFiles(string workingDirectory)
+        {
+            foreach (string file in Directory.GetFiles(workingDirectory, "restart_*.dat"))
+            {
+                try { File.Delete(file); } catch (IOException) { }
+            }
         }
 
         /// <summary>

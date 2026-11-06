@@ -63,6 +63,14 @@
   "WakeWidthFactor": 0.5,
   "WakeCellSize": 0.0,
 
+  // --- Detailbox um und hinter dem Modell (TODO-W6) ---
+  // Feine Box fuer Nachlauf und Wirbel in Modellnaehe. In 3D standardmaessig aus (viele Zellen).
+  // DetailBoxCellSize: mm auf Stufe 1.0; 0 = automatisch 2,5 x Oberflaechen-Zellgroesse.
+  "DetailBox": false,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSize": 0.0,
+
   // --- Kruemmungsabhaengige Netzverfeinerung ---
   // Aktiviert Mesh.MeshSizeFromCurvature (wirkt bei Neuvernetzung der Oberflaeche).
   "MeshSizeFromCurvature": false,

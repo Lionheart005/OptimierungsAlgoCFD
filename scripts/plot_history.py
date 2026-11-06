@@ -182,11 +182,16 @@ def resolve_x_axis(df):
     wird physikalische Zeit oder Time_Iter verwendet und entsprechend beschriftet.
     Sonst reguläre Iteration.
     """
+    # SU2 7.5.1 schreibt "Time_Iter" auch bei stationaeren Rechnungen, dann konstant 0.
+    # Eine Zeitspalte zaehlt deshalb nur, wenn sie sich aendert (Servertest 06.11.2026).
+    def varies(col):
+        return df[col].dropna().nunique() > 1
+
     for col in df.columns:
-        if col.lower() in ("cur_time", "curtime", "time", "physical_time"):
+        if col.lower() in ("cur_time", "curtime", "time", "physical_time") and varies(col):
             return df[col], "Physikalische Zeit [s]"
     for col in df.columns:
-        if col.lower() in ("time_iter", "timeiter", "time_iteration"):
+        if col.lower() in ("time_iter", "timeiter", "time_iteration") and varies(col):
             return df[col], "Zeitschritt (Time_Iter)"
     iter_col = find_iter_column(df)
     if iter_col and iter_col in df.columns:

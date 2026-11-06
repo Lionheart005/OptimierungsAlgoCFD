@@ -7,7 +7,11 @@
   // Einstellungen und Pfade analog zu MantaAuv für den Hochschulserver (BIC_12).
 
   // --- Pfade zu externer Software ---
-  "MpiRunPath": "/home/lpleissner/miniconda/bin/mpirun",
+  // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
+  // mit MPICH gebaut. Unter OpenMPI startete "-n 12" zwoelf unabhaengige SERIELLE Kopien,
+  // die sich gegenseitig die Dateien ueberschrieben (Servertest 06.11.2026). Eingerichtet mit
+  // "conda create -n mpich -c conda-forge mpich" (siehe setup_server.sh).
+  "MpiRunPath": "/home/lpleissner/miniconda/envs/mpich/bin/mpiexec",
   "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
   "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 

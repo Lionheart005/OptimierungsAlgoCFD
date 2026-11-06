@@ -231,6 +231,36 @@ nicht erst geprüft.
 | `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. | `0.2` | 🟡 |
 | `BouncerJitter` | Um wie viel der eine Parameter verstellt wird, **in dessen Einheit** (nicht in Prozent!). Bei Parametern mit kleinen Zahlen (z. B. 0,02) ist `0.01` schon riesig. | `0.01` | 🔴 |
 
+**Genauigkeit der Konvergenz (TODO-W3, TODO-W4)**
+
+Ob eine Rechnung „fertig“ ist, entscheidet nicht mehr nur SU2 (Residuum, Cauchy-Kriterium), sondern
+eine **Drift-Prüfung nach dem Lauf**: Im Endfenster (die letzten `CauchyElements` Zeilen, nie mehr als
+die halbe Historie) werden die Mittelwerte der ersten und zweiten Fensterhälfte jedes Kennwerts
+verglichen. Pendelt der Wert um einen festen Mittelwert (Wirbelablösung), ist die Drift ~0; wandert er
+noch, ist sie deutlich. Als Ergebnis zählt das **Mittel des Endfensters**. Der **iterative Fehler**
+soll nach Celik et al. (2008) mindestens eine Größenordnung unter dem Netzfehler liegen, den die
+Kalibrierung misst: erlaubt ist ein Bruchteil der Netz-Toleranz (`MeshCalibration` → `Tolerance`).
+
+| Einstellung | Bedeutung | Standard | Wirkung | Wann |
+| --- | --- | --- | --- | --- |
+| `IterativeToleranceFraction` | Erlaubter iterativer Fehler **normaler Varianten** als Bruchteil der Netz-Toleranz. `0.25` bei 2 % Toleranz = 0,5 % Drift im Endfenster (plus der Mindestbetrag aus `AbsoluteTolerances`, ebenfalls mit diesem Bruchteil). | `0.25` | 🎯⏱ | 🟡 |
+| `ControlRuns` | **Strenges Profil nur für Kontrollrechnungen**: Netzkalibrierung (`Kal…`), Feinprüfung (`Fein…`) und Recheck. Normale Varianten und die Türsteher-Kontrolle (Variante 99) rechnen mit den normalen Werten, damit sie vergleichbar bleiben. Es gilt nie weniger Iterationen als bei normalen Varianten. | siehe unten | 🎯⏱ | 🟡 |
+
+Innerhalb von `ControlRuns`:
+
+| Einstellung | Bedeutung | Standard |
+| --- | --- | --- |
+| `Su2MaxIterations` | Höchstzahl der SU2-Iterationen je Kontrollrechnung. Sie dürfen Stunden dauern, es sind wenige. | `20000` |
+| `CauchyElements` | Länge des Konvergenzfensters. | `500` |
+| `CauchyTolerance` | SU2-eigene Schwelle. Bewusst sehr streng: Ob die Rechnung als konvergiert gilt, entscheidet die Drift-Prüfung nach dem Lauf, nicht SU2. | `"1e-6"` |
+| `IterativeToleranceFraction` | Erlaubter iterativer Fehler als Bruchteil der Netz-Toleranz (`0.1` = ein Zehntel). | `0.1` |
+
+Im Log: `Kontrollrechnung: strenges Profil …`, bei nicht auskonvergierten Rechnungen
+`[WARNUNG] SU2 nicht auskonvergiert … driftet im Endfenster um … %`. In der CSV steht je Kennwert
+`Su2_IterErr_<Metrik>` (≤ 1 = in Ordnung). Eine Rechnung, die `ITER` erreicht, deren Kennwerte aber
+stehen, gilt als konvergiert (SU2s Cauchy-Kriterium ist bei schwingenden Rechnungen oft zu streng).
+Ist das Endfenster kürzer als 20 Zeilen, gilt die alte Regel („SU2 hat vor `ITER` aufgehört“).
+
 **Netzkalibrierung (`MeshCalibration`, TODO-42)**
 
 Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gegenüber einer feinen Referenzstufe.
@@ -241,6 +271,9 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `Mode` | Modus der Kalibrierung: `"Manual"` (Standard, `MeshRefinementFactor` gilt) oder `"Auto"` (Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein). | `"Manual"` | 🟡 |
 | `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.02` = 2 %). | `0.02` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
+| `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
+| `MaxCells2D` | Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). | `2000000` | 🔴 |
+| `MaxCells3D` | Dasselbe für 3D. | `50000000` | 🔴 |
 
 **Gewinner fein nachrechnen (`ChampionVerification`, TODO-43)**
 
@@ -270,7 +303,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `HistoryOutput` | Welche Spaltengruppen SU2 mitschreibt. `AERO_COEFF` liefert alle Beiwerte; ohne sie findet `ResultMetrics` nichts. | `["ITER","RMS_RES","AERO_COEFF"]` | ⚙ | 🔴 |
 | `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.02` = 2 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). | `0.02` | 🎯 | 🟡 |
 | `TreatUnconvergedAsFailed` | Ob Rechnungen, die bei Erreichen von `Su2MaxIterations` (ITER) noch nicht konvergiert sind, als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `false`: Wert wird trotzdem übernommen. | `false` | 🎯 | 🟡 |
-| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (Standard); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung. Unbekannter Wert → Warnung und `"Last"`. | `"Last"` | 🎯 | 🟡 |
+| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (Standard); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase). **Kontrollrechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"Last"` | 🎯 | 🟡 |
 | `CflNumber` | Schrittweite des SU2-Verfahrens beim Start. Größer = schneller, aber Gefahr, dass die Rechnung „explodiert". | `5.0` | ⏱ | 🔴 |
 | `CflAdapt` | Ob SU2 die Schrittweite selbst anpasst. | `true` | ⏱ | 🔴 |
 | `CflAdaptFactorDown` | Wie stark verkleinert wird, wenn es unruhig wird. | `0.5` | ⏱ | 🔴 |
@@ -291,11 +324,12 @@ Für instationäre Strömungen (z. B. Wirbelablösung, periodische Schwingungen 
 | --- | --- | --- | --- | --- |
 | `Enabled` | Zeitgenaue Rechnung (URANS) aktivieren (`TIME_DOMAIN= YES`, `TIME_MARCHING= DUAL_TIME_STEPPING-2ND_ORDER`). | `false` | 🎯⏱ | 🟡 |
 | `TimeStep` | Physikalischer Zeitschritt $\Delta t$ in Sekunden. `0.0` = automatisch aus `StrouhalEstimate` und `StepsPerPeriod` berechnen. | `0.0` | 🎯⏱ | 🟡 |
-| `StepsPerPeriod` | Zeitschritte pro Wirbelablöseperiode $T = L / (\text{St} \cdot U)$ bei automatischer Zeitschrittwahl. | `25` | 🎯⏱ | 🟡 |
+| `StepsPerPeriod` | Zeitschritte pro Wirbelablöseperiode $T = L / (\text{St} \cdot U)$ bei automatischer Zeitschrittwahl. | `50` | 🎯⏱ | 🟡 |
 | `StrouhalEstimate` | Geschätzte Strouhal-Zahl St für die Frequenzabschätzung (Standard 0.2 für stumpfe Körper / Nachläufe). | `0.2` | 🎯 | 🟡 |
-| `TimeIterations` | Anzahl der äußeren physikalischen Zeitschritte (`TIME_ITER`). | `200` | ⏱ | 🟡 |
+| `TimeIterations` | Anzahl der physikalischen Zeitschritte, die gerechnet werden (bei Neustart aus der stationären Lösung zusätzlich zu `RestartIteration` gezählt; SU2s `TIME_ITER` ist ein absoluter Endindex). **1000 = 20 Perioden** bei 50 Schritten je Periode (bis TODO-W7: 200 = 8 Perioden, die Mittelung begann mitten im Einschwingen). | `1000` | ⏱ | 🟡 |
 | `InnerIterations` | Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (`INNER_ITER`). | `30` | ⏱ | 🟡 |
-| `AveragingStartFraction` | Bruchteil der Gesamtschritte, ab dem die Zeitmittelung der Beiwerte startet (`WINDOW_START_ITER`). | `0.5` | 🎯 | 🟡 |
+| `AveragingStartFraction` | Bruchteil der Zeitschritte, ab dem die Zeitmittelung der Beiwerte startet (`WINDOW_START_ITER`). `0.5` bei 20 Perioden = Mittel über die **letzten 10 Perioden**. | `0.5` | 🎯 | 🟡 |
+| `RestartIteration` | Neustart aus einer stationären Lösung (TODO-W7): `0` = Start aus dem Freistrom, `2` = Start aus `restart_00000.dat` und `restart_00001.dat` (SU2 braucht für die 2. Ordnung zwei Zeitstände). **Der Recheck setzt das selbst**: erst eine stationäre Rechnung auf dem feinen Netz, dann die zeitgenaue Rechnung daraus. | `0` | 🎯 | 🔴 |
 
 **Wo die Strömung herkommt und hinfließt:** Das steht in keiner Einstellung. Alle sechs Seiten des
 Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in **+x-Richtung**
@@ -323,8 +357,12 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `WakeLengthFactor` | Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge `lenX`. | `2.0` | 🎯⏱ | 🟡 |
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
+| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. In 3D standardmäßig **aus**, weil sie viele Zellen kostet (Manta: einige hunderttausend). | `false` | 🎯⏱ | 🟡 |
+| `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.0` | 🎯⏱ | 🟡 |
+| `DetailBoxWidthFactor` | Überstand der Detailbox in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
+| `DetailBoxCellSize` | Zellgröße in der Detailbox in mm auf Stufe 1.0; `0.0` = automatisch 2,5 × Oberflächen-Zellgröße. | `0.0` | 🎯⏱ | 🟡 |
 | `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
-| `BoundaryLayerMode` | Modus der Grenzschicht: `"Threshold"` (Vorgabe, unstrukturiert wie bisher), `"Hexa"` (strukturierte Quader/Hexaeder an der Wand, **Empfehlung**) oder `"Prism"` (strukturierte Prismen, Rückfallebene). | `"Threshold"` | 🎯⏱ | 🟢 |
+| `BoundaryLayerMode` | Modus der Grenzschicht: `"Threshold"` (Vorgabe, unstrukturiert wie bisher, **y+ ≈ 30–70**), `"Prism"` (flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Threshold"` | 🎯⏱ | 🟢 |
 | `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand. Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.0` | 🎯 | 🟡 |
 | `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
 | `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
@@ -336,11 +374,28 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 **Faustregeln für den Windkanal:** vor dem Modell ≥ 5 Modelllängen, dahinter ≥ 10, seitlich ≥ 3.
 Heute (600 mm bei 50 mm Modell, mittig) sind es vorn und hinten je 6 Längen.
 
-**Empfehlung Wandschicht ("Hexa" vs. "Prism"):**
-Im Modus `"Hexa"` wird die Bauteiloberfläche vor der Extrusion in Vierecke zerlegt (`Mesh.RecombineAll = 1`) und anschließend mit `Recombine` senkrecht zur Wand extrudiert. Aus Vierecken werden **Hexaeder (flache Quader)**, die orthogonal zur Wand stehen und in Strömungsrichtung sauber hintereinanderliegen.
-* **Vorteile von Quader-Grenzschichten:** Wesentlich geringere numerische Diffusion, präzise Erfassung der Geschwindigkeitsgradienten in Wandnähe, stabilere und glattere Wandreibungswerte und y+-Profile sowie weniger Gesamtzellen bei gleicher Auflösung als mit Prismen.
-* **Quad-Dominant:** Bei komplex gekrümmten Voxel-Oberflächen bleiben vereinzelt Dreiecke übrig; daraus entstehen Prismen zwischen den Quadern. Gmsh erzeugt somit ein „quad-dominantes" Grenzschichtnetz, das SU2 problemlos rechnet.
-* Der Modus `"Prism"` dient als Rückfallebene (reine Dreiecks-Extrusion zu Prismen), falls für ein STL keine saubere Viereckzerlegung gelingt. `"Threshold"` behält das rein unstrukturierte Netz früherer Versionen bei.
+**Wandschicht: "Prism" oder "Hexa"?** (auf BIC_12 am 06.11.2026 gemessen)
+
+Beide Modi legen direkt an die Wand flache, längliche Zellen in Schichten (erste Zellhöhe aus
+`TargetYPlus`, jede weitere um `BoundaryLayerGrowthRate` dicker). Weiter außen füllen Tetraeder
+den Kanal. Das Netz entsteht in zwei Gmsh-Schritten: `Wall_<Variante>.geo` vernetzt die
+Oberfläche neu, `Meshing_<Variante>.geo` baut darauf die Schichten und das Volumen.
+
+| | `"Prism"` (Empfehlung) | `"Hexa"` |
+| --- | --- | --- |
+| Zellform an der Wand | Prismen: Grundfläche Dreieck | Quader: Grundfläche Viereck |
+| Übergang zu den Tetraedern | direkt, ohne Zwischenzellen | über Pyramiden |
+| MantaAuv (scharfe Voxel-Kanten) | 21 Schichten, praktisch keine ungültigen Zellen, SU2 konvergiert, y+ Median 1,1 / P95 2,3 | höchstens 12 Schichten möglich, ~5 % der Pyramiden an den Flügelkanten gekippt, **SU2 divergiert** |
+| Glatter Körper (Kugel) | geht | geht, SU2 konvergiert |
+
+Für die Wandauflösung (y+) sind beide gleich gut, denn sie hängt an der Höhe der ersten Zelle,
+nicht an ihrer Grundfläche. Quader haben auf glatten Flächen etwas weniger numerische Diffusion.
+
+**Wenn sich die Schichten nicht vernetzen lassen** (an engen oder scharfen Stellen durchdringen
+sich die Schichten), wiederholt das Programm automatisch mit weniger äußeren Schichten
+(21 → 16 → 12 → …) und meldet das im Log. y1 und damit y+ bleiben dabei gleich.
+
+`"Threshold"` behält das rein unstrukturierte Netz früherer Versionen bei.
 
 ### 4.5 `solvers/gmsh.json` (2D-Projekte, `Gmsh2DMesherOptions`)
 
@@ -348,7 +403,7 @@ Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder 2
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
-| `FarfieldRadiusFactor` | Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge $L$ (Standard 50, da Zirkulation in 2D mit $1/r$ langsam abklingt). | `50.0` | 🎯 | 🔴 |
+| `FarfieldRadiusFactor` | Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge $L$. **500** wie die NASA-TMR-Gitter (in 2D klingt die Zirkulation nur mit $1/r$ ab, ein kleines Fernfeld verfälscht den Auftrieb); die Zellen wachsen nach außen, das große Fernfeld kostet deshalb nur wenige tausend Zellen. Bis TODO-W6 war die Vorgabe 50. | `500.0` | 🎯 | 🔴 |
 | `FarfieldCircleSegments` | Anzahl der Segmente für die Fernfeld-Kreisbögen (Standard 64). | `64` | ⚙ | 🔴 |
 | `TargetYPlus` | Ziel-y+ für die erste Wandzellhöhe $y_1$ (Standard 1.0). | `1.0` | 🎯 | 🟡 |
 | `BoundaryLayerGrowthRate` | Geometrischer Wachstumsfaktor der Schichten in der Grenzschicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
@@ -357,11 +412,18 @@ Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder 2
 | `SurfaceCellSizeFactor` | Zellgröße an der Konturoberfläche als Bruchteil von $L$ auf Stufe 1.0 (`0.01` = $L/100$). | `0.01` | 🎯⏱ | 🟢 |
 | `SurfaceCellSizeMm` | Feste Kontur-Zellgröße in mm auf Stufe 1.0; $> 0$ überschreibt `SurfaceCellSizeFactor` × $L$. | `0.0` | 🎯⏱ | 🟡 |
 | `NearfieldCellSizeFactor` | Nahfeld-Zellgröße als Bruchteil von $L$ auf Stufe 1.0 (`0.04` = $L/25$). | `0.04` | 🎯⏱ | 🟡 |
-| `FarfieldCellSizeFactor` | Zellgröße am Fernfeldrand als Vielfaches von $L$ auf Stufe 1.0 (`2.5` = $2.5 \cdot L$). | `2.5` | 🎯⏱ | 🔴 |
+| `FarfieldCellSizeFactor` | Zellgröße am Fernfeldrand als Vielfaches von $L$ auf Stufe 1.0. Faustregel: Radius / 20. | `25.0` | 🎯⏱ | 🔴 |
+| `NearfieldGrowthDistanceFactor` | Abstand (als Vielfaches von $L$), über den die Zellgröße vom Nahfeld auf die Fernfeldgröße wächst. `0` = automatisch 0,4 × `FarfieldRadiusFactor`. Ein langer, gleichmäßiger Übergang vermeidet verzerrte Zellen. | `0.0` | 🎯⏱ | 🔴 |
 | `WakeRefinement` | Nachlauf-Verfeinerungsbox stromabwärts aktivieren/deaktivieren (Standard `true`). | `true` | 🎯⏱ | 🟡 |
 | `WakeLengthFactor` | Länge der Nachlauf-Box hinter der Hinterkante als Vielfaches von $L$ (Standard 3.0). | `3.0` | 🎯⏱ | 🟡 |
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y als Vielfaches von $L$ (Standard 0.6). | `0.6` | 🎯⏱ | 🟡 |
 | `WakeCellSizeFactor` | Zellgröße in der Nachlauf-Box als Bruchteil von $L$ auf Stufe 1.0 (`0.04` = $L/25$). | `0.04` | 🎯⏱ | 🟡 |
+| `DetailBox` | **Detailbox** um und hinter dem Profil: sehr feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen. Gilt für jede Rechnung (keine Sonderbehandlung des Anstellwinkels), skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard an (TODO-W6). | `true` | 🎯⏱ | 🟡 |
+| `DetailBoxLengthFactor` | Länge der Detailbox hinter der Hinterkante als Vielfaches von $L$. | `1.0` | 🎯⏱ | 🟡 |
+| `DetailBoxWidthFactor` | Überstand der Detailbox oberhalb und unterhalb des Profils als Vielfaches von $L$. | `0.25` | 🎯⏱ | 🟡 |
+| `DetailBoxCellSizeFactor` | Zellgröße in der Detailbox als Bruchteil von $L$ auf Stufe 1.0 (`0.01` = $L/100$). | `0.01` | 🎯⏱ | 🟡 |
+| `EdgeRefinementFactor` | Wandzellgröße an **Vorder- und Hinterkante** als Bruchteil der Konturzellgröße (`0.25` = ein Viertel). Saugspitze und Hinterkante bestimmen Auftrieb und Widerstand am stärksten (NASA-TMR). `1` = keine Sonderverfeinerung. | `0.25` | 🎯⏱ | 🟡 |
+| `EdgeRefinementDistanceFactor` | Abstand um Vorder- und Hinterkante (als Vielfaches von $L$), über den die Verfeinerung ausläuft. | `0.1` | 🎯⏱ | 🔴 |
 
 ---
 
@@ -395,7 +457,7 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 | `run` | Der Alltagsbefehl: Code hochladen, bauen, Lauf starten. Danach kann das Fenster zu. |
 | `resume` | Einen abgebrochenen Lauf fortsetzen (nach Server-Neustart, Stromausfall, Absturz oder `stop`). Lädt nichts hoch und baut nicht. Siehe [6.1](#61-abgebrochenen-lauf-fortsetzen). |
 | `calibrate` | Netzkalibrierung starten (TODO-42): ermittelt den optimalen `MeshRefinementFactor` für die Startgeometrie und gibt die empfohlene Zeile aus. |
-| `recheck` | Einzelne Variante (`-Variant Gen3_Var2`) auf feinerem Netz (`-Finer 1`) re-simulieren und vergleichen (TODO-43). |
+| `recheck` | Einzelne Variante (`-Variant Gen3_Var2`) auf feinerem Netz (`-Finer 1`) re-simulieren und vergleichen (TODO-43). Mit `-Unsteady` (TODO-W7): erst stationär auf dem feinen Netz, dann zeitgenau (URANS, 20 Perioden) **aus dieser Lösung**; der Bericht stellt stationär und zeitgemittelt gegenüber. Ein großer Unterschied heißt: die Strömung ist instationär. |
 | `deploy` | Nur hochladen und bauen. Läuft schon etwas und hat sich der Code geändert, wird neu gestartet (außer mit `-NoRestart`). |
 | `build` | Nur bauen. |
 | `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Logzeilen. Ohne `-Project` wird das zuletzt gerechnete Projekt abgefragt. |
@@ -459,7 +521,7 @@ Journal. Erst wo das Journal endet, wird wieder gerechnet.
 | `[WARNUNG] Ergebnisgröße '…' <- Spalte '…'` | Ein Eintrag in `ResultMetrics` passt zu keiner SU2-Spalte. Die Variante gilt als fehlgeschlagen. | Spaltennamen korrigieren (die Meldung listet die vorhandenen). |
 | `[WARNUNG] SU2 hat ITER=… erreicht, ohne dass das Kriterium erfüllt war – … ist der Stand bei Iteration …, kein konvergierter Wert.` | Die Strömungsrechnung hat die maximale Iterationszahl erreicht, bevor der Wert stabil war. Der Wert ist eine Momentaufnahme und noch nicht verlässlich. | `Su2MaxIterations` in `simulation.json` erhöhen (z. B. 1000) oder prüfen, ob die Strömung schwingt. Soll der Lauf unvollständige Rechnungen verwerfen: `TreatUnconvergedAsFailed` in `su2.json` auf `true` setzen. |
 | `[WARNUNG] … schwingt um ±… % – Hinweis auf instationäre Strömung (Wirbelablösung).` | Der Beiwert schwankt im Cauchy-Fenster stärker als `OscillationWarnLimit` (z. B. ±2 %). Meist lösen sich periodisch Wirbel ab (z. B. Kármánsche Wirbelstraße bei stumpfen Körpern). | Prüfen, ob die Geometrie zu stumpf ist, oder `ResultAveraging` in `su2.json` auf `"CauchyWindowMean"` setzen, um über die Schwingung zu mitteln. Schwellenwert mit `OscillationWarnLimit` anpassen. |
-| `[WARNUNG] y+ (95 %-Quantil = …, Max = …) überschreitet das Limit … (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.` | Der dimensionslose Wandabstand y+ ist an der Bauteilwand zu groß (das 95 %-Quantil P95 übersteigt das Limit). Das Turbulenzmodell (SA/SST) löst die viskose Unterschicht nicht optimal auf, wodurch der Reibungswiderstand ungenau werden kann. | `BoundaryLayerMode` ("Hexa") aktivieren, `TargetYPlus` prüfen, `BoundaryLayerSizeMin` bzw. `SurfaceCellSize` verfeinern oder `YPlusWarnFactor` erhöhen, falls ein größerer Wandabstand für die Grobauslegung ausreicht. |
+| `[WARNUNG] y+ (95 %-Quantil = …, Max = …) überschreitet das Limit … (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.` | Der dimensionslose Wandabstand y+ ist an der Bauteilwand zu groß (das 95 %-Quantil P95 übersteigt das Limit). Das Turbulenzmodell (SA/SST) löst die viskose Unterschicht nicht optimal auf, wodurch der Reibungswiderstand ungenau werden kann. | `BoundaryLayerMode` ("Prism") aktivieren, `TargetYPlus` prüfen, `BoundaryLayerSizeMin` bzw. `SurfaceCellSize` verfeinern oder `YPlusWarnFactor` erhöhen, falls ein größerer Wandabstand für die Grobauslegung ausreicht. |
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |
@@ -498,7 +560,7 @@ Journal. Erst wo das Journal endet, wird wieder gerechnet.
 | **Turbulenzmodell (SA, SST)** | Vereinfachte Beschreibung der Wirbel, die man nicht einzeln ausrechnen kann. |
 | **Grenzschicht** | Die dünne Fluidschicht direkt an der Wand, in der die Geschwindigkeit von 0 auf die Strömung ansteigt. Dort entsteht der Reibungswiderstand. |
 | **y+** | Wie dick die erste Netzzelle an der Wand im Vergleich zur Grenzschicht ist. Für SA ohne Wandfunktion sollte y+ ≈ 1 sein. |
-| **Cauchy-Kriterium** | SU2 hört auf, wenn sich die überwachte Ergebnisgröße (`ConvergenceField`, z. B. Widerstand) über die letzten `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. Hört SU2 vor `Su2MaxIterations` auf, gilt die Rechnung als konvergiert (`Su2_Converged = 1`). Über dieses Fenster misst der Analyzer auch Schwingungen (`Su2_Osc_<Metrik>`). |
+| **Cauchy-Kriterium** | SU2 hört auf, wenn sich die überwachte Ergebnisgröße (`ConvergenceField`, z. B. Widerstand) über die letzten `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. Das ist SU2s eigenes Abbruchkriterium. Ob die Rechnung als konvergiert gilt (`Su2_Converged = 1`), entscheidet seit TODO-W3 die **Drift-Prüfung** im Endfenster (siehe „Genauigkeit der Konvergenz“). Über dasselbe Fenster misst der Analyzer die echte Schwingungsamplitude nach Abzug des Trends (`Su2_Osc_<Metrik>`). |
 | **CFL-Zahl** | Schrittweite des Rechenverfahrens: größer = schneller, aber weniger stabil. |
 | **RSM (Ersatzmodell)** | Optimierer, der aus allen bisherigen Rechnungen eine geschätzte Fitness-Landkarte baut und dort sucht. |
 | **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |

@@ -42,6 +42,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// </summary>
         private bool _velocityReported;
         private bool _transitionalReported;
+        private bool _versionReported;
         private bool _unknownResultAveragingReported;
 
         /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
@@ -175,6 +176,11 @@ namespace MyPicoGkProject.Solvers.Cfd
             string historyPath = Path.Combine(workingDirectory, "history.csv");
 
             if (File.Exists(historyPath)) File.Delete(historyPath);
+            // Alte Neustart-Historien (history_00002.csv) würden sonst fälschlich übernommen (TODO-W7).
+            foreach (string stale in Directory.GetFiles(workingDirectory, "history_*.csv"))
+            {
+                try { File.Delete(stale); } catch (IOException) { }
+            }
 
             float effectiveRefLength = _options.ReferenceLength;
             if (is2dGeometry && MathF.Abs(_options.ReferenceLength - 0.01f) < 1e-6f)
@@ -189,7 +195,17 @@ namespace MyPicoGkProject.Solvers.Cfd
                 }
             }
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, config, _options, flow, effectiveRefLength);
+            // Kontrollrechnungen (Kalibrierstufen, Feinprüfung, Recheck) rechnen mit dem strengen
+            // Profil (TODO-W4); normale Varianten und die Türsteher-Kontrolle mit den normalen Werten.
+            bool isControlRun = IsControlRunTag(ExtractTag(meshPath, record));
+            SimulationConfig runConfig = isControlRun ? config.WithControlRunProfile() : config;
+            if (isControlRun)
+            {
+                Console.WriteLine($"    -> Kontrollrechnung: strenges Profil (bis {runConfig.Su2MaxIterations} Iterationen, Fenster {runConfig.CauchyElements}, "
+                    + $"iterativer Fehler höchstens {runConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
+            }
+
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, runConfig, _options, flow, effectiveRefLength);
 
             try
             {
@@ -216,6 +232,26 @@ namespace MyPicoGkProject.Solvers.Cfd
                 su2Process.BeginOutputReadLine();
                 su2Process.BeginErrorReadLine();
                 su2Process.WaitForExit();
+
+                // Version aus dem Banner der ersten Rechnung in den Fahrtenschreiber (TODO-W2).
+                if (!_versionReported)
+                {
+                    string? version = TryParseVersion(su2Output.ToString());
+                    if (version != null)
+                    {
+                        _versionReported = true;
+                        RunInfoWriter.SetProgramVersion(workingDirectory, "SU2", version);
+                    }
+                }
+
+                // Nach einem Neustart schreibt SU2 die Historie als history_00002.csv (Neustart-Index im Namen).
+                // Die jüngste solche Datei wird zu history.csv (TODO-W7).
+                if (!File.Exists(historyPath))
+                {
+                    string? restarted = Directory.GetFiles(workingDirectory, "history_*.csv")
+                        .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+                    if (restarted != null) File.Copy(restarted, historyPath, overwrite: true);
+                }
 
                 bool isSu2Successful = false;
                 
@@ -244,7 +280,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                     // projektspezifische Begriff im Solver. Der IFitnessCalculator wertet
                     // das Flag ohnehin zuerst aus.
                     record.SimulationFailed = true;
-                    string errorBase = ArchiveBaseName(record);
+                    string errorBase = ArchiveBaseNameFromMesh(meshPath, record);
                     TryCopyArchiveFile(historyPath, Path.Combine(errorLogDirectory, $"History_{errorBase}.csv"));
                     TryCopyArchiveFile(configPath, Path.Combine(errorLogDirectory, $"Config_{errorBase}.cfg"));
                     return;
@@ -255,21 +291,23 @@ namespace MyPicoGkProject.Solvers.Cfd
                 Directory.CreateDirectory(analysisResultsDir);
                 
                 string defaultSurfaceVtu = Path.Combine(workingDirectory, "surface.vtu");
-                string savedSurfaceVtu = Path.Combine(analysisResultsDir, $"Surface_Gen{record.Iteration}_Var{record.Variant}.vtu");
+                // Mit Tag (Kal1..5, Fine, Recheck): eigener Name, sonst überschreibt z. B. die
+                // Feinprüfung die Dateien der normalen Variante (Servertest 06.11.2026).
+                string archiveBase = ArchiveBaseNameFromMesh(meshPath, record);
+                string savedSurfaceVtu = Path.Combine(analysisResultsDir, $"Surface_{archiveBase}.vtu");
                 if (File.Exists(defaultSurfaceVtu)) File.Copy(defaultSurfaceVtu, savedSurfaceVtu, true);
 
                 string defaultSurfaceCsv = Path.Combine(workingDirectory, "surface.csv");
-                string savedSurfaceCsv = Path.Combine(analysisResultsDir, $"Surface_Gen{record.Iteration}_Var{record.Variant}.csv");
+                string savedSurfaceCsv = Path.Combine(analysisResultsDir, $"Surface_{archiveBase}.csv");
                 if (File.Exists(defaultSurfaceCsv)) File.Copy(defaultSurfaceCsv, savedSurfaceCsv, true);
 
                 string defaultVolumeVtu = Path.Combine(workingDirectory, "vol_solution.vtu");
-                string savedVolumeVtu = Path.Combine(analysisResultsDir, $"Volume_Gen{record.Iteration}_Var{record.Variant}.vtu");
+                string savedVolumeVtu = Path.Combine(analysisResultsDir, $"Volume_{archiveBase}.vtu");
                 if (File.Exists(defaultVolumeVtu)) File.Copy(defaultVolumeVtu, savedVolumeVtu, true);
 
                 // Verlauf und Konfiguration sichern (TODO-35)
                 string verlaeufeDir = Path.Combine(analysisResultsDir, "Verlaeufe");
                 Directory.CreateDirectory(verlaeufeDir);
-                string archiveBase = ArchiveBaseName(record);
                 TryCopyArchiveFile(historyPath, Path.Combine(verlaeufeDir, $"History_{archiveBase}.csv"));
                 TryCopyArchiveFile(configPath, Path.Combine(verlaeufeDir, $"Config_{archiveBase}.cfg"));
             }
@@ -279,7 +317,7 @@ namespace MyPicoGkProject.Solvers.Cfd
             }
 
             // Setzt bei einer nicht lesbaren Größe selbst record.SimulationFailed.
-            ReadMetricsFromHistory(historyPath, record, config);
+            ReadMetricsFromHistory(historyPath, record, runConfig, isControlRun);
 
             // y+-Statistik der Oberfläche auswerten (TODO-41)
             EvaluateSurfaceYPlus(Path.Combine(workingDirectory, "surface.csv"), record);
@@ -396,7 +434,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <see cref="ModelRecord.SimulationFailed"/>. Wer eine Größe konfiguriert, braucht sie —
         /// eine Fitness aus halben Daten wäre schlimmer als ein ausgemustertes Modell.
         /// </remarks>
-        public void ReadMetricsFromHistory(string historyPath, ModelRecord record, SimulationConfig? config = null)
+        public void ReadMetricsFromHistory(string historyPath, ModelRecord record, SimulationConfig? config = null, bool controlRun = false)
         {
             Dictionary<string, string> wanted = _options.ResultMetrics;
 
@@ -437,23 +475,64 @@ namespace MyPicoGkProject.Solvers.Cfd
             var historyOptions = new Su2HistoryOptions(effectiveConfig.Su2MaxIterations, effectiveConfig.CauchyElements, metricCols);
             Su2HistoryResult historyResult = Su2HistoryAnalyzer.Evaluate(lines, historyOptions);
 
+            // Iterativer Fehler (TODO-W3): Drift der Kennwerte im Endfenster statt "SU2 hat vor ITER
+            // aufgehört". Bei zu kurzem Fenster (< Su2ConvergenceJudge.MinTailRows) gilt die alte Regel.
+            Su2ConvergenceVerdict verdict = config != null
+                ? Su2ConvergenceJudge.Judge(
+                    historyResult, wanted,
+                    effectiveConfig.IterativeToleranceFraction * effectiveConfig.MeshCalibration.Tolerance,
+                    effectiveConfig.IterativeToleranceFraction,
+                    effectiveConfig.MeshCalibration.AbsoluteTolerances)
+                : new Su2ConvergenceVerdict(false, false, new Dictionary<string, float>(), null, 0f);
+            bool converged = verdict.Assessed ? verdict.Converged : historyResult.Converged;
+
             if (config != null)
             {
                 record.PassiveParameters["Su2_Iterations"] = historyResult.Iterations;
-                record.PassiveParameters["Su2_Converged"] = historyResult.Converged ? 1.0f : 0.0f;
+                record.PassiveParameters["Su2_Converged"] = converged ? 1.0f : 0.0f;
 
                 foreach (KeyValuePair<string, string> entry in wanted)
                 {
                     string metricName = (entry.Key ?? string.Empty).Trim();
                     string columnName = (entry.Value ?? string.Empty).Trim();
-                    if (metricName.Length > 0 && historyResult.Oscillation.TryGetValue(columnName, out float osc))
+                    if (metricName.Length > 0 && OscillationFor(historyResult, columnName, out float osc))
                     {
                         record.PassiveParameters[$"Su2_Osc_{metricName}"] = osc;
+                    }
+                    if (metricName.Length > 0 && verdict.Normalized.TryGetValue(metricName, out float iterErr))
+                    {
+                        record.PassiveParameters[$"Su2_IterErr_{metricName}"] = iterErr;
                     }
                 }
             }
 
-            if (!historyResult.Converged)
+            if (verdict.Assessed)
+            {
+                if (!converged)
+                {
+                    string worst = verdict.WorstMetric ?? ResolveConvergenceColumn(wanted);
+                    string worstColumn = wanted.TryGetValue(worst, out string? col) ? col : worst;
+                    float driftPercent = historyResult.WindowDrift.TryGetValue(worstColumn, out float dr)
+                        && historyResult.TailMeans.TryGetValue(worstColumn, out float tm)
+                        ? dr / Math.Max(Math.Abs(tm), 1e-7f) * 100f : float.NaN;
+                    Console.WriteLine($"[WARNUNG] SU2 nicht auskonvergiert nach {historyResult.Iterations} Iterationen: {worst} driftet im Endfenster "
+                        + $"({historyResult.TailRows} Zeilen) um {driftPercent.ToString("0.00", CultureInfo.InvariantCulture)} % "
+                        + $"({verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der erlaubten Drift).");
+
+                    if (_options.TreatUnconvergedAsFailed)
+                    {
+                        record.SimulationFailed = true;
+                    }
+                }
+                else if (historyResult.Iterations >= effectiveConfig.Su2MaxIterations)
+                {
+                    // ITER erreicht, aber die Kennwerte stehen: das Cauchy-Kriterium von SU2 ist bei
+                    // schwingenden Rechnungen oft zu streng, die Rechnung ist trotzdem brauchbar.
+                    Console.WriteLine($"    -> SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, die Kennwerte stehen aber (iterativer Fehler "
+                        + $"{verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der Grenze, Ergebnis = Mittel des Endfensters).");
+                }
+            }
+            else if (!historyResult.Converged)
             {
                 string convCol = ResolveConvergenceColumn(wanted);
                 Console.WriteLine($"[WARNUNG] SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, ohne dass das Kriterium erfüllt war – {convCol} ist der Stand bei Iteration {historyResult.Iterations}, kein konvergierter Wert.");
@@ -468,7 +547,7 @@ namespace MyPicoGkProject.Solvers.Cfd
             {
                 string metricName = (entry.Key ?? string.Empty).Trim();
                 string columnName = (entry.Value ?? string.Empty).Trim();
-                if (historyResult.Oscillation.TryGetValue(columnName, out float osc) && osc > _options.OscillationWarnLimit)
+                if (OscillationFor(historyResult, columnName, out float osc) && osc > _options.OscillationWarnLimit)
                 {
                     float percent = osc * 100f;
                     string shownName = metricName.Length > 0 ? metricName : columnName;
@@ -491,7 +570,15 @@ namespace MyPicoGkProject.Solvers.Cfd
                     continue;
                 }
 
-                int index = FindColumn(headers, columnName, out string problem);
+                // Zeitgenauer Modus: das Zeitmittel (tavg[CD]) statt des Momentanwerts nehmen.
+                string problem = string.Empty;
+                int index = (_options.TimeDomain != null && _options.TimeDomain.Enabled)
+                    ? Array.FindIndex(headers, h => h.Equals($"tavg[{columnName}]", StringComparison.OrdinalIgnoreCase))
+                    : -1;
+                if (index >= 0)
+                    Console.WriteLine($"    -> {metricName}: zeitgemittelter Wert (tavg[{columnName}]) aus dem URANS-Lauf.");
+                else
+                    index = FindColumn(headers, columnName, out problem);
 
                 if (index < 0)
                 {
@@ -528,7 +615,20 @@ namespace MyPicoGkProject.Solvers.Cfd
 
                 float finalMetricValue = value;
                 string averaging = (_options.ResultAveraging ?? string.Empty).Trim();
-                if (averaging.Equals("CauchyWindowMean", StringComparison.OrdinalIgnoreCase))
+                // Kontrollrechnungen liefern immer das Mittel des Endfensters, nie den letzten Zeitschritt.
+                if (controlRun) averaging = "TailMean";
+
+                if (averaging.Equals("TailMean", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Mittel über min(CauchyElements, Zeilen/2): ohne Anlaufphase (TODO-W3).
+                    if (historyResult.TailRows >= 2
+                        && historyResult.TailMeans.TryGetValue(columnName, out float tailVal)
+                        && float.IsFinite(tailVal))
+                    {
+                        finalMetricValue = tailVal;
+                    }
+                }
+                else if (averaging.Equals("CauchyWindowMean", StringComparison.OrdinalIgnoreCase))
                 {
                     if (historyResult.WindowMeans.TryGetValue(columnName, out float meanVal) &&
                         float.IsFinite(meanVal))
@@ -642,6 +742,75 @@ namespace MyPicoGkProject.Solvers.Cfd
             return string.IsNullOrWhiteSpace(tag)
                 ? $"Gen{record.Iteration}_Var{record.Variant}"
                 : $"Gen{record.Iteration}_Var{record.Variant}_{tag.Trim()}";
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex VersionBanner = new(
+            @"Release\s+(\d+\.\d+(?:\.\d+)?)|SU2\s+v(\d+\.\d+(?:\.\d+)?)",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>
+        /// Liest die SU2-Version aus dem Startbanner der Konsolenausgabe
+        /// (<c>Release 7.5.1 "Blackbird"</c> bzw. <c>SU2 v7.5.1</c>); <c>null</c>, wenn keines vorkommt.
+        /// </summary>
+        public static string? TryParseVersion(string? consoleOutput)
+        {
+            if (string.IsNullOrEmpty(consoleOutput)) return null;
+            var match = VersionBanner.Match(consoleOutput);
+            if (!match.Success) return null;
+            return match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        }
+
+        /// <summary>Tag aus dem Netznamen (<c>Model_Gen1_Var1_Kal5.su2</c> → <c>Kal5</c>), sonst leer.</summary>
+        public static string ExtractTag(string meshPath, ModelRecord record)
+        {
+            string plain = ArchiveBaseName(record);
+            string baseName = ArchiveBaseNameFromMesh(meshPath, record);
+            return baseName.StartsWith(plain + "_", StringComparison.Ordinal) ? baseName.Substring(plain.Length + 1) : string.Empty;
+        }
+
+        /// <summary>
+        /// Gehört der Tag zu einer Kontrollrechnung (Kalibrierstufen <c>Kal…</c>, Feinprüfung <c>Fein…</c>,
+        /// <c>Recheck</c>)? Die Türsteher-Kontrolle (ohne Tag) zählt bewusst nicht dazu: sie wird mit normalen
+        /// Varianten verglichen und muss dieselbe Genauigkeit haben (TODO-W4).
+        /// </summary>
+        public static bool IsControlRunTag(string? tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return false;
+            string t = tag.Trim();
+            return t.StartsWith("Kal", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Fein", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Recheck", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Schwingungsmaß für Warnung und CSV: bei langem Endfenster die Amplitude nach Abzug des
+        /// Trends (ohne Drift), sonst die rohe Spannweite wie bisher.
+        /// </summary>
+        private static bool OscillationFor(Su2HistoryResult history, string column, out float value)
+        {
+            if (history.TailRows >= Su2ConvergenceJudge.MinTailRows
+                && history.OscillationAmplitude.TryGetValue(column, out value))
+                return true;
+            return history.Oscillation.TryGetValue(column, out value);
+        }
+
+        /// <summary>
+        /// Archivname aus dem Netznamen: <c>Model_Gen1_Var1_Kal5.su2</c> → <c>Gen1_Var1_Kal5</c>.
+        /// Der Tag (Kalibrierstufe, Feinprüfung, Recheck) steckt nur im Netznamen. Passt der Name
+        /// nicht zum Schema, gilt <see cref="ArchiveBaseName(ModelRecord, string?)"/> ohne Tag.
+        /// </summary>
+        public static string ArchiveBaseNameFromMesh(string meshPath, ModelRecord record)
+        {
+            string plain = ArchiveBaseName(record);
+            string name = Path.GetFileNameWithoutExtension(meshPath ?? string.Empty);
+            const string prefix = "Model_";
+            if (!name.StartsWith(prefix, StringComparison.Ordinal)) return plain;
+
+            string rest = name.Substring(prefix.Length);
+            if (rest == plain) return plain;
+            if (rest.StartsWith(plain + "_", StringComparison.Ordinal))
+                return ArchiveBaseName(record, rest.Substring(plain.Length + 1));
+            return plain;
         }
 
         private static void TryCopyArchiveFile(string source, string destination)
