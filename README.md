@@ -30,6 +30,10 @@ Die detaillierte Dokumentation ist thematisch aufgeteilt, sodass jedes Thema gen
   Vollständiges Nachschlagewerk für die Bedienung ohne Programmierkenntnisse: Ablauf eines Laufs, häufige Aufgaben („Ich will …“), Erklärung **aller** JSON-Einstellungen (`project.json`, `simulation.json`, `su2.json`, `gmsh.json` für 3D und 2D), Ergebnisdateien, Konsolenbefehle und Fehlermeldungen. **Hier anfangen.**
 - **[Neues Bauteil / Projekt anlegen (`src/projects/README.md`)](src/projects/README.md)**  
   Schritt-für-Schritt-Anleitung zum Erstellen eigener 3D- und 2D-Projekte per `.\scripts\new-project.ps1`, Programmierung von Geometrie (`IGeometryGenerator`) und Zielfunktion (`IFitnessCalculator`) sowie Umgang mit den Kopiervorlagen [`_Vorlage/`](src/projects/_Vorlage/README.md) (3D) und [`_Vorlage2D/`](src/projects/_Vorlage2D/README.md) (2D).
+- **[3D-Geometrie-Handbuch: PicoGK (`src/Automatisierung_v2/Kernels/PicoGk/README.md`)](src/Automatisierung_v2/Kernels/PicoGk/README.md)**  
+  Anleitung zur 3D-Voxel-Modellierung mit PicoGK (`Lattice`, `Voxels`, `Mesh`, Boolesche Operationen, `Offset`-Verrundung, STL-Glättung, `PicoGkMeshMetrics`) inkl. Links zur offiziellen PicoGK-Dokumentation.
+- **[2D-Geometrie-Handbuch: Eigener `Planar2D`-Kernel (`src/Automatisierung_v2/Kernels/Planar2D/README.md`)](src/Automatisierung_v2/Kernels/Planar2D/README.md)**  
+  Anleitung zum eigens geschriebenen analytischen 2D-Geometriekern (`Shape2D`, `Lattice2D`, `BBox2`, Polygone, Catmull-Rom-Splines, `TripleOffset`, automatische Knickpunkterkennung für 2D-CFD-Grenzschichten, JSON- & SVG-Export).
 - **[Architektur- & Entwicklerhandbuch (`src/Automatisierung_v2/README.md`)](src/Automatisierung_v2/README.md)**  
   Technische Dokumentation des C#-Frameworks: Repository- und Schichtarchitektur (`Core`, `Composition`, `Kernels`, `Solvers`), Interfaces, Datenmodelle, Algorithmen, Konfigurations-Loader, Anbindung von PicoGK, Gmsh und SU2 sowie Test-Architektur.
 - **[Server-, Deployment- & Einrichtungs-Handbuch (`scripts/README.md`)](scripts/README.md)**  

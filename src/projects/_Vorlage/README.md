@@ -1,6 +1,7 @@
 # `_Vorlage` — 3D-Kopiervorlage für neue Projekte
 
 > **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
+> **3D-Modellierungs-Handbuch (PicoGK):** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](../../Automatisierung_v2/Kernels/PicoGk/README.md)  
 > **Nachschlagewerk für alle JSON-Einstellungen:** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
 
 Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für 3D-CFD-Bauteile (PicoGK → Gmsh 3D → SU2). Er wird über das Skript

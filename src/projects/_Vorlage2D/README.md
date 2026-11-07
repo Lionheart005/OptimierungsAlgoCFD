@@ -1,6 +1,7 @@
 # `_Vorlage2D` — 2D-Kopiervorlage für neue Profilprojekte
 
 > **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
+> **2D-Modellierungs-Handbuch (`Planar2D`-Kernel: `Shape2D`, `Lattice2D`):** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](../../Automatisierung_v2/Kernels/Planar2D/README.md)  
 > **Nachschlagewerk für alle JSON-Einstellungen (inkl. 2D-Vernetzungsoptionen):** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
 
 Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für zweidimensionale CFD-Optimierungen (`Shape2D` → `Gmsh2DMesher` → SU2 2D). Er wird über das Skript

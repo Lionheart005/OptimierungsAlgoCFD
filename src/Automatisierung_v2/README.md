@@ -3,6 +3,8 @@
 > **Weiterführende Dokumente (ohne Doppelung):**
 > - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md)
 > - **Neues Bauteil / Projekt anlegen (3D & 2D):** [`src/projects/README.md`](../projects/README.md)
+> - **3D-Geometrie-Handbuch (PicoGK):** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](Kernels/PicoGk/README.md)
+> - **2D-Geometrie-Handbuch (`Planar2D`-Kernel):** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](Kernels/Planar2D/README.md)
 > - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
 > - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
 

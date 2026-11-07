@@ -2,6 +2,8 @@
 
 > **Weiterführende Dokumente (ohne Doppelung):**
 > - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md)
+> - **3D-Modellierung mit PicoGK:** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](../Automatisierung_v2/Kernels/PicoGk/README.md)
+> - **2D-Modellierung mit dem eigenen `Planar2D`-Kernel:** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](../Automatisierung_v2/Kernels/Planar2D/README.md)
 > - **Framework-Architektur & C#-Entwicklung:** [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
 > - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
 > - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
@@ -95,8 +97,12 @@ erlaubter Parameter: was hier steht, existiert.
 
 ### 3. Geometrie bauen
 
+> **Ausführliche Modellierungs-Handbücher:**
+> - **Für 3D-Projekte (PicoGK `Lattice`, `Voxels`, `Mesh`):** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](../Automatisierung_v2/Kernels/PicoGk/README.md)
+> - **Für 2D-Projekte (Eigener Kernel `Shape2D`, `Lattice2D`, `BBox2`):** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](../Automatisierung_v2/Kernels/Planar2D/README.md)
+
 In `PropellerGeometryGenerator.cs`. Die Vorlage baut einen Quader; ersetze
-`BuildVoxelModel`. Am Ende meldest du deine Messwerte:
+`BuildVoxelModel` (bzw. `BuildProfileContour` in 2D). Am Ende meldest du deine Messwerte:
 
 ```csharp
 result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
