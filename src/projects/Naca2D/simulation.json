@@ -30,8 +30,6 @@
   "UseStlSmoothing": false,
 
   // --- CFD & SU2 ---
-  // Mach 0.15 entspricht der NASA TMR NACA 0012 Validierungsbedingung.
-  "MachNumber": 0.15,
   // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
   // den Netzfaktor am Anfang selbst (Entscheidung 06.11.2026, TODO-W8).
   //

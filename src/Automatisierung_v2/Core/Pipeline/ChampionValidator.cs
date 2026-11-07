@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using ParameterBounds = (float Min, float Max);
+
 namespace MyPicoGkProject.Core
 {
     /// <summary>
@@ -25,13 +27,19 @@ namespace MyPicoGkProject.Core
 
         private readonly IFitnessCalculator _fitness;
         private readonly Random _random;
+        private readonly IReadOnlyDictionary<string, ParameterBounds>? _parameterBounds;
 
         /// <param name="fitness">Bewertet das Re-Simulat — dieselbe Formel wie im Optimierungslauf.</param>
         /// <param name="random">Optional: feste Zufallsquelle für reproduzierbare Tests.</param>
-        public ChampionValidator(IFitnessCalculator fitness, Random? random = null)
+        /// <param name="parameterBounds">Optionale Parametergrenzen für relativen Jitter und Clamping.</param>
+        public ChampionValidator(
+            IFitnessCalculator fitness,
+            Random? random = null,
+            IReadOnlyDictionary<string, ParameterBounds>? parameterBounds = null)
         {
             _fitness = fitness;
             _random = random ?? new Random();
+            _parameterBounds = parameterBounds;
         }
 
         public ModelRecord ValidateChampion(
@@ -91,7 +99,7 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
-        /// Verstellt einen zufällig gewählten Parameter um +/- <paramref name="jitter"/>.
+        /// Verstellt einen zufällig gewählten Parameter um +/- <paramref name="jitter"/> (relativ bzgl. ParameterBounds falls vorhanden, sonst absolut).
         /// </summary>
         private Dictionary<string, float> JitterParameters(Dictionary<string, float> parameters, float jitter)
         {
@@ -99,7 +107,17 @@ namespace MyPicoGkProject.Core
             if (testParams.Count == 0) return testParams;
 
             string keyToJitter = testParams.Keys.ElementAt(_random.Next(testParams.Count));
-            testParams[keyToJitter] += _random.NextDouble() > 0.5 ? jitter : -jitter;
+            float sign = _random.NextDouble() > 0.5 ? 1.0f : -1.0f;
+            if (_parameterBounds != null && _parameterBounds.TryGetValue(keyToJitter, out var bounds) && bounds.Max > bounds.Min)
+            {
+                float range = bounds.Max - bounds.Min;
+                float delta = sign * jitter * range;
+                testParams[keyToJitter] = Math.Clamp(testParams[keyToJitter] + delta, bounds.Min, bounds.Max);
+            }
+            else
+            {
+                testParams[keyToJitter] += sign * jitter;
+            }
             return testParams;
         }
     }

@@ -30,9 +30,6 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
-  // Ma 0.2 x 343.2 m/s = ca. 69 m/s (ca. 250 km/h): Reiseflug eines Leichtflugzeugs.
-  // Der Löser ist inkompressibel (INC_RANS), daher Ma <= 0.3 halten.
-  "MachNumber": 0.2,
   "Su2MaxIterations": 500,
   "CauchyElements": 150,
   "CauchyTolerance": "1e-4",

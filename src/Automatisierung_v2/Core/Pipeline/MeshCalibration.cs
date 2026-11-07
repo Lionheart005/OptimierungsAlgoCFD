@@ -177,7 +177,7 @@ namespace MyPicoGkProject.Core
 
             // Stufe 1: Grob (2.0f, Tag: "Kal1")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
-            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, 3.0f); // bei grobem Netz y+ oft höher
+            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, 3.5f); // bei grobem Netz y+ oft höher
             stages.Add(stage1);
 
             // Sicherheitsprüfung: Zellzahl der feinsten Stufe hochrechnen (Faktor (2.0 / 0.5)^Dimension)
@@ -196,7 +196,7 @@ namespace MyPicoGkProject.Core
 
             // Stufe 5: Sehr feine Referenz (0.50f, Tag: "Kal5")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
-            stages.Add(RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 2.5f));
+            stages.Add(RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 3.0f));
 
             // Zwischenstufen von grob nach fein: 1.41 (Kal2), 1.0 (Kal3), 0.71 (Kal4)
             var intermediateConfigs = new[]
@@ -209,7 +209,7 @@ namespace MyPicoGkProject.Core
             foreach (var inter in intermediateConfigs)
             {
                 Console.WriteLine($"\n[KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 2.5f));
+                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 3.0f));
 
                 // Frühabstiegsprüfung: Wenn diese Stufe innerhalb der Toleranz liegt und wir mindestens 3 Stufen für GCI haben
                 if (stages.Count >= 3)
@@ -278,10 +278,10 @@ namespace MyPicoGkProject.Core
             var stages2D = new List<CalibrationStageData>();
 
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 1/5: Grobes 2D-Netz (Faktor 2.00)...");
-            stages2D.Add(RunCalibrationStage(runStage2D, 1, 2.0f, "Kal2D_1", metricsToMonitor, 3.0f));
+            stages2D.Add(RunCalibrationStage(runStage2D, 1, 2.0f, "Kal2D_1", metricsToMonitor, 3.5f));
 
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 5/5: Feines 2D-Referenznetz (Faktor 0.50)...");
-            stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, 2.5f));
+            stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, 3.0f));
 
             // Zwischenstufen 2D: 1.41 (Kal2D_2), 1.00 (Kal2D_3), 0.71 (Kal2D_4)
             var intermediateConfigs2D = new[]
@@ -294,7 +294,7 @@ namespace MyPicoGkProject.Core
             foreach (var inter in intermediateConfigs2D)
             {
                 Console.WriteLine($"\n[2D-KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 2.5f));
+                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 3.0f));
 
                 if (stages2D.Count >= 3)
                 {
@@ -333,7 +333,7 @@ namespace MyPicoGkProject.Core
             int c3Cells = (int)(rec3D_1.PassiveParameters.TryGetValue("MeshCells", out float c3c) ? c3c : 0);
             float c3P95 = rec3D_1.PassiveParameters.TryGetValue("YPlus_P95", out float c3p) ? c3p : 0f;
             bool c3Conv = !rec3D_1.SimulationFailed && (!rec3D_1.PassiveParameters.TryGetValue("Su2_Converged", out float c3cv) || c3cv > 0.5f);
-            bool c3YPlusOk = c3P95 <= 0f || c3P95 <= 3.0f;
+            bool c3YPlusOk = c3P95 <= 0f || c3P95 <= 3.5f;
 
             stages3D.Add(new CalibrationStageData(
                 LevelIndex: 1,
@@ -365,7 +365,7 @@ namespace MyPicoGkProject.Core
             int f3Cells = (int)(rec3D_3.PassiveParameters.TryGetValue("MeshCells", out float f3c) ? f3c : 0);
             float f3P95 = rec3D_3.PassiveParameters.TryGetValue("YPlus_P95", out float f3p) ? f3p : 0f;
             bool f3Conv = !rec3D_3.SimulationFailed && (!rec3D_3.PassiveParameters.TryGetValue("Su2_Converged", out float f3cv) || f3cv > 0.5f);
-            bool f3YPlusOk = f3P95 <= 0f || f3P95 <= 2.5f;
+            bool f3YPlusOk = f3P95 <= 0f || f3P95 <= 3.0f;
 
             stages3D.Add(new CalibrationStageData(
                 LevelIndex: 3,
@@ -387,7 +387,7 @@ namespace MyPicoGkProject.Core
             int m3Cells = (int)(rec3D_2.PassiveParameters.TryGetValue("MeshCells", out float m3c) ? m3c : 0);
             float m3P95 = rec3D_2.PassiveParameters.TryGetValue("YPlus_P95", out float m3p) ? m3p : 0f;
             bool m3Conv = !rec3D_2.SimulationFailed && (!rec3D_2.PassiveParameters.TryGetValue("Su2_Converged", out float m3cv) || m3cv > 0.5f);
-            bool m3YPlusOk = m3P95 <= 0f || m3P95 <= 2.5f;
+            bool m3YPlusOk = m3P95 <= 0f || m3P95 <= 3.0f;
 
             stages3D.Add(new CalibrationStageData(
                 LevelIndex: 2,
@@ -417,7 +417,7 @@ namespace MyPicoGkProject.Core
                     int rCells = (int)(recRefined.PassiveParameters.TryGetValue("MeshCells", out float rc) ? rc : 0);
                     float rP95 = recRefined.PassiveParameters.TryGetValue("YPlus_P95", out float rp) ? rp : 0f;
                     bool rConv = !recRefined.SimulationFailed && (!recRefined.PassiveParameters.TryGetValue("Su2_Converged", out float rcv) || rcv > 0.5f);
-                    bool rYPlusOk = rP95 <= 0f || rP95 <= 2.5f;
+                    bool rYPlusOk = rP95 <= 0f || rP95 <= 3.0f;
 
                     stages3D.Add(new CalibrationStageData(
                         LevelIndex: 4,
@@ -568,7 +568,13 @@ namespace MyPicoGkProject.Core
 
                 int level = stages.Max(s => s.LevelIndex) + 1;
                 Console.WriteLine($"\n[{label}] Toleranz von {cal.Tolerance * 100:0.0} % noch nicht erreicht – zusätzliche Stufe {level} (Faktor {next:0.00}, ~{estimated:N0} Zellen)...");
-                stages.Add(RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, 2.5f));
+                var extraStage = RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, 3.0f);
+                if (!extraStage.Converged || !extraStage.YPlusOk || extraStage.MeshCells <= 0)
+                {
+                    Console.WriteLine($"       -> [{label}] Zusätzliche Stufe {level} (Faktor {next:0.00}) war nicht gültig (Konvergiert={extraStage.Converged}, y+Ok={extraStage.YPlusOk}, Zellen={extraStage.MeshCells}) – behalte Stufe {refStage.LevelIndex} (Faktor {refStage.Factor:0.00}) als Referenz und beende Verfeinerung.");
+                    return;
+                }
+                stages.Add(extraStage);
             }
         }
 
@@ -800,6 +806,10 @@ namespace MyPicoGkProject.Core
             if (decision.Success && decision.SelectedStage != null)
             {
                 Console.WriteLine($"\n-> Empfohlener Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.SelectedStage.LevelIndex})");
+            }
+            else if (!decision.Success && decision.FallbackStage != null)
+            {
+                Console.WriteLine($"   -> Empfohlener Rückfall-Faktor (feinste gültige Kandidatenstufe): {decision.FallbackStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.FallbackStage.LevelIndex})");
             }
             Console.WriteLine("==================================================\n");
         }

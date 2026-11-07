@@ -162,6 +162,17 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// Einstellungen für zeitgenaue Simulationen (URANS mit Dual-Time-Stepping) (TODO-37).
         /// </summary>
         public Su2TimeDomainOptions TimeDomain { get; set; } = new();
+
+        /// <summary>
+        /// Erstellt eine tiefe Kopie der Optionen (insbes. für temporäre Anpassungen wie Anstellwinkel).
+        /// </summary>
+        public Su2SolverOptions Clone()
+        {
+            var copy = (Su2SolverOptions)MemberwiseClone();
+            copy.ResultMetrics = new Dictionary<string, string>(ResultMetrics);
+            copy.HistoryOutput = (string[])HistoryOutput.Clone();
+            return copy;
+        }
     }
 
     /// <summary>

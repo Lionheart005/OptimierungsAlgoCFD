@@ -376,6 +376,67 @@ namespace AutomatisierungCleanVersion.Tests
             }
         }
 
+        [Fact]
+        public void Su2Solver_Active_AngleOfAttack_Overrides_Options_And_Records_PassiveParameter()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "su2_aoa_test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                string meshPath = Path.Combine(tempDir, "airfoil.su2");
+                File.WriteAllText(meshPath, "mock mesh");
+
+                var record = new ModelRecord
+                {
+                    Iteration = 1,
+                    Variant = 1,
+                    ActiveParameters = new Dictionary<string, float>
+                    {
+                        { "AngleOfAttackDeg", 7.5f }
+                    }
+                };
+
+                var options = new Su2SolverOptions
+                {
+                    Dimensions = 2,
+                    AngleOfAttackDeg = 0.0f,
+                    FreestreamVelocity = 50.0f
+                };
+
+                var solver = new Su2Solver(options);
+                var config = SimulationConfig.CreateDefault();
+                config.MpiRunPath = "non_existent_mpi";
+
+                try
+                {
+                    solver.Solve(meshPath, record, config, tempDir);
+                }
+                catch
+                {
+                    // Erwarteter Abbruch beim Starten des MPI-Prozesses
+                }
+
+                // 1. Passive Parameter enthält den Anstellwinkel
+                Assert.True(record.PassiveParameters.ContainsKey("AngleOfAttackDeg"));
+                Assert.Equal(7.5f, record.PassiveParameters["AngleOfAttackDeg"]);
+
+                // 2. Base Options wurden nicht dauerhaft mutiert
+                Assert.Equal(0.0f, solver.Options.AngleOfAttackDeg);
+
+                // 3. current_config.cfg wurde mit 7.5 erzeugt
+                string cfgPath = Path.Combine(tempDir, "current_config.cfg");
+                Assert.True(File.Exists(cfgPath));
+                string[] cfgLines = File.ReadAllLines(cfgPath);
+                Assert.Contains(cfgLines, l => l.Contains("AOA= 7.5") || l.Contains("AOA= 7,5"));
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, true);
+            }
+        }
+
         private class Test2DProject : Cfd2DProjectDefinition
         {
             public override string Name => "Test2D";

@@ -64,6 +64,7 @@
   "WakeCellSize": 0.0,
 
   // --- Detailbox um und hinter dem Modell (TODO-W6) ---
+  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
   // Feine Box fuer Nachlauf und Wirbel in Modellnaehe. In 3D standardmaessig aus (viele Zellen).
   // DetailBoxCellSize: mm auf Stufe 1.0; 0 = automatisch 2,5 x Oberflaechen-Zellgroesse.
   "DetailBox": false,

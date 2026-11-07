@@ -233,6 +233,7 @@ namespace AutomatisierungCleanVersion.Tests
 
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
+                .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
@@ -571,6 +572,7 @@ namespace AutomatisierungCleanVersion.Tests
 
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
+                .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 

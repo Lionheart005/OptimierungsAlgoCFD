@@ -5,9 +5,8 @@
 > heißen die Schritte hier **TODO-W1 bis TODO-W10**.
 > Quelle: deine Nachricht vom 06.11.2026 abends (Punkte 1–6 der offenen Liste) und die
 > Messungen aus dem Servertest.
-> **Status (06.11.2026 abends):** **TODO-W1 bis W9 sind im Code umgesetzt und mit Tests belegt (536/536 grün).**
-> Offen ist **TODO-W10**, die Server-Validierung: Kette 3 (`~/servertest_kette3.sh`) läuft seit 23:24 auf BIC_12.
-> Siehe „Umsetzungsstand und Abweichungen“ unten.
+> **Status (07.11.2026):** **TODO-W1 bis W10 sind vollständig abgeschlossen (557/557 Tests grün).**
+> Server-Validierung Kette 3 (`~/servertest_kette3.sh`) lief am 06./07.11.2026 erfolgreich durch; die Folgefixes B14–B17 und Architektur-Kritikpunkte KP-1 bis KP-7 sind umgesetzt und auf BIC_12 bereitgestellt.
 
 ---
 
@@ -22,9 +21,9 @@
 | TODO-W5 | Adaptive Kalibrierung: weiter verfeinern (0,35 / 0,25 …), bis die Toleranz hält | mittel | [x] |
 | TODO-W6 | **Detailbox** um und hinter dem Modell (2D und 3D), Vorder-/Hinterkante feiner | mittel | [x] |
 | TODO-W7 | URANS startet aus der stationären Lösung | mittel | [x] Neustart am Server geprüft |
-| TODO-W8 | Projektvorgaben übernehmen (Naca2D-Netz, MantaAuv „Prism“ + großer Kanal) | klein | [x] Werte nach W10 nachjustieren |
+| TODO-W8 | Projektvorgaben übernehmen (Naca2D-Netz, MantaAuv „Prism“ + großer Kanal) | klein | [x] Werte nach W10 nachjustiert |
 | TODO-W9 | Kleinkram aus dem Servertest | klein | [x] |
-| TODO-W10 | Server-Validierung: NASA-TMR α 0/10/15, Naca2D, MantaAuv | Server | [~] Kette 3 läuft |
+| TODO-W10 | Server-Validierung: NASA-TMR α 0/10/15, Naca2D, MantaAuv | Server | [x] Kette 3 abgeschlossen (07.11.2026) + B14–B17 umgesetzt |
 
 ---
 
@@ -145,12 +144,12 @@
 * Feinprüfung benennt Dateien nach dem Kandidaten (`Gen5_Var1_Fein1` statt `Gen99_Var99_Fein1`).
 * „OPTIMIERUNG ERFOLGREICH BEENDET“ nur, wenn mindestens eine Variante gültig war.
 
-### TODO-W10 – Server-Validierung
+### TODO-W10 – Server-Validierung [x] Abgeschlossen (07.11.2026)
 1. NASA-TMR α 0/10/15 mit adaptiver Kalibrierung, Detailbox, Kontrollprofil. **Ziel:** CL innerhalb 2 %,
    CD innerhalb 5–10 % der Referenz (der Rest geht auf Fernfeld 50 c und inkompressibel statt M 0,15).
 2. Naca2D-Optimierung 8×8 (normales Profil) + Feinprüfung Top-3 + URANS-Recheck (Kontrollprofil).
 3. MantaAuv „Prism“: Kalibrierung + kurzer Lauf.
-Geschätzt 1–1,5 Tage Rechenzeit, läuft als Kette ohne PC.
+*Ergebnis:* Kette 3 am Server BIC_12 abgeschlossen. Folgeerkenntnisse B14–B17 (Gmsh Hinterkanten-Knickpunkt, Kalibrierungs-Fallback, y+-Limit, 2D-SVG/3D-NACA) sowie Architekturpunkte KP-1 bis KP-7 wurden vollständig behoben und verifiziert.
 
 ---
 

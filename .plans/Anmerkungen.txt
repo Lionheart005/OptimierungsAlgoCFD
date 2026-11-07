@@ -42,7 +42,7 @@ Eine open source FEM tool, ähnliches Kaliber wie SU2 für FEM simulationen / ko
 
 ^ bis hierhin alles alt, bzw schon in plänen vorhanden. 
 6.11.26
-neue prompts für die zukungt
+neue prompts für die zukunft.
 
 es wurde in diesem branch wirklich viel neu gemacht und umgesetzt. 
 es muss noch geschaut werden ob der neue testlauf vom manta auv mit neuem netz auch gut funktioniert. und tut was er soll. 
@@ -52,7 +52,7 @@ generell hat das meshing viele probleme gemacht und ich bin mir nicht sicher ob 
 auch soll z.b. nach anstellwinkel optimiert werden können. geht das schon? ich bin mir nicht sicher...
 Warung mit der Machnummer ist total nervig uns sinnlos. ich würde sagen wir entfernen die machnummer einfach komplett aus der eingabe. 
 die konsolenausgabe im logg einmal ein bisschen schöner und anschaulicher machen
-wenn alle fehler behoben und erkannt wurden; 
+wenn alle fehler behoben und erkannt wurden bitte die pläne einmal etwas zusammenfassen und übersichtlicher kennzeichen welche veraltet sind, bzw ohne dass relevante infos verloren gehen komprimieren sodass die pläne nicht so viele tokens verballern wenn KIs die lesen. ; 
 ich würde dann gerne nochmal einen kleinen 5x5 testlauf in 2d mit allen neuen funktionen, wie z.b. kalibrierung und neuem besseren netz usw. 
 und da kurz einen kleinen bericht mit bildern und plots zu wie in manta auv.
 dann die KI pläne und integration umsetzten und dann genau den lauf nochmal starten

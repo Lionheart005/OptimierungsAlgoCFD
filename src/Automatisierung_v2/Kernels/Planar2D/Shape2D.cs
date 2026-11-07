@@ -458,7 +458,7 @@ namespace MyPicoGkProject.Kernels.Planar2D
             BBox2 bounds = m.Bounds;
 
             float minX = bounds.IsEmpty ? 0f : bounds.Min.X;
-            float minY = bounds.IsEmpty ? 0f : bounds.Min.Y;
+            float minY = bounds.IsEmpty ? 0f : -bounds.Max.Y;
             float width = bounds.IsEmpty ? 100f : MathF.Max(bounds.Size.X, 1.0f);
             float height = bounds.IsEmpty ? 100f : MathF.Max(bounds.Size.Y, 1.0f);
 
@@ -485,7 +485,7 @@ namespace MyPicoGkProject.Kernels.Planar2D
                     var p = pathD[i];
                     loop.Add(new Vector2((float)p.x, (float)p.y));
                     string cmd = (i == 0) ? "M" : "L";
-                    pathData.Append(CultureInfo.InvariantCulture, $"{cmd} {p.x:F4} {p.y:F4} ");
+                    pathData.Append(CultureInfo.InvariantCulture, $"{cmd} {p.x:F4} {-p.y:F4} ");
                 }
                 pathData.Append("Z ");
 
@@ -498,10 +498,10 @@ namespace MyPicoGkProject.Kernels.Planar2D
 
             sb.AppendLine(CultureInfo.InvariantCulture, $"  <path d=\"{pathData.ToString().Trim()}\" fill=\"#3b82f6\" fill-opacity=\"0.3\" fill-rule=\"evenodd\" stroke=\"#1d4ed8\" stroke-width=\"{strokeWidth:F3}\" />");
 
-            float cornerRadius = MathF.Max(strokeWidth * 1.5f, 0.5f);
+            float cornerRadius = Math.Clamp(strokeWidth * 1.2f, 0.05f, MathF.Max(width * 0.004f, 0.1f));
             foreach (var cp in cornerPoints)
             {
-                sb.AppendLine(CultureInfo.InvariantCulture, $"  <circle cx=\"{cp.X:F4}\" cy=\"{cp.Y:F4}\" r=\"{cornerRadius:F4}\" fill=\"#ef4444\" stroke=\"#991b1b\" stroke-width=\"{(strokeWidth * 0.5f):F4}\" />");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"  <circle cx=\"{cp.X:F4}\" cy=\"{-cp.Y:F4}\" r=\"{cornerRadius:F4}\" fill=\"#ef4444\" stroke=\"#991b1b\" stroke-width=\"{(strokeWidth * 0.5f):F4}\" />");
             }
 
             sb.AppendLine("</svg>");

@@ -30,7 +30,6 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
-  "MachNumber": 0.1,
   "MeshRefinementFactor": 1.0,
   "Su2MaxIterations": 500,
   "CauchyElements": 150,

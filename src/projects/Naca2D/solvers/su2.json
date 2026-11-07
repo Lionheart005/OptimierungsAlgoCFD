@@ -13,6 +13,7 @@
   "DynamicViscosity": 1.81e-5,
   "TurbulenceModel": "SA",
   "SpeedOfSound": 343.2,
+  "FreestreamVelocity": 51.48,
 
   // --- Dimension & Anstellwinkel (TODO-46/47) ---
   "Dimensions": 2,

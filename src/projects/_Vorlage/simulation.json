@@ -69,8 +69,6 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
-  // MachNumber x SpeedOfSound (aus solvers/su2.json) = Anstroemgeschwindigkeit.
-  "MachNumber": 0.1,
   // Globaler Faktor fuer alle Zellgroessen im Netz (1.0 = Basisgroessen aus gmsh.json,
   // < 1.0 = feiner, z. B. 0.5 halbiert alle Zellkanten, > 1.0 = groeber fuer schnelle Vorablaeufe).
   "MeshRefinementFactor": 1.0,

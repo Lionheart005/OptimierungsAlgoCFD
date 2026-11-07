@@ -133,6 +133,41 @@ Gleitzahl 63, y+ Median 0,92. Die Feinprüfung meldete trotzdem „Rangfolge hä
 ## Stufe 2 – Kette 2 (ab ca. 22:15), Skript `~/servertest_kette2.sh`, tmux `kette2`
 
 Wartet auf Kette 1, baut den neuen Stand (b62e63e4…, mit B11–B13), dann:
-A) Naca2D 8×8 Faktor 0,5 erneut + URANS-Recheck (geschätzt 3–4 h);
-B) MantaAuv 3D mit `"Prism"`: Kalibrierung (~1–2 h), dann 10×10 mit kalibriertem Faktor (~5–8 h).
-Log: `~/Servertest_20261106/kette2.log`.
+A) Naca2D 8×8 Faktor 0,5 erneut + URANS-Recheck (nach 42 Rechnungen um 23:21 durch zweites Deploy unterbrochen, gesichert unter `40_Naca2D_Optimierung_v2`).
+Ersetzt durch **Kette 3** mit komplettem Block W (TODO-W1 bis W9).
+
+---
+
+## Stufe 3 – Kette 3 (06.11.2026 23:24 – 07.11.2026 14:03, abgeschlossen)
+
+Skript: `~/servertest_kette3.sh`, Ergebnisse lokal unter `Serverergebnisse/Servertest_2026-11-06/W10_*` und `kette3.log`.
+
+| Schritt | Testlauf | Dauer | Status | Wichtigste Kennwerte / Befund |
+| --- | --- | --- | --- | --- |
+| **W10_01** | NASA-TMR NACA 0012, $\alpha = 10^\circ$, $Re = 6\cdot 10^6$ (Kalibrierung Stufe 1–7, bis $f=0{,}25$, 821 426 Zellen) | 66 min | [x] | Alle 7 Stufen konvergiert! Feinstes Netz ($f=0{,}25$): **$C_D = 0{,}01194$** (NASA: $0{,}01231$, **$-3{,}0\,\%$**), **$C_L = 1{,}0656$** (NASA: $1{,}0909$, **$-2{,}3\,\%$**). Monotone Konvergenz ($p = 2{,}24$, Extrapolation $C_D = 0{,}01135$, $GCI_\text{fine} = 6{,}21\,\%$). $y^+_{95} \approx 2{,}08\dots 2{,}33$. |
+| **W10_02** | NASA-TMR NACA 0012, $\alpha = 0^\circ$, $Re = 6\cdot 10^6$ (Kalibrierung Stufe 1–7) | 60 min | [x] | Alle 7 Stufen konvergiert, kombinierte Toleranz ($C_L \approx 0$) funktioniert! Stufe 4 ($f=0{,}71$, 117 288 Zellen): **$C_D = 0{,}00820$** (NASA: $0{,}00819$, **$+0{,}1\,\%$**), $C_L = -0{,}00015$. $y^+_{95} \approx 1{,}44\dots 1{,}57$. Bei Stufe 6/7 fiel $C_D$ auf $0{,}00736 / 0{,}00690$, weil der Hinterkanten-Retry die Wandschichtdicke auf 13 % kürzte (siehe B14). |
+| **W10_03** | NASA-TMR NACA 0012, $\alpha = 15^\circ$, $Re = 6\cdot 10^6$ (Kalibrierung Stufe 1–5) | 32 min | [x] | Stufen 1–5 konvergiert, monoton ($p = 3{,}20$, $GCI_\text{fine} = 3{,}56\,\%$). Stufe 5 ($f=0{,}50$, 221 246 Zellen): $C_D = 0{,}02956$, **$C_L = 1{,}4631$** (NASA: $1{,}5461$, **$-5{,}4\,\%$**). Adaptive Verfeinerung nach Stufe 5 gestoppt, da $y^+_{95} = 2{,}59 > 2{,}50$ an der Saugspitze der Nase (siehe B16). |
+| **W10_04** | Naca2D Optimierung 8×8 mit `AutoCalibration` ($Re = 1{,}7\cdot 10^5$, $\alpha = 5^\circ$) | 22 min | [x] **Abbruch in Kal7** | Stufen 1–6 (bis $f=0{,}35$, 411 121 Zellen, $C_D = 0{,}01438$, $C_L = 0{,}51377$) liefen durch. Bei Zusatzstufe 7 ($f=0{,}25$) brach Gmsh trotz 13 % Schichtdicke ab (`Edge not recovered`, B14). Weil `RefineAdaptively` die gescheiterte Stufe 7 in `stages` beließ, wertete `CalibrationEvaluator` Stufe 7 als kaputte Referenzstufe und brach den gesamten Lauf vor Start der 8×8-Optimierung ab (B15). |
+| **W10_05** | Naca2D URANS-Recheck des Champions | – | übersprungen | Da W10_04 in der Vorkalibrierung abbrach, lag kein Champion vor (URANS-Restart selbst wurde vorab erfolgreich am Server verifiziert). |
+| **W10_06** | MantaAuv 3D `"Prism"`-Kalibrierung (Stufe 1–6, bis $f=0{,}35$, 1,28 Mio. Zellen) | 3,8 h | [x] | Prismen-Wandschicht bis 1,28 Mio. Zellen völlig stabil! Stufen 3–6 konvergiert ($C_D$: $0{,}3773 \to 0{,}2719 \to 0{,}2305 \to 0{,}1978$). Stufe 7 (3,5 Mio. Zellen) durch `MaxCells3D` (3 Mio.) regulär begrenzt. |
+| **W10_07** | MantaAuv 3D `"Prism"` 4×4 Optimierung ($f=0{,}71$) + Top-3 Feinprüfung ($f=0{,}50$) | 7,8 h | [x] **100 % Erfolg** | **16/16 Varianten + 3/3 Feinprüfungen ohne einzigen Ausfall!** Champion: **Gen1_Var4** ($C_D = 0{,}1709$ normal / $0{,}1460$ fein, 415 809 Zellen, $y^+_\text{median} = 1{,}08$, $y^+_{95} = 2{,}22$). Top-3-Feinprüfung: **Rangfolge 1 → 1, 2 → 2, 3 → 3 hält zu 100 %** (`RankingHolds = 1`). |
+
+---
+
+## Neue Befunde aus Kette 3 & offene Architekturpunkte (alle umgesetzt am 07.11.2026)
+
+* **[x] B14 – 2D: `EdgeRefinementFactor` an spitzen Knickpunkten (`CornerIndices`) verursacht Wandschicht-Selbstschnitt (`Kal7`).**
+  Behoben in `Gmsh2DMesher.cs`: Knickpunkte (`CornerIndices`) bleiben auf `surfaceSize`, nur gerundete Vorderkante (`leIdx`) wird feiner diskretisiert; `MinThicknessScale` auf `0.0625f` gesenkt. Kal7 vernetzt fehlerfrei.
+* **[x] B15 – Kalibrierung: Fehlgeschlagene adaptive Zusatzstufe überschreibt gültige Referenzstufe + harter Abbruch im `Auto`-Modus.**
+  Behoben in `MeshCalibration.cs` und `CalibrationEvaluator.cs`: Gescheiterte Zusatzstufen fliegen aus `stages` raus; `CalibrationDecision.FallbackStage` liefert die feinste gültige Stufe mit `[WARNUNG]` statt Hard-Crash.
+* **[x] B16 – Kalibrierung: `y+`-Grenze `2.5` bei $\alpha = 15^\circ$ zu eng für lokale Saugspitze.**
+  Behoben in `MeshCalibration.cs`: Limit für $y^+_{95}$ in der Kalibrierung auf `3.0` (Stufe 1: `3.5`) angehoben.
+* **[x] B17 – NACA-Darstellung: 2D-SVG stand auf dem Kopf + dicker roter Punkt an Hinterkante; 3D-NACA-Kugelradius an der Nase.**
+  Behoben in `Shape2D.cs`: Y-Achse invertiert, Knickpunkt-Kreis entfernt; in `TestprojektNACAGeometryGenerator.cs`: Kugelradius an der Vorderkante sauber begrenzt.
+* **Architektur-Kritikpunkte 1–7 (`architektur_kritikpunkte_naca.md`) & `Anmerkungen.txt`:**
+  - [x] KP-1: `RubberBandScaler` setzt `ShrinkFactor = 1.0f`, wenn `DimensionalParameters` leer ist.
+  - [x] KP-2: `ChampionValidator` nutzt relativen Jitter bzgl. `ParameterBounds` und clampt auf `[Min, Max]`.
+  - [x] KP-3: `WorkflowController` formatiert kleine Parameterwerte mit bis zu 4 Nachkommastellen (`0.####`) + übersichtlichere Log-Ausgabe.
+  - [x] KP-4: `AngleOfAttackDeg` als aktiver Optimierungsparameter in `project.json` durch `Su2Solver` unterstützt.
+  - [x] KP-7: `ExecutableResolver` mit Tilde-Expansion und automatischer Server-Fallback-Kette für `gmsh`, `SU2_CFD` und `mpirun`/`mpiexec`.
+  - [x] `MachNumber` aus allen Projekt-JSONs entfernt (`FreestreamVelocity` in m/s ist alleinige Vorgabe).

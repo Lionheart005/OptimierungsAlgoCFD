@@ -144,6 +144,9 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | `OptimizationTargets` | Zahlen, die die Bewertungsformel braucht (z. B. erlaubtes Volumen). Welche Namen gelten, legt der Bewertungscode des Projekts fest; fehlt ein benötigter Name, bricht der Start mit einer Liste ab. | je Ziel | `"MinimumAllowedVolume": 2000.0` | 🟢 |
 | `DimensionalParameters` | Welche Parameter **Längen** sind. Nur diese werden vom Gummiband-Skalierer mitskaliert; Verhältniszahlen (z. B. `TailTaper`) gehören nicht hinein. | Liste von Namen | `[ "Length", "Width", … ]` | 🔴 |
 
+> **Tipp – Anstellwinkel als aktiver Optimierungsparameter:**
+> Soll der Anstellwinkel aktiv variiert und optimiert werden, tragen Sie `"AngleOfAttackDeg"` (oder `"AngleOfAttack"`) als aktiven Parameter in `project.json` (`BaseParameters`, `MaxDeviations` und `ParameterBounds`) ein. Der Solver erkennt dies automatisch, steuert den Anstellwinkel für jede Variante gezielt an, gibt ihn im Konsolen-Log aus (`    -> Anstellwinkel (aktiv optimiert): ...°`) und legt den Wert für die Fitnessberechnung in `PassiveParameters["AngleOfAttackDeg"]` ab.
+
 Der **Projektname** steht absichtlich *nicht* in der Datei (es gibt keinen Schlüssel
 `ProjectName`): Er ist immer der Ordnername.
 
@@ -170,7 +173,7 @@ bestraft. Höhere Fitness = besser.
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
-| `MachNumber` | **Alter Weg** zur Geschwindigkeit: Geschwindigkeit = `MachNumber` × `SpeedOfSound` (aus `su2.json`). Wirkt **nur**, wenn in `su2.json` `FreestreamVelocity` 0 ist. Bei MantaAuv wirkt sie nicht mehr. | `0.1` | 🎯 | 🟡 |
+| `MachNumber` | **Veralteter/optionaler Rückfallwert** zur Geschwindigkeit: Geschwindigkeit = `MachNumber` × `SpeedOfSound` (aus `su2.json`). Wirkt **nur**, wenn in `su2.json` `FreestreamVelocity` 0 ist. In Standardprojekten zugunsten von `FreestreamVelocity` aus `simulation.json` entfernt. | `0.1` | 🎯 | 🟡 |
 | `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. | `1.0` | ⏱🎯 | 🟡 |
 | `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. | `500` | ⏱🎯 | 🟡 |
 | `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `150` | ⏱🎯 | 🔴 |
@@ -312,7 +315,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
 | `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
 | `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
-| `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). | `0.0` | 🎯 | 🟢 |
+| `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). Kann auch als aktiver Optimierungsparameter in `project.json` definiert werden. | `0.0` | 🎯 | 🟢 |
 | `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
 | `TimeDomain` | Block für zeitgenaue CFD-Rechnungen (URANS, Dual-Time-Stepping, TODO-37). Details siehe unten. | `{}` | 🎯⏱ | 🟡 |
 

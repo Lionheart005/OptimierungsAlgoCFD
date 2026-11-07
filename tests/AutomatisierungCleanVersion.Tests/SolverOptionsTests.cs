@@ -280,7 +280,7 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         [Fact]
-        public void WarnIfMachNumberOverridden_Warns_When_Velocity_Set_And_MachNumber_In_Origins()
+        public void WarnIfMachNumberOverridden_Is_Silent_Even_When_MachNumber_In_Origins()
         {
             var report = new ConfigLoadReport();
             report.Origins["MachNumber"] = "src/projects/MantaAuv/simulation.json";
@@ -290,11 +290,8 @@ namespace AutomatisierungCleanVersion.Tests
             using var sw = new StringWriter();
             bool warned = Su2ConfigGenerator.WarnIfMachNumberOverridden(report, su2Options, sw);
 
-            Assert.True(warned);
-            string log = sw.ToString();
-            Assert.Contains("[WARNUNG] 'MachNumber' in src/projects/MantaAuv/simulation.json ist wirkungslos", log);
-            Assert.Contains("FreestreamVelocity", log);
-            Assert.Contains("2 m/s", log);
+            Assert.False(warned);
+            Assert.Empty(sw.ToString());
         }
 
         [Fact]

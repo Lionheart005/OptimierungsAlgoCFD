@@ -66,6 +66,32 @@ namespace MyPicoGkProject.Solvers.Cfd
         {
             float refArea = ResolveReferenceArea(record);
 
+            float effectiveAoA = _options.AngleOfAttackDeg;
+            bool aoaFromActive = false;
+            if (record.ActiveParameters != null)
+            {
+                foreach (var kv in record.ActiveParameters)
+                {
+                    if (kv.Key.Equals("AngleOfAttackDeg", StringComparison.OrdinalIgnoreCase) ||
+                        kv.Key.Equals("AngleOfAttack", StringComparison.OrdinalIgnoreCase))
+                    {
+                        effectiveAoA = kv.Value;
+                        aoaFromActive = true;
+                        break;
+                    }
+                }
+            }
+
+            if (aoaFromActive || effectiveAoA != 0f)
+            {
+                record.PassiveParameters["AngleOfAttackDeg"] = effectiveAoA;
+            }
+
+            if (aoaFromActive)
+            {
+                Console.WriteLine($"    -> Anstellwinkel (aktiv optimiert): {effectiveAoA.ToString("0.##", CultureInfo.InvariantCulture)}°");
+            }
+
             FlowConditions flow = _flow ?? FlowConditions.From(config, _options);
 
             if (!_velocityReported)
@@ -205,13 +231,22 @@ namespace MyPicoGkProject.Solvers.Cfd
                     + $"iterativer Fehler höchstens {runConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
             }
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, runConfig, _options, flow, effectiveRefLength);
+            Su2SolverOptions runOptions = _options;
+            if (aoaFromActive)
+            {
+                runOptions = _options.Clone();
+                runOptions.AngleOfAttackDeg = effectiveAoA;
+            }
+
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, runConfig, runOptions, flow, effectiveRefLength);
 
             try
             {
                 Process su2Process = new Process();
-                su2Process.StartInfo.FileName = config.MpiRunPath;
-                su2Process.StartInfo.Arguments = $"-n {config.MpiCores} {config.Su2Path} current_config.cfg"; 
+                string resolvedMpi = ExecutableResolver.Resolve(config.MpiRunPath, "mpi");
+                string resolvedSu2 = ExecutableResolver.Resolve(config.Su2Path, "su2");
+                su2Process.StartInfo.FileName = resolvedMpi;
+                su2Process.StartInfo.Arguments = $"-n {config.MpiCores} {resolvedSu2} current_config.cfg"; 
                 su2Process.StartInfo.WorkingDirectory = workingDirectory; 
                 su2Process.StartInfo.RedirectStandardOutput = true;
                 su2Process.StartInfo.RedirectStandardError = true;

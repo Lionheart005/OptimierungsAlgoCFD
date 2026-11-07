@@ -29,5 +29,11 @@
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
-  "BoundaryLayerDistMax": 40.0
+  "BoundaryLayerDistMax": 40.0,
+
+  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
+  "DetailBox": false,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSize": 0.0
 }

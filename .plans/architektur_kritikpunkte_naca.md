@@ -1,24 +1,30 @@
 # Architektur-Kritikpunkte & Optimierungspotenziale (Erkenntnisse aus TestprojektNACA)
 
-> **Stand: 20.10.2026** — Dokumentation von Schwachstellen, Randfall-Problemen und Verbesserungsvorschlägen im Framework (`Core/`, `Solvers/`, `_Vorlage/`), die bei der Implementierung des Tragflügel-Optimierungsprojekts **`TestprojektNACA`** (NACA 0012 Profil, Gleitzahl $E = C_L / C_D$) aufgefallen sind.
+> **Stand: 07.11.2026 — STATUS: ALLE 7 KRITIKPUNKTE ERLEDIGT (`[x]`)**
+> Dokumentation von Schwachstellen, Randfall-Problemen und Verbesserungsvorschlägen im Framework (`Core/`, `Solvers/`, `_Vorlage/`), die bei der Implementierung des Tragflügel-Optimierungsprojekts **`TestprojektNACA`** (NACA 0012 Profil, Gleitzahl $E = C_L / C_D$) aufgefallen sind. Alle Punkte wurden im Rahmen von Block W und WP3 behoben.
 
 ---
 
 ## Übersicht der Kritikpunkte
 
-| Nr. | Bereich | Komponente | Schweregrad | Problemstellung |
-|---|---|---|---|---|
-| 1 | `Core/Utilities` | `RubberBandScaler` | **Hoch (Bug)** | Skaliert um $50\times$, wenn `DimensionalParameters` leer ist |
-| 2 | `Core/Pipeline` | `ChampionValidator` (`Bouncer`) | **Mittel** | Additiver, absoluter Jitter statt relativer Streuung; keine Begrenzung auf Bounds |
-| 3 | `Core/Pipeline` | `WorkflowController` | **Niedrig** | Konsolenausgabe schneidet aktive Parameter bei `:F2` ab |
-| 4 | `Solvers/Cfd` | `Su2ConfigGenerator` | **Mittel** | Kein Anstellwinkel (`AOA`) / fester Zustromvektor `(v, 0, 0)` |
-| 5 | `Solvers/Cfd` | `Su2SolverOptions` | **Niedrig** | Standard-Bezugsfläche `FrontalArea` vs. Flügelgrundrissfläche `PlanformArea` |
-| 6 | `Kernels/PicoGK` | Geometrieaufbau | **Mittel** | Dünne Hinterkanten bei Voxelauflösung $0.5\text{ mm}$ (Gefahr von Voxelinseln) |
-| 7 | `Configuration` / `Core` | Programmpfade & Solver-Auflösung | **Mittel** | Starre Wahl zwischen PATH-relativ und Absolutpfaden; fehlende Fallback-Kette bei Server-Umgebungen |
+| Nr. | Bereich | Komponente | Schweregrad | Problemstellung | Status |
+|---|---|---|---|---|---|
+| 1 | `Core/Utilities` | `RubberBandScaler` | **Hoch (Bug)** | Skaliert um $50\times$, wenn `DimensionalParameters` leer ist | **[x] Erledigt (07.11.2026)** |
+| 2 | `Core/Pipeline` | `ChampionValidator` (`Bouncer`) | **Mittel** | Additiver, absoluter Jitter statt relativer Streuung; keine Begrenzung auf Bounds | **[x] Erledigt (07.11.2026)** |
+| 3 | `Core/Pipeline` | `WorkflowController` | **Niedrig** | Konsolenausgabe schneidet aktive Parameter bei `:F2` ab | **[x] Erledigt (07.11.2026)** |
+| 4 | `Solvers/Cfd` | `Su2ConfigGenerator` | **Mittel** | Kein Anstellwinkel (`AOA`) / fester Zustromvektor `(v, 0, 0)` | **[x] Erledigt (07.11.2026)** |
+| 5 | `Solvers/Cfd` | `Su2SolverOptions` | **Niedrig** | Standard-Bezugsfläche `FrontalArea` vs. Flügelgrundrissfläche `PlanformArea` | **[x] Erledigt (07.11.2026)** |
+| 6 | `Kernels/PicoGK` | Geometrieaufbau | **Mittel** | Dünne Hinterkanten bei Voxelauflösung $0.5\text{ mm}$ (Gefahr von Voxelinseln) | **[x] Erledigt (07.11.2026)** |
+| 7 | `Configuration` / `Core` | Programmpfade & Solver-Auflösung | **Mittel** | Starre Wahl zwischen PATH-relativ und Absolutpfaden; fehlende Fallback-Kette bei Server-Umgebungen | **[x] Erledigt (07.11.2026)** |
 
 ---
 
 ## 1. Bug in `RubberBandScaler`: Fehlskalierung bei leeren `DimensionalParameters`
+
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `src/Automatisierung_v2/Core/Utilities/RubberBandScaler.cs`:**
+> `ShrinkFactor = maxDimension > 0f ? targetSize / maxDimension : 1.0f;`
+> Liegen keine dimensionalen Parameter vor oder sind sie `<= 0f`, bleibt der ShrinkFactor neutral bei `1.0f`. Über Unit-Tests in `RubberBandScalerTests.cs` verifiziert.
 
 ### Fundstelle
 [`src/Automatisierung_v2/Core/Utilities/RubberBandScaler.cs#L57-L70`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Core/Utilities/RubberBandScaler.cs#L57-L70)
@@ -68,6 +74,10 @@ else
 
 ## 2. `ChampionValidator`: Additiver absoluter Jitter ohne Parametergrenzen-Prüfung
 
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `src/Automatisierung_v2/Core/Pipeline/ChampionValidator.cs`:**
+> `ChampionValidator` nimmt nun optional `IReadOnlyDictionary<string, ParameterBounds>? parameterBounds` entgegen. In `JitterParameters` wird der Jitter relativ zur Spanne berechnet (`delta = sign * jitter * range`) und mit `Math.Clamp` strikt auf `[bounds.Min, bounds.Max]` geklemmt. Verifiziert über Unit-Tests in `ChampionValidatorTests.cs`.
+
 ### Fundstelle
 [`src/Automatisierung_v2/Core/Pipeline/ChampionValidator.cs#L96-L104`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Core/Pipeline/ChampionValidator.cs#L96-L104)
 
@@ -103,6 +113,10 @@ Die NACA-Parameter wurden in `project.json` bewusst in **Prozent** skaliert (`0.
 
 ## 3. Konsolenausgabe schneidet aktive Parameter bei `:F2` ab
 
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `src/Automatisierung_v2/Core/Pipeline/WorkflowController.cs`:**
+> Statische Methode `FormatParameterValue(float value)` implementiert (`0.####` für Werte `< 1.0`, sonst `0.##`). `PrintVariantHeader` nutzt diese Formatierung und gibt den Header nun übersichtlich als `--- [Iteration i/N | Variante v/M] ---` aus. Verifiziert über Unit-Tests in `WorkflowControllerTests.cs`.
+
 ### Fundstelle
 [`src/Automatisierung_v2/Core/Pipeline/WorkflowController.cs#L299`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Core/Pipeline/WorkflowController.cs#L299)
 
@@ -118,6 +132,12 @@ Formatierung dynamisch an den Wert anpassen (z. B. `:F4` bei Werten $< 1.0$ oder
 ---
 
 ## 4. `Su2ConfigGenerator`: Fester Zustromvektor, kein Anstellwinkel (`AOA`)
+
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `Su2Solver.cs`, `Su2SolverOptions.cs` und `Su2ConfigGenerator.cs`:**
+> 1. In `Su2SolverOptions` und `Su2ConfigGenerator` werden `AngleOfAttackDeg`, gedrehte Vektoren (`ResolveVelocityVector`) und `AOA= ...` in 2D und 3D vollständig unterstützt.
+> 2. `Su2Solver.Solve` erkennt `"AngleOfAttackDeg"` bzw. `"AngleOfAttack"` in `record.ActiveParameters`, loggt den Winkel (`-> Anstellwinkel (aktiv optimiert): ...°`), übergibt eine geklonte Optionen-Instanz (`_options.Clone()`) an `Su2ConfigGenerator.Generate` und legt den Wert in `PassiveParameters["AngleOfAttackDeg"]` für die Fitnessbewertung ab.
+> 3. Im Bedienhandbuch dokumentiert und mit Unit-Tests in `Cfd2DMesherAndSolverTests.cs` abgesichert.
 
 ### Fundstelle
 [`src/Automatisierung_v2/Solvers/Cfd/Su2ConfigGenerator.cs#L57`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Solvers/Cfd/Su2ConfigGenerator.cs#L57)
@@ -148,6 +168,10 @@ Oder direkt SU2s `AOA= ...` Parameter in der Konfiguration ansteuern.
 
 ## 5. Bezugsfläche für aerodynamische Beiwerte (`ReferenceAreaMetric`)
 
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `Su2SolverOptions.cs` und `Su2Solver.cs`:**
+> `ReferenceAreaMetric` ist pro Projekt in `solvers/su2.json` frei wählbar. Bei 2D-Profilen wird `"Chord"` (Bezugsfläche $S = c \cdot 1\,\text{m}$) automatisch in Meter skaliert; in 3D kann jede vom Generator per `AddMetric` gemeldete Größe (z. B. `"FrontalArea"`, `"PlanformArea"`, `"WettedArea"`) als Referenzfläche verwendet werden.
+
 ### Fundstelle
 [`src/Automatisierung_v2/Solvers/Cfd/Su2SolverOptions.cs#L36`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Solvers/Cfd/Su2SolverOptions.cs#L36)
 
@@ -164,6 +188,11 @@ Für künftige Aerodynamik-Projekte sollte im Generator optional eine Metrik `Pl
 
 ## 6. Voxel-Auflösung & dünne Hinterkanten bei PicoGK
 
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung:**
+> 1. In 3D (`TestprojektNACAGeometryGenerator`): Analytische Mindestdicke $\max(y_t, 1.2 \times \text{VoxelSize})$ und Verbindungsstege (`AddBeam`) verhindern Voxelabriss; Fix B17 verhindert Überstehen von Kugeln an der Profilnase.
+> 2. In 2D (`Naca2D`): Einführung des direkten Kontur-Kernels (`Shape2D` / `DirectGeometryKernel` via `TODO-45`), der das Voxelgitter komplett umgeht und scharfe Hinterkanten exakt als Knickpunkte (`CornerIndices`) an Gmsh übergibt.
+
 ### Fundstelle
 [`src/projects/TestprojektNACA/TestprojektNACAGeometryGenerator.cs`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/projects/TestprojektNACA/TestprojektNACAGeometryGenerator.cs)
 
@@ -178,6 +207,14 @@ Im Generator wurde ein Mindestradius von $\max(y_t, 1.2 \times \text{VoxelSize})
 ---
 
 ## 7. Programmpfade, Server-Eigenheiten & Notwendigkeit einer Fallback-Auflösung
+
+> **Status: ERLEDIGT (`[x]`, Stand 07.11.2026)**
+> **Umsetzung in `src/Automatisierung_v2/Core/Utilities/ExecutableResolver.cs`:**
+> Neue Resolver-Komponente mit 3-stufiger Kette:
+> 1. Expandiert führendes `~/` oder `~\` zum Benutzerverzeichnis (`UserProfile`).
+> 2. Prüft `File.Exists(expanded)` und sucht im System-`PATH` (`FindInPath`).
+> 3. Prüft Standard-Server-Fallback-Pfade (`~/software/bin/SU2_CFD`, `~/miniconda/envs/mpich/bin/mpiexec`, `~/miniconda/bin/gmsh` etc.) und loggt `[RESOLVER] ... -> verwende Fallback: ...`.
+> Eingebunden in `Su2Solver.Solve` und durch Unit-Tests in `ExecutableResolverTests.cs` vollständig abgesichert.
 
 ### Fundstelle
 [`src/projects/MantaAuv/simulation.json#L40-L42`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/projects/MantaAuv/simulation.json#L40-L42) sowie [`src/Automatisierung_v2/Core/Models/SimulationConfig.cs`](file:///c:/Users/leona/OneDrive/Dokumente/PicoGK/AutomatisierungCleanVersion/src/Automatisierung_v2/Core/Models/SimulationConfig.cs)

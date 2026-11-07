@@ -281,26 +281,14 @@ namespace MyPicoGkProject.Solvers.Cfd
         }
 
         /// <summary>
-        /// Warnt, wenn in einer Konfigurationsdatei ausdrücklich eine Mach-Zahl gesetzt wurde,
-        /// diese aber wegen einer gesetzten FreestreamVelocity in solvers/su2.json ignoriert wird (TODO-38).
+        /// Warnt nicht mehr vor wirkungslosem MachNumber, da MachNumber schrittweise entfernt wurde und FreestreamVelocity der Standard ist.
+        /// Gibt stets false zurück.
         /// </summary>
         public static bool WarnIfMachNumberOverridden(
             ConfigLoadReport? simulationReport,
             Su2SolverOptions su2Options,
             TextWriter? output = null)
         {
-            if (su2Options == null || su2Options.FreestreamVelocity <= 0f)
-                return false;
-
-            if (simulationReport != null && simulationReport.Origins.TryGetValue("MachNumber", out string? originFile))
-            {
-                TextWriter writer = output ?? Console.Out;
-                string velocityString = su2Options.FreestreamVelocity.ToString(CultureInfo.InvariantCulture);
-                writer.WriteLine(
-                    $"[WARNUNG] 'MachNumber' in {originFile} ist wirkungslos, weil in solvers/su2.json 'FreestreamVelocity' ({velocityString} m/s) gesetzt ist.");
-                return true;
-            }
-
             return false;
         }
 

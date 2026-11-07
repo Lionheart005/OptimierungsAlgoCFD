@@ -64,9 +64,7 @@ namespace MyPicoGkProject.Core
                 }
             }
 
-            if (maxDimension <= 0f) maxDimension = 1f;
-
-            ShrinkFactor = targetSize / maxDimension;
+            ShrinkFactor = maxDimension > 0f ? targetSize / maxDimension : 1.0f;
 
             // Nur dimensionale Parameter skalieren, Rest unverändert durchreichen
             ShrunkParameters = new Dictionary<string, float>();

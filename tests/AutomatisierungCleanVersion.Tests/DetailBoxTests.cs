@@ -20,11 +20,34 @@ namespace AutomatisierungCleanVersion.Tests
         public DetailBoxTests() => Directory.CreateDirectory(_dir);
         public void Dispose() { if (Directory.Exists(_dir)) Directory.Delete(_dir, true); }
 
-        private static List<Vector2> Airfoil(float c = 50f) => new()
+        private static List<Vector2> Airfoil(float c = 50f)
         {
-            new(c, 0f), new(c * 0.75f, -c * 0.03f), new(c * 0.5f, -c * 0.05f), new(c * 0.25f, -c * 0.04f),
-            new(0f, 0f), new(c * 0.25f, c * 0.06f), new(c * 0.5f, c * 0.08f), new(c * 0.75f, c * 0.05f),
-        };
+            var pts = new List<Vector2>
+            {
+                new(c, 0f),
+                new(c * 0.75f, -c * 0.03f),
+                new(c * 0.5f, -c * 0.05f),
+                new(c * 0.25f, -c * 0.04f),
+                new(c * 0.10f, -c * 0.025f),
+            };
+
+            // Abgerundete Nase (Kreisbogen r = 1 mm), damit die Vorderkante kein Knickpunkt (> 35°) ist
+            float rNose = 0.02f * c;
+            int noseSteps = 8;
+            for (int i = 0; i <= noseSteps; i++)
+            {
+                float angle = -MathF.PI * 0.5f + (MathF.PI * i / noseSteps);
+                float x = rNose * (1.0f - MathF.Cos(angle));
+                float y = rNose * MathF.Sin(angle);
+                pts.Add(new Vector2(x, y));
+            }
+
+            pts.Add(new(c * 0.10f, c * 0.035f));
+            pts.Add(new(c * 0.25f, c * 0.06f));
+            pts.Add(new(c * 0.5f, c * 0.08f));
+            pts.Add(new(c * 0.75f, c * 0.05f));
+            return pts;
+        }
 
         private string[] Geo2D(Gmsh2DMesherOptions options, float factor = 1.0f)
         {

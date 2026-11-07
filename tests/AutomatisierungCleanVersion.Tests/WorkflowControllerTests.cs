@@ -536,5 +536,20 @@ namespace AutomatisierungCleanVersion.Tests
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
             }
         }
+
+        [Theory]
+        [InlineData(0f, "0")]
+        [InlineData(50f, "50")]
+        [InlineData(50.5f, "50.5")]
+        [InlineData(50.555f, "50.56")]
+        [InlineData(0.02f, "0.02")]
+        [InlineData(0.0025f, "0.0025")]
+        [InlineData(-0.1234f, "-0.1234")]
+        [InlineData(-10.5f, "-10.5")]
+        public void FormatParameterValue_Formats_Correctly(float value, string expected)
+        {
+            string actual = WorkflowController.FormatParameterValue(value);
+            Assert.Equal(expected, actual);
+        }
     }
 }

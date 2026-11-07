@@ -41,7 +41,8 @@ namespace MyPicoGkProject.Core
         IReadOnlyDictionary<int, IReadOnlyDictionary<string, float>> RelativeDeviationsToRef,
         GciResult? Gci,
         string SummaryMessage,
-        IReadOnlyDictionary<int, IReadOnlyDictionary<string, float>>? NormalizedDeviationsToRef = null);
+        IReadOnlyDictionary<int, IReadOnlyDictionary<string, float>>? NormalizedDeviationsToRef = null,
+        CalibrationStageData? FallbackStage = null);
 
     /// <summary>
     /// Reine Bewertungslogik für die Netzkalibrierung (Abbruchkriterium, GCI, Monotonie).
@@ -165,8 +166,29 @@ namespace MyPicoGkProject.Core
                 ? monitoredMetrics.ToList()
                 : new List<string> { "Drag" };
 
-            // Referenzstufe ist die feinste gerechnete Stufe (kleinster Faktor)
+            // Referenzstufe ist standardmäßig die feinste gerechnete Stufe (kleinster Faktor)
             var refStage = stages.OrderBy(s => s.Factor).First();
+
+            // Falls die feinste Stufe ungültig ist, prüfe zuerst, ob in stages eine andere gültige Stufe existiert,
+            // die feiner als die gröbste Stufe ist. Nur wenn weniger als 2 Stufen existieren oder die feinste Stufe
+            // der 5 Grundstufen ungültig ist (ohne gültige Zusatzstufe), bleibt es beim Fehler "Referenzstufe fehlgeschlagen".
+            if (!refStage.Converged || !refStage.YPlusOk)
+            {
+                float coarsestFactor = stages.Max(s => s.Factor);
+                var alternativeRef = stages
+                    .Where(s => s.Converged && s.YPlusOk && s.Factor < coarsestFactor)
+                    .OrderBy(s => s.Factor)
+                    .FirstOrDefault();
+
+                bool hasValidZusatzstufe = stages.Any(s => s.Factor < 0.5f && s.Converged && s.YPlusOk);
+                bool baseStage5Valid = stages.Any(s => Math.Abs(s.Factor - 0.5f) < 0.05f && s.Converged && s.YPlusOk);
+                bool baseStage5InvalidWithoutZusatz = !baseStage5Valid && !hasValidZusatzstufe;
+
+                if (stages.Count >= 2 && !baseStage5InvalidWithoutZusatz && alternativeRef != null)
+                {
+                    refStage = alternativeRef;
+                }
+            }
 
             // Abweichungen aller Stufen zur Referenz: relativ (Bericht) und normiert (Entscheidung)
             var (deviations, normalizedDeviations) = ComputeDeviations(stages, refStage, metricsToMonitor, tolerance, absoluteTolerances);
@@ -175,7 +197,12 @@ namespace MyPicoGkProject.Core
             GciResult? gci = null;
             if (stages.Count >= 3)
             {
-                var sortedAsc = stages.OrderBy(s => s.Factor).ToList();
+                var sortedAsc = stages.Where(s => s.Factor >= refStage.Factor).OrderBy(s => s.Factor).ToList();
+                if (sortedAsc.Count < 3)
+                {
+                    sortedAsc = stages.OrderBy(s => s.Factor).ToList();
+                }
+
                 var sFine = sortedAsc[0];
                 var sMed = sortedAsc[1];
                 var sCoarse = sortedAsc[2];
@@ -250,7 +277,11 @@ namespace MyPicoGkProject.Core
             else
             {
                 string msg = $"Keine Grobstufe erreicht die Toleranz von {tolerance * 100:0.0} % gegenüber der Referenzstufe {refStage.Factor:0.00}.";
-                return new CalibrationDecision(false, null, refStage, stages, deviations, gci, msg, normalizedDeviations);
+                var fallback = stages
+                    .Where(s => s.Factor > refStage.Factor && s.Converged && s.YPlusOk)
+                    .OrderBy(s => s.Factor)
+                    .FirstOrDefault() ?? refStage;
+                return new CalibrationDecision(false, null, refStage, stages, deviations, gci, msg, normalizedDeviations, fallback);
             }
         }
 
@@ -362,7 +393,8 @@ namespace MyPicoGkProject.Core
             }
 
             string failMsg = $"Weder die grobe 3D-Stufe noch der 2D-Faktor ({factor2D:0.00}) erreichen in 3D die Toleranz von {tolerance * 100:0.0} % gegenüber der 3D-Referenzstufe {refStage.Factor:0.00}.";
-            return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations);
+            var fallback3D = (mediumStage != null && mediumStage.Converged && mediumStage.YPlusOk) ? mediumStage : refStage;
+            return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations, fallback3D);
         }
     }
 }

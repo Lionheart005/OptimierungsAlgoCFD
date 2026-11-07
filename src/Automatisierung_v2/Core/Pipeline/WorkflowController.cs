@@ -387,11 +387,19 @@ namespace MyPicoGkProject.Core
             }
         }
 
+        public static string FormatParameterValue(float value)
+        {
+            float abs = MathF.Abs(value);
+            if (abs > 0f && abs < 1.0f)
+                return value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+            return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private void PrintVariantHeader(int iter, int variant, Dictionary<string, float> parameters)
         {
-            Console.WriteLine($"\n--- Variante {variant} ---");
+            Console.WriteLine($"\n--- [Iteration {iter}/{_context.Config.MaxIterations} | Variante {variant}/{_context.Config.VariantsPerIteration}] ---");
             Console.Write("       -> Gene: ");
-            foreach (var kvp in parameters) Console.Write($"[{kvp.Key}: {kvp.Value:F2}]  ");
+            foreach (var kvp in parameters) Console.Write($"[{kvp.Key}: {FormatParameterValue(kvp.Value)}]  ");
             Console.WriteLine();
         }
 

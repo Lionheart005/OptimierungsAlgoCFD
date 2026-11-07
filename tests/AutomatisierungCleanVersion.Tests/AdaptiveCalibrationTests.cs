@@ -133,5 +133,47 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.True(decision.Success);
         }
+
+        [Fact]
+        public void RefineAdaptively_Discards_Failed_Extra_Stage_Keeping_Last_Valid_As_Reference()
+        {
+            // B15a: Stufe 6 (0.35) konvergiert, Stufe 7 (0.25) schlägt fehl (z.B. Gmsh/SU2 SimulationFailed).
+            // Stufe 7 darf nicht in stages aufgenommen werden; Stufe 6 bleibt Referenzstufe und FallbackStage ist Stufe 5 (0.50).
+            using var s = new Scenario();
+            Func<float, string, ModelRecord> runner = (factor, tag) =>
+            {
+                s.Factors.Add(factor);
+                var rec = new ModelRecord();
+                rec.PassiveParameters["MeshCells"] = (float)(20000.0 / (factor * factor));
+                rec.PassiveParameters["Drag"] = (float)(0.03 + 0.05 * factor); // Weite Abweichung, Toleranz hält noch nicht bei 0.35 vs 0.50
+                rec.PassiveParameters["YPlus_P95"] = 1.0f;
+
+                if (Math.Abs(factor - 0.25f) < 0.01f)
+                {
+                    // Stufe 7 schlägt fehl (z.B. Gmsh-Netzfehler oder SU2-Abbruch)
+                    rec.SimulationFailed = true;
+                    rec.PassiveParameters["MeshCells"] = 0f;
+                }
+                else
+                {
+                    rec.PassiveParameters["Su2_Converged"] = 1f;
+                }
+                return rec;
+            };
+
+            var (decision, _) = MeshCalibration.Run(s.Context, s.SimContext, runner, new[] { "Drag" }, dimensions: 2);
+
+            // Stufe 7 (0.25) wurde versucht
+            Assert.Contains(0.25f, s.Factors);
+            // Stufe 7 wurde aber verworfen und ist nicht in AllStages
+            Assert.DoesNotContain(decision.AllStages, st => Math.Abs(st.Factor - 0.25f) < 0.01f);
+            // Stufe 6 (0.35) ist die Referenzstufe
+            Assert.Equal(0.35f, decision.ReferenceStage.Factor);
+            Assert.True(decision.ReferenceStage.Converged);
+            Assert.True(decision.ReferenceStage.YPlusOk);
+            // Da die Toleranz bei Stufe 6 noch nicht erreicht wurde, existiert eine FallbackStage (Stufe 5 mit 0.50f)
+            Assert.NotNull(decision.FallbackStage);
+            Assert.Equal(0.50f, decision.FallbackStage!.Factor);
+        }
     }
 }

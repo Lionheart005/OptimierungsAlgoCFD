@@ -317,7 +317,7 @@ namespace MyPicoGkProject
 
             // Der Bouncer ist Framework-Bestandteil und prüft die Fitness, nicht eine
             // projektspezifische Metrik (Entscheidung 6).
-            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed), context.Project.ParameterBounds);
 
             // Optimierungsverfahren: steht als "OptimizationAlgorithm" in der simulation.json.
             IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
@@ -343,21 +343,33 @@ namespace MyPicoGkProject
                         var (decision, reportRelPath) = ExecuteCalibration(
                             definition, context, simulationContext, controller, fitness, validator, optimizer, journal);
 
-                        if (!decision.Success || decision.SelectedStage == null)
+                        if (decision.Success && decision.SelectedStage != null)
+                        {
+                            simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
+                            if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
+                                || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
+                            {
+                                simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                            }
+                            simulationContext.CalibrationReportPath = reportRelPath;
+
+                            Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                        }
+                        else if (decision.FallbackStage != null)
+                        {
+                            var effectiveStage = decision.FallbackStage;
+                            Console.WriteLine($"[WARNUNG] Automatische Netzkalibrierung: {decision.SummaryMessage}");
+                            Console.WriteLine($"[WARNUNG] Nutze feinste validierte Rückfall-Stufe {effectiveStage.LevelIndex} (Faktor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}) für den Optimierungslauf.");
+                            simulationContext.EffectiveMeshRefinementFactor = effectiveStage.Factor;
+                            simulationContext.MeshRefinementSource = $"KALIBRIERT (Rückfall auf Stufe {effectiveStage.LevelIndex}, Faktor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} % an Stufen-/Zellgrenze nicht ganz erreicht), Bericht: {reportRelPath}";
+                            simulationContext.CalibrationReportPath = reportRelPath;
+                            Console.WriteLine($"Netzfaktor: {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                        }
+                        else
                         {
                             throw new InvalidOperationException(
                                 $"[KALIBRIERUNG] Automatische Netzkalibrierung fehlgeschlagen: {decision.SummaryMessage}");
                         }
-
-                        simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
-                        if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
-                            || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
-                        {
-                            simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
-                        }
-                        simulationContext.CalibrationReportPath = reportRelPath;
-
-                        Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
                     }
                     else
                     {
@@ -421,7 +433,7 @@ namespace MyPicoGkProject
             int seed = RunSeed.Resolve(context.Simulation.RandomSeed);
             Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
 
-            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed), context.Project.ParameterBounds);
             IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
                 context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
             var controller = new WorkflowController(
@@ -616,7 +628,7 @@ namespace MyPicoGkProject
             int seed = RunSeed.Resolve(context.Simulation.RandomSeed);
             Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
 
-            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed));
+            IModelValidator validator = new ChampionValidator(fitness, RunSeed.ForValidator(seed), context.Project.ParameterBounds);
             IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
                 context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
             var controller = new WorkflowController(

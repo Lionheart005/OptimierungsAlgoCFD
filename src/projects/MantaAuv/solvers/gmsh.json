@@ -48,5 +48,11 @@
   // "Prism": flache Prismenschichten an der Wand (y+ ~ 1, am Manta gemessen: SU2 konvergiert).
   // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
   "BoundaryLayerMode": "Prism",
-  "WakeRefinement": true
+  "WakeRefinement": true,
+
+  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
+  "DetailBox": false,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSize": 0.0
 }

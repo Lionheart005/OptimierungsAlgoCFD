@@ -77,13 +77,13 @@ namespace MyPicoGkProject.Solvers.Cfd
             return outputMeshPath;
         }
 
-        /// <summary>Kleinster Anteil der berechneten Wandschichtdicke, der noch versucht wird (1 → ½ → ¼ → ⅛).</summary>
-        public const float MinThicknessScale = 0.125f;
+        /// <summary>Kleinster Anteil der berechneten Wandschichtdicke, der noch versucht wird (1 → ½ → ¼ → ⅛ → 1/16).</summary>
+        public const float MinThicknessScale = 0.0625f;
 
         private static int RunGmsh(MeshRequest request, string geoScriptPath, string outputMeshPath)
         {
             using Process mesher = new Process();
-            mesher.StartInfo.FileName = request.Config.GmshPath;
+            mesher.StartInfo.FileName = ExecutableResolver.Resolve(request.Config.GmshPath, "gmsh");
             mesher.StartInfo.Arguments = $"\"{geoScriptPath}\" -2 -nt {request.Config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"";
             mesher.StartInfo.UseShellExecute = false;
             mesher.StartInfo.CreateNoWindow = true;
@@ -268,7 +268,10 @@ namespace MyPicoGkProject.Solvers.Cfd
                     }
                     bool refineEdges = _options.EdgeRefinementFactor > 0f && _options.EdgeRefinementFactor < 1f;
                     float edgeSize = surfaceSize * _options.EdgeRefinementFactor;
-                    var edgeIdx = new HashSet<int>(contour.CornerIndices ?? new List<int>()) { leIdx, teIdx };
+                    var cornerSet = new HashSet<int>(contour.CornerIndices ?? new List<int>());
+                    var edgeIdx = new HashSet<int>();
+                    if (!cornerSet.Contains(leIdx)) edgeIdx.Add(leIdx);
+                    if (!cornerSet.Contains(teIdx)) edgeIdx.Add(teIdx);
 
                     for (int i = 0; i < n; i++)
                     {
@@ -332,19 +335,24 @@ namespace MyPicoGkProject.Solvers.Cfd
                         // Vorderkante und vor der Hinterkante, jeweils oben und unten.
                         float distX = _options.EdgeRefinementDistanceFactor * chordGeo;
                         float minX = contour.Points[leIdx][0], maxX = contour.Points[teIdx][0];
+                        bool refineLe = true;
+                        bool refineTe = !cornerSet.Contains(teIdx);
+
                         foreach (int walkDir in new[] { 1, -1 })
                         {
-                            int fromLe = WalkTo(contour.Points, leIdx, walkDir, pt => pt[0] >= minX + distX);
-                            int fromTe = WalkTo(contour.Points, teIdx, walkDir, pt => pt[0] <= maxX - distX);
-                            foreach (int cand in new[] { leIdx, fromLe, fromTe })
+                            if (refineLe)
                             {
-                                if (cand >= 0 && cand < n && !splitIndices.Contains(cand)) splitIndices.Add(cand);
+                                int fromLe = WalkTo(contour.Points, leIdx, walkDir, pt => pt[0] >= minX + distX);
+                                if (fromLe >= 0 && fromLe < n && !splitIndices.Contains(fromLe)) splitIndices.Add(fromLe);
+                            }
+                            if (refineTe)
+                            {
+                                int fromTe = WalkTo(contour.Points, teIdx, walkDir, pt => pt[0] <= maxX - distX);
+                                if (fromTe >= 0 && fromTe < n && !splitIndices.Contains(fromTe)) splitIndices.Add(fromTe);
                             }
                         }
-                        foreach (int cand in new[] { leIdx, teIdx })
-                        {
-                            if (!splitIndices.Contains(cand)) splitIndices.Add(cand);
-                        }
+                        if (refineLe && !splitIndices.Contains(leIdx)) splitIndices.Add(leIdx);
+                        if (!splitIndices.Contains(teIdx)) splitIndices.Add(teIdx);
                     }
 
                     splitIndices.Sort();

@@ -105,7 +105,56 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.False(decision.Success);
             Assert.Null(decision.SelectedStage);
+            Assert.NotNull(decision.FallbackStage);
+            Assert.Equal(0.71f, decision.FallbackStage!.Factor);
             Assert.Contains("Keine Grobstufe erreicht die Toleranz", decision.SummaryMessage);
+        }
+
+        [Fact]
+        public void EvaluateConfirmation3D_ToleranceNotReached_ReturnsFallbackStage()
+        {
+            // B15b: In 3D-Bestätigung (fCoarse=0.71, fMed=0.50, fFine=0.35):
+            // wenn weder fCoarse noch fMed die Toleranz halten, liefert FallbackStage die Stufe fMed
+            var stages3D = new List<CalibrationStageData>
+            {
+                new(1, 0.71f, 50000, 30.0, new Dictionary<string, float> { ["Cd"] = 0.0600f }, 10f, true, 1.2f, true),
+                new(2, 0.50f, 120000, 70.0, new Dictionary<string, float> { ["Cd"] = 0.0550f }, 12f, true, 1.1f, true),
+                new(3, 0.35f, 300000, 180.0, new Dictionary<string, float> { ["Cd"] = 0.0450f }, 14f, true, 1.0f, true),
+            };
+
+            var decision = CalibrationEvaluator.EvaluateConfirmation3D(0.50f, stages3D, new[] { "Cd" }, 0.02f);
+
+            Assert.False(decision.Success);
+            Assert.Null(decision.SelectedStage);
+            Assert.NotNull(decision.FallbackStage);
+            Assert.Equal(0.50f, decision.FallbackStage!.Factor);
+            Assert.Equal(2, decision.FallbackStage.LevelIndex);
+        }
+
+        [Fact]
+        public void EvaluateCalibration_UnconvergedExtraStage_RecoversLastValidReference()
+        {
+            // B15a/b: Wenn eine Zusatzstufe (0.25f) nicht konvergiert ist, aber Stufe 6 (0.35f) gültig ist,
+            // wird Stufe 6 als Referenzstufe genutzt.
+            var stages = new List<CalibrationStageData>
+            {
+                new(1, 2.00f, 10000, 10.0, new Dictionary<string, float> { ["Cd"] = 0.0500f }, 10f, true, 0.9f, true),
+                new(2, 1.41f, 25000, 25.0, new Dictionary<string, float> { ["Cd"] = 0.0450f }, 12f, true, 0.9f, true),
+                new(3, 1.00f, 70000, 60.0, new Dictionary<string, float> { ["Cd"] = 0.0420f }, 15f, true, 0.9f, true),
+                new(4, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.0410f }, 16f, true, 0.9f, true),
+                new(5, 0.50f, 550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0402f }, 16.2f, true, 0.9f, true),
+                new(6, 0.35f, 1100000, 800.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.5f, true, 0.9f, true),
+                new(7, 0.25f, 0, 900.0, new Dictionary<string, float> { ["Cd"] = 0.0000f }, 0f, false, 0.0f, false), // kaputte Stufe 7
+            };
+
+            var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Cd" }, 0.01f);
+
+            // Stufe 6 (0.35) wurde als Referenz gewählt, nicht die kaputte Stufe 7
+            Assert.Equal(0.35f, decision.ReferenceStage.Factor);
+            Assert.True(decision.ReferenceStage.Converged);
+            Assert.True(decision.Success);
+            Assert.NotNull(decision.SelectedStage);
+            Assert.Equal(0.50f, decision.SelectedStage!.Factor);
         }
 
         [Fact]

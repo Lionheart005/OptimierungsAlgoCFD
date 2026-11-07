@@ -222,7 +222,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         private static int RunGmsh(SimulationConfig config, string arguments, string workingDirectory, string scriptForErrorLog)
         {
             using Process mesher = new Process();
-            mesher.StartInfo.FileName = config.GmshPath;
+            mesher.StartInfo.FileName = ExecutableResolver.Resolve(config.GmshPath, "gmsh");
             mesher.StartInfo.Arguments = arguments;
             mesher.StartInfo.UseShellExecute = false;
             mesher.StartInfo.CreateNoWindow = true;

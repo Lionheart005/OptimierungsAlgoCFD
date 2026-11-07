@@ -12,6 +12,7 @@
   "DynamicViscosity": 1.81e-5,
   "TurbulenceModel": "SA",
   "SpeedOfSound": 343.2,
+  "FreestreamVelocity": 68.64,
 
   // --- Referenzwerte ---
   "ReferenceLength": 0.01,
