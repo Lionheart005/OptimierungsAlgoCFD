@@ -1,24 +1,24 @@
 # Automatisierte CFD-Formoptimierung
 
 Vorwort: 
-Inspiriert durch verschiedene Anregungen im Internet und  Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die unabhängig von großen CAD Programmen mit umständlichen GUI Bedienelementen, sondern nur mit Code komplexe Formen generieren und optimieren kann.
-Besonders war mir wichtig, die Pipeline komplett unabhängig von der 3. Party Softwarelösung zu halten, sodass man das ganze beliebig Komplex aufziehen kann. Es gibt keine Begrenzung in Parametern, Zielfunktion oder Komplexität der Modelle, noch in der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel ein Neuronales Netzwerk anzubinden, das selbt den C# code für PicoGK generiert, sowie die Auswertung übernimmt von n-dimensionalen Optimierungsproblemen, die zu komplex für deterministische Bruteforce methoden werden. Natürlich ist hier viel mit KI entstanden, ich bin kein Software Entwickler, und deshalb auch sehr offen für Feedback und Kritik. 
+Inspiriert durch verschiedene Anregungen im Internet und Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die, unabhängig von großen CAD-Programmen mit umständlichen GUI-Bedienelementen, nur mit Code komplexe Formen generieren und optimieren kann.
+Besonders wichtig war mir, die Pipeline komplett unabhängig von Third-Party-Softwarelösungen zu halten, sodass man das Ganze beliebig komplex aufziehen kann. Es gibt keine Begrenzung bei Parametern, Zielfunktion oder Komplexität der Modelle, noch bei der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel, ein neuronales Netzwerk anzubinden, das selbst den C#-Code für PicoGK generiert sowie die Auswertung von n-dimensionalen Optimierungsproblemen übernimmt, die zu komplex für deterministische Brute-Force-Methoden werden. Natürlich ist hier viel mit KI entstanden, ich bin kein Softwareentwickler und deshalb auch sehr offen für Feedback und Kritik. 
 
 Wie es funktioniert:
 
-Man beschreibt die zu optimierende Form in C# Code und definiert gewisse Variablen, die man anpassen lassen möchte. z.B. Länge und Höhe, aber auch komplexere Funktionen, eigentlich alles was man sich mathematisch vorstellen kann. Es wäre theoretisch durchaus Denkbar ein Mandelbrot zu optimieren (Warum auch immer man das tun sollte). Nun definiert man passive Parameter, die auch dazu gehören, aber indirekt aus der Form resultieren, wie Volumen und Oberfläche. 
-Dann entscheidet man nach welcher Funktion der Algorithmus optimieren soll. Hier muss man sich gut überlegen was man eigentlich möchte. Ein Klassiker wäre z.B. Fitness = Volumen / Widerstand (Also möglichst großes Volumen bei geringem Widerstand.)
+Man beschreibt die zu optimierende Form in C#-Code und definiert gewisse Variablen, die man anpassen lassen möchte, z. B. Länge und Höhe, aber auch komplexere Funktionen – eigentlich alles, was man sich mathematisch vorstellen kann. Es wäre theoretisch durchaus denkbar, ein Mandelbrot zu optimieren (warum auch immer man das tun sollte). Nun definiert man passive Parameter, die auch dazugehören, aber indirekt aus der Form resultieren, wie Volumen und Oberfläche. 
+Dann entscheidet man, nach welcher Funktion der Algorithmus optimieren soll. Hier muss man sich gut überlegen, was man eigentlich möchte. Ein Klassiker wäre z. B. Fitness = Volumen / Widerstand (also möglichst großes Volumen bei geringem Widerstand).
 
-Nun schickt man sein Bauteil durch die Optimierungsschleife und am Ende gibt einem der Algorithmus die Werte aus, die in der Funktion die beste FItness (Score) erreichen. 
+Nun schickt man sein Bauteil durch die Optimierungsschleife und am Ende gibt einem der Algorithmus die Werte aus, die in der Funktion die beste Fitness (Score) erreichen. 
 
---> 'Unser Bauteil ist am besten 30 cm lang und 5 cm hoch um das beste Verhältnis aus Volumen und Widerstand zu bekommen.'
-Und wir bekommen gleich das druckbare .stl Modell dazu!
+--> 'Unser Bauteil ist am besten 30 cm lang und 5 cm hoch, um das beste Verhältnis aus Volumen und Widerstand zu bekommen.'
+Und wir bekommen gleich das druckbare .stl-Modell dazu!
 
-Die Optimierungsverfahren und die Physiksolver sind hier austauschbar, das Prinzip bleibt das gleiche. Ich versuche das Programm möglichst Problem Unabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen möglich in 2D und 3D im Strömungskanal. 
+Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
 
-Für die technischen Details sind die folgenden Handbücher und .md Dateien da. Dort steht alles was man wissen muss an Einstellungen. (Und halleluja sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
+Für die technischen Details sind die folgenden Handbücher und .md-Dateien da. Dort steht alles, was man an Einstellungen wissen muss. (Und halleluja, sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
 
-Für meine Arbeit habe ich jetzt SU2 und GMSH genutzt für Netz und Simulation. der 3D Kernel ist PicoGK, der 2D Kernel ist selber geschrieben (...geprompted) und versucht in den Befehlen möglichst nah an PicoGK zu bleiben. 
+Für meine Arbeit habe ich jetzt SU2 und Gmsh genutzt für Netz und Simulation. Der 3D-Kernel ist PicoGK, der 2D-Kernel ist selbst geschrieben (...gepromptet) und er versucht, in den Befehlen möglichst nah an PicoGK zu bleiben. 
 
 ---
 
