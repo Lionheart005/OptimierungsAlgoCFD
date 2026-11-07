@@ -174,6 +174,7 @@ bestraft. Höhere Fitness = besser.
 | `TargetPicoGkSize` | Auf diese Größe (mm, größte Länge) wird das Modell für PicoGK skaliert, wenn der Gummiband-Skalierer an ist. Zusammen mit `BaseVoxelResolution` bestimmt das, wie viele Voxel ein Modell hat. | `50.0` | 🎯⏱ | 🔴 |
 | `UseRubberBandScaler` | Gummiband-Skalierer an/aus. **Aus**, wenn das Projekt keine Längen-Parameter hat (z. B. nur Prozentwerte wie bei NACA), sonst wird falsch skaliert. | `true` | 🎯 | 🔴 |
 | `UseStlSmoothing` | Glättet die Oberfläche nach dem Voxel-Bau (gegen die „Treppenstufen"). | `true` | 🎯 | 🟡 |
+| `UseProjectedFrontalArea` | Berechnet `FrontalArea` in 3D als wahre projizierte Silhouette (Schattenwurf in der YZ-Ebene quer zur Anströmung) statt als Rechteck des Hüllquaders (`Size.Y × Size.Z`). Bei `false` wird das umschließende Rechteck (`FrontalBoxArea`) verwendet. | `true` | 🎯 | 🟡 |
 | `VoxelSmoothingIterations` | Anzahl der Glättungsdurchgänge (formerhaltend). | `40` | 🎯 | 🔴 |
 | `VoxelSmoothingPremeltingSteps` | Zusätzliche grobe Vorglättungen vor den formerhaltenden Durchgängen. Diese schrumpfen die Form leicht, also klein halten. | `2` | 🎯 | 🔴 |
 

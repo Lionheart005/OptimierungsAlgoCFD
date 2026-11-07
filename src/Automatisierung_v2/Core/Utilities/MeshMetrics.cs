@@ -47,12 +47,18 @@ namespace MyPicoGkProject.Core
     /// </summary>
     public readonly struct MeshMeasurement
     {
-        public MeshMeasurement(float signedVolume, float surfaceArea, MeshBounds bounds, int triangleCount)
+        public MeshMeasurement(
+            float signedVolume,
+            float surfaceArea,
+            MeshBounds bounds,
+            int triangleCount,
+            float frontalProjectedArea = 0f)
         {
             SignedVolume = signedVolume;
             SurfaceArea = surfaceArea;
             Bounds = bounds;
             TriangleCount = triangleCount;
+            FrontalProjectedArea = frontalProjectedArea;
         }
 
         /// <summary>
@@ -76,12 +82,30 @@ namespace MyPicoGkProject.Core
 
         /// <summary>
         /// Angeströmte Fläche als Rechteck aus dem Hüllquader (mm²), quer zur X-Achse. Das ist
-        /// dieselbe Näherung, mit der MantaAuv seine <c>FrontalArea</c> bildet: nicht die
-        /// wahre projizierte Fläche, sondern das umschließende Rechteck. Für <c>REF_AREA</c>
-        /// reicht das, solange es <b>durchgängig</b> dieselbe Definition ist — die Beiwerte
-        /// aller Varianten sind dann untereinander vergleichbar.
+        /// die einfache Hüllquader-Näherung: nicht die wahre projizierte Fläche, sondern das
+        /// umschließende Rechteck (<c>Size.Y × Size.Z</c>).
         /// </summary>
         public float FrontalBoxArea => Bounds.Size.Y * Bounds.Size.Z;
+
+        /// <summary>
+        /// Wahre projizierte Stirnfläche / Silhouette (mm²) in der YZ-Ebene quer zur
+        /// Anströmrichtung (X-Achse).
+        /// <para>
+        /// Anders als <see cref="FrontalBoxArea"/> wird hier der tatsächliche 2D-Schattenwurf
+        /// des Netzes bestimmt: schräge dünne Stäbe, Flügel-Rumpf-Kombinationen oder
+        /// hintereinanderliegende Bauteile erhalten ihre echte Querschnittsfläche statt des
+        /// aufgespannten Hüllrechtecks.
+        /// </para>
+        /// </summary>
+        public float FrontalProjectedArea { get; }
+
+        /// <summary>
+        /// Liefert je nach Schalter entweder die echte projizierte Stirnfläche
+        /// (<see cref="FrontalProjectedArea"/>, Standard) oder das Hüllquader-Rechteck
+        /// (<see cref="FrontalBoxArea"/>).
+        /// </summary>
+        public float GetFrontalArea(bool useProjected = true)
+            => useProjected ? FrontalProjectedArea : FrontalBoxArea;
     }
 
     /// <summary>
@@ -144,8 +168,11 @@ namespace MyPicoGkProject.Core
                 Grow(ref min, ref max, triangle.C);
             }
 
+            MeshBounds bounds = new MeshBounds(min, max);
+            float frontalProjectedArea = ComputeFrontalProjectedArea(triangles, bounds);
+
             return new MeshMeasurement(
-                (float)volume, (float)area, new MeshBounds(min, max), triangles.Count);
+                (float)volume, (float)area, bounds, triangles.Count, frontalProjectedArea);
         }
 
         /// <summary>Oberfläche (mm²) als Summe der Dreiecksflächen.</summary>
@@ -168,6 +195,12 @@ namespace MyPicoGkProject.Core
         /// <summary>Hüllquader des Netzes.</summary>
         public static MeshBounds Bounds(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).Bounds;
+
+        /// <summary>
+        /// Wahre projizierte Stirnfläche (mm²) in der YZ-Ebene quer zur X-Achse.
+        /// </summary>
+        public static float FrontalProjectedArea(IReadOnlyList<StlTriangle> triangles)
+            => Measure(triangles).FrontalProjectedArea;
 
         /// <summary>
         /// Liest die Anzahl der Volumenelemente (Zellen) aus dem Kopf einer SU2-Netzdatei (.su2).
@@ -244,6 +277,139 @@ namespace MyPicoGkProject.Core
         {
             min = Vector3.Min(min, point);
             max = Vector3.Max(max, point);
+        }
+
+        /// <summary>
+        /// Berechnet die wahre projizierte Stirnfläche (Silhouette in der YZ-Ebene quer zur X-Achse)
+        /// über einen schnellen, lückenfreien 2D-Scanline-Schattenwurf auf einem 512×512-Bitgitter.
+        /// <para>
+        /// Warum ein 2D-Bitgitter statt reiner Normalensummation (<c>0.5 * Σ |n_x| A_i</c>):
+        /// Bei nicht-konvexen Körpern, hintereinanderliegenden Flügeln/Streben oder konkaven Taschen
+        /// würde die Normalensumme verdeckte Flächen mehrfach zählen. Das Bitgitter vereinigt
+        /// überlappende Projektionen exakt per logischem ODER (<c>|=</c>) und braucht dafür nur 32 KB
+        /// Speicher im L1-Cache.
+        /// </para>
+        /// </summary>
+        private static float ComputeFrontalProjectedArea(IReadOnlyList<StlTriangle> triangles, MeshBounds bounds)
+        {
+            if (triangles.Count == 0 || bounds.IsEmpty)
+                return 0f;
+
+            double minY = bounds.Min.Y;
+            double minZ = bounds.Min.Z;
+            double sizeY = (double)bounds.Max.Y - minY;
+            double sizeZ = (double)bounds.Max.Z - minZ;
+
+            if (sizeY <= 1e-9 || sizeZ <= 1e-9)
+                return 0f;
+
+            const int GridResolution = 512;
+            const int WordsPerRow = GridResolution / 64; // 8 ulongs je Zeile
+            const double Eps = 1e-9;
+
+            ulong[] grid = new ulong[GridResolution * WordsPerRow];
+
+            double scaleY = GridResolution / sizeY;
+            double scaleZ = GridResolution / sizeZ;
+
+            foreach (StlTriangle tri in triangles)
+            {
+                double u0 = (tri.A.Y - minY) * scaleY;
+                double v0 = (tri.A.Z - minZ) * scaleZ;
+                double u1 = (tri.B.Y - minY) * scaleY;
+                double v1 = (tri.B.Z - minZ) * scaleZ;
+                double u2 = (tri.C.Y - minY) * scaleY;
+                double v2 = (tri.C.Z - minZ) * scaleZ;
+
+                // Entartete 2D-Projektionen (z.B. Seitenwände exakt parallel zur X-Achse) überspringen
+                double cross2D = (u1 - u0) * (v2 - v0) - (v1 - v0) * (u2 - u0);
+                if (Math.Abs(cross2D) <= 1e-12)
+                    continue;
+
+                double vMin = Math.Min(v0, Math.Min(v1, v2));
+                double vMax = Math.Max(v0, Math.Max(v1, v2));
+
+                int ivStart = Math.Max(0, (int)Math.Ceiling(vMin - 0.5 - Eps));
+                int ivEnd = Math.Min(GridResolution - 1, (int)Math.Floor(vMax - 0.5 + Eps));
+
+                if (ivStart > ivEnd)
+                    continue;
+
+                for (int iv = ivStart; iv <= ivEnd; iv++)
+                {
+                    double vc = iv + 0.5;
+                    double uLeft = double.PositiveInfinity;
+                    double uRight = double.NegativeInfinity;
+
+                    IntersectEdge(u0, v0, u1, v1, vc, Eps, ref uLeft, ref uRight);
+                    IntersectEdge(u1, v1, u2, v2, vc, Eps, ref uLeft, ref uRight);
+                    IntersectEdge(u2, v2, u0, v0, vc, Eps, ref uLeft, ref uRight);
+
+                    if (uLeft > uRight)
+                        continue;
+
+                    int iuStart = Math.Max(0, (int)Math.Ceiling(uLeft - 0.5 - Eps));
+                    int iuEnd = Math.Min(GridResolution - 1, (int)Math.Floor(uRight - 0.5 + Eps));
+
+                    if (iuStart > iuEnd)
+                        continue;
+
+                    int rowOffset = iv * WordsPerRow;
+                    int startWord = iuStart >> 6;
+                    int endWord = iuEnd >> 6;
+                    ulong startMask = ulong.MaxValue << (iuStart & 63);
+                    ulong endMask = ulong.MaxValue >> (63 - (iuEnd & 63));
+
+                    if (startWord == endWord)
+                    {
+                        grid[rowOffset + startWord] |= (startMask & endMask);
+                    }
+                    else
+                    {
+                        grid[rowOffset + startWord] |= startMask;
+                        for (int w = startWord + 1; w < endWord; w++)
+                            grid[rowOffset + w] = ulong.MaxValue;
+                        grid[rowOffset + endWord] |= endMask;
+                    }
+                }
+            }
+
+            long coveredCells = 0;
+            for (int i = 0; i < grid.Length; i++)
+            {
+                if (grid[i] != 0UL)
+                    coveredCells += BitOperations.PopCount(grid[i]);
+            }
+
+            double cellArea = (sizeY * sizeZ) / ((double)GridResolution * GridResolution);
+            return (float)(coveredCells * cellArea);
+        }
+
+        private static void IntersectEdge(
+            double ua, double va,
+            double ub, double vb,
+            double vc, double eps,
+            ref double uLeft, ref double uRight)
+        {
+            double vMin = Math.Min(va, vb);
+            double vMax = Math.Max(va, vb);
+            if (vc < vMin - eps || vc > vMax + eps)
+                return;
+
+            double dv = vb - va;
+            if (Math.Abs(dv) <= eps)
+            {
+                double uMin = Math.Min(ua, ub);
+                double uMax = Math.Max(ua, ub);
+                if (uMin < uLeft) uLeft = uMin;
+                if (uMax > uRight) uRight = uMax;
+                return;
+            }
+
+            double t = Math.Clamp((vc - va) / dv, 0.0, 1.0);
+            double uInt = ua + t * (ub - ua);
+            if (uInt < uLeft) uLeft = uInt;
+            if (uInt > uRight) uRight = uInt;
         }
     }
 }

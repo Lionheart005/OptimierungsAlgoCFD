@@ -30,9 +30,13 @@ namespace MyPicoGkProject.Kernels.PicoGk
     /// </summary>
     public static class PicoGkMeshMetrics
     {
-        /// <summary>Volumen, Oberfläche und Hüllquader eines PicoGK-Netzes.</summary>
+        /// <summary>Volumen, Oberfläche, Hüllquader und projizierte Stirnfläche eines PicoGK-Netzes.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="mesh"/> ist <c>null</c>.</exception>
         public static MeshMeasurement Measure(Mesh mesh) => MeshMetrics.Measure(ToTriangles(mesh));
+
+        /// <summary>Wahre projizierte Stirnfläche (mm²) eines PicoGK-Netzes in der YZ-Ebene quer zur X-Achse.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> ist <c>null</c>.</exception>
+        public static float FrontalProjectedArea(Mesh mesh) => MeshMetrics.FrontalProjectedArea(ToTriangles(mesh));
 
         /// <summary>
         /// Ein PicoGK-Netz als framework-eigene Dreiecksliste. Damit lässt sich ein Netz auch

@@ -106,7 +106,7 @@ In `PropellerGeometryGenerator.cs`. Die Vorlage baut einen Quader; ersetze
 
 ```csharp
 result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
-result.AddMetric("FrontalArea", measurement.FrontalBoxArea, MetricScaling.Area);
+result.AddMetric("FrontalArea", measurement.GetFrontalArea(config.UseProjectedFrontalArea), MetricScaling.Area);
 result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
 result.AddMetric("LengthToWidth", length / width, MetricScaling.None);
 ```

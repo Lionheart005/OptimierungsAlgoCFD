@@ -5,6 +5,7 @@ using System.Numerics;
 using PicoGK;
 
 using MyPicoGkProject.Core;
+using MyPicoGkProject.Kernels.PicoGk;
 
 namespace MyPicoGkProject.Projects.MantaAuv
 {
@@ -82,13 +83,16 @@ namespace MyPicoGkProject.Projects.MantaAuv
 
             float sizeY = boundingBox.vecMax.Y - boundingBox.vecMin.Y;
             float sizeZ = boundingBox.vecMax.Z - boundingBox.vecMin.Z;
-            float frontalArea = sizeY * sizeZ;
+            float frontalBoxArea = sizeY * sizeZ;
 
             // 6. SensorDistance berechnen
             float sensorDistanceScore = Vector3.Cross(s2 - s1, s3 - s1).Length() / 2.0f;
 
             // 7. Export (kein Viewer mehr — wird extern gesteuert)
             Mesh exportModel = new Mesh(voxModel);
+            float frontalArea = config.UseProjectedFrontalArea
+                ? PicoGkMeshMetrics.FrontalProjectedArea(exportModel)
+                : frontalBoxArea;
             string modelName = $"Model_Gen{iteration}_Var{variant}.stl";
             string fullModelPath = Path.Combine(outputDirectory, modelName);
             exportModel.SaveToStlFile(fullModelPath);

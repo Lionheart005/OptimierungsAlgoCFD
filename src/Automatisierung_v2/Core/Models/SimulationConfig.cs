@@ -41,6 +41,12 @@ namespace MyPicoGkProject.Core
         /// Glättet die exportierte STL. Aus: die STL kommt unverändert aus dem Voxel-Modell.
         /// </summary>
         public bool UseStlSmoothing { get; set; } = true;
+        /// <summary>
+        /// Berechnet <c>FrontalArea</c> in 3D als wahre projizierte Silhouette (Schattenfläche in der
+        /// YZ-Ebene quer zur Anströmrichtung X) statt als Rechteck des Hüllquaders (<c>Size.Y × Size.Z</c>).
+        /// Aus (<c>false</c>): bisherige Hüllquader-Näherung (<c>FrontalBoxArea</c>).
+        /// </summary>
+        public bool UseProjectedFrontalArea { get; set; } = true;
 
         // 2. CFD & SU2 Einstellungen
         public float MachNumber { get; set; } = 0.1f;

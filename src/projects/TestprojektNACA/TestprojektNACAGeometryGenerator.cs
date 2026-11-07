@@ -129,7 +129,7 @@ namespace MyPicoGkProject.Projects.TestprojektNACA
             var result = new GeometryResult { StlPath = modelPath };
             result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
             result.AddMetric("SurfaceArea", measurement.SurfaceArea, MetricScaling.Area);
-            result.AddMetric("FrontalArea", measurement.FrontalBoxArea, MetricScaling.Area);
+            result.AddMetric("FrontalArea", measurement.GetFrontalArea(config.UseProjectedFrontalArea), MetricScaling.Area);
             result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
 
             return result;

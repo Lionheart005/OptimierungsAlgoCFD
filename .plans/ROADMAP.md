@@ -170,7 +170,7 @@ TODO-56 (Mehrziel/Metrics)                                                      
 ## Meilenstein 3: Große LaTeX-Gesamtdokumentation & Showcase
 
 ### Ziel
-Erstellung einer umfassenden, wissenschaftlich exakten und optisch herausragenden Gesamtdokumentation im LaTeX-Format, die das gesamte Potenzial des Frameworks anhand der 2D- und 3D-Realläufe demonstriert.
+Erstellung einer umfassenden, wissenschaftlich exakten und optisch herausragenden Gesamtdokumentation im LaTeX-Format, die das gesamte Potenzial des Frameworks anhand der 2D- und 3D-Realläufe demonstriert. (Einmal zeigen was das gute Stück alles kann.)
 
 ### Gliederungsstruktur des Dokuments
 

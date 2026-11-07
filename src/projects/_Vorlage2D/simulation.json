@@ -28,6 +28,7 @@
   // --- Abschaltbare Framework-Bausteine ---
   "UseRubberBandScaler": true,
   "UseStlSmoothing": true,
+  "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
   "MeshRefinementFactor": 1.0,

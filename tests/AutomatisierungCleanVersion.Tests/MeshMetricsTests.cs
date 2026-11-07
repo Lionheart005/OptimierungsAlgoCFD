@@ -143,10 +143,9 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Die angeströmte Fläche ist das umschließende Rechteck quer zur X-Achse — beim
-        /// Zylinder also d × d und nicht die Kreisfläche. Dieselbe Näherung benutzt MantaAuv
-        /// seit immer; sie ist als Bezugsgröße brauchbar, weil sie für alle Varianten
-        /// dieselbe Definition hat.
+        /// Die angeströmte Fläche aus dem Hüllquader ist das umschließende Rechteck quer zur X-Achse.
+        /// Beim achsparallelen Quader stimmt diese Hüllquader-Fläche exakt mit der wahren
+        /// projizierten Stirnfläche überein.
         /// </summary>
         [Fact]
         public void The_Frontal_Box_Area_Is_The_Bounding_Rectangle()
@@ -154,6 +153,74 @@ namespace AutomatisierungCleanVersion.Tests
             MeshMeasurement box = MeshMetrics.Measure(Box());
 
             Assert.Equal(300f * 300f, box.FrontalBoxArea, 0);
+            Assert.Equal(300f * 300f, box.FrontalProjectedArea, 0);
+        }
+
+        /// <summary>
+        /// Ein Zylinder entlang X hat in der YZ-Projektion eine Kreisfläche (π/4 · d² ≈ 70.686 mm²),
+        /// während das Hüllrechteck d × d = 90.000 mm² um 27 % zu groß liegt.
+        /// </summary>
+        [Fact]
+        public void A_Cylinder_Has_A_Circular_Projected_Frontal_Area()
+        {
+            IReadOnlyList<StlTriangle> cylinder =
+                TunnelGeometry.CreateCylinder(300f, 600f, Vector3.Zero, 64);
+
+            MeshMeasurement measurement = MeshMetrics.Measure(cylinder);
+            double expectedCircleArea = Math.PI / 4.0 * 300.0 * 300.0;
+
+            Assert.Equal(300f * 300f, measurement.FrontalBoxArea, 0);
+            Assert.Equal((float)expectedCircleArea, measurement.FrontalProjectedArea, (float)(0.005 * expectedCircleArea));
+        }
+
+        /// <summary>
+        /// Ein langer dünner Stab (300 mm lang, 10 mm breit), der um 45° schräg in der YZ-Ebene liegt,
+        /// spannt einen riesigen Hüllquader (~219 × 219 ≈ 48.000 mm²) auf, hat aber in Wahrheit nur
+        /// eine Stirnfläche von 300 × 10 = 3.000 mm².
+        /// </summary>
+        [Fact]
+        public void A_Diagonal_Thin_Rod_In_YZ_Gets_Its_True_Slender_Projected_Area()
+        {
+            // Dünner Stab: 20 mm tief in X, 300 mm lang in Y, 10 mm dick in Z, um 45° um die X-Achse gedreht
+            IReadOnlyList<StlTriangle> axisAlignedRod =
+                TunnelGeometry.CreateBox(new Vector3(20f, 300f, 10f), Vector3.Zero);
+
+            Quaternion rot45AroundX = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 4.0f);
+            List<StlTriangle> diagonalRod = axisAlignedRod
+                .Select(t => new StlTriangle(
+                    Vector3.Transform(t.A, rot45AroundX),
+                    Vector3.Transform(t.B, rot45AroundX),
+                    Vector3.Transform(t.C, rot45AroundX)))
+                .ToList();
+
+            MeshMeasurement measurement = MeshMetrics.Measure(diagonalRod);
+            float expectedTrueArea = 300f * 10f; // 3.000 mm²
+
+            // Hüllquader liegt bei ~(310 / √2)² ≈ 48.050 mm² (über 16x zu groß!)
+            Assert.True(measurement.FrontalBoxArea > 45000f);
+
+            // Wahre projizierte Silhouette trifft die 3.000 mm² auf < 1 % genau
+            Assert.Equal(expectedTrueArea, measurement.FrontalProjectedArea, 0.01f * expectedTrueArea);
+
+            // Der Schalter wählt zwischen beiden Methoden
+            Assert.Equal(measurement.FrontalProjectedArea, measurement.GetFrontalArea(useProjected: true));
+            Assert.Equal(measurement.FrontalBoxArea, measurement.GetFrontalArea(useProjected: false));
+        }
+
+        /// <summary>
+        /// Zwei hintereinanderliegende Körper in Strömungsrichtung (X) werfen denselben Schatten
+        /// in der YZ-Ebene — die projizierte Stirnfläche darf sich dadurch nicht verdoppeln.
+        /// </summary>
+        [Fact]
+        public void Tandem_Bodies_Along_Flow_Direction_Do_Not_Double_Count_Projected_Area()
+        {
+            var frontBox = TunnelGeometry.CreateBox(new Vector3(100f, 200f, 150f), new Vector3(-200f, 0f, 0f));
+            var rearBox = TunnelGeometry.CreateBox(new Vector3(100f, 200f, 150f), new Vector3(200f, 0f, 0f));
+            var combined = frontBox.Concat(rearBox).ToList();
+
+            float projected = MeshMetrics.FrontalProjectedArea(combined);
+
+            Assert.Equal(200f * 150f, projected, 0);
         }
 
         /// <summary>

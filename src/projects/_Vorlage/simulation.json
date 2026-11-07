@@ -65,8 +65,11 @@
   //   bleibt 1 -- dann muessen die Parameter selbst in einer Groesse liegen, mit
   //   der PicoGK gut umgehen kann.
   // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell, mit Treppen.
+  // UseProjectedFrontalArea: true = wahre projizierte Silhouette in der YZ-Ebene,
+  //   false = bisherige Huellquader-Naeherung (Size.Y * Size.Z).
   "UseRubberBandScaler": true,
   "UseStlSmoothing": true,
+  "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
   // Globaler Faktor fuer alle Zellgroessen im Netz (1.0 = Basisgroessen aus gmsh.json,

@@ -112,9 +112,10 @@ namespace MyPicoGkProject.Projects.MeinProjekt
 
             // FrontalArea ist die angeströmte Fläche (quer zur X-Achse) und hat einen zweiten
             // Abnehmer: solvers/su2.json nennt sie unter "ReferenceAreaMetric", SU2 bildet daraus
-            // REF_AREA und normiert damit alle Beiwerte. Wer sie umbenennt, muss den Namen dort
-            // mitziehen — sonst warnt der Solver und rechnet mit einem Ersatzwert.
-            result.AddMetric("FrontalArea", measurement.FrontalBoxArea, MetricScaling.Area);
+            // REF_AREA und normiert damit alle Beiwerte. Über config.UseProjectedFrontalArea (in
+            // simulation.json) lässt sich zwischen der wahren projizierten Silhouette (true, Standard)
+            // und dem Hüllquader-Rechteck Size.Y * Size.Z (false) umschalten.
+            result.AddMetric("FrontalArea", measurement.GetFrontalArea(config.UseProjectedFrontalArea), MetricScaling.Area);
 
             // Spannweite: die Ausdehnung quer zur Strömung. Eine Länge, also Linear.
             result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
