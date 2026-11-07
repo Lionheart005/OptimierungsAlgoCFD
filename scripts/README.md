@@ -1,6 +1,10 @@
-# Lauf auf dem Linux-Server steuern
+# Server-, Deployment- & Einrichtungs-Handbuch (`scripts/`)
 
-> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../src/projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+> **Weiterführende Dokumente (ohne Doppelung):**
+> - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
+> - **Neues Bauteil / Projekt anlegen (3D & 2D):** [`src/projects/README.md`](../src/projects/README.md)
+> - **Framework-Architektur & C#-Entwicklung:** [`src/Automatisierung_v2/README.md`](../src/Automatisierung_v2/README.md)
+> - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../config/README.md)
 
 Zwei Skripte, eine Aufgabe: den Optimierungslauf von Windows aus auf dem
 Hochschulrechner starten und beobachten.
@@ -342,7 +346,7 @@ So sieht ein gesunder Lauf aus:
 
 Steht `dotnet` bei ~100 % und es ist **kein** `SU2_CFD` zu sehen, rechnet gerade
 die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung nur
-100 %" in `ServerHochschuleEinrichten2.txt`).
+100 %" weiter unten unter [Troubleshooting & Fehlerbehebung](#troubleshooting--fehlerbehebung-auf-dem-server)).
 
 ## Was beim Deploy passiert
 
@@ -425,3 +429,183 @@ Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
 
 Ein Lauf, der sofort wieder endet, wird von `start` erkannt — es werden dann direkt
 die letzten Logzeilen ausgegeben. Ältere Logs liegen auf dem Server unter `logs/`.
+
+---
+
+## Einmalige Server-Einrichtung (Linux ohne Sudo / Admin-Rechte)
+
+Wenn das System auf einem neuen Linux-Hochschulserver (Ubuntu, ohne `sudo`-Rechte) von Grund auf eingerichtet werden soll, stehen zwei Wege zur Verfügung: vollautomatisch per Skript oder Schritt für Schritt von Hand.
+
+### Weg 1: Automatische Einrichtung via `setup_server.sh` (Empfohlen)
+
+1. Kopiere [`src/Automatisierung_v2/setup_server.sh`](../src/Automatisierung_v2/setup_server.sh) auf den Server und führe es aus:
+   ```bash
+   chmod +x setup_server.sh
+   ./setup_server.sh
+   ```
+2. **Hinweis zu Anaconda Terms of Service:** Fragt Conda nach der Zustimmung zu den Nutzungsbedingungen, führe einmalig Folgendes aus und starte das Skript danach erneut:
+   ```bash
+   export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
+   export LD_LIBRARY_PATH=$HOME/miniconda/lib:$LD_LIBRARY_PATH
+   conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+   conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+   ```
+3. **Nach dem Setup:** Einmal aus der SSH-Sitzung ausloggen und neu einloggen, damit die Einträge in `~/.bashrc` aktiv sind.
+
+### Weg 2: Manuelle Installation Schritt für Schritt (ohne Sudo)
+
+Falls einzelne Komponenten von Hand nachinstalliert oder überprüft werden sollen:
+
+#### 1. Ordnerstruktur & Miniconda
+```bash
+mkdir -p ~/software ~/Documents/AutomatisierungCleanVersion
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+bash ~/miniconda.sh -b -u -p ~/miniconda
+~/miniconda/bin/conda init bash
+source ~/.bashrc
+rm ~/miniconda.sh
+```
+
+#### 2. System-Bibliotheken, OpenMPI, Xvfb & tmux über Conda
+```bash
+conda install -y -c conda-forge git boost-cpp tbb-devel blosc pkg-config \
+  xorg-libxrandr xorg-libxinerama xorg-libxcursor xorg-libxi xorg-xvfb-server tmux \
+  xorg-libxext xorg-randrproto xorg-renderproto xorg-libxrender xorg-xorgproto \
+  gcc_linux-64 gxx_linux-64 mesalib libglu freeglut xorg-libx11 openmpi
+```
+
+#### 3. Externe Werkzeuge herunterladen (CMake, SU2, Gmsh)
+```bash
+cd ~/software
+
+# CMake (3.29.3)
+wget https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-linux-x86_64.tar.gz
+tar -zxvf cmake-3.29.3-linux-x86_64.tar.gz && rm cmake-3.29.3-linux-x86_64.tar.gz
+
+# SU2 CFD (v7.5.1 mit MPI-Support)
+wget https://github.com/su2code/SU2/releases/download/v7.5.1/SU2-v7.5.1-linux64-mpi.zip -O su2.zip
+unzip su2.zip
+mv SU2-v7.5.1-linux64-mpi SU2-7.5.1 || mv SU2-v7.5.1-linux64 SU2-7.5.1 || mv bin SU2-7.5.1
+rm su2.zip
+mkdir -p $HOME/software/bin
+if [ -d "$HOME/software/SU2-7.5.1/bin" ]; then
+    cp -r $HOME/software/SU2-7.5.1/bin/* $HOME/software/bin/
+else
+    cp -r $HOME/software/SU2-7.5.1/* $HOME/software/bin/
+fi
+chmod +x $HOME/software/bin/SU2_CFD
+
+# Gmsh (4.11.1)
+wget https://gmsh.info/bin/Linux/gmsh-4.11.1-Linux64.tgz
+tar -zxvf gmsh-4.11.1-Linux64.tgz && rm gmsh-4.11.1-Linux64.tgz
+```
+
+#### 4. OpenGL-Header für Mesa bereitstellen (Sudo-Bypass)
+Da ohne `sudo` kein Schreibzugriff auf `/usr/include` besteht, werden die für PicoGK nötigen OpenGL-Header direkt in Condas `include`-Ordner geladen:
+```bash
+mkdir -p $HOME/miniconda/include/GL $HOME/miniconda/include/KHR
+wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/gl.h -O $HOME/miniconda/include/GL/gl.h
+wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/glext.h -O $HOME/miniconda/include/GL/glext.h
+wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/glcorearb.h -O $HOME/miniconda/include/GL/glcorearb.h
+wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/KHR/khrplatform.h -O $HOME/miniconda/include/KHR/khrplatform.h
+```
+
+#### 5. PicoGK Runtime kompilieren (Headless-Modus mit X11)
+```bash
+cd ~/software
+git clone --recursive https://github.com/leap71/PicoGKRuntime.git ~/software/PicoGK
+
+# C++ Typ-Fix in PicoGKTrace.h (oMS ist std::chrono::duration, .count() liefert den Skalar):
+sed -i 's/std::cerr << oMS << " elapsed\\n";/std::cerr << oMS.count() << " elapsed\\n";/g' ~/software/PicoGK/Source/PicoGKTrace.h
+
+export PKG_CONFIG_PATH=$HOME/miniconda/lib/pkgconfig:$PKG_CONFIG_PATH
+export CFLAGS="-I$HOME/miniconda/include"
+export CXXFLAGS="-I$HOME/miniconda/include"
+export LDFLAGS="-L$HOME/miniconda/lib"
+
+rm -rf ~/software/PicoGK/build/* || true
+mkdir -p ~/software/PicoGK/build && cd ~/software/PicoGK/build
+
+# WICHTIG: -DGLFW_BUILD_X11=ON ist Pflicht, damit xvfb-run das virtuelle Display anbinden kann!
+~/software/cmake-3.29.3-linux-x86_64/bin/cmake \
+  -DCMAKE_PREFIX_PATH=$HOME/miniconda \
+  -DBoost_ROOT=$HOME/miniconda \
+  -DBoost_NO_SYSTEM_PATHS=ON \
+  -DPICOGK_NO_VIEWER=ON \
+  -DGLFW_BUILD_WAYLAND=OFF \
+  -DGLFW_BUILD_X11=ON \
+  -DCMAKE_POLICY_DEFAULT_CMP0144=NEW \
+  -DPKG_CONFIG_EXECUTABLE=$HOME/miniconda/bin/pkg-config ..
+
+make -j $(nproc)
+
+# Bibliothek unter beiden Namen (libpicogk.so und libpicogk.26.2.so) bereitstellen:
+TARGET_BIN="$HOME/Documents/AutomatisierungCleanVersion/src/Automatisierung_v2/bin/Debug/net9.0"
+mkdir -p "$TARGET_BIN"
+PICOGK_LIB=$(find ~/software/PicoGK/build -iname "*picogk.so" | head -n 1)
+cp "$PICOGK_LIB" "$TARGET_BIN/libpicogk.so"
+cp "$PICOGK_LIB" "$TARGET_BIN/libpicogk.26.2.so"
+```
+
+#### 6. .NET 9 SDK & Umgebungsvariablen in `~/.bashrc`
+```bash
+cd ~/software
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x ./dotnet-install.sh
+env LD_LIBRARY_PATH="" ./dotnet-install.sh --channel 9.0
+rm dotnet-install.sh
+
+cat << 'EOF' >> ~/.bashrc
+
+# --- PicoGK Automated CFD Framework ---
+export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
+export LD_LIBRARY_PATH=$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}
+export HWLOC_HIDE_ERRORS=1
+export LIBGL_ALWAYS_SOFTWARE=1
+export MESA_GL_VERSION_OVERRIDE=4.1
+export MESA_GLSL_VERSION_OVERRIDE=410
+EOF
+
+source ~/.bashrc
+```
+
+### Manueller Start auf dem Server (falls ohne `sim-runner.sh` gearbeitet wird)
+
+Im Normalbetrieb erledigt `sim.ps1` bzw. `sim-runner.sh` alle diese Schritte automatisch. Zur Referenz die manuellen Befehle:
+
+```bash
+# 1. Tmux-Sitzung öffnen
+~/miniconda/bin/tmux new -s sim
+
+# 2. Umgebung laden & Lauf mit xvfb-run starten
+cd ~/Documents/AutomatisierungCleanVersion
+export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
+export LD_LIBRARY_PATH=$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}
+export HWLOC_HIDE_ERRORS=1
+export LIBGL_ALWAYS_SOFTWARE=1
+xvfb-run -a dotnet run --project src/Automatisierung_v2 -- MantaAuv > simulation.log 2>&1
+
+# 3. Aus tmux abkoppeln (Detach): Strg+B drücken, loslassen, dann D drücken
+# Wieder einhängen: ~/miniconda/bin/tmux attach -t sim
+
+# 4. Manueller Not-Aus (nur eigene Prozesse, niemals globales 'pkill dotnet'!):
+~/miniconda/bin/tmux kill-session -t sim
+pkill -9 -f Automatisierung_v2.dll || true
+pkill -9 -f SU2_CFD || true
+pkill -9 -f mpirun || true
+pkill -9 -f Xvfb || true
+```
+
+### Troubleshooting & Fehlerbehebung auf dem Server
+
+- **`symbol lookup error` bei `mpirun` / OpenMPI:**  
+  Das System greift auf ein unpassendes globales OpenMPI statt der Conda-Version zu. Mit `which mpirun` prüfen — es muss `$HOME/miniconda/bin/mpirun` sein (`$HOME/miniconda/bin` muss im `PATH` vorne stehen oder in `simulation.json` unter `MpiRunPath` angegeben sein).
+- **`prterun was unable to launch` / `Executable not found`:**  
+  `SU2_CFD` liegt nicht unter dem konfigurierten Pfad oder ist nicht ausführbar. Prüfen mit `ls -l ~/software/bin/SU2_CFD` und ggf. `chmod +x ~/software/bin/SU2_CFD`.
+- **`DllNotFoundException: Unable to load shared library 'libpicogk'`:**  
+  `dotnet build` hat das Ausgabeverzeichnis bereinigt. `sim-runner.sh` kopiert die Bibliothek automatisch nach; bei manuellem Build beide Dateien (`libpicogk.so` und `libpicogk.26.2.so`) wie in Schritt 5 wieder nach `src/Automatisierung_v2/bin/Debug/net9.0/` kopieren.
+- **CPU-Auslastung nur 100 % (Single-Core statt Multi-Core):**  
+  SU2 läuft nicht über `mpirun` oder `MpiCores` steht auf `1`. In `src/projects/<Projekt>/simulation.json` prüfen, ob `MpiCores` (z. B. `12`) und `MpiRunPath` gesetzt sind, und mit `top -u $USER` kontrollieren, ob mehrere `SU2_CFD`-Prozesse starten.
+- **`X connection broken` / `Display already in use`:**  
+  Ein alter `Xvfb`-Prozess blockiert das Display. Immer `xvfb-run -a` (automatische Display-Wahl) verwenden und hängende Instanzen bei Bedarf mit `pkill -9 -f Xvfb` beenden.
+

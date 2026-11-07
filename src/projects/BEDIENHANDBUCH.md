@@ -2,8 +2,14 @@
 
 Dieses Handbuch erklärt **ohne Programmierkenntnisse**, wo man das Programm einstellt, was jede
 Einstellung bewirkt und welche man besser in Ruhe lässt. Es beschreibt den Stand vom
-**04.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
+**07.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
 schlägt Alarm, wenn eine Einstellung hier fehlt.
+
+> **Weiterführende Dokumente:**
+> - Neues Bauteil / Projekt programmieren: [`src/projects/README.md`](README.md)
+> - Framework-Architektur & C#-Entwicklung: [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
+> - Server-Steuerung, Deployment & Einrichtung: [`scripts/README.md`](../../scripts/README.md)
+> - Lokale Ausnahmedateien (`*.local.json`): [`config/README.md`](../../config/README.md)
 
 > **Die wichtigsten drei Regeln**
 > 1. **Fehlt eine Einstellung in einer Datei, gilt der Standardwert.** Man muss also nur
@@ -22,6 +28,7 @@ schlägt Alarm, wenn eine Einstellung hier fehlt.
 6. [Die Befehle](#6-die-befehle)
 7. [Häufige Meldungen und was zu tun ist](#7-häufige-meldungen-und-was-zu-tun-ist)
 8. [Begriffe kurz erklärt](#8-begriffe-kurz-erklärt)
+9. [Grenzen des Systems](#9-grenzen-des-systems)
 
 ---
 
@@ -108,6 +115,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … ein **anderes Turbulenzmodell** | `solvers/su2.json` | `TurbulenceModel` | `"SA"` (Standard) oder `"SST"` |
 | … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Rsm"` (Ersatzmodell, Standard) oder `"Evolution"` |
 | … **Startwerte** oder **Grenzen** eines Parameters ändern | `project.json` | `BaseParameters`, `ParameterBounds` | Startwert muss innerhalb der Grenzen liegen |
+| … einen **Parameter fest einstellen** (nicht optimieren) | `project.json` | `ParameterBounds` | `Min` und `Max` auf denselben Wert setzen — der Parameter wird dann immer auf diesen Wert geklemmt |
 | … dass der Optimierer **größere/kleinere Sprünge** macht | `project.json` | `MaxDeviations` | Streuung je Parameter, in dessen Einheit |
 | … die **Ziele** der Bewertung ändern (z. B. Volumengrenzen) | `project.json` | `OptimizationTargets` | welche Namen es gibt, bestimmt die Bewertungsformel des Projekts |
 | … dass Gewinner **strenger/milder** nachgeprüft werden | `simulation.json` | `BouncerTolerance` | `0.2` = 20 % Abweichung erlaubt |
@@ -210,7 +218,9 @@ TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\si
 | `RsmExploitationSigma` | Wie weit um den Besten gesucht wird, als Anteil des Parameterbereichs (`0.1` = 10 %). | `0.1` | 🟡 |
 
 In der ersten Runde zieht `"Rsm"` die Varianten zufällig (außer Variante 1 = Startwerte), um
-eine erste Landkarte zu bekommen.
+eine erste Landkarte zu bekommen. Bevor das Ersatzmodell greift, benötigt `"Rsm"` mindestens
+`((k+1)(k+2))/2 + 2` **gelungene** Simulationen bei `k` Parametern (bei 5 Parametern also 23);
+solange würfelt es gleichverteilt im erlaubten Bereich (Log: `Benötige noch N Basis-Simulationen (DoE)`).
 
 *Nur für `"Evolution"`:*
 
@@ -442,7 +452,7 @@ inzwischen geändert sind:
 | **`Ergebnisse/<Projekt>/run-info.json`** | Der **Fahrtenschreiber** des Laufs: Code-Stand (`Commit`, `Branch`, `DeployHash`, `DeployZeit`, `UncommittedChanges`), Programmversionen (SU2, Gmsh, mpirun, PicoGK), `ZufallsSeed`, Rechner, Aufruf, `Status` (`laeuft`/`abgeschlossen`/`abgebrochen`) und jede Wiederaufnahme. Steht nach einem Server-Neustart noch `laeuft` darin, wurde der Lauf hart unterbrochen. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Quellstand/`** | Kopie des Projektcodes (`*.cs` und `*.json` aus `src/projects/<Projekt>/`) zum Start des Laufs. Damit ist auch Monate später klar, mit welcher Geometrie und welcher Bewertungsformel gerechnet wurde. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Wiederaufnahme/`** | Lauf-Journal `journal.jsonl` für `resume` (eine Zeile je fertiger Rechnung). Ältere Journale heißen `journal_<Zeitstempel>.jsonl` |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile: Iteration, Variante, alle Parameter, alle Kennwerte (Geometrie und SU2), Fitness, Dateipfade, `SimulationFailed` (1 = Rechnung abgebrochen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung). Neu seit TODO-35: `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = vor ITER konvergiert, 0 = bei ITER abgebrochen) und `Su2_Osc_<Metrik>` (z. B. `Su2_Osc_Drag`: relative Schwingung über das Cauchy-Fenster); seit TODO-39: `MeshCells` (Zellzahl aus dem `.su2`-Kopf); seit TODO-40/41: `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung). **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
 | **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
 | **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
@@ -508,6 +518,23 @@ Journal. Erst wo das Journal endet, wird wieder gerechnet.
 * Ein neues `run` beginnt immer frisch. Das alte Journal wird dabei nicht gelöscht, sondern
   als `journal_<Zeitstempel>.jsonl` aufgehoben.
 
+### 6.2 Lokale Befehle (`dotnet`) und direkte Server-Aufrufe
+
+Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver), Unit-Tests oder lokale Simulationsläufe kann das Programm direkt über `dotnet` aufgerufen werden:
+
+| Aufgabe | Befehl |
+| --- | --- |
+| **Alle Unit-Tests ausführen** (ohne Solver lauffähig) | `dotnet test Automatisierung.sln` |
+| **Vorhandene Projekte auflisten** | `dotnet run --project src/Automatisierung_v2 -- --list-projects` |
+| **Konfiguration & Pfade prüfen (Dry-Run)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --print-config` |
+| **Simulation lokal starten** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
+| **Lokale Netzkalibrierung** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
+| **Lokaler Recheck (stationär / URANS)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --recheck=Gen3_Var2 --finer=1 [--unsteady]` |
+| **Lokalen Lauf fortsetzen** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --resume` |
+| **Direkt auf dem Linux-Server per SSH** | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
+
+> **Kein stiller Standard beim direkten Aufruf:** Ohne Projektnamen bricht `dotnet run` (ebenso wie `sim-runner.sh`) sofort ab und listet die verfügbaren Projekte auf, damit ein Tippfehler niemals stundenlang das falsche Projekt rechnet. Optional kann als zweites Argument ein abweichender Pfad zu `src/projects` übergeben oder `SIM_PROJECTS_DIR` gesetzt werden.
+
 ---
 
 ## 7. Häufige Meldungen und was zu tun ist
@@ -568,3 +595,11 @@ Journal. Erst wo das Journal endet, wird wieder gerechnet.
 | **RSM (Ersatzmodell)** | Optimierer, der aus allen bisherigen Rechnungen eine geschätzte Fitness-Landkarte baut und dort sucht. |
 | **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |
 | **`*.local.json`** | Notausgang für Einstellungen, die nur auf einem Rechner gelten sollen. Soll es normalerweise nicht geben. |
+
+---
+
+## 9. Grenzen des Systems
+
+- **Fluch der Dimensionalität:** Das RSM-Ersatzmodell (`"Rsm"`) arbeitet besonders effizient bei etwa 3 bis 15 Parametern. Mit steigender Parameterzahl wächst die Zahl der nötigen DoE-Stützstellen quadratisch (`((k+1)(k+2))/2 + 2`). Bei sehr vielen freien Parametern empfiehlt sich `"Evolution"`.
+- **Voxel-Auflösung (Konzeptphase):** 3D-Voxelgeometrie aus PicoGK ist trotz Oberflächenglättung für die frühe Konzeptphase und den Vergleich von Makroformen ausgelegt. Für die Submillimeter-Feinpolitur glatter Profilkonturen sind direkte analytische Konturen (wie der 2D-Kernel `Shape2D` in `Naca2D`) im Vorteil.
+- **Physikalischer Modellrahmen:** Gerechnet wird inkompressibles RANS (`SOLVER= INC_RANS` mit `SA` oder `SST`), wahlweise stationär oder zeitgenau via Dual-Time-Stepping (URANS). Mehrphasenströmungen (freie Oberfläche, Kavitation), Kompressibilität bei hohen Mach-Zahlen sowie bewegte/rotierende Netze sind damit nicht abgedeckt.

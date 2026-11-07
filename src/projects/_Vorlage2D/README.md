@@ -1,40 +1,19 @@
-# `_Vorlage2D` — Startpunkt für ein neues 2D-CFD-Projekt
+# `_Vorlage2D` — 2D-Kopiervorlage für neue Profilprojekte
 
-> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+> **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
+> **Nachschlagewerk für alle JSON-Einstellungen (inkl. 2D-Vernetzungsoptionen):** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
 
-Dieser Ordner ist **kein Projekt**, sondern die Kopiervorlage für zweidimensionale CFD-Optimierungen.
-Er zeigt vollständig, woraus ein 2D-Projekt besteht: Geometrie (`Shape2D`), Bewertung (`IFitnessCalculator`),
-Projektdefinition (`Cfd2DProjectDefinition`) und vier JSON-Dateien.
-
-## Anlegen
+Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für zweidimensionale CFD-Optimierungen (`Shape2D` → `Gmsh2DMesher` → SU2 2D). Er wird über das Skript
 
 ```powershell
 .\scripts\new-project.ps1 MeinProfil -Template 2D
 ```
 
-Das kopiert diesen Ordner nach `src/projects/MeinProfil/` und ersetzt das Platzhalterwort
-`MeinProjekt2D` überall — in Dateinamen, Klassennamen, Namensraum und in den Kommentarköpfen der
-JSONs. Danach:
+nach `src/projects/MeinProfil/` kopiert, wobei der Platzhalter `MeinProjekt2D` überall automatisch ersetzt wird. Alle weiteren Schritte zum Anpassen von Kontur, Zielfunktion und Parametern sind zentral in [`src/projects/README.md`](../README.md) beschrieben.
 
-1. `src/projects/MeinProfil/MeinProfilGeometryGenerator.cs` — die Konturerzeugung anpassen.
-2. `src/projects/MeinProfil/MeinProfilFitnessCalculator.cs` — die Zielfunktion schreiben.
-3. `src/projects/MeinProfil/project.json` — Parameter, Grenzen und Ziele eintragen (und in `CreateDefaults()` spiegeln).
-4. `simulation.json` und `solvers/*.json` auf das eindampfen, was vom Standard abweicht.
-5. Starten:
+## Besonderheiten von 2D-CFD-Projekten
 
-```powershell
-.\scripts\sim.ps1 run -Project MeinProfil
-```
-
-## Warum die Vorlage selbst nicht startbar ist
-
-`src/projects/_Vorlage2D/` ist im Build des Programms ausgeschlossen
-(`src/Automatisierung_v2/Automatisierung_v2.csproj`), damit keine Definition ohne zugehörigen
-Ordner entsteht. Compiliert wird der Ordner trotzdem — vom Testprojekt
-(`tests/AutomatisierungCleanVersion.Tests/`), um Schnittstellenänderungen sofort zu bemerken.
-
-## Besonderheiten von 2D-CFD
-
-* **Direkter Geometrie-Kernel:** Arbeitet rein auf ebenen Vektorkonturen (`Shape2D`), ohne PicoGK-Voxelgitter und ohne Xvfb/OpenGL.
-* **2D-Netz:** `Gmsh2DMesher` erzeugt ein kreisförmiges Fernfeld mit strukturierter Randschicht (Quad-Zellen) und Nachlauf-Box.
-* **SU2 2D:** Berechnet 2D-RANS mit `Dimensions = 2` und einstellbarem Anstellwinkel `AngleOfAttackDeg`.
+- **Direkter Geometrie-Kernel (`DirectGeometryKernel`):** Arbeitet direkt auf ebenen Vektorkonturen (`Shape2D`), ohne PicoGK-Voxelgitter und ohne Xvfb/OpenGL.
+- **2D-Netz (`Gmsh2DMesher`):** Erzeugt ein kreisförmiges Fernfeld mit strukturierter Quad-Grenzschicht ($y^+ \approx 1$), Kantenverfeinerung an Vorder-/Hinterkante, Detailbox und Nachlauf-Box.
+- **SU2 2D:** Berechnet 2D-RANS mit `Dimensions = 2` und einstellbarem (oder aktiv optimierbarem) Anstellwinkel `AngleOfAttackDeg`.
+- **Build & Test:** Wie `_Vorlage` ist auch `_Vorlage2D` vom Build des Hauptprogramms ausgeschlossen und wird stattdessen vom Testprojekt (`tests/AutomatisierungCleanVersion.Tests/`) compiliert und geprüft.

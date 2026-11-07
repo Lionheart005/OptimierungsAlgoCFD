@@ -1,51 +1,19 @@
-# `_Vorlage` — Startpunkt für ein neues Projekt
+# `_Vorlage` — 3D-Kopiervorlage für neue Projekte
 
-> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+> **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
+> **Nachschlagewerk für alle JSON-Einstellungen:** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
 
-Dieser Ordner ist **kein Projekt**, sondern die Kopiervorlage für eines. Er zeigt vollständig,
-woraus ein Projekt besteht: zwei Klassen mit Geometrie und Bewertung, eine Klasse, die beides
-verdrahtet, und vier JSON-Dateien mit allen Zahlen.
-
-## Anlegen
+Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für 3D-CFD-Bauteile (PicoGK → Gmsh 3D → SU2). Er wird über das Skript
 
 ```powershell
-.\scripts\new-project.ps1 Propeller
+.\scripts\new-project.ps1 MeinBauteil
 ```
 
-Das kopiert diesen Ordner nach `src/projects/Propeller/` und ersetzt das Platzhalterwort
-`MeinProjekt` überall — in Dateinamen, Klassennamen, Namensraum und in den Kommentarköpfen der
-JSONs. Danach:
+nach `src/projects/MeinBauteil/` kopiert, wobei der Platzhalter `MeinProjekt` in allen Datei-, Klassen- und Namensraumnamen automatisch ersetzt wird. Alle weiteren Schritte (Parameter, Geometrie, Zielfunktion, Aufräumen der JSONs und Start) sind zentral in [`src/projects/README.md`](../README.md) beschrieben.
 
-1. `src/projects/Propeller/PropellerGeometryGenerator.cs` — den Quader durch deine Form ersetzen.
-2. `src/projects/Propeller/PropellerFitnessCalculator.cs` — die Formel schreiben.
-3. `src/projects/Propeller/project.json` — Parameter, Grenzen, Ziele. Dieselben Zahlen zusätzlich
-   in `CreateDefaults()` in `PropellerProject.cs`, das ist die Code-Schicht darunter.
-4. `simulation.json` und `solvers/*.json` auf das eindampfen, was vom Code-Standard **abweicht**.
-5. Starten:
+## Besonderheiten dieser Vorlage
 
-```powershell
-.\scripts\sim.ps1 run -Project Propeller
-```
-
-Mehr ist nicht zu tun: die `ProjectRegistry` findet die neue Klasse per Reflection. Es gibt
-**keinen** Eintrag in `Program.cs`, keine Liste, keinen `switch`.
-
-## Warum die Vorlage selbst nicht startbar ist
-
-`src/projects/_Vorlage/` ist im Build des Programms ausgeschlossen
-(`src/Automatisierung_v2/Automatisierung_v2.csproj`). Sonst gäbe es eine Projektdefinition mit dem
-Namen `MeinProjekt`, zu der kein Ordner gehört — und genau das lässt die `ProjectRegistry` beim
-Start zu Recht abbrechen. `_Vorlage` taucht deshalb auch nicht in `--list-projects` auf.
-
-**Compiliert wird der Ordner trotzdem** — vom Testprojekt
-(`tests/AutomatisierungCleanVersion.Tests/`). Ohne das wäre die Vorlage totes Textmaterial:
-änderte sich eine Schnittstelle des Frameworks, würde man es erst beim Anlegen des nächsten
-Projekts merken. So bricht stattdessen `dotnet test` — mit der Dateizeile, die nicht mehr passt.
-
-## Der erste Lauf ist ein Rauchtest
-
-Die mitgelieferte `simulation.json` steht auf `MaxIterations = 1` und
-`VariantsPerIteration = 2` — zwei Varianten, nicht hundert. Sie beantwortet die Frage, ob die
-Kette PicoGK → STL → Gmsh → SU2 → Fitness überhaupt durchläuft. Sitzt das, werden beide Zahlen
-hochgesetzt. Alle übrigen Schlüssel in den JSONs tragen bewusst genau den Code-Standard: die
-Dateien sind als Nachschlagewerk gedacht, nicht als Konfiguration, die so bleiben soll.
+- **Vom Hauptprogramm-Build ausgeschlossen, vom Testprojekt compiliert:**  
+  `src/projects/_Vorlage/` wird in `src/Automatisierung_v2/Automatisierung_v2.csproj` vom Build ausgeschlossen, damit keine Projektdefinition mit dem Platzhalternamen `MeinProjekt` ohne passenden Ordner entsteht (sie erscheint daher auch nicht unter `--list-projects`). Compiliert und geprüft wird der Ordner stattdessen durch `tests/AutomatisierungCleanVersion.Tests/`, sodass Schnittstellenänderungen sofort bei `dotnet test` auffallen.
+- **Erster Lauf als Rauchtest:**  
+  In `simulation.json` stehen `MaxIterations = 1` und `VariantsPerIteration = 2`, damit der erste Lauf schnell prüft, ob die Kette PicoGK → STL → Gmsh → SU2 → Fitness durchläuft. Alle übrigen JSON-Einträge zeigen die dokumentierten Code-Standardwerte als Nachschlagewerk.

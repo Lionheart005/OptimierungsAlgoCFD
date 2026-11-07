@@ -1,6 +1,10 @@
-# Die Projekte
+# Projekt- & Bauteilleitfaden (`src/projects/`)
 
-> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+> **Weiterführende Dokumente (ohne Doppelung):**
+> - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md)
+> - **Framework-Architektur & C#-Entwicklung:** [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
+> - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
+> - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
 
 Ein **Projekt** ist ein Bauteil, das optimiert werden soll: sein Geometrie-Bauplan,
 seine Zielfunktion und seine Zahlen. Jedes Projekt ist genau ein Ordner hier drin.
@@ -152,10 +156,8 @@ Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 1` und
 Kette PicoGK → STL → Gmsh → SU2 → Fitness überhaupt durch? Sitzt das, werden beide
 Zahlen hochgesetzt.
 
-Was welcher Schlüssel bedeutet, steht in
-[`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md) — dort ist auch
-erklärt, warum die Programmpfade PATH-relativ sind und wann ein Projekt davon
-abweichen darf (MantaAuv tut es, wegen des Hochschulservers).
+Was welcher Schlüssel im Einzelnen bedeutet, steht im
+[**Bedienhandbuch** (`BEDIENHANDBUCH.md`, Abschnitt 4)](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).
 
 ### 6. Starten
 
