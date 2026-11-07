@@ -1,8 +1,10 @@
 # Automatisierte CFD-Formoptimierung
 
-Vorwort: 
-Inspiriert durch verschiedene Anregungen im Internet und Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die, unabhängig von großen CAD-Programmen mit umständlichen GUI-Bedienelementen, nur mit Code komplexe Formen generieren und optimieren kann.
-Besonders wichtig war mir, die Pipeline komplett unabhängig von Third-Party-Softwarelösungen zu halten, sodass man das Ganze beliebig komplex aufziehen kann. Es gibt keine Begrenzung bei Parametern, Zielfunktion oder Komplexität der Modelle, noch bei der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel, ein neuronales Netzwerk anzubinden, das selbst den C#-Code für PicoGK generiert sowie die Auswertung von n-dimensionalen Optimierungsproblemen übernimmt, die zu komplex für deterministische Brute-Force-Methoden werden. Natürlich ist hier viel mit KI entstanden, ich bin kein Softwareentwickler und deshalb auch sehr offen für Feedback und Kritik. 
+
+Inspiriert durch verschiedene Anregungen im Internet und Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die, unabhängig von großen CAD-Programmen mit umständlichen GUI-Bedienelementen, sondern nur mit Code komplexe Formen generieren und optimieren kann.
+Besonders wichtig war mir, die Pipeline komplett unabhängig von Third-Party-Softwarelösungen zu halten, sodass man das Ganze beliebig komplex aufziehen kann. Es gibt keine Begrenzung bei Parametern, Zielfunktion oder Komplexität der Modelle, noch bei der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel, ein neuronales Netzwerk anzubinden, das selbst den C#-Code für PicoGK generiert, sowie die Auswertung von n-dimensionalen Optimierungsproblemen übernimmt, die zu komplex für deterministische Brute-Force-Methoden werden. 
+
+Natürlich ist hier viel mit KI entstanden, ich bin kein Softwareentwickler und deshalb auch sehr offen für Feedback und Kritik. 
 
 Wie es funktioniert:
 
@@ -19,6 +21,10 @@ Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prin
 Für die technischen Details sind die folgenden Handbücher und .md-Dateien da. Dort steht alles, was man an Einstellungen wissen muss. (Und halleluja, sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
 
 Für meine Arbeit habe ich jetzt SU2 und Gmsh genutzt für Netz und Simulation. Der 3D-Kernel ist PicoGK, der 2D-Kernel ist selbst geschrieben (...gepromptet) und er versucht, in den Befehlen möglichst nah an PicoGK zu bleiben. 
+
+Ich freu mich über jede Anregung und Interesse! 
+
+~ Leonardo Pleißner
 
 ---
 
