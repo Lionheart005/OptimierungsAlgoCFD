@@ -40,18 +40,21 @@ namespace MyPicoGkProject.Core
         /// Muss aufgerufen werden, <b>nachdem</b> alle Solver-Optionen geladen sind — sonst
         /// fehlen sie in der Aufstellung.
         /// </summary>
-        public static string Write(string workingDirectory, ProjectContext context)
+        public static string Write(string workingDirectory, ProjectContext context, SimulationContext? simContext = null)
         {
             Directory.CreateDirectory(workingDirectory);
 
             string path = Path.Combine(workingDirectory, FileName);
-            File.WriteAllText(path, Build(context).ToJsonString(Options));
+            File.WriteAllText(path, Build(context, simContext).ToJsonString(Options));
 
             return path;
         }
 
         /// <summary>Baut den Inhalt. Getrennt vom Schreiben, damit er ohne Datei prüfbar ist.</summary>
-        public static JsonObject Build(ProjectContext context)
+        public static JsonObject Build(ProjectContext context) => Build(context, null);
+
+        /// <summary>Baut den Inhalt unter Berücksichtigung des optionalen SimulationContext (TODO-42).</summary>
+        public static JsonObject Build(ProjectContext context, SimulationContext? simContext)
         {
             var sections = new JsonObject();
 
@@ -94,6 +97,9 @@ namespace MyPicoGkProject.Core
                     ? null
                     : JsonConfigLoader.Label(context.ProjectDirectory),
                 ["Zeitpunkt"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+                ["WirksamerNetzfaktor"] = simContext != null ? simContext.EffectiveMeshRefinementFactor : context.Simulation.MeshRefinementFactor,
+                ["NetzfaktorQuelle"] = simContext != null ? simContext.MeshRefinementSource : "MANUELL aus simulation.json",
+                ["KalibrierBericht"] = simContext?.CalibrationReportPath,
                 ["Abschnitte"] = sections,
                 // Normalerweise leer. Ist sie es nicht, hat eine gitignorierte Datei mitgeredet,
                 // die niemand hochgeladen hat -- und das erklaert spaeter die Abweichung.

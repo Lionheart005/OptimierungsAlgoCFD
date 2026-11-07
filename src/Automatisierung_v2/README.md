@@ -1,5 +1,7 @@
 # Automatisierte Formoptimierung (PicoGK + Gmsh + SU2)
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Das Framework sucht selbstständig die beste Form für ein Bauteil. Es baut eine
 Geometrie aus Parametern, vernetzt sie, lässt eine Strömungssimulation darüber
 laufen, bewertet das Ergebnis mit einer Zielfunktion und leitet daraus die nächste
@@ -55,10 +57,13 @@ Nach allen Varianten einer Iteration:
    **noch einmal komplett gerechnet**. Weicht seine Fitness zu stark ab, war er ein
    Zufallstreffer und wird verworfen — dann kommt der Nächstbeste dran. Das kostet
    eine zusätzliche Simulation je Iteration (sie läuft unter der Variantennummer 99).
-9. **Nächste Runde vorbereiten.** Der Algorithmus zieht seine Schlüsse.
+9. **Feine Nachrechnung (TODO-43).** Bei `ChampionVerification.Mode = "EachIteration"`
+   wird der Sieger zusätzlich auf feinem Netz nachgerechnet und auf Netzabhängigkeit geprüft.
+10. **Nächste Runde vorbereiten.** Der Algorithmus zieht seine Schlüsse.
 
 Am Ende wird der beste Lauf **des gesamten Durchgangs** gemeldet, nicht der
-Gewinner der letzten Iteration.
+Gewinner der letzten Iteration. Bei `Mode = "Final"` oder `"FinalTopN"` wird der Champion
+bzw. die Top-N noch einmal fein nachgerechnet (`Verifikation.csv`).
 
 ## Welches Projekt gerechnet wird
 
@@ -70,8 +75,13 @@ Stelle, an der er stünde: kein Feld in einer JSON, kein Eintrag in einer Liste.
 | Wo du startest | So wählst du das Projekt |
 |---|---|
 | Server, über die Skripte | `.\scripts\sim.ps1 run -Project MantaAuv` |
+| Server, Kalibrierung | `.\scripts\sim.ps1 calibrate -Project MantaAuv` |
+| Server, Recheck | `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen3_Var2 -Finer 1` |
+| Server, Recheck (URANS) | `.\scripts\sim.ps1 recheck -Project MantaAuv -Variant Gen3_Var2 -Unsteady` |
 | Direkt auf dem Server per SSH | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 | Lokal auf deinem Rechner | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
+| Lokal, Kalibrierung | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
+| Lokal, Recheck | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --recheck=Gen3_Var2 --finer=1` |
 
 **Es gibt keinen stillen Standard.** Ohne Angabe bricht das Programm ab und nennt
 die vorhandenen Projekte; `sim-runner.sh` genauso. Einzige Ausnahme ist der
@@ -250,6 +260,7 @@ eine Validierung je Iteration**. Vorgabe also 10 × 10 + 10 = 110 Läufe.
 | Schlüssel | Vorgabe | Bedeutung |
 |---|---|---|
 | `MachNumber` | `0.1` | Anströmung; wird mit `SpeedOfSound` aus `su2.json` in m/s umgerechnet |
+| `MeshRefinementFactor` | `1.0` | Globaler Faktor für alle Zellgrößen (1.0 = Basis, < 1.0 = feiner, > 1.0 = gröber) |
 | `Su2MaxIterations` | `500` | Obergrenze der SU2-Iterationen je Simulation |
 | `CauchyElements` | `150` | Über so viele Iterationen muss der Widerstand ruhig sein |
 | `CauchyTolerance` | `"1e-4"` | Wie ruhig. Kleiner = genauer = langsamer |
@@ -381,10 +392,15 @@ Die Formel selbst steht im Code, nicht in der JSON — siehe
 | `ResultMetrics` | `{ "Drag": "CD" }` | **Welche Ergebnisgrößen ankommen**, siehe unten |
 | `ConvergenceField` | `"DRAG"` | SU2 `CONV_FIELD` — woran SU2 seine Konvergenz misst |
 | `HistoryOutput` | `["ITER","RMS_RES","AERO_COEFF"]` | Welche Spaltengruppen SU2 schreibt |
+| `OscillationWarnLimit` | `0.02` | Schwelle für relative Schwingungswarnung (2 %) |
+| `TreatUnconvergedAsFailed` | `false` | Unkonvergierte Läufe bei `ITER` als gescheitert werten |
+| `ResultAveraging` | `"Last"` | `"Last"` (letzte Zeile) oder `"CauchyWindowMean"` (Mittelwert) |
 | `CflNumber` | `5.0` | Schrittweite des Lösers. Höher = schneller, aber instabiler |
 | `CflAdapt` | `true` | Schrittweite automatisch anpassen |
 | `CflAdaptFactorDown` / `…Up` | `0.5` / `1.2` | Faktoren beim Verkleinern/Vergrößern |
 | `CflAdaptMin` / `CflAdaptMax` | `1.0` / `50.0` | Schranken dafür |
+| `TargetYPlus` | `1.0` | Ziel-y+ für die Wandauflösung der Grenzschicht |
+| `YPlusWarnFactor` | `2.0` | Warnfaktor: P95 > TargetYPlus × YPlusWarnFactor warnt |
 
 `ReferenceAreaMetric` verdient Aufmerksamkeit: Der Widerstandsbeiwert `CD` wird auf
 diese Fläche bezogen. Passt der Name nicht zu einer Metrik, die das Projekt
@@ -394,6 +410,25 @@ tatsächlich vorhandenen Metriknamen auf.
 
 Das Framework rechnet durchgehend in **Millimetern**; die Umrechnung mm² → m² für
 SU2 passiert automatisch.
+
+### Was SU2 rechnet
+
+SU2 löst die **inkompressiblen Reynolds-gemittelten Navier-Stokes-Gleichungen** (`SOLVER= INC_RANS`)
+mit konstanter Dichte und Viskosität ohne Energiegleichung. Als Turbulenzmodell dient
+Spalart-Allmaras (`KIND_TURB_MODEL= SA`) mit einer Transportgleichung für $\tilde{\nu}$.
+Die Rechnung ist **stationär** und iteriert in einer Pseudozeit (Euler implizit mit adaptiver
+CFL-Zahl), bis die Abbruchkriterien greifen (`ITER`, Residuum $< 10^{-8}$ oder Cauchy-Konvergenz
+auf `CONV_FIELD`).
+
+Die Randbedingungen sind im Solver fest verdrahtet und koppeln an Gmsh über die Namen der
+`Physical Surface`-Gruppen:
+* **`MARKER_FAR = ( Farfield )`:** Fernfeld-Randbedingung an der gesamten Außenhülle des Kanals.
+  Ob Fluid ein- oder ausströmt, folgt allein aus der Richtung von $\vec{v}_\infty$ relativ zur
+  Flächennormale (bei Anströmung in $+x$-Richtung Einlass an $x_\text{min}$, Auslass an $x_\text{max}$).
+* **`MARKER_HEATFLUX = ( Wall, 0.0 )`:** Haftbedingung ($v = 0$, $\tilde{\nu} = 0$) an der
+  adiabaten Bauteilwand. Da keine Energiegleichung gelöst wird, wirkt allein die Haftung.
+* **`MARKER_MONITORING = ( Wall )` / `MARKER_PLOTTING = ( Wall )`:** Die Bauteilwand ist die
+  Integrationsfläche für Beiwerte ($C_D$, $C_L$, …) und die Ausgabefläche für `surface.vtu`.
 
 ### Mehr als nur Widerstand auslesen
 
@@ -435,6 +470,27 @@ Fitness-Rechners nennen: der Controller prüft diese Liste **nach der ersten
 gerechneten Variante** und bricht dort ab, statt stundenlang mit einer
 Ersatz-Fitness weiterzurechnen.
 
+### Verlauf-Archiv und Konvergenzbewertung (TODO-35)
+
+Nach jeder Simulation archiviert der Solver den vollständigen Verlauf (`history.csv`
+und `current_config.cfg`) unter `Analyseergebnisse/Verlaeufe/History_Gen{i}_Var{v}.csv`
+bzw. `Config_...` (im Fehlerfall in `FehlerLogs/`).
+
+Die reine Analyseklasse `Su2HistoryAnalyzer` wertet die Verlaufsdaten aus und ergänzt
+in `record.PassiveParameters` (und damit in der Ergebnis-CSV):
+* **`Su2_Iterations`:** tatsächlich gerechnete Iterationen.
+* **`Su2_Converged`:** `1.0`, wenn SU2 vor `ITER` über das Cauchy- oder Residuen-Kriterium
+  konvergiert ist; `0.0`, wenn bei `ITER` abgebrochen wurde.
+* **`Su2_Osc_<Metrik>`:** relative Schwingungsbreite `(max - min) / |mean|` über das
+  Cauchy-Fenster (z. B. `Su2_Osc_Drag`).
+
+Wurde `ITER` ohne Konvergenz erreicht, warnt der Solver. Mit `TreatUnconvergedAsFailed: true`
+können unkonvergierte Rechnungen automatisch als Fehlversuch gewertet werden.
+Bei instationären Strömungen mit periodischer Wirbelablösung schwankt der Beiwert;
+liegt die Schwankung über `OscillationWarnLimit` (Vorgabe 0,02 = 2 %), warnt der Solver,
+und mit `ResultAveraging: "CauchyWindowMean"` kann der Mittelwert über das Cauchy-Fenster
+als robuster Ersatzwert übernommen werden.
+
 ## `solvers/gmsh.json` — Vernetzer
 
 ### Windkanal (Simulationsdomäne)
@@ -443,7 +499,7 @@ Ersatz-Fitness weiterzurechnen.
 |---|---|---|
 | `TunnelShape` | `"Box"` | `"Box"` oder `"Cylinder"` |
 | `TunnelSizeX` / `Y` / `Z` | `600` / `300` / `300` | Kantenlängen des Quaders in mm |
-| `TunnelCenterX` / `Y` / `Z` | `0` / `0` / `0` | Mittelpunkt; das Modell sitzt im Ursprung |
+| `TunnelCenterX` / `Y` / `Z` | `0` / `0` / `0` | Mittelpunkt; das Modell sitzt im Ursprung (Empfehlung für Nachlauf: TunnelCenterX so setzen, dass stromabwärts >= 10 Modelllängen Platz sind) |
 | `TunnelDiameter` | `300` | Nur bei `"Cylinder"`: Durchmesser quer zur Strömung |
 | `TunnelLength` | `600` | Nur bei `"Cylinder"`: Länge entlang X (Strömungsrichtung) |
 | `TunnelSegments` | `64` | Nur bei `"Cylinder"`: Feinheit des Mantels |
@@ -460,6 +516,19 @@ beeinflussen die Ränder das Ergebnis.
 | `BoundaryLayerSizeMax` | `120.0` | Größte Zellgröße weit weg vom Modell |
 | `BoundaryLayerDistMin` | `3.0` | Bis zu diesem Wandabstand gilt die feine Größe |
 | `BoundaryLayerDistMax` | `40.0` | Ab diesem Abstand gilt die grobe |
+| `WakeRefinement` | `false` | Dynamische Nachlauf-Box stromabwärts an/aus |
+| `WakeLengthFactor` | `2.0` | Länge der Nachlauf-Box als Vielfaches von `lenX` |
+| `WakeWidthFactor` | `0.5` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ` |
+| `WakeCellSize` | `0.0` | Zellgröße in der Nachlauf-Box in mm (`0.0` = automatisch `lenX / 6.0`) |
+| `MeshSizeFromCurvature` | `false` | Krümmungsabhängige Netzverfeinerung aktivieren |
+| `BoundaryLayerMode` | `"Threshold"` | `"Threshold"` (unstrukturiert, y+ ≈ 30–70), `"Prism"` (Prismen-Wandschicht, y+ ≈ 1, Empfehlung für Voxel-Körper), `"Hexa"` (Quader-Wandschicht, nur glatte Körper; siehe BEDIENHANDBUCH 4.4) |
+| `TargetYPlus` | `1.0` | Ziel-y+ für die erste Zellhöhe y1 an der Wand |
+| `BoundaryLayerMinLayers` | `4` | Mindestanzahl an Schichten in der Grenzschicht |
+| `BoundaryLayerGrowthRate` | `1.2` | Wachstumsfaktor von Schicht zu Schicht |
+| `BoundaryLayerLayers` | `0` | Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta |
+| `SurfaceCellSize` | `0.0` | Zellgröße auf Bauteilwand in mm; 0.0 = nutzt BoundaryLayerSizeMin |
+| `CurvatureElements` | `20` | Elemente pro 2π bei krümmungsabhängiger Netzverfeinerung |
+| `ClassifyAngleDeg` | `40.0` | Winkelgrenze in Grad für ClassifySurfaces bei Neuvernetzung |
 
 Dazwischen wird linear vergröbert. Das ist der wirksamste Hebel für die Rechenzeit:
 `BoundaryLayerSizeMin` zu halbieren vervielfacht die Zellenzahl.
@@ -480,7 +549,7 @@ war es ein gemeinsamer Topf, und ein zweites Projekt überschrieb die CSV des er
 |---|---|
 | `Iteration`, `Variant` | Woher die Zeile stammt. `Variant 99` = Kontrollrechnung des Türstehers |
 | `Length`, `Width`, … | Die **aktiven** Parameter — was der Algorithmus eingestellt hat |
-| `Volume`, `FrontalArea`, `SensorDistance` | **Passive** Messwerte aus der Geometrie |
+| `Volume`, `FrontalArea`, `SensorDistance`, `MeshCells`, `BoundaryLayerHexShare`, `YPlus_Median`, `YPlus_P95`, `YPlus_Max` | **Passive** Messwerte aus der Geometrie, Vernetzung und y+-Wandauflösung (`MeshCells`: Anzahl SU2-Zellen, `BoundaryLayerHexShare`: Quader-Anteil) |
 | `ScaleFactor` | Mit welchem Faktor geschrumpft wurde (1 = Scaler aus) |
 | `Drag` | Widerstandsbeiwert CD aus SU2 |
 | `Fitness` | Die Bewertung. Größer ist besser |
@@ -594,7 +663,7 @@ Testprojekt compiliert. Sonst gäbe es eine Projektdefinition mit dem Platzhalte
 totes Textmaterial: so bricht eine geänderte Schnittstelle sofort `dotnet test` und
 nicht Monate später beim Anlegen eines Projekts.
 
-## Die acht Interfaces
+## Die Interfaces
 
 | Interface | Aufgabe | Implementierung |
 |---|---|---|
@@ -606,6 +675,7 @@ nicht Monate später beim Anlegen eines Projekts.
 | `IFitnessCalculator` | Messwerte → eine Zahl | `MantaFitnessCalculator` |
 | `IOptimizationAlgorithm` | nächste Parameter vorschlagen | `EvolutionaryAlgorithm`, `RsmOptimizationAlgorithm` |
 | `IModelValidator` | Champion gegenprüfen | `ChampionValidator` |
+| `IHasRepresentativeSection` | Optional: 3D-Projekt mit repräsentativem 2D-Querschnitt (TODO-48) | `TestprojektNACAProject` |
 
 `IProjectDefinition` ist der Vertrag, der `Program.cs` von den Projekten befreit hat:
 

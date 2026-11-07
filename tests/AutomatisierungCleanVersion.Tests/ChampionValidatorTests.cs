@@ -192,5 +192,77 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Throws<InvalidOperationException>(
                 () => validator.ValidateChampion(new List<ModelRecord>(), Config(), _ => new ModelRecord()));
         }
+
+        [Fact]
+        public void Jitter_With_Bounds_Scales_Relatively_To_Parameter_Range()
+        {
+            var candidate = new ModelRecord
+            {
+                Variant = 1,
+                Fitness = 10f,
+                ActiveParameters = new Dictionary<string, float> { { "Length", 100f } }
+            };
+
+            var bounds = new Dictionary<string, (float Min, float Max)>
+            {
+                { "Length", (50f, 250f) } // Range = 200f
+            };
+
+            Dictionary<string, float>? seen = null;
+            // Random mit festem Seed
+            var validator = new ChampionValidator(FitnessReturning(10f), new Random(42), bounds);
+
+            var config = new SimulationConfig
+            {
+                BouncerTolerance = 0.2f,
+                BouncerJitter = 0.05f // 5% der Spanne 200f = 10.0f
+            };
+
+            validator.ValidateChampion(
+                new List<ModelRecord> { candidate },
+                config,
+                p => { seen = p; return new ModelRecord(); });
+
+            Assert.NotNull(seen);
+            float diff = Math.Abs(seen!["Length"] - 100f);
+            Assert.Equal(10.0f, diff, 4);
+        }
+
+        [Fact]
+        public void Jitter_With_Bounds_Clamps_To_Min_And_Max()
+        {
+            var candidateAtMin = new ModelRecord
+            {
+                Variant = 1,
+                Fitness = 10f,
+                ActiveParameters = new Dictionary<string, float> { { "Camber", 0.0f } }
+            };
+
+            var bounds = new Dictionary<string, (float Min, float Max)>
+            {
+                { "Camber", (0.0f, 0.1f) } // Min = 0.0
+            };
+
+            var config = new SimulationConfig
+            {
+                BouncerTolerance = 0.2f,
+                BouncerJitter = 0.5f // Großer Jitter
+            };
+
+            // Über mehrere Durchläufe testen, dass der Wert nie unter Min oder über Max rutscht
+            for (int seed = 0; seed < 20; seed++)
+            {
+                Dictionary<string, float>? seen = null;
+                var validator = new ChampionValidator(FitnessReturning(10f), new Random(seed), bounds);
+
+                validator.ValidateChampion(
+                    new List<ModelRecord> { candidateAtMin },
+                    config,
+                    p => { seen = p; return new ModelRecord(); });
+
+                Assert.NotNull(seen);
+                Assert.InRange(seen!["Camber"], 0.0f, 0.1f);
+            }
+        }
     }
 }

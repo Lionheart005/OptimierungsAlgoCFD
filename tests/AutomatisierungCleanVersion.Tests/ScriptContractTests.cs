@@ -21,8 +21,7 @@ namespace AutomatisierungCleanVersion.Tests
     /// </summary>
     public class ScriptContractTests
     {
-        /// <summary>Der Ordner <c>scripts/</c> im Repo-Wurzelverzeichnis.</summary>
-        private static string ScriptsDirectory
+        private static string RepoRoot
         {
             get
             {
@@ -31,8 +30,16 @@ namespace AutomatisierungCleanVersion.Tests
                 Assert.True(projectsRoot != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
 
                 // src/projects -> src -> Repo-Wurzel
-                string repoRoot = Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot)!)!;
-                string scripts = Path.Combine(repoRoot, "scripts");
+                return Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot)!)!;
+            }
+        }
+
+        /// <summary>Der Ordner <c>scripts/</c> im Repo-Wurzelverzeichnis.</summary>
+        private static string ScriptsDirectory
+        {
+            get
+            {
+                string scripts = Path.Combine(RepoRoot, "scripts");
 
                 Assert.True(Directory.Exists(scripts), $"Der Ordner scripts/ fehlt (gesucht: {scripts}).");
 
@@ -45,6 +52,15 @@ namespace AutomatisierungCleanVersion.Tests
             string file = Path.Combine(ScriptsDirectory, fileName);
 
             Assert.True(File.Exists(file), $"scripts/{fileName} fehlt.");
+
+            return File.ReadAllText(file);
+        }
+
+        private static string ReadRepoFile(string relativePath)
+        {
+            string file = Path.Combine(RepoRoot, relativePath);
+
+            Assert.True(File.Exists(file), $"{relativePath} fehlt.");
 
             return File.ReadAllText(file);
         }
@@ -162,6 +178,150 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Contains("*.local.json", sim);
             Assert.Contains(JsonConfigLoader.MachineSpecificSuffix, sim);
+        }
+
+        /// <summary>
+        /// TODO-31: Jeder ssh- und scp-Aufruf trägt die Zeitgrenzen. Ein einziger Aufruf ohne
+        /// sie genügt, damit eine tote VPN-Verbindung wieder unbegrenzt und stumm hängt — und
+        /// zwar genau an der Stelle, die man beim Nachrüsten vergessen hat.
+        /// </summary>
+        [Fact]
+        public void Every_Ssh_And_Scp_Call_Carries_The_Timeouts()
+        {
+            string code = WithoutComments(Read("sim.ps1"));
+
+            var calls = Regex.Matches(code, @"&\s*(ssh|scp)\b[^\r\n]*");
+            Assert.NotEmpty(calls);
+
+            foreach (Match call in calls)
+            {
+                Assert.True(call.Value.Contains("@SshOptions"),
+                    $"Dieser Aufruf in scripts/sim.ps1 hat keine Zeitgrenzen: {call.Value.Trim()}");
+            }
+        }
+
+        /// <summary>
+        /// Die Zeitgrenzen sind bewusst großzügig: unter Volllast antwortet der Server träge, und
+        /// zu knappe Werte haben früher gesunde Verbindungen abgebrochen. Wer sie verschärft, soll
+        /// an diesem Test vorbei — und dabei die Begründung im Skript lesen.
+        /// </summary>
+        [Fact]
+        public void The_Ssh_Timeouts_Stay_Generous()
+        {
+            string sim = Read("sim.ps1");
+
+            int Value(string option)
+            {
+                Match match = Regex.Match(sim, $@"'{option}=(\d+)'");
+                Assert.True(match.Success, $"{option} fehlt in $SshOptions (scripts/sim.ps1).");
+                return int.Parse(match.Groups[1].Value);
+            }
+
+            Assert.True(Value("ConnectTimeout") >= 60, "ConnectTimeout unter 60 s bricht unter Volllast gesunde Verbindungen ab.");
+            Assert.True(Value("ServerAliveInterval") * Value("ServerAliveCountMax") >= 180,
+                "Unter 3 Minuten Funkstille sollte keine Verbindung als tot gelten.");
+        }
+
+        /// <summary>
+        /// TODO-31: Wird sim.ps1 fetch oder status ohne explizites -Project aufgerufen, fragt
+        /// das Skript per 'lastproject' auf dem Server nach dem zuletzt gerechneten Projekt,
+        /// statt stillschweigend die Standard-Vorgabe zu nutzen.
+        /// </summary>
+        [Fact]
+        public void Fetch_And_Status_Query_Lastproject_When_No_Project_Is_Given()
+        {
+            string sim = Read("sim.ps1");
+
+            Assert.Contains("lastproject", sim);
+            Assert.Contains("PSBoundParameters.ContainsKey('Project')", sim);
+        }
+
+        /// <summary>
+        /// TODO-31: .last_project liegt wie .last_exit nur auf dem Server und gehört
+        /// nicht ins Git-Repository.
+        /// </summary>
+        [Fact]
+        public void Last_Project_File_Is_Ignored_In_Gitignore()
+        {
+            string gitignore = ReadRepoFile(".gitignore");
+
+            Assert.Contains(".last_project", gitignore);
+        }
+
+        /// <summary>
+        /// TODO-31: Der lokale Zielordner für Serverergebnisse enthält den Projektnamen,
+        /// damit Ergebnisse verschiedener Projekte sich nicht im selben Zeitstempel-Ordner
+        /// vermischen: Serverergebnisse/<Server>_<Projekt>_<Zeitstempel>/.
+        /// </summary>
+        [Fact]
+        public void The_Fetch_Target_Folder_Contains_The_Project_Name()
+        {
+            string sim = Read("sim.ps1");
+
+            Assert.Matches(@"\$\{Server\}_\$\{Project\}_\$stamp", sim);
+        }
+
+        /// <summary>
+        /// TODO-31: Der Befehl 'pack' auf dem Server schnürt das Ergebnis-Archiv und kennt
+        /// die drei Umfänge standard (CSV, Log, Config, Verläufe), champion (+Champion-VTUs)
+        /// und all (gesamter Ergebnisordner).
+        /// </summary>
+        [Fact]
+        public void The_Runner_Pack_Command_Knows_The_Three_Scopes()
+        {
+            string runner = Read("sim-runner.sh");
+
+            Assert.Matches(@"pack\)", runner);
+            Assert.Contains("standard", runner);
+            Assert.Contains("champion", runner);
+            Assert.Contains("all", runner);
+        }
+
+        /// <summary>
+        /// TODO-31: sim-runner.sh merkt sich in cmd_foreground das gerechnete Projekt in
+        /// .last_project und gibt es über den Befehl 'lastproject' (ohne require_project) aus.
+        /// </summary>
+        [Fact]
+        public void The_Runner_Has_The_Lastproject_Command()
+        {
+            string runner = Read("sim-runner.sh");
+
+            Assert.Contains(".last_project", runner);
+            Assert.Matches(@"lastproject\)", runner);
+        }
+
+        /// <summary>
+        /// TODO-42: Beide Skripte unterstützen den Befehl 'calibrate'.
+        /// Windows reicht ihn per -ThenCalibrate an den Server weiter, und der Runner führt --calibrate aus.
+        /// </summary>
+        [Fact]
+        public void Both_Scripts_Know_The_Calibrate_Command()
+        {
+            string sim = Read("sim.ps1");
+            string runner = Read("sim-runner.sh");
+
+            Assert.Contains("'calibrate'", sim);
+            Assert.Contains("-ThenCalibrate", sim);
+            Assert.Matches(@"calibrate\)\s+cmd_calibrate", runner);
+            Assert.Contains("--calibrate", runner);
+        }
+
+        /// <summary>
+        /// TODO-43: Beide Skripte unterstützen den Befehl 'recheck' zur feinen Nachrechnung
+        /// einzelner Varianten mit Parametern -Variant und -Finer.
+        /// </summary>
+        [Fact]
+        public void Both_Scripts_Know_The_Recheck_Command()
+        {
+            string sim = Read("sim.ps1");
+            string runner = Read("sim-runner.sh");
+
+            Assert.Contains("'recheck'", sim);
+            Assert.Contains("$Variant", sim);
+            Assert.Contains("$Finer", sim);
+            Assert.Matches(@"recheck\)\s+cmd_recheck", runner);
+            Assert.Contains("--recheck", runner);
+            Assert.Contains("--finer", runner);
         }
     }
 }

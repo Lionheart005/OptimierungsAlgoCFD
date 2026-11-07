@@ -73,6 +73,25 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(viaConstructor.ShrinkFactor, viaFactory.ShrinkFactor);
             Assert.Equal(viaConstructor.ShrunkParameters["Length"], viaFactory.ShrunkParameters["Length"]);
         }
+
+        [Fact]
+        public void Scaler_With_Empty_Dimensional_Parameters_Has_Neutral_ShrinkFactor()
+        {
+            var parameters = new Dictionary<string, float>
+            {
+                { "MaxCamber", 0.02f },
+                { "CamberPos", 0.4f },
+                { "Thickness", 0.12f }
+            };
+            var dimensional = new HashSet<string>();
+
+            var scaler = new RubberBandScaler(parameters, dimensional, targetSize: 50.0f);
+
+            Assert.Equal(1.0f, scaler.ShrinkFactor);
+            Assert.Equal(0.02f, scaler.ShrunkParameters["MaxCamber"]);
+            Assert.Equal(0.4f, scaler.ShrunkParameters["CamberPos"]);
+            Assert.Equal(0.12f, scaler.ShrunkParameters["Thickness"]);
+        }
     }
 }
 

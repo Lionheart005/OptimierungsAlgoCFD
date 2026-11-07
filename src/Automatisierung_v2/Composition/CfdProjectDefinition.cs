@@ -1,3 +1,4 @@
+using System;
 using MyPicoGkProject.Core;
 using MyPicoGkProject.Kernels.PicoGk;
 using MyPicoGkProject.Solvers.Cfd;
@@ -49,12 +50,24 @@ namespace MyPicoGkProject.Composition
         /// <summary>
         /// Eine Stufe: Gmsh vernetzt, SU2 rechnet. Die Zahlen dazu kommen aus
         /// <c>solvers/gmsh.json</c> und <c>solvers/su2.json</c> im Projektordner.
+        /// Warnt bei wirkungslosem MachNumber und übergibt gemeinsame FlowConditions an Mesher und Solver (TODO-38).
         /// </summary>
-        public virtual SolverStage[] CreateStages(ProjectContext context) => new[]
+        public virtual SolverStage[] CreateStages(ProjectContext context)
         {
-            new SolverStage(
-                new GmshCfdMesher(context.LoadSolverOptions<GmshMesherOptions>("gmsh")),
-                new Su2Solver(context.LoadSolverOptions<Su2SolverOptions>("su2")))
-        };
+            var gmshOptions = context.LoadSolverOptions<GmshMesherOptions>("gmsh");
+            var su2Options = context.LoadSolverOptions<Su2SolverOptions>("su2");
+
+            var simulationReport = context.Loaded.Find(c => string.Equals(c.Name, "simulation.json", StringComparison.OrdinalIgnoreCase))?.Report;
+            Su2ConfigGenerator.WarnIfMachNumberOverridden(simulationReport, su2Options);
+
+            FlowConditions flow = FlowConditions.From(context.Simulation, su2Options);
+
+            return new[]
+            {
+                new SolverStage(
+                    new GmshCfdMesher(gmshOptions, flow),
+                    new Su2Solver(su2Options, flow))
+            };
+        }
     }
 }

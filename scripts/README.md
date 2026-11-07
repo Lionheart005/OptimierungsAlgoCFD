@@ -1,5 +1,7 @@
 # Lauf auf dem Linux-Server steuern
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](../src/projects/BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Zwei Skripte, eine Aufgabe: den Optimierungslauf von Windows aus auf dem
 Hochschulrechner starten und beobachten.
 
@@ -8,6 +10,7 @@ Hochschulrechner starten und beobachten.
 | `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
 | `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage`) |
+| `plot_history.py` | Windows / Linux | Konvergenzverläufe (history.csv) prüfen, auswerten und plotten |
 
 `new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
 Werkzeugkästchen ist. Was danach zu tun ist, steht in
@@ -75,6 +78,9 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
                             # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
 .\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
+.\scripts\sim.ps1 resume    # Abgebrochenen Lauf fortsetzen (ohne Upload, ohne Build)
+.\scripts\sim.ps1 calibrate # Netzkalibrierung starten (ermittelt optimalen MeshRefinementFactor)
+.\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Einzelne Variante auf feinerem Netz nachrechnen
 .\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
 .\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze?
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
@@ -92,34 +98,78 @@ einem laufenden Lauf verweigert er das Löschen. Was du behalten willst, holst d
 vorher mit `fetch -All`.
 
 Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
-Ordnername unter `src/projects/`. Ohne die Angabe gilt die Vorgabe `MantaAuv`, und
-die Skripte sagen das auch: auf der Windows-Seite als Hinweiszeile, auf dem Server
-gar nicht mehr. `sim-runner.sh` hat **keinen** Standard mehr — von Hand aufgerufen
-verlangt es `SIM_PROJECT=<Name>`, weil ein Vertipper dort sonst klaglos ein anderes
-Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
+Ordnername unter `src/projects/`. Bei `deploy`, `run` und `doctor` gilt ohne Angabe
+die Vorgabe `MantaAuv` (mit Hinweis). `fetch` und `status` fragen dagegen automatisch
+das zuletzt gerechnete Projekt (`lastproject`) auf dem Server ab, sodass nach einem Lauf
+kein manuelles `-Project` nötig ist.
+
+### Abgebrochenen Lauf fortsetzen (`resume`)
+
+tmux schützt nur dagegen, dass die Konsole zugeht oder die SSH-Verbindung abreißt —
+nicht gegen einen Neustart des Servers, einen Stromausfall oder einen Absturz. Dafür
+schreibt jeder Lauf ein Journal (`Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl`):
+eine Zeile je fertiger Rechnung, sofort auf die Platte gebracht.
+
+```powershell
+.\scripts\sim.ps1 status -Project Naca2D   # meldet "Abgebrochener Lauf gefunden: … Rechnungen gesichert"
+.\scripts\sim.ps1 resume -Project Naca2D   # setzt dort fort
+```
+
+`resume` startet das Programm mit `--resume`. Es läuft mit demselben Zufalls-Seed von
+vorn, nimmt die gesicherten Ergebnisse aber aus dem Journal, statt sie neu zu rechnen
+(Log: `[WIEDERAUFNAHME] … übernommen`). Das dauert Sekunden; danach wird normal
+weitergerechnet. Verloren geht höchstens die Variante, die beim Abbruch gerade lief.
+
+* `resume` lädt **nichts hoch und baut nicht**. Weicht der lokale Code vom Server ab,
+  gibt es nur eine Warnung: neuer Code braucht einen neuen Lauf (`run`).
+* Hat sich die Konfiguration des Projekts geändert, bricht `resume` ab und nennt die
+  Datei. Ein geänderter Seed in `simulation.json` wird gemeldet, es gilt der aus dem Journal.
+* Ein neues `run` (auch ein Neustart durch `deploy`) archiviert das alte Journal als
+  `journal_<Zeitstempel>.jsonl` und beginnt frisch.
+
+`sim-runner.sh` auf dem Server hat **keinen** stillen Standard mehr — von Hand aufgerufen
+verlangt es `SIM_PROJECT=<Name>` (außer bei `lastproject`, `projects`, `delete`, `stop`, `running`, `hash`),
+weil ein Vertipper dort sonst klaglos ein anderes Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
 
 ## Ergebnisse herunterladen
 
-Alles landet unter `.\Serverergebnisse\<Server>_<Zeitstempel>\` — der Zeitstempel
-verhindert, dass ein späterer Abruf einen früheren überschreibt. Der Ordner ist
+Alles landet unter `.\Serverergebnisse\<Server>_<Projekt>_<Zeitstempel>\` — Projektname
+und Zeitstempel verhindern, dass sich verschiedene Projekte oder Abrufe überschreiben. Der Ordner ist
 gitignored.
 
-### Nur das Ergebnis (Standard)
+Das Herunterladen packt die gewünschten Dateien auf dem Server mit `sim-runner.sh pack <Projekt> <Umfang>`
+zu einem einzigen `tar.gz`, lädt dieses mit **einem** scp-Aufruf herunter und entpackt es lokal mit `tar.exe`.
+Über das VPN spart das Zeit und verhindert Hänger bei vielen Einzelverbindungen.
+
+### Drei Umfänge: Standard, -Champion, -All
+
+#### 1. Nur das Ergebnis (Standard)
 
 ```powershell
 .\scripts\sim.ps1 fetch
 ```
 
-Holt `Simulation_Results.csv` und `simulation.log` — zusammen wenige KB.
-Das ist der Normalfall: die CSV *ist* das Ergebnis der Optimierung.
+Holt `Simulation_Results.csv`, `effective-config.json`, `run-info.json`, `Quellstand/`, das Projekt-Log, `Analyseergebnisse/Verlaeufe/`,
+`Kalibrierung/` und `Verifikation.csv` (jede Datei nur wenn vorhanden).
+Das ist der Normalfall: wenige KB bis MB, schnell über VPN. Fehlt die CSV nach dem Entpacken, bricht
+das Skript mit einer roten Fehlermeldung und der Liste aller auf dem Server vorhandenen Projektergebnisse ab.
 
-### Der komplette Ergebnisse-Ordner
+#### 2. Mit Champion-Dateien (-Champion)
+
+```powershell
+.\scripts\sim.ps1 fetch -Champion
+```
+
+Holt den Standard-Umfang plus die ParaView-VTU-Dateien des Champions und Top-N (`Surface_GenX_VarY.vtu`
+und `Volume_GenX_VarY.vtu` laut `simulation.log` sowie alle `*Champion*.vtu`).
+
+#### 3. Der komplette Ergebnisse-Ordner (-All)
 
 ```powershell
 .\scripts\sim.ps1 fetch -All
 ```
 
-Kopiert alles: Geometrien, Netze, ParaView-Dateien, SU2-Arbeitsdateien.
+Kopiert alles: alle Geometrien (STL), Netze (.su2), ParaView-Dateien (.vtu) und Arbeitsdateien.
 
 > **Größe beachten.** Pro Variante fallen rund 15–20 MB an (STL 1–3 MB,
 > SU2-Netz 4–8 MB, zwei `.vtu` 4–9 MB). Ein Probelauf mit 2 Varianten liegt bei
@@ -168,6 +218,10 @@ Alles unterhalb von `Ergebnisse/<Projekt>/`:
 |---|---|
 | `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
 | `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
+| `run-info.json` | Fahrtenschreiber: Code-Stand (Commit, Branch, Deploy-Hash), Programmversionen, Zufalls-Seed, Rechner, Status, Wiederaufnahmen |
+| `Quellstand/` | Kopie von `src/projects/<Projekt>/` (`*.cs`, `*.json`) zum Start des Laufs |
+| `Wiederaufnahme/journal.jsonl` | Lauf-Journal für `resume`; ältere als `journal_<Zeitstempel>.jsonl` |
+| `Analyseergebnisse/Verlaeufe/` | Gespeicherte Konvergenzverläufe (`History_*.csv`) und Konfigurationen (`Config_*.cfg`) |
 | `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
 | `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
 | `Model_GenX_VarY.stl` | erzeugte Geometrie |
@@ -189,6 +243,72 @@ Anderer Rechner oder anderes Projekt:
 
 Nach `run` kann die Konsole zu — der Lauf hängt in einer tmux-Sitzung und
 überlebt das Ende der SSH-Verbindung.
+
+## Eine Rechnung von Hand prüfen
+
+Nach einem Lauf (oder währenddessen) kann die Konvergenz der SU2-Strömungssimulationen
+überprüft und visualisiert werden:
+
+### 1. Verläufe und Ergebnisse abholen
+
+```powershell
+.\scripts\sim.ps1 fetch
+# bzw. für ein bestimmtes Projekt:
+.\scripts\sim.ps1 fetch -Project MantaAuv
+```
+
+Das holt `Simulation_Results.csv`, `effective-config.json` und standardmäßig den Ordner
+`Analyseergebnisse/Verlaeufe/` (mit allen `History_GenX_VarY.csv` und `Config_GenX_VarY.cfg`)
+nach `.\Serverergebnisse\<Projekt>\`.
+
+### 2. Konvergenz prüfen und plotten mit `plot_history.py`
+
+Das Skript `scripts/plot_history.py` basiert auf `pandas` und `matplotlib`
+(`pip install pandas matplotlib`):
+
+**a) Übersichtstabelle aller Varianten anzeigen:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv
+```
+Gibt eine kompakte Konsole-Tabelle aus:
+- Anzahl gerechneter Iterationen im Vergleich zu `ITER`
+- Konvergiert (`ja`/`nein`, d.h. Abbruchkriterium vor Erreichen von `ITER` erfüllt)
+- Residuenabfall in Dekaden (erstes `rms[...]`-Residuum)
+- Endwerte und Schwingung `(max-min)/|mean|` in % über das Cauchy-Fenster für jede Metrik (`CD`, `CL`, …)
+
+**b) Einzelne Variante im Detail plotten:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv --var Gen1_Var1
+# oder direkt die CSV-Datei angeben:
+python scripts/plot_history.py Serverergebnisse/MantaAuv/Analyseergebnisse/Verlaeufe/History_Gen1_Var1.csv
+```
+Erzeugt ein PNG mit drei übereinanderliegenden Diagrammen (gespeichert als `History_Gen1_Var1.png`
+neben der CSV-Datei):
+1. **Kennwerte über Iteration**: Verlauf der aerodynamischen Beiwerte (`CD`, `CL`, …).
+2. **Residuen (logarithmisch)**: Alle `rms[...]`-Spalten über die Iterationen.
+3. **Konvergenz-Fenster (Cauchy)**: Gezoomte Darstellung der Hauptmetrik mit Endwertlinie,
+   Toleranzband (`±cauchy_eps`) und schraffiertem Cauchy-Fenster.
+
+Mit `--show` öffnet sich zusätzlich ein interaktives Matplotlib-Fenster.
+
+**c) Mehrere Varianten vergleichen:**
+```powershell
+python scripts/plot_history.py Serverergebnisse/MantaAuv --compare
+python scripts/plot_history.py Serverergebnisse/MantaAuv --compare --var Gen1_Var1 Gen2_Var3
+```
+Überlagert die Kennwert- und Residuenkurven der Varianten in einer gemeinsamen Grafik
+und speichert `History_Compare.png` im Verzeichnis.
+
+### 3. Strömungsfeld und Druckverteilung in ParaView prüfen
+
+Wenn die Konvergenz rechnerisch geprüft ist und das 3D-Strömungsfeld im Detail interessiert:
+
+```powershell
+.\scripts\sim.ps1 fetch -Champion -Project MantaAuv
+```
+Holt die VTU-Dateien des Champions (`Surface_*.vtu` und `Volume_*.vtu`). Diese können
+direkt in ParaView geöffnet werden, um Druckverteilung, Grenzschicht und eventuelle
+Wirbelablösungen visuell zu analysieren.
 
 ## Auslastung auf dem Server ansehen
 
@@ -240,6 +360,10 @@ die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung
    laufenden Prozess die DLL unter den Füßen wegziehen.
 5. `dotnet build` und danach `libpicogk.so` neben die DLL kopieren (der Build
    räumt den Ordner gelegentlich auf).
+6. Erst nach erfolgreichem Build: `.deploy_hash` und `deploy-info.json` schreiben.
+   `deploy-info.json` enthält Commit, Branch, Deploy-Zeit und — wenn ein git gefunden
+   wird (PATH oder GitHub Desktop) — ob es nicht-committete Änderungen gab. Das Programm
+   übernimmt das in `run-info.json`, denn auf dem Server gibt es kein `.git`.
 
 **Verwaiste Dateien werden vor dem Entpacken entfernt.** Ein Deploy überschreibt nur,
 es löscht nicht — eine umbenannte oder verschobene Datei lag danach doppelt auf dem
@@ -280,6 +404,17 @@ Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
   Nutzers. `stop` killt gezielt `Automatisierung_v2.dll` und dessen Kindprozesse.
 - **Xvfb-Reste** werden bewusst nicht abgeschossen: `xvfb-run -a` sucht sich eine
   freie Display-Nummer. Wenn doch nötig: `pkill -9 -f Xvfb`.
+- **Tote VPN-Verbindung hängt ewig:** Ohne Zeitgrenze wartet ssh/scp bei einem
+  abgerissenen AnyConnect-Tunnel unbegrenzt und ohne Meldung. Seit dem 04.11.2026 gibt
+  `sim.ps1` jedem Aufruf großzügige Grenzen mit (`$SshOptions` oben im Skript): eine
+  Minute für den Verbindungsaufbau, Abbruch erst nach **3 Minuten** ohne jedes
+  Lebenszeichen. Das ist bewusst weit gefasst: Unter Volllast antwortet der Server
+  träge, und knappe Werte haben früher gesunde Verbindungen abgebrochen. Ein stiller,
+  aber laufender Befehl (Build, `stop`) wird dadurch nicht abgebrochen, weil sshd die
+  Lebenszeichen selbst beantwortet. **Bricht die Verbindung ab, rechnet ein Lauf in
+  tmux auf dem Server trotzdem weiter.** Der Test
+  `ScriptContractTests.Every_Ssh_And_Scp_Call_Carries_The_Timeouts` passt auf, dass
+  kein neuer Aufruf ohne Grenzen dazukommt.
 
 ## Wenn etwas klemmt
 

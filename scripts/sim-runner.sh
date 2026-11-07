@@ -48,6 +48,7 @@ LOG_FILE="$REPO_DIR/simulation.log"
 LOG_ARCHIVE="$REPO_DIR/logs"
 HASH_FILE="$REPO_DIR/.deploy_hash"
 EXIT_FILE="$REPO_DIR/.last_exit"
+LAST_PROJECT_FILE="$REPO_DIR/.last_project"
 
 # Alles Projektbezogene setzt require_project, nicht der Dateikopf: ohne Projektnamen
 # waeren das Pfade wie ".../Ergebnisse/" -- und die zeigen auf etwas, das existiert.
@@ -400,9 +401,13 @@ cmd_foreground() {
     # Nur noch der Projektname. Das zweite Argument war frueher das config-Verzeichnis;
     # seit TODO-24 waere es das PROJEKT-Verzeichnis, und das findet das Programm selbst,
     # indem es von hier aus nach src/projects/ aufwaerts sucht.
-    xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" >>"$LOG_FILE" 2>&1 || rc=$?
+    # LP_NUM_THREADS=1: der PicoGK-Viewer rendert unter Xvfb per Software-OpenGL (llvmpipe)
+    # ununterbrochen, sonst auf allen Kernen -- gemessen ~10 Kerne, die SU2 und Gmsh fehlten
+    # (Servertest 06.11.2026). Zu sehen ist das Fenster ohnehin nicht.
+    LP_NUM_THREADS=1 xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$@" >>"$LOG_FILE" 2>&1 || rc=$?
 
     echo "$rc" >"$EXIT_FILE"
+    echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
     {
         echo "==================================================================="
         echo " Ende:     $(date '+%Y-%m-%d %H:%M:%S')  (Exit-Code $rc)"
@@ -461,6 +466,163 @@ cmd_start() {
     fi
 
     say "[RUNNER] FEHLER: Der Lauf ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
+# Setzt einen abgebrochenen Lauf fort (TODO-52). Aufgebaut wie cmd_start, aber mit
+# --resume: das Programm liest Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl, nimmt
+# den Seed von dort und spielt die gesicherten Rechnungen wieder ab, statt sie neu zu
+# rechnen. Gebaut wird hier NICHT neu, wenn eine DLL da ist: resume rechnet bewusst mit
+# dem Stand weiter, der auf dem Server liegt (F28).
+cmd_resume() {
+    require_project resume
+    load_env
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+    echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --resume"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Fortsetzung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Die Fortsetzung ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
+cmd_calibrate() {
+    require_project calibrate
+    load_env
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --calibrate"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Kalibrierung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Die Kalibrierung ist sofort wieder beendet. Letzte Logzeilen:"
+    tail -n 25 "$LOG_FILE" 2>/dev/null || true
+    return 1
+}
+
+cmd_recheck() {
+    require_project recheck
+    load_env
+
+    local var=""
+    local finer="1"
+    local unsteady=false
+    local recheck_args="--recheck"
+
+    for arg in "$@"; do
+        if [ "$arg" = "--unsteady" ] || [ "$arg" = "-unsteady" ]; then
+            unsteady=true
+        elif [ -z "$var" ]; then
+            var="$arg"
+        else
+            finer="$arg"
+        fi
+    done
+
+    if [ -n "$var" ]; then
+        recheck_args="--recheck=$var"
+    fi
+    if [ -n "$finer" ]; then
+        recheck_args="$recheck_args --finer=$finer"
+    fi
+    if [ "$unsteady" = true ]; then
+        recheck_args="$recheck_args --unsteady"
+    fi
+
+    if is_running; then
+        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        return 1
+    fi
+
+    if [ ! -f "$APP_DLL" ]; then
+        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        cmd_build
+    else
+        restore_picogk || true
+    fi
+
+    if has_session; then
+        tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$LOG_FILE" ]; then
+        mkdir -p "$LOG_ARCHIVE"
+        mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
+    fi
+    : >"$LOG_FILE"
+    rm -f "$EXIT_FILE"
+
+    tmux new-session -d -s "$SESSION" \
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground $recheck_args"
+
+    sleep 3
+
+    if is_running; then
+        say "[RUNNER] Recheck gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        return 0
+    fi
+
+    say "[RUNNER] FEHLER: Der Recheck ist sofort wieder beendet. Letzte Logzeilen:"
     tail -n 25 "$LOG_FILE" 2>/dev/null || true
     return 1
 }
@@ -526,6 +688,16 @@ cmd_status() {
 
     if has_session; then say "tmux:  Sitzung '$SESSION' vorhanden"; else say "tmux:  keine Sitzung '$SESSION'"; fi
 
+    # Abgebrochener Lauf (TODO-52): nichts laeuft, aber das Journal hat keine Schlusszeile.
+    # Das ist der Fall nach einem Server-Neustart, einem Stromausfall oder einem 'stop'.
+    # Die Eintraege beginnen mit {"Index", die Schlusszeile mit {"Ende".
+    local journal="$RESULT_DIR/Wiederaufnahme/journal.jsonl"
+    if ! is_running && [ -f "$journal" ] && ! tail -n 1 "$journal" | grep -q '^{"Ende"'; then
+        local saved
+        saved="$(grep -c '^{"Index"' "$journal" || true)"
+        say "Abgebrochener Lauf gefunden: ${saved:-0} Rechnungen gesichert. Fortsetzen mit: .\\scripts\\sim.ps1 resume -Project $PROJECT_NAME"
+    fi
+
     say "Ergebnisse: Ergebnisse/$PROJECT_NAME/"
 
     if [ -f "$RESULT_CSV" ]; then
@@ -582,7 +754,7 @@ cmd_delete() {
     fi
 
     local targets=() path
-    for path in "$REPO_DIR/Ergebnisse" "$LOG_FILE" "$LOG_ARCHIVE" "$EXIT_FILE"; do
+    for path in "$REPO_DIR/Ergebnisse" "$LOG_FILE" "$LOG_ARCHIVE" "$EXIT_FILE" "$LAST_PROJECT_FILE"; do
         if [ -e "$path" ]; then targets+=("$path"); fi
     done
 
@@ -677,6 +849,138 @@ cmd_projects() {
     done
 }
 
+# Gibt den Namen des zuletzt gerechneten Projekts aus (.last_project).
+# Bewusst OHNE require_project: wird von Windows aus abgefragt, wenn kein -Project angegeben wurde.
+cmd_lastproject() {
+    if [ -s "$LAST_PROJECT_FILE" ]; then
+        cat "$LAST_PROJECT_FILE"
+    else
+        return 1
+    fi
+}
+
+# Packt die Ergebnisse des angegebenen Projekts in ein komprimiertes Archiv (.tar.gz).
+# Gibt als letzte Zeile auf stdout den Pfad des Archivs aus.
+#
+# Umfaenge:
+#   standard: CSV, effective-config.json, run-info.json, Quellstand/, simulation.log,
+#             Analyseergebnisse/Verlaeufe/, Kalibrierung/, Verifikation.csv
+#             (jede Datei/jeder Ordner nur wenn vorhanden)
+#   champion: standard + VTUs des Champions / Top-N (Surface_GenX_VarY.vtu,
+#             Volume_GenX_VarY.vtu aus simulation.log sowie *[Cc]hampion*.vtu)
+#   all:      gesamter Projektordner Ergebnisse/<Projekt>/ plus simulation.log
+cmd_pack() {
+    local proj="${1:-}"
+    local scope="${2:-standard}"
+
+    # Falls der erste Parameter bereits der Umfang ist und SIM_PROJECT gesetzt war
+    if [ "$proj" = "standard" ] || [ "$proj" = "champion" ] || [ "$proj" = "all" ]; then
+        if [ -n "$PROJECT_NAME" ]; then
+            scope="$proj"
+            proj="$PROJECT_NAME"
+        fi
+    fi
+
+    if [ -n "$proj" ]; then
+        PROJECT_NAME="$proj"
+    fi
+
+    require_project pack
+
+    case "$scope" in
+        standard|champion|all) ;;
+        *)
+            say "[RUNNER] FEHLER: Unbekannter Umfang '$scope'. Erlaubt sind: standard, champion, all"
+            exit 2
+            ;;
+    esac
+
+    local archive_dir="${TMPDIR:-/tmp}"
+    local archive="$archive_dir/sim_${PROJECT_NAME}_${scope}_$$.tar.gz"
+    rm -f "$archive"
+
+    local tar_args=(-czf "$archive")
+    local have_files=0
+
+    if [ "$scope" = "all" ]; then
+        if [ -d "$RESULT_DIR" ]; then
+            tar_args+=(-C "$RESULT_DIR" .)
+            have_files=1
+        fi
+    else
+        # Standard: Simulation_Results.csv, effective-config.json,
+        # Analyseergebnisse/Verlaeufe, Kalibrierung, Verifikation.csv
+        local std_items=(
+            "Simulation_Results.csv"
+            "effective-config.json"
+            "run-info.json"
+            "Quellstand"
+            "Analyseergebnisse/Verlaeufe"
+            "Kalibrierung"
+            "Verifikation.csv"
+        )
+        local result_files=()
+        for item in "${std_items[@]}"; do
+            if [ -e "$RESULT_DIR/$item" ]; then
+                result_files+=("$item")
+            fi
+        done
+
+        if [ "$scope" = "champion" ]; then
+            # Regel fuer Champion-VTUs:
+            # 1. Alle Dateien in RESULT_DIR, die *Champion*.vtu oder *champion*.vtu heissen
+            while IFS= read -r vtu; do
+                if [ -n "$vtu" ]; then
+                    result_files+=("${vtu#"$RESULT_DIR"/}")
+                fi
+            done < <(find "$RESULT_DIR" -type f \( -name "*Champion*.vtu" -o -name "*champion*.vtu" \) 2>/dev/null || true)
+
+            # 2. Aus simulation.log den ABSOLUTEN CHAMPION auslesen (Surface_GenX_VarY.vtu, Volume_GenX_VarY.vtu)
+            if [ -f "$LOG_FILE" ]; then
+                local champ_line
+                champ_line="$(grep -E "ABSOLUTER CHAMPION: Iteration [0-9]+ \| Variante [0-9]+" "$LOG_FILE" | tail -n 1 || true)"
+                if [ -n "$champ_line" ]; then
+                    local c_iter c_var
+                    c_iter="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variante \([0-9]\+\).*/\1/p')"
+                    c_var="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variante \([0-9]\+\).*/\2/p')"
+                    if [ -n "$c_iter" ] && [ -n "$c_var" ]; then
+                        for vtu in "Analyseergebnisse/Surface_Gen${c_iter}_Var${c_var}.vtu" \
+                                   "Analyseergebnisse/Volume_Gen${c_iter}_Var${c_var}.vtu"; do
+                            if [ -f "$RESULT_DIR/$vtu" ]; then
+                                result_files+=("$vtu")
+                            fi
+                        done
+                    fi
+                fi
+            fi
+        fi
+
+        if [ "${#result_files[@]}" -gt 0 ]; then
+            local unique_files=()
+            while IFS= read -r f; do
+                [ -n "$f" ] && unique_files+=("$f")
+            done < <(printf '%s\n' "${result_files[@]}" | sort -u)
+
+            tar_args+=(-C "$RESULT_DIR" "${unique_files[@]}")
+            have_files=1
+        fi
+    fi
+
+    # Projekt-Log (simulation.log) dazupacken, falls vorhanden
+    if [ -f "$LOG_FILE" ]; then
+        tar_args+=(-C "$REPO_DIR" "simulation.log")
+        have_files=1
+    fi
+
+    if [ "$have_files" -eq 1 ]; then
+        tar "${tar_args[@]}"
+    else
+        tar -czf "$archive" -T /dev/null
+    fi
+
+    printf '%s\n' "$archive"
+}
+
 usage() {
     cat <<'TEXT'
 Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
@@ -684,11 +988,16 @@ Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
   doctor              Prueft Werkzeuge und Pfade, bevor ein Lauf startet   [Projekt]
   build               dotnet build + libpicogk.so neben die DLL legen
   start               Startet den Lauf in einer tmux-Sitzung (baut bei Bedarf) [Projekt]
+  resume              Setzt einen abgebrochenen Lauf aus dem Journal fort       [Projekt]
+  calibrate           Startet isolierte Netzkalibrierung in tmux          [Projekt]
+  recheck [var] [fin] [--unsteady] Rechnet eine Variante fein nach in tmux [Projekt]
   stop                Beendet Lauf, tmux-Sitzung und haengende Kindprozesse
   status [zeilen]     Laeuft was? Wie lange? Letzte Logzeilen                [Projekt]
   log [zeilen] [no]   Logausgabe; "no" als zweites Argument = nicht mitlaufen
   results [zeilen]    Kopfzeile und letzte Zeilen der Ergebnis-CSV           [Projekt]
   projects            Welche Projekte kennt dieser Server, wo liegen Ergebnisse
+  lastproject         Gibt den Namen des zuletzt gerechneten Projekts aus
+  pack [Umfang]       Packt Ergebnisse als tar.gz (standard|champion|all)   [Projekt]
   delete [yes]        Ergebnisse ALLER Projekte und alle Logs loeschen; ohne "yes"
                       wird nur aufgelistet
   running             Exit-Code 0, wenn ein Lauf aktiv ist (fuer Skripte)
@@ -710,6 +1019,7 @@ case "${1:-}" in
     build)      cmd_build ;;
     projects)   cmd_projects ;;
     start)      cmd_start ;;
+    resume)     cmd_resume ;;
     stop)       cmd_stop ;;
     status)     cmd_status "${2:-12}" ;;
     log)        cmd_log "${2:-40}" "${3:-yes}" ;;
@@ -717,7 +1027,11 @@ case "${1:-}" in
     delete)     cmd_delete "${2:-}" ;;
     running)    is_running ;;
     hash)       cat "$HASH_FILE" 2>/dev/null || echo "unbekannt" ;;
-    _foreground) cmd_foreground ;;
+    lastproject) cmd_lastproject ;;
+    pack)       cmd_pack "${2:-}" "${3:-standard}" ;;
+    calibrate)  cmd_calibrate ;;
+    recheck)    cmd_recheck "${@:2}" ;;
+    _foreground) shift; cmd_foreground "$@" ;;
     ""|-h|--help|help) usage ;;
     *)          say "Unbekannter Befehl: $1"; say ""; usage; exit 2 ;;
 esac

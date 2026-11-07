@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Xunit;
 
+using MyPicoGkProject.Composition;
 using MyPicoGkProject.Core;
 using MyPicoGkProject.Projects.MantaAuv;
 using MyPicoGkProject.Solvers.Cfd;
@@ -91,8 +92,11 @@ namespace AutomatisierungCleanVersion.Tests
             var context = new ProjectContext(
                 name, DirectoryOf(name), null, SimulationConfig.CreateDefault(), new ProjectConfig());
 
+            var registry = ProjectRegistry.Discover(typeof(MantaProject).Assembly);
+            IProjectDefinition definition = registry.Resolve(name);
+
             var su2 = context.LoadSolverOptions<Su2SolverOptions>("su2");
-            var gmsh = context.LoadSolverOptions<GmshMesherOptions>("gmsh");
+
 
             // Ohne Referenzfläche wäre jeder Beiwert um Größenordnungen falsch (TODO-12),
             // und ohne eine einzige Ergebnisgröße käme aus dem Solver gar nichts an (TODO-26).
@@ -100,9 +104,20 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.NotEmpty(su2.ResultMetrics);
             Assert.NotEmpty(su2.HistoryOutput);
 
-            // Ein Windkanal ohne Ausdehnung vernetzt nicht.
-            Assert.True(gmsh.TunnelSizeX > 0f && gmsh.TunnelSizeY > 0f && gmsh.TunnelSizeZ > 0f,
-                $"{name}: Der Windkanal hat keine Ausdehnung.");
+
+            if (definition is Cfd2DProjectDefinition)
+            {
+                var gmsh2d = context.LoadSolverOptions<Gmsh2DMesherOptions>("gmsh");
+                Assert.True(gmsh2d.FarfieldRadiusFactor > 0f, $"{name}: FarfieldRadiusFactor muss > 0 sein.");
+            }
+            else
+            {
+                var gmsh = context.LoadSolverOptions<GmshMesherOptions>("gmsh");
+                Assert.True(gmsh.TunnelSizeX > 0f && gmsh.TunnelSizeY > 0f && gmsh.TunnelSizeZ > 0f,
+                    $"{name}: Der Windkanal hat keine Ausdehnung.");
+            }
+
+
         }
 
         /// <summary>

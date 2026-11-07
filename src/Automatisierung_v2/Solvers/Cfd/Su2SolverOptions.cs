@@ -23,6 +23,36 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <summary>Schallgeschwindigkeit in m/s — rechnet die Mach-Zahl in eine Anströmgeschwindigkeit um.</summary>
         public float SpeedOfSound { get; set; } = 343.2f;
 
+        /// <summary>
+        /// Anströmgeschwindigkeit in m/s (TODO-38). Der Löser ist inkompressibel — eine Mach-Zahl
+        /// hat für ihn keine physikalische Bedeutung, sie war nur ein Umweg zur Geschwindigkeit.
+        /// <para>
+        /// <c>0</c> (Standard) = nicht gesetzt: dann gilt weiter
+        /// <c>MachNumber × SpeedOfSound</c> aus dem alten Weg, damit bestehende Projekte
+        /// unverändert rechnen. Größer 0: dieser Wert gilt, <c>MachNumber</c> und
+        /// <c>SpeedOfSound</c> werden für die Anströmung nicht mehr verwendet.
+        /// </para>
+        /// <para>
+        /// Vorsicht beim alten Weg in Wasser: <c>SpeedOfSound</c> steht auf der Schallgeschwindigkeit
+        /// von <b>Luft</b>; Mach 0.1 ergibt damit 34,3 m/s — für ein Unterwasserfahrzeug unrealistisch.
+        /// </para>
+        /// </summary>
+        public float FreestreamVelocity { get; set; } = 0.0f;
+
+        // --- Dimension & Anstellwinkel (TODO-46) ---
+        /// <summary>
+        /// Räumliche Dimension der Simulation: 3 (Standard, 3D-Volumennetz) oder 2 (2D-Flächennetz).
+        /// In 2D liegt der Auftrieb entlang der y-Achse, in 3D entlang der z-Achse.
+        /// </summary>
+        public int Dimensions { get; set; } = 3;
+
+        /// <summary>
+        /// Anstellwinkel in Grad (Angle of Attack alpha, TODO-46).
+        /// Standard: 0.0°. Bei alpha != 0 wird der Geschwindigkeitsvektor in
+        /// FREESTREAM_VELOCITY und INC_VELOCITY_INIT gedreht (in 2D in der xy-Ebene, in 3D in der xz-Ebene).
+        /// </summary>
+        public float AngleOfAttackDeg { get; set; } = 0.0f;
+
         // --- Referenzwerte ---
         /// <summary>SU2 REF_LENGTH.</summary>
         public float ReferenceLength { get; set; } = 0.01f;
@@ -78,6 +108,31 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// </summary>
         public string[] HistoryOutput { get; set; } = (string[])DefaultHistoryOutput.Clone();
 
+        /// <summary>
+        /// Schwelle für die relative Schwingung einer Ergebnisgröße über das Cauchy-Fenster
+        /// (Standard: 0.02 = 2 %). Überschreitet die Schwingung (max - min) / |mean| diesen Wert,
+        /// warnt der Solver vor möglicher instationärer Strömung (TODO-35).
+        /// </summary>
+        public float OscillationWarnLimit { get; set; } = 0.02f;
+
+        /// <summary>
+        /// Wenn <c>true</c>, wird eine Rechnung, die bei <c>ITER</c> abbricht, ohne dass das
+        /// Konvergenzkriterium erfüllt war, als fehlgeschlagen markiert (<see cref="ModelRecord.SimulationFailed"/> = true).
+        /// Standard ist <c>false</c>, damit bestehende Optimierungsläufe unverändert weiterlaufen (TODO-35).
+        /// </summary>
+        public bool TreatUnconvergedAsFailed { get; set; } = false;
+
+        /// <summary>
+        /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35):
+        /// <list type="bullet">
+        ///   <item><c>"Last"</c> (Standard): der Wert der letzten Zeile (bisheriges Verhalten).</item>
+        ///   <item><c>"CauchyWindowMean"</c>: der Mittelwert über die letzten <c>CauchyElements</c> Zeilen
+        ///   (gedämpfter Wert bei schwingenden Rechnungen).</item>
+        /// </list>
+        /// Ein unbekannter Wert führt zu einer Warnung und dem Rückfall auf <c>"Last"</c>.
+        /// </summary>
+        public string ResultAveraging { get; set; } = "Last";
+
         // --- CFL-Steuerung ---
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;
@@ -89,5 +144,77 @@ namespace MyPicoGkProject.Solvers.Cfd
         public float CflAdaptMin { get; set; } = 1.0f;
         /// <summary>CFL_ADAPT_PARAM: obere Schranke.</summary>
         public float CflAdaptMax { get; set; } = 50.0f;
+
+        // --- y+-Ziel und Grenzschichtprüfung (TODO-41) ---
+        /// <summary>
+        /// Ziel-y+ für die Wandauflösung der Grenzschicht (Standard 1.0) (TODO-41).
+        /// </summary>
+        public float TargetYPlus { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 2.0).
+        /// Liegt das 95 %-Quantil (P95) über TargetYPlus * YPlusWarnFactor, warnt der Solver (TODO-41).
+        /// </summary>
+        public float YPlusWarnFactor { get; set; } = 2.0f;
+
+        // --- Zeitgenauer Modus / URANS (TODO-37) ---
+        /// <summary>
+        /// Einstellungen für zeitgenaue Simulationen (URANS mit Dual-Time-Stepping) (TODO-37).
+        /// </summary>
+        public Su2TimeDomainOptions TimeDomain { get; set; } = new();
+
+        /// <summary>
+        /// Erstellt eine tiefe Kopie der Optionen (insbes. für temporäre Anpassungen wie Anstellwinkel).
+        /// </summary>
+        public Su2SolverOptions Clone()
+        {
+            var copy = (Su2SolverOptions)MemberwiseClone();
+            copy.ResultMetrics = new Dictionary<string, string>(ResultMetrics);
+            copy.HistoryOutput = (string[])HistoryOutput.Clone();
+            return copy;
+        }
+    }
+
+    /// <summary>
+    /// Optionen für zeitgenaue CFD-Rechnungen mit SU2 (URANS, Dual-Time-Stepping, TODO-37).
+    /// </summary>
+    public class Su2TimeDomainOptions
+    {
+        /// <summary>Zeitgenaue Rechnung (URANS, Dual-Time-Stepping) aktivieren (TODO-37).</summary>
+        public bool Enabled { get; set; } = false;
+
+        /// <summary>Physikalischer Zeitschritt in Sekunden (0 = automatisch aus StrouhalEstimate und StepsPerPeriod).</summary>
+        public float TimeStep { get; set; } = 0.0f;
+
+        /// <summary>
+        /// Zeitschritte pro Wirbelablöseperiode, wenn TimeStep = 0 ist (Vorgabe 50; bis TODO-W7 waren es 25).
+        /// </summary>
+        public int StepsPerPeriod { get; set; } = 50;
+
+        /// <summary>Geschätzte Strouhal-Zahl f = St * U / L für die automatische Zeitschrittwahl.</summary>
+        public float StrouhalEstimate { get; set; } = 0.2f;
+
+        /// <summary>
+        /// Anzahl der physikalischen Zeitschritte, die gerechnet werden (bei Neustart aus der stationären Lösung
+        /// zusätzlich zu <see cref="RestartIteration"/> gezählt). Vorgabe 1000 = 20 Perioden bei 50 Schritten je
+        /// Periode (bis TODO-W7: 200 = 8 Perioden, die Mittelung begann mitten im Einschwingen).
+        /// </summary>
+        public int TimeIterations { get; set; } = 1000;
+
+        /// <summary>Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (INNER_ITER).</summary>
+        public int InnerIterations { get; set; } = 30;
+
+        /// <summary>
+        /// Bruchteil der Zeitschritte, ab dem die Zeitmittelung startet (WINDOW_START_ITER). 0.5 bei 20 Perioden =
+        /// Mittel über die letzten 10 Perioden.
+        /// </summary>
+        public float AveragingStartFraction { get; set; } = 0.5f;
+
+        /// <summary>
+        /// Neustart aus einer stationären Lösung (TODO-W7): 0 = Start aus dem Freistrom (wie bisher), 2 = Start aus
+        /// <c>restart_00000.dat</c> und <c>restart_00001.dat</c> (SU2 braucht für die 2. Ordnung zwei Zeitstände).
+        /// Der Recheck legt die Dateien aus der stationären Rechnung selbst an und setzt diesen Wert.
+        /// </summary>
+        public int RestartIteration { get; set; } = 0;
     }
 }

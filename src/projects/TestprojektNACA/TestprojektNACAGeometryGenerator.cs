@@ -66,7 +66,9 @@ namespace MyPicoGkProject.Projects.TestprojektNACA
 
                 xStations[i] = xRot;
                 zStations[i] = zRot;
-                rStations[i] = Math.Max(yt, minBeamRadius);
+                float maxNoseRadius = Math.Max(xi * c, config.BaseVoxelResolution * 0.6f);
+                float effectiveYt = xi < 0.08f ? Math.Min(yt, maxNoseRadius) : yt;
+                rStations[i] = Math.Max(effectiveYt, xi < 0.08f ? maxNoseRadius : minBeamRadius);
             }
 
             // PicoGK Lattice aufbauen

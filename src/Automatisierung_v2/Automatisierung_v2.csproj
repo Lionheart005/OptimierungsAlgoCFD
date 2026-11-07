@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Clipper2" Version="2.0.0" />
     <PackageReference Include="PicoGK" Version="2.3.0" />
   </ItemGroup>
 
@@ -32,7 +33,7 @@
     beim Anlegen des naechsten Projekts.
   -->
   <ItemGroup>
-    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Vorlage\**" />
+    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Vorlage\**;..\projects\_Vorlage2D\**" />
   </ItemGroup>
 
 </Project>

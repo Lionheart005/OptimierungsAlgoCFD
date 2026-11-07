@@ -1,4 +1,5 @@
 {
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
   //  MantaAuv -- Framework-Einstellungen dieses Projekts
   // ===================================================================
@@ -27,7 +28,7 @@
   //
   // DIESES Projekt traegt sie trotzdem absolut ein, weil der Hochschulserver
   // (BIC_12) sie nicht ueber den PATH findet: SU2 und Gmsh sind dort von Hand
-  // nach ~/software entpackt, mpirun kommt aus Miniconda. Bei "ssh host befehl"
+  // nach ~/software entpackt, mpiexec kommt aus dem conda-Env "mpich". Bei "ssh host befehl"
   // startet bash nicht-interaktiv und Ubuntus ~/.bashrc steigt sofort wieder aus,
   // deshalb greift dort nichts aus conda init.
   //
@@ -37,7 +38,11 @@
   // Auf einem anderen Server: diese drei Zeilen loeschen, dann gilt wieder der
   // PATH-relative Code-Standard. Welche Variante greift, sagt `sim.ps1 doctor`
   // VOR dem Lauf -- er nennt bei jedem Programm den tatsaechlich gefundenen Ort.
-  "MpiRunPath": "/home/lpleissner/miniconda/bin/mpirun",
+  // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
+  // mit MPICH gebaut. Unter OpenMPI startete "-n 12" zwoelf unabhaengige SERIELLE Kopien,
+  // die sich gegenseitig die Dateien ueberschrieben (Servertest 06.11.2026). Eingerichtet mit
+  // "conda create -n mpich -c conda-forge mpich" (siehe setup_server.sh).
+  "MpiRunPath": "/home/lpleissner/miniconda/envs/mpich/bin/mpiexec",
   "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
   "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 
@@ -59,12 +64,13 @@
   "UseStlSmoothing": true,
 
   // --- CFD & SU2 ---
-  "MachNumber": 0.1,
-  "Su2MaxIterations": 500,
-  "CauchyElements": 150,
-  "CauchyTolerance": "1e-4",
-  "MpiCores": 12,
-  "GmshCores": 12,
+  // Seit 06.11.2026 (TODO-W8) rechnet MantaAuv mit Prismen-Wandschicht (y+ ~ 1) und grossem Kanal:
+  // Ergebnisse davor (y+ 40-70, Kanal 6 L) und danach sind NICHT vergleichbar.
+  "Su2MaxIterations": 2000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
+  "MpiCores": 16,
+  "GmshCores": 16,
 
   // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
   // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
@@ -82,6 +88,23 @@
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
+
+  // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
+  // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 8000 Iterationen begrenzt
+  // (Vorgabe 20000), die Kalibrierung hoert bei ~3 Mio. Zellen der feinsten Stufe auf zu verfeinern.
+  "ControlRuns": {
+    "Su2MaxIterations": 8000,
+    "CauchyElements": 500
+  },
+  "MeshCalibration": {
+    "Tolerance": 0.02,
+    "MaxCells3D": 3000000
+  },
+  "ChampionVerification": {
+    "Mode": "FinalTopN",
+    "TopN": 3,
+    "RefinementSteps": 1
+  },
 
   // --- Validierung des Champions (Bouncer) ---
   // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation.

@@ -1,0 +1,95 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  MeinProjekt2D -- Framework-Einstellungen dieses Projekts
+  // ===================================================================
+  //
+  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt JEDEN Schluessel, den das
+  // Framework kennt, mit dem Wert aus dem Code-Standard
+  // (Core/Models/SimulationConfig.cs). Zwei Ausnahmen -- MaxIterations und
+  // VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt.
+
+  // --- Pfade zu externer Software ---
+  "MpiRunPath": "mpirun",
+  "Su2Path": "SU2_CFD",
+  "GmshPath": "gmsh",
+
+  // --- Zeit & Umfang ---
+  // Vorlage steht auf 1 x 2 = 2 Varianten fuer den ersten Rauchtest:
+  "MaxIterations": 1,
+  "VariantsPerIteration": 2,
+
+  // Voxelparameter (in 2D inaktiv, aber im Framework-Nachschlagewerk vollstaendig vorhanden):
+  "BaseVoxelResolution": 0.5,
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+
+  // --- Abschaltbare Framework-Bausteine ---
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+
+  // --- CFD & SU2 ---
+  "MeshRefinementFactor": 1.0,
+  "Su2MaxIterations": 500,
+  "CauchyElements": 150,
+  "CauchyTolerance": "1e-4",
+  "MpiCores": 12,
+  "GmshCores": 12,
+
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  "OptimizationAlgorithm": "Rsm",
+
+  // --- Startwert des Zufalls: 0 = bei jedem Lauf neu ziehen (siehe run-info.json) ---
+  "RandomSeed": 0,
+
+  // --- Evolutionaerer Algorithmus ---
+  "MinimalDeviationExploration": 1.0,
+  "MinimalDeviationExploitation": 0.05,
+  "RoleFineTuner": 0.2,
+  "RoleCautious": 0.4,
+  "RoleNormal": 0.6,
+
+  // --- RSM / Antwortflaechen-Verfahren ---
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // --- Validierung des Champions (Bouncer) ---
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01,
+
+  // --- Genauigkeit der Konvergenz (TODO-W3, TODO-W4) ---
+  // IterativeToleranceFraction: wie weit der ITERATIVE Fehler einer normalen Variante unter der
+  //   Netz-Toleranz liegen muss (0.25 = ein Viertel). Gemessen wird die Drift der Kennwerte im
+  //   Endfenster, nicht das Residuum.
+  // ControlRuns: strenges Profil NUR fuer Kontrollrechnungen (Netzkalibrierung, Feinpruefung, Recheck):
+  //   Su2MaxIterations, CauchyElements, CauchyTolerance und IterativeToleranceFraction (0.1 = ein Zehntel,
+  //   Celik et al. 2008). Es gilt nie weniger als bei normalen Varianten.
+  "IterativeToleranceFraction": 0.25,
+  "ControlRuns": {
+    "Su2MaxIterations": 20000,
+    "CauchyElements": 500,
+    "CauchyTolerance": "1e-6",
+    "IterativeToleranceFraction": 0.1
+  },
+
+  // --- Netzkalibrierung (TODO-42) ---
+  "MeshCalibration": {
+    "Mode": "Manual",
+    "Tolerance": 0.02,
+    "Use2DPrecalibration": false,
+    "AbsoluteTolerances": {},
+    "MaxCells2D": 2000000,
+    "MaxCells3D": 50000000
+  },
+
+  // --- Verifikation des Champions (TODO-43) ---
+  "ChampionVerification": {
+    "Mode": "Final",
+    "TopN": 3,
+    "RefinementSteps": 1,
+    "Tolerance": 0.05
+  }
+}

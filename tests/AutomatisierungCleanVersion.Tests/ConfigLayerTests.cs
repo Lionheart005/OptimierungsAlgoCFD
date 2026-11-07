@@ -13,7 +13,11 @@ namespace AutomatisierungCleanVersion.Tests
     ///
     /// Gearbeitet wird auf einem temporären Projekt- und Konfigurationsordner — die
     /// mitgelieferten Dateien im Repo bleiben unangetastet.
+    ///
+    /// Der Warnblock-Test liest die Konsole über <c>Console.SetOut</c> mit — prozessweiter
+    /// Zustand, deshalb nie parallel zu anderen Klassen (siehe <see cref="ProcessWideStateCollection"/>).
     /// </summary>
+    [Collection(ProcessWideStateCollection.Name)]
     public class ConfigLayerTests : IDisposable
     {
         private readonly string _root;
@@ -170,6 +174,13 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Contains("Lieblingsfarbe", error.Message);
             Assert.Contains("TurbulenceModel", error.Message);
+
+            // Vollständig, nicht abgekürzt: jeder gültige Schlüssel steht in der Meldung — auch
+            // der alphabetisch letzte, der bei einer Abkürzung zuerst wegfiele.
+            foreach (var property in typeof(Su2SolverOptions).GetProperties())
+                Assert.Contains(property.Name, error.Message);
+
+            Assert.DoesNotContain("u.a.", error.Message);
         }
 
         [Fact]
@@ -400,7 +411,11 @@ namespace AutomatisierungCleanVersion.Tests
     /// <summary>
     /// TODO-22: das Auflösen des Projektverzeichnisses. Ersetzt die frühere
     /// „sechs Ebenen hoch, suche config“-Heuristik.
+    ///
+    /// Ein Test hier setzt die Umgebungsvariable <c>SIM_PROJECTS_DIR</c> — deshalb läuft die
+    /// Klasse nie parallel zu anderen (siehe <see cref="ProcessWideStateCollection"/>).
     /// </summary>
+    [Collection(ProcessWideStateCollection.Name)]
     public class ProjectPathsTests : IDisposable
     {
         private readonly string _root;

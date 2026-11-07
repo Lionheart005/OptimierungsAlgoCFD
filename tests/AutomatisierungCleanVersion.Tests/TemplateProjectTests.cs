@@ -10,6 +10,7 @@ using Xunit;
 using MyPicoGkProject.Core;
 using MyPicoGkProject.Projects.MantaAuv;
 using MyPicoGkProject.Projects.MeinProjekt;
+using MyPicoGkProject.Projects.MeinProjekt2D;
 using MyPicoGkProject.Solvers.Cfd;
 
 namespace AutomatisierungCleanVersion.Tests
@@ -98,6 +99,59 @@ namespace AutomatisierungCleanVersion.Tests
     }
 
     /// <summary>
+    /// Zugriff auf <c>src/projects/_Vorlage2D/</c> (TODO-47).
+    /// </summary>
+    internal static class Template2DProjectFiles
+    {
+        public const string Placeholder = "MeinProjekt2D";
+
+        public static string Directory
+        {
+            get
+            {
+                string? root = ProjectPaths.ResolveProjectsRoot();
+                Assert.True(root != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
+
+                string template = Path.Combine(root!, ProjectPaths.Template2DDirectoryName);
+                Assert.True(System.IO.Directory.Exists(template),
+                    $"Der Ordner src/projects/{ProjectPaths.Template2DDirectoryName}/ fehlt — "
+                    + "ohne ihn prüfen die folgenden Tests nichts.");
+
+                return template;
+            }
+        }
+
+        public static string File(string relativeName)
+        {
+            string file = Path.Combine(
+                Directory, relativeName.Replace('/', Path.DirectorySeparatorChar));
+
+            Assert.True(System.IO.File.Exists(file),
+                $"src/projects/{ProjectPaths.Template2DDirectoryName}/{relativeName} fehlt.");
+
+            return file;
+        }
+
+        public static T Load<T>(T defaults, string relativeName) where T : class
+            => JsonConfigLoader.Load(defaults, File(relativeName));
+
+        public static IReadOnlyList<string> TopLevelKeys(string relativeName)
+        {
+            JsonNode? node = JsonNode.Parse(
+                System.IO.File.ReadAllText(File(relativeName)),
+                documentOptions: new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                });
+
+            Assert.True(node is JsonObject, $"{relativeName} ist kein JSON-Objekt.");
+
+            return ((JsonObject)node!).Select(entry => entry.Key).ToList();
+        }
+    }
+
+    /// <summary>
     /// TODO-27: die Vorlage ist der Startpunkt für ein neues Projekt — und damit eine Zusage.
     /// Diese Tests halten die drei Eigenschaften fest, ohne die sie nichts wert ist:
     /// sie ist <b>vollständig</b> (jeder Schlüssel steht drin), sie ist <b>aktuell</b> (die Werte
@@ -179,6 +233,7 @@ namespace AutomatisierungCleanVersion.Tests
 
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
+                .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
@@ -473,6 +528,170 @@ namespace AutomatisierungCleanVersion.Tests
         /// Prüft für eine Solver-Datei beides auf einmal: jeder Schlüssel des Typs steht in der
         /// Datei, und jeder Wert ist der Code-Standard.
         /// </summary>
+        // ------------------------------------------------------------------
+        //  2D-Vorlage Tests (TODO-47)
+        // ------------------------------------------------------------------
+
+        [Theory]
+        [InlineData("project.json")]
+        [InlineData("simulation.json")]
+        [InlineData("solvers/su2.json")]
+        [InlineData("solvers/gmsh.json")]
+        [InlineData("MeinProjekt2DProject.cs")]
+        [InlineData("MeinProjekt2DGeometryGenerator.cs")]
+        [InlineData("MeinProjekt2DFitnessCalculator.cs")]
+        [InlineData("README.md")]
+        public void The_2D_Template_Is_Complete(string relativeName)
+        {
+            Assert.True(File.Exists(Template2DProjectFiles.File(relativeName)));
+        }
+
+        [Theory]
+        [InlineData("project.json")]
+        [InlineData("simulation.json")]
+        [InlineData("solvers/su2.json")]
+        [InlineData("solvers/gmsh.json")]
+        public void The_2D_Template_Json_Files_Are_Commented(string relativeName)
+        {
+            string text = File.ReadAllText(Template2DProjectFiles.File(relativeName));
+            Assert.Contains("//", text);
+        }
+
+        [Fact]
+        public void The_2D_Template_Manifest_Does_Not_Carry_The_Project_Name()
+        {
+            Assert.DoesNotContain(
+                "ProjectName",
+                Template2DProjectFiles.TopLevelKeys("project.json"));
+        }
+
+        [Fact]
+        public void The_2D_Template_Simulation_Json_Names_Every_Framework_Key()
+        {
+            var keys = Template2DProjectFiles.TopLevelKeys("simulation.json");
+
+            var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
+                .Select(property => property.Name)
+                .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
+                .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                "In src/projects/_Vorlage2D/simulation.json fehlt/fehlen: "
+                + string.Join(", ", missing));
+        }
+
+        [Fact]
+        public void The_2D_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Smoke_Test_Size()
+        {
+            var defaults = SimulationConfig.CreateDefault();
+            var loaded = Template2DProjectFiles.Load(SimulationConfig.CreateDefault(), "simulation.json");
+
+            Assert.Equal(1, loaded.MaxIterations);
+            Assert.Equal(2, loaded.VariantsPerIteration);
+
+            var deviations = new[]
+            {
+                nameof(SimulationConfig.MaxIterations),
+                nameof(SimulationConfig.VariantsPerIteration)
+            };
+
+            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig)))
+            {
+                if (deviations.Contains(property.Name)) continue;
+
+                Assert.Equal(
+                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
+                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
+            }
+        }
+
+        [Fact]
+        public void The_2D_Template_Su2_Json_Mirrors_The_Code_Defaults()
+        {
+            AssertMirrors2DDefaults<Su2SolverOptions>("solvers/su2.json");
+        }
+
+        [Fact]
+        public void The_2D_Template_Gmsh_Json_Mirrors_The_Gmsh2D_Code_Defaults()
+        {
+            AssertMirrors2DDefaults<Gmsh2DMesherOptions>("solvers/gmsh.json");
+        }
+
+        [Fact]
+        public void The_2D_Template_Manifest_Matches_Its_Code_Defaults()
+        {
+            ProjectConfig code = new MeinProjekt2DProject().CreateDefaults();
+
+            ProjectConfig file = Template2DProjectFiles
+                .Load(ProjectConfigDto.FromProjectConfig(new MeinProjekt2DProject().CreateDefaults()), "project.json")
+                .ToProjectConfig();
+
+            Assert.Equal(TemplateProjectFiles.Describe(code.BaseParameters), TemplateProjectFiles.Describe(file.BaseParameters));
+            Assert.Equal(TemplateProjectFiles.Describe(code.MaxDeviations), TemplateProjectFiles.Describe(file.MaxDeviations));
+            Assert.Equal(TemplateProjectFiles.Describe(code.OptimizationTargets), TemplateProjectFiles.Describe(file.OptimizationTargets));
+
+            Assert.Equal(code.ParameterBounds.Count, file.ParameterBounds.Count);
+            foreach (var bound in code.ParameterBounds)
+            {
+                Assert.True(file.ParameterBounds.ContainsKey(bound.Key), $"ParameterBounds: '{bound.Key}' fehlt in project.json.");
+                Assert.Equal(bound.Value, file.ParameterBounds[bound.Key]);
+            }
+
+            Assert.Equal(
+                code.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal),
+                file.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal));
+        }
+
+        [Fact]
+        public void The_2D_Template_Folder_Is_Not_Listed_As_A_Project()
+        {
+            Assert.DoesNotContain(
+                ProjectPaths.Template2DDirectoryName,
+                ProjectPaths.ListProjectNames(),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void The_2D_Template_Definition_Is_Compiled_But_Not_Part_Of_The_Program()
+        {
+            Assembly program = typeof(MantaProject).Assembly;
+
+            Assert.NotEqual(program, typeof(MeinProjekt2DProject).Assembly);
+            Assert.Equal(GetType().Assembly, typeof(MeinProjekt2DProject).Assembly);
+
+            var registry = ProjectRegistry.Discover(program);
+
+            Assert.DoesNotContain(
+                new MeinProjekt2DProject().Name,
+                registry.Names,
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static void AssertMirrors2DDefaults<T>(string relativeName) where T : class, new()
+        {
+            var defaults = new T();
+            var keys = Template2DProjectFiles.TopLevelKeys(relativeName);
+
+            var missing = TemplateProjectFiles.PropertiesOf(typeof(T))
+                .Select(property => property.Name)
+                .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                $"In src/projects/_Vorlage2D/{relativeName} fehlt/fehlen: " + string.Join(", ", missing)
+                + ". Die Vorlage soll jeden Schlüssel zeigen, den es gibt.");
+
+            T loaded = Template2DProjectFiles.Load(new T(), relativeName);
+
+            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(T)))
+            {
+                Assert.Equal(
+                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
+                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
+            }
+        }
+
         private static void AssertMirrorsDefaults<T>(string relativeName) where T : class, new()
         {
             var defaults = new T();

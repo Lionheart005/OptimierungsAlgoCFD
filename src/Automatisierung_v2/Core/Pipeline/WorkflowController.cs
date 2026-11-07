@@ -26,11 +26,25 @@ namespace MyPicoGkProject.Core
         // Rechner — sonst zöge TODO-26 die mit TODO-13 entfernte Abhängigkeit wieder ein.
         private readonly IReadOnlyCollection<string> _requiredMetrics;
 
+        // Lauf-Journal für die Wiederaufnahme (TODO-51). null = Verhalten exakt wie vor TODO-51.
+        private readonly RunJournal? _journal;
+
+        /// <summary>
+        /// Der letzte Aufruf von <see cref="RunPipeline"/> kam aus dem Journal und hat nichts
+        /// gerechnet. Die Restzeit-Schätzung lässt solche Varianten aus (TODO-51).
+        /// </summary>
+        public bool LastCallWasReplayed { get; private set; }
+
         /// <param name="requiredMetrics">
         /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
         /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
         /// erfolgreich gerechneten Variante, bricht der Lauf ab (TODO-26). <c>null</c> oder
         /// leer = keine Prüfung.
+        /// </param>
+        /// <param name="journal">
+        /// Optionales Lauf-Journal (TODO-51): jedes Ergebnis von <see cref="RunPipeline"/> wird
+        /// mitgeschrieben, und im Wiedergabe-Modus antwortet es statt der Rechnung. Alle
+        /// Controller eines Laufs teilen sich eine Instanz.
         /// </param>
         public WorkflowController(
             IGeometryGenerator geometry,
@@ -38,8 +52,10 @@ namespace MyPicoGkProject.Core
             IModelValidator validator,
             IOptimizationAlgorithm optimizer,
             SimulationContext context,
-            IReadOnlyCollection<string>? requiredMetrics = null)
+            IReadOnlyCollection<string>? requiredMetrics = null,
+            RunJournal? journal = null)
         {
+            _journal = journal;
             _geometry = geometry;
             _stages = stages;
             _validator = validator;
@@ -57,6 +73,7 @@ namespace MyPicoGkProject.Core
             int totalVariants = _context.Config.MaxIterations * _context.Config.VariantsPerIteration;
             int completedVariants = 0;
             double totalSecondsPassed = 0;
+            int liveVariants = 0;
             
             // Gewinner der zuletzt gelaufenen Iteration. Nur für die Schlussmeldung
             // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
@@ -92,6 +109,7 @@ namespace MyPicoGkProject.Core
 
                     // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
                     ModelRecord record = RunPipeline(activeParams, iter, var);
+                    bool replayed = LastCallWasReplayed;
 
                     // 6a. Liefert die Pipeline überhaupt, was die Fitness-Formel braucht?
                     if (!requiredMetricsChecked && !record.SimulationFailed)
@@ -105,7 +123,7 @@ namespace MyPicoGkProject.Core
                     currentIterationRecords.Add(record);
                     _context.ExportToCsv(); 
 
-                    UpdateTimer(timer, ref completedVariants, ref totalSecondsPassed, totalVariants);
+                    UpdateTimer(timer, replayed, ref completedVariants, ref liveVariants, ref totalSecondsPassed, totalVariants);
                 } 
 
                 // =========================================================
@@ -120,6 +138,15 @@ namespace MyPicoGkProject.Core
                     _context.Config,
                     (testParams) => ResimulateForValidation(testParams, iter));
 
+                // 2a. Optionale feine Nachrechnung je Iteration (Mode = "EachIteration", TODO-43)
+                ChampionFineVerifier.VerifyIterationWinner(
+                    trueWinner,
+                    iter,
+                    _context,
+                    (p, f, t) => RunPipeline(p, iter, ValidationVariantNumber, f, t),
+                    r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
+                    _requiredMetrics);
+
                 lastIterationWinner = trueWinner;
                 
                 _context.ExportToCsv(); 
@@ -133,6 +160,13 @@ namespace MyPicoGkProject.Core
                     _optimizer.PrepareNextIteration(_context, currentIterationRecords, trueWinner);
                 }
             }
+
+            // Finale Verifikation (Mode = "Final" oder "FinalTopN", TODO-43)
+            ChampionFineVerifier.VerifyFinal(
+                _context,
+                (p, f, t) => RunPipeline(p, ValidationVariantNumber, ValidationVariantNumber, f, t),
+                r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
+                _requiredMetrics);
 
             // Der beste Lauf des GESAMTEN Durchgangs, nicht der Gewinner der letzten
             // Iteration: beim EA ist das meist dasselbe, beim RSM mit seiner zufälligen
@@ -204,10 +238,60 @@ namespace MyPicoGkProject.Core
         /// <summary>
         /// Die eigentliche Pipeline für einen Parametersatz:
         /// Skalierung (Gummiband) → Geometrie → Metriken → Vernetzung → Solver-Kette.
+        /// Unterstützt optional temporär überschriebenen Netzfaktor und Tag (TODO-42/43).
         /// Gibt einen fertigen <see cref="ModelRecord"/> zurück; die Fitness wird hier
         /// bewusst nicht berechnet, das macht der Optimierungsalgorithmus bzw. der Validator.
         /// </summary>
-        private ModelRecord RunPipeline(Dictionary<string, float> parameters, int iteration, int variant)
+        public ModelRecord RunPipeline(
+            Dictionary<string, float> parameters,
+            int iteration,
+            int variant,
+            float? customRefinementFactor = null,
+            string? customTag = null)
+        {
+            float oldFactor = _context.EffectiveMeshRefinementFactor;
+            string oldTag = _context.CurrentRunTag;
+
+            try
+            {
+                if (customRefinementFactor.HasValue)
+                {
+                    _context.EffectiveMeshRefinementFactor = customRefinementFactor.Value;
+                }
+                if (customTag != null)
+                {
+                    _context.CurrentRunTag = customTag;
+                }
+
+                LastCallWasReplayed = false;
+                if (_journal == null) return RunPipelineCore(parameters, iteration, variant);
+
+                // Wiederaufnahme (TODO-51): erst das Journal fragen, sonst rechnen und anhängen.
+                // Faktor und Tag sind hier schon die wirksamen (nach TODO-42/43).
+                float factor = _context.EffectiveMeshRefinementFactor;
+                string tag = _context.CurrentRunTag ?? "";
+
+                if (_journal.TryReplay(iteration, variant, factor, tag, parameters, out ModelRecord? replayed)
+                    && replayed != null)
+                {
+                    LastCallWasReplayed = true;
+                    return replayed;
+                }
+
+                ModelRecord record = RunPipelineCore(parameters, iteration, variant);
+
+                // Sofort bei der Rückgabe: die Aufrufer verändern den Datensatz danach noch.
+                _journal.Append(iteration, variant, factor, tag, parameters, record);
+                return record;
+            }
+            finally
+            {
+                _context.EffectiveMeshRefinementFactor = oldFactor;
+                _context.CurrentRunTag = oldTag;
+            }
+        }
+
+        private ModelRecord RunPipelineCore(Dictionary<string, float> parameters, int iteration, int variant)
         {
             // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt.
             // Abgeschaltet liefert Create() eine Neutral-Instanz (ShrinkFactor 1, Identität).
@@ -223,6 +307,7 @@ namespace MyPicoGkProject.Core
                 Variant = variant,
                 ActiveParameters = parameters
             };
+            record.PassiveParameters["MeshRefinementFactor"] = _context.EffectiveMeshRefinementFactor;
 
             // Geometrie erzeugen (IGeometryGenerator) → GeometryResult
             var geoResult = _geometry.GenerateAndExport(
@@ -249,14 +334,24 @@ namespace MyPicoGkProject.Core
                 {
                     if (!meshCache.TryGetValue(stage.Mesher, out string? meshPath))
                     {
-                        meshPath = stage.Mesher.GenerateMesh(
+                        var meshRequest = new MeshRequest(
                             geoResult.StlPath, iteration, variant,
                             _context.Config, scaler.ShrinkFactor,
-                            _context.WorkingDirectory);
+                            _context.WorkingDirectory,
+                            _context.EffectiveMeshRefinementFactor,
+                            _context.CurrentRunTag);
+
+                        meshPath = stage.Mesher.GenerateMesh(meshRequest);
                         meshCache[stage.Mesher] = meshPath;
 
                         // ModelRecord führt genau einen Mesh-Pfad — den der ersten Stufe.
                         if (string.IsNullOrEmpty(record.MeshPath)) record.MeshPath = meshPath;
+
+                        int cellCount = MeshMetrics.ReadSu2CellCount(meshPath);
+                        if (cellCount > 0)
+                        {
+                            record.PassiveParameters["MeshCells"] = cellCount;
+                        }
                     }
 
                     stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
@@ -292,21 +387,35 @@ namespace MyPicoGkProject.Core
             }
         }
 
+        public static string FormatParameterValue(float value)
+        {
+            float abs = MathF.Abs(value);
+            if (abs > 0f && abs < 1.0f)
+                return value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+            return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private void PrintVariantHeader(int iter, int variant, Dictionary<string, float> parameters)
         {
-            Console.WriteLine($"\n--- Variante {variant} ---");
+            Console.WriteLine($"\n--- [Iteration {iter}/{_context.Config.MaxIterations} | Variante {variant}/{_context.Config.VariantsPerIteration}] ---");
             Console.Write("       -> Gene: ");
-            foreach (var kvp in parameters) Console.Write($"[{kvp.Key}: {kvp.Value:F2}]  ");
+            foreach (var kvp in parameters) Console.Write($"[{kvp.Key}: {FormatParameterValue(kvp.Value)}]  ");
             Console.WriteLine();
         }
 
-        private void UpdateTimer(Stopwatch timer, ref int completed, ref double totalSeconds, int totalVariants)
+        private void UpdateTimer(Stopwatch timer, bool replayed, ref int completed, ref int live, ref double totalSeconds, int totalVariants)
         {
             timer.Stop();
             completed++;
+
+            // Wiedergegebene Varianten dauern Millisekunden und würden die Schätzung
+            // verfälschen (TODO-51) — sie zählen nur als erledigt, nicht in den Schnitt.
+            if (replayed) return;
+
+            live++;
             totalSeconds += timer.Elapsed.TotalSeconds;
             
-            double avgSeconds = totalSeconds / completed;
+            double avgSeconds = totalSeconds / live;
             int variantsLeft = totalVariants - completed;
             TimeSpan timeLeft = TimeSpan.FromSeconds(variantsLeft * avgSeconds);
             
@@ -315,9 +424,22 @@ namespace MyPicoGkProject.Core
 
         private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
         {
+            // Eine Optimierung, in der keine einzige Variante gerechnet werden konnte, ist nicht
+            // "erfolgreich" (Servertest 06.11.2026: Gmsh scheiterte an jeder Variante, die Meldung blieb) (TODO-W9).
+            int valid = _context.History.Count(r => !r.SimulationFailed);
+            bool anySucceeded = valid > 0;
+
             Console.WriteLine("\n==================================================");
-            Console.WriteLine(" OPTIMIERUNG ERFOLGREICH BEENDET");
+            Console.WriteLine(anySucceeded
+                ? " OPTIMIERUNG ERFOLGREICH BEENDET"
+                : " OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
             Console.WriteLine("==================================================");
+
+            if (!anySucceeded)
+            {
+                Console.WriteLine($"[WARNUNG] Alle {_context.History.Count} Varianten sind gescheitert (Vernetzung oder SU2). Die Fehlerprotokolle liegen unter FehlerLogs/.");
+                return;
+            }
 
             if (champion != null)
             {
@@ -351,4 +473,3 @@ namespace MyPicoGkProject.Core
         }
     }
 }
-

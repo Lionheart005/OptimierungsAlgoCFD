@@ -1,0 +1,69 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  MeinProjekt2D -- SU2-Solver
+  // ===================================================================
+  //
+  // Auch diese Datei nennt JEDEN Schluessel mit dem Code-Standard aus
+  // Solvers/Cfd/Su2SolverOptions.cs -- als Nachschlagewerk.
+  //
+  // Randbedingungen (Fernfeld und Wall) und Gleichungen (inkompressible RANS, SA)
+  // werden automatisch im 2D-CFD-Workflow erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+
+  // --- Fluideigenschaften ---
+  "Density": 1025.0,            // kg/m3
+  "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
+  "TurbulenceModel": "SA",      // SA oder SST
+  "SpeedOfSound": 343.2,        // m/s
+
+  "FreestreamVelocity": 0.0,    // m/s (0 = MachNumber x SpeedOfSound)
+
+  // --- Dimension & Anstellwinkel (TODO-46) ---
+  // In Cfd2DProjectDefinition wird Dimensions zur Laufzeit automatisch auf 2 gefuehrt.
+  "Dimensions": 3,
+  "AngleOfAttackDeg": 0.0,
+
+  // --- Referenzwerte ---
+  "ReferenceLength": 0.01,
+  "ReferenceAreaMetric": "FrontalArea",
+
+  // --- Ergebnisgroessen: welche Zahl kommt unter welchem Namen an? ---
+  "ResultMetrics": {
+    "Drag": "CD"
+  },
+
+  "ConvergenceField": "DRAG",
+  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
+  // --- Auswertung & Konvergenzbewertung (TODO-35) ---
+  "OscillationWarnLimit": 0.02,
+  "TreatUnconvergedAsFailed": false,
+  "ResultAveraging": "Last",
+
+  // --- CFL-Steuerung ---
+  "CflNumber": 5.0,
+  "CflAdapt": true,
+  "CflAdaptFactorDown": 0.5,
+  "CflAdaptFactorUp": 1.2,
+  "CflAdaptMin": 1.0,
+  "CflAdaptMax": 50.0,
+
+  // --- y+-Ziel und Grenzschichtpruefung (TODO-41) ---
+  "TargetYPlus": 1.0,
+  "YPlusWarnFactor": 2.0,
+
+  // --- Zeitgenauer Modus / URANS (TODO-37) ---
+  // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).
+  // Vorgaben seit TODO-W7: 1000 Zeitschritte = 20 Perioden (50 je Periode), Mittelung ueber die letzten 10.
+  // RestartIteration: 0 = Start aus dem Freistrom; 2 = Neustart aus der stationaeren Loesung (setzt der Recheck selbst).
+  "TimeDomain": {
+    "Enabled": false,
+    "TimeStep": 0.0,
+    "StepsPerPeriod": 50,
+    "StrouhalEstimate": 0.2,
+    "TimeIterations": 1000,
+    "InnerIterations": 30,
+    "AveragingStartFraction": 0.5,
+    "RestartIteration": 0
+  }
+}

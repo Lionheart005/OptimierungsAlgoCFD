@@ -1,4 +1,5 @@
 {
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
   //  MantaAuv -- Gmsh-Vernetzer
   // ===================================================================
@@ -11,15 +12,24 @@
   //
   // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
   // daneben (gitignored). Sollstand ist, dass es keine gibt.
+  //
+  // Randbedingungen: Die SU2-Markernamen ("Farfield" fuer den Kanal, "Wall" fuer
+  // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
 
   // --- Windkanal (Simulationsdomäne) in mm ---
   // "Box" = Quader aus TunnelSize*, "Cylinder" = Zylinder mit Achse entlang X
   // aus TunnelDiameter/TunnelLength/TunnelSegments. Beide sitzen auf TunnelCenter*.
+  // Empfehlung fuer Nachlauf-Erfassung: Den Tunnelmittelpunkt stromabwaerts verschieben
+  // (positives TunnelCenterX), sodass hinter dem Modell mindestens 10 Koerperlaengen (>= 10 L)
+  // Platz bleiben (z. B. bei 50 mm Modell: TunnelCenterX = 100 mm im 600 mm Tunnel ergibt
+  // 4 L vorn und 8 L hinten, oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L hinten).
   "TunnelShape": "Box",
-  "TunnelSizeX": 600.0,
+  // 1200 mm lang, Modell (~100 mm) 300 mm hinter der Mitte: ~6 L davor, ~18 L dahinter fuer den Nachlauf
+  // (Faustregel >= 10 L; Servertest 06.11.2026).
+  "TunnelSizeX": 1200.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
-  "TunnelCenterX": 0.0,
+  "TunnelCenterX": 300.0,
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
 
@@ -32,5 +42,17 @@
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
-  "BoundaryLayerDistMax": 40.0
+  "BoundaryLayerDistMax": 40.0,
+
+  // --- Wandschicht und Nachlauf (TODO-40, TODO-W6) ---
+  // "Prism": flache Prismenschichten an der Wand (y+ ~ 1, am Manta gemessen: SU2 konvergiert).
+  // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
+  "BoundaryLayerMode": "Prism",
+  "WakeRefinement": true,
+
+  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
+  "DetailBox": false,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSize": 0.0
 }

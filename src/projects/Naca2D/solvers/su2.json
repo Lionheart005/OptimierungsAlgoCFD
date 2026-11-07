@@ -1,0 +1,52 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  Naca2D -- SU2-Solver (2D)
+  // ===================================================================
+  //
+  // 2D-CFD-Strömungslöser für NACA-Profile (TODO-47).
+  // Randbedingungen (Fernfeld und Wall) und inkompressible RANS (SA)
+  // werden automatisch in 2D erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+
+  // --- Fluideigenschaften (Luft auf Meereshöhe, ISA 15 °C) ---
+  "Density": 1.225,
+  "DynamicViscosity": 1.81e-5,
+  "TurbulenceModel": "SA",
+  "SpeedOfSound": 343.2,
+  "FreestreamVelocity": 51.48,
+
+  // --- Dimension & Anstellwinkel (TODO-46/47) ---
+  "Dimensions": 2,
+  "AngleOfAttackDeg": 5.0,
+
+  // --- Referenzwerte ---
+  // In 2D entspricht die Bezugsfläche der Sehnenlänge (REF_AREA = c * 1 m).
+  "ReferenceLength": 0.05,
+  "ReferenceAreaMetric": "Chord",
+
+  // --- Ergebnisgrößen: welche Zahl kommt unter welchem Namen an? ---
+  "ResultMetrics": {
+    "Drag": "CD",
+    "Lift": "CL"
+  },
+
+  "ConvergenceField": "DRAG",
+
+  // Nicht auskonvergierte Rechnungen (Drift im Endfenster zu gross) duerfen nicht in die Optimierung (TODO-W3).
+  // Ergebnis ist das Mittel des Endfensters, nicht der letzte Iterationsschritt.
+  "TreatUnconvergedAsFailed": true,
+  "ResultAveraging": "TailMean",
+  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
+
+  // --- CFL-Steuerung ---
+  "CflNumber": 5.0,
+  "CflAdapt": true,
+  "CflAdaptFactorDown": 0.5,
+  "CflAdaptFactorUp": 1.2,
+  "CflAdaptMin": 1.0,
+  "CflAdaptMax": 50.0,
+
+  // --- y+-Ziel und Grenzschichtprüfung ---
+  "TargetYPlus": 1.0,
+  "YPlusWarnFactor": 2.0
+}

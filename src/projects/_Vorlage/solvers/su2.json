@@ -1,4 +1,5 @@
 {
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
   //  MeinProjekt -- SU2-Solver
   // ===================================================================
@@ -15,13 +16,27 @@
   //
   // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
   // (gitignored). Sollstand ist, dass es keine gibt.
+  //
+  // Randbedingungen (Fernfeld am Kanal, Haftwand am Modell) und Gleichungen
+  // (inkompressible RANS, SA) werden im Code erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
 
   // --- Fluideigenschaften ---
   // Der Standard ist Meerwasser -- fuer Luft etwa 1.225 kg/m3 und 1.81e-5 Pa*s.
   "Density": 1025.0,            // kg/m3
   "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
   "TurbulenceModel": "SA",      // SA oder SST
-  "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um
+  "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um (nur wenn FreestreamVelocity 0 ist)
+
+  // Anstroemgeschwindigkeit in m/s. 0 = nicht gesetzt: dann gilt
+  // MachNumber (aus ../simulation.json) x SpeedOfSound. EMPFOHLEN ist, hier
+  // direkt die Geschwindigkeit einzutragen -- der Loeser ist inkompressibel,
+  // eine Mach-Zahl hat fuer ihn keine Bedeutung. Achtung: SpeedOfSound ist der
+  // Wert fuer LUFT; in Wasser ergaebe Mach 0.1 unrealistische 34.3 m/s.
+  "FreestreamVelocity": 0.0,    // m/s
+
+  // --- Dimension & Anstellwinkel (TODO-46) ---
+  "Dimensions": 3,
+  "AngleOfAttackDeg": 0.0,
 
   // --- Referenzwerte ---
   "ReferenceLength": 0.01,
@@ -69,6 +84,19 @@
   // entfernt, nimmt damit jeder Zuordnung in ResultMetrics die Grundlage.
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
+  // --- Auswertung & Konvergenzbewertung (TODO-35) ---
+  // Schwelle fuer Schwingungswarnung (relativer Hub ueber das Cauchy-Fenster: (max-min)/|mean|).
+  // 0.02 = 2 %. Schwingt ein Beiwert staerker, warnt der Solver vor instationaerer Stroemung.
+  "OscillationWarnLimit": 0.02,
+
+  // true = Rechnungen, die bei ITER abbrechen ohne Konvergenzkriterium zu erfuellen,
+  // gelten als fehlgeschlagen (SimulationFailed = true). Standard false = weiterrechnen.
+  "TreatUnconvergedAsFailed": false,
+
+  // "Last" (Standard) = Endwert der letzten Iteration uebernehmen.
+  // "CauchyWindowMean" = Mittelwert ueber die letzten CauchyElements Zeilen (fuer schwingende Faelle).
+  "ResultAveraging": "Last",
+
   // --- CFL-Steuerung ---
   // Groesser = schnellere, aber unruhigere Konvergenz. Divergiert SU2, ist
   // CflNumber die erste Zahl, die man halbiert.
@@ -77,5 +105,28 @@
   "CflAdaptFactorDown": 0.5,
   "CflAdaptFactorUp": 1.2,
   "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0
+  "CflAdaptMax": 50.0,
+
+  // --- y+-Ziel und Grenzschichtpruefung (TODO-41) ---
+  // Zielwert fuer y+ an der Wand (Standard 1.0).
+  "TargetYPlus": 1.0,
+
+  // Warnfaktor fuer y+: Ueberschreitet das 95 %-Quantil (P95) das Produkt
+  // aus YPlusWarnFactor und TargetYPlus, warnt der Solver (Standard 2.0).
+  "YPlusWarnFactor": 2.0,
+
+  // --- Zeitgenauer Modus / URANS (TODO-37) ---
+  // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).
+  // Vorgaben seit TODO-W7: 1000 Zeitschritte = 20 Perioden (50 je Periode), Mittelung ueber die letzten 10.
+  // RestartIteration: 0 = Start aus dem Freistrom; 2 = Neustart aus der stationaeren Loesung (setzt der Recheck selbst).
+  "TimeDomain": {
+    "Enabled": false,
+    "TimeStep": 0.0,
+    "StepsPerPeriod": 50,
+    "StrouhalEstimate": 0.2,
+    "TimeIterations": 1000,
+    "InnerIterations": 30,
+    "AveragingStartFraction": 0.5,
+    "RestartIteration": 0
+  }
 }

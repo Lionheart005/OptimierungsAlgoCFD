@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Steuert den Optimierungslauf auf dem Linux-Rechner der Hochschule von Windows aus.
 
@@ -18,10 +18,12 @@
 .PARAMETER Command
     deploy   Code hochladen und bauen (startet bei Bedarf neu, siehe oben)
     run      deploy + starten  -- der Alltagsbefehl
+    resume   Abgebrochenen Lauf fortsetzen (nach Server-Neustart, Absturz oder stop).
+             Laedt nichts hoch und baut nicht: rechnet mit dem Stand auf dem Server weiter.
     status   Laeuft was? Wie lange? Letzte Logzeilen
     log      Logdatei live mitlesen (Strg+C beendet nur das Mitlesen, nicht den Lauf)
     stop     Lauf, tmux-Sitzung und haengende Kindprozesse beenden
-    fetch    Ergebnisse vom Server nach Windows holen
+    fetch    Ergebnisse vom Server nach Windows holen (Standard, -Champion oder -All)
     doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
     build    Nur bauen, nicht starten
     projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
@@ -46,13 +48,21 @@
     Rueckfrage. Vorher mit fetch holen, was man behalten will.
 
 .EXAMPLE
+    .\scripts\sim.ps1 fetch
+    Holt Standard-Ergebnisse (CSV, effective-config.json, Log, Verlaeufe) nach .\Serverergebnisse\
+
+.EXAMPLE
+    .\scripts\sim.ps1 fetch -Champion
+    Holt Standard-Ergebnisse plus VTU-Dateien des Champions nach .\Serverergebnisse\
+
+.EXAMPLE
     .\scripts\sim.ps1 fetch -All
-    Holt den kompletten Ergebnisse-Ordner (inkl. vtu-Dateien) nach .\Serverergebnisse\
+    Holt den kompletten Ergebnisse-Ordner (inkl. aller 3D-Dateien) nach .\Serverergebnisse\
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('deploy', 'run', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete')]
+    [ValidateSet('deploy', 'run', 'resume', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete', 'calibrate', 'recheck')]
     [string]$Command = 'status',
 
     # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
@@ -81,6 +91,9 @@ param(
     # fetch: kompletten Ergebnisse-Ordner statt nur CSV und Log
     [switch]$All,
 
+    # fetch: Champion- und Top-N-VTUs mitnehmen
+    [switch]$Champion,
+
     # log/status: wie viele Zeilen
     [int]$Lines = 40,
 
@@ -88,13 +101,41 @@ param(
     [switch]$NoFollow,
 
     # fetch: Zielordner unter Windows
-    [string]$Out = 'Serverergebnisse'
+    [string]$Out = 'Serverergebnisse',
+
+    # recheck: Variante (z. B. Gen3_Var2)
+    [string]$Variant = '',
+
+    # recheck: Verfeinerungsstufen gegenueber dem wirksamen Faktor (Standard 1)
+    [int]$Finer = 1,
+
+    # recheck: zeitgenaue URANS-Rechnung (Dual-Time-Stepping) fuer Einzelpruefung (TODO-37)
+    [switch]$Unsteady
 )
 
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $RunnerCall = "bash scripts/sim-runner.sh"
+
+# SSH-Zeitgrenzen fuer JEDEN ssh- und scp-Aufruf dieses Skripts -- bewusst grosszuegig
+# (Entscheidung vom 04.11.2026, siehe .plans/anmerkungen_umsetzung.md, TODO-31):
+#
+#   ConnectTimeout=60       Verbindungsaufbau samt Schluesselaustausch darf eine volle
+#                           Minute dauern -- auch dann, wenn der Server unter Volllast
+#                           rechnet und sshd entsprechend traege antwortet.
+#   ServerAliveInterval=30  kommt 30 s lang nichts, schickt ssh ein winziges Lebenszeichen ...
+#   ServerAliveCountMax=6   ... und gibt erst nach 6 unbeantworteten auf, also nach
+#                           3 Minuten echter Funkstille.
+#
+# Ohne diese Werte wartet eine tote VPN-Verbindung UNBEGRENZT und ohne Meldung. Die
+# Lebenszeichen beantwortet sshd selbst, auch wenn der Befehl drueben lange nichts
+# ausgibt (Build, stop) -- ein stiller, aber gesunder Befehl wird also nicht abgebrochen.
+# Nebenbei halten sie den VPN-Tunnel bei "log" aktiv, der sonst im Leerlauf trennen kann.
+#
+# Bricht hier etwas ab, betrifft das NUR die Verbindung von diesem Rechner aus. Ein Lauf
+# in der tmux-Sitzung auf dem Server rechnet davon unberuehrt weiter.
+$SshOptions = @('-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=6')
 
 # Verzeichnisse, die auf den Server gehoeren. tests/ bleibt hier: der Server soll
 # rechnen, nicht testen -- und ohne tests/ wuerde die .sln dort nicht bauen,
@@ -165,6 +206,79 @@ function Get-LocalHash {
 
 # Fuehrt einen Befehl auf dem Server aus. Die Umgebung (PATH, LD_LIBRARY_PATH)
 # setzt sich sim-runner.sh selbst -- ~/.bashrc greift bei "ssh host befehl" nicht.
+# Commit und Branch fuer deploy-info.json (TODO-50). Direkt aus den Dateien unter .git
+# gelesen: lokal liegt git nur im Ordner von GitHub Desktop und nicht im PATH.
+function Get-GitState {
+    $state = [ordered]@{ Commit = $null; Branch = $null }
+    $gitDir = Join-Path $RepoRoot '.git'
+    $headFile = Join-Path $gitDir 'HEAD'
+    if (-not (Test-Path -LiteralPath $headFile)) { return $state }
+
+    $head = (Get-Content -LiteralPath $headFile -Raw).Trim()
+    if ($head -match '^ref:\s*(.+)$') {
+        $ref = $Matches[1].Trim()
+        $state.Branch = $ref -replace '^refs/heads/', ''
+
+        $loose = Join-Path $gitDir ($ref -replace '/', '\')
+        if (Test-Path -LiteralPath $loose) {
+            $state.Commit = (Get-Content -LiteralPath $loose -Raw).Trim()
+        }
+        else {
+            $packed = Join-Path $gitDir 'packed-refs'
+            if (Test-Path -LiteralPath $packed) {
+                foreach ($line in Get-Content -LiteralPath $packed) {
+                    $parts = $line.Split(' ')
+                    if ($parts.Count -eq 2 -and $parts[1] -eq $ref) { $state.Commit = $parts[0]; break }
+                }
+            }
+        }
+    }
+    elseif ($head -match '^[0-9a-f]{40}$') {
+        $state.Commit = $head
+    }
+
+    return $state
+}
+
+# "true"/"false" nur, wenn ein git gefunden wird (PATH oder GitHub Desktop), sonst "unbekannt".
+function Get-UncommittedChanges {
+    try {
+        $git = $null
+        $command = Get-Command git -ErrorAction SilentlyContinue
+        if ($command) { $git = $command.Source }
+        elseif ($env:LOCALAPPDATA -and (Test-Path (Join-Path $env:LOCALAPPDATA 'GitHubDesktop'))) {
+            $found = Get-ChildItem "$env:LOCALAPPDATA\GitHubDesktop" -Filter git.exe -Recurse -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($found) { $git = $found.FullName }
+        }
+        if (-not $git) { return 'unbekannt' }
+
+        $changes = & $git -C $RepoRoot status --porcelain 2>$null
+        if ($LASTEXITCODE -ne 0) { return 'unbekannt' }
+        if ($changes) { return 'true' }
+        return 'false'
+    }
+    catch { return 'unbekannt' }
+}
+
+# Schreibt deploy-info.json neben .deploy_hash (TODO-50). Das Programm liest daraus den
+# Code-Stand fuer run-info.json -- auf dem Server gibt es kein .git. Uebertragen wird der
+# Inhalt als Base64: PowerShell 5.1 reicht Anfuehrungszeichen in Argumenten an ssh nicht
+# sauber durch, und JSON besteht aus Anfuehrungszeichen.
+function Write-RemoteDeployInfo([string]$LocalHash) {
+    $git = Get-GitState
+    $info = [ordered]@{
+        Commit             = $git.Commit
+        Branch             = $git.Branch
+        DeployHash         = $LocalHash
+        DeployZeit         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+        UncommittedChanges = Get-UncommittedChanges
+    }
+    $json = $info | ConvertTo-Json -Compress
+    $base64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
+    Invoke-Remote -CommandLine "printf '%s' '$base64' | base64 -d > deploy-info.json" | Out-Null
+}
+
 function Invoke-Remote {
     param(
         [Parameter(Mandatory)][string]$CommandLine,
@@ -178,14 +292,15 @@ function Invoke-Remote {
         # Bewusst 2>$null statt 2>&1: PowerShell 5.1 verpackt den stderr eines
         # nativen Programms bei 2>&1 in ErrorRecords, was zusammen mit
         # $ErrorActionPreference='Stop' auch bei Exit-Code 0 eine Ausnahme wirft.
-        $output = & ssh $Server $remote 2>$null
+        $output = & ssh @SshOptions $Server $remote 2>$null
         $code = $LASTEXITCODE
     }
+
     else {
         # Out-Host, nicht einfach "& ssh ...": die Ausgabe eines nativen Programms
         # landet sonst im Erfolgs-Stream der Funktion und wuerde vom | Out-Null
         # des Aufrufers mit verschluckt. Out-Host schreibt direkt auf die Konsole.
-        & ssh $Server $remote | Out-Host
+        & ssh @SshOptions $Server $remote | Out-Host
         $code = $LASTEXITCODE
         $output = $null
     }
@@ -205,7 +320,7 @@ function Test-RemoteRunning {
 # Liegt auf dem Server ueberhaupt schon ein Stand? Ohne diese Pruefung scheitern
 # status/stop/log/fetch beim allerersten Mal an einem nackten "cd: No such file".
 function Test-RemoteDeployed {
-    & ssh $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
+    & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -214,6 +329,14 @@ function Assert-RemoteDeployed {
 
     throw ("Auf $Server liegt unter '$RemoteDir' noch kein Stand. " +
            "Erst hochladen mit:  .\scripts\sim.ps1 deploy -Server $Server")
+}
+
+function Get-RemoteLastProject {
+    $result = Invoke-Remote -CommandLine "$RunnerCall lastproject" -Quiet -AllowFailure
+    if ($result.ExitCode -ne 0 -or -not $result.Output) { return $null }
+    $last = ($result.Output | Select-Object -Last 1).ToString().Trim()
+    if ($last) { return $last }
+    return $null
 }
 
 function Get-RemoteHash {
@@ -251,10 +374,10 @@ function Push-Sources {
         $sizeKb = [math]::Round((Get-Item $tarFile).Length / 1KB, 1)
         Write-Host "    Archiv: $sizeKb KB - uebertrage nach ${Server}:$RemoteDir"
 
-        & ssh $Server "mkdir -p '$RemoteDir'"
+        & ssh @SshOptions $Server "mkdir -p '$RemoteDir'"
         if ($LASTEXITCODE -ne 0) { throw "Konnte $RemoteDir auf $Server nicht anlegen." }
 
-        & scp -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
+        & scp @SshOptions -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
         if ($LASTEXITCODE -ne 0) { throw "scp ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
 
         # Verwaiste Dateien entfernen, BEVOR entpackt wird.
@@ -285,7 +408,7 @@ function Push-Sources {
 }
 
 function Invoke-Deploy {
-    param([switch]$ThenStart)
+    param([switch]$ThenStart, [switch]$ThenCalibrate)
 
     Write-Step "Deploy nach $Server ($RemoteDir)"
 
@@ -304,7 +427,11 @@ function Invoke-Deploy {
         if ($ThenStart -and -not $wasRunning) {
             Invoke-Start
         }
-        elseif ($ThenStart) {
+        elseif ($ThenCalibrate -and -not $wasRunning) {
+            # Frueher fehlte dieser Zweig: "calibrate" ohne Code-Aenderung tat gar nichts.
+            Invoke-Calibrate
+        }
+        elseif ($ThenStart -or $ThenCalibrate) {
             Write-Host "    Der laufende Lauf bleibt unangetastet." -ForegroundColor Green
         }
         return
@@ -339,8 +466,16 @@ function Invoke-Deploy {
     # waehrend alles danach aussah, als sei der neue Stand drueben.
     Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
+    # Zum selben Zeitpunkt: Commit, Branch und Deploy-Zeit fuer den Fahrtenschreiber.
+    # Nur Information -- scheitert das, darf der Deploy trotzdem gelten.
+    try { Write-RemoteDeployInfo -LocalHash $localHash }
+    catch { Write-Warn "deploy-info.json konnte nicht geschrieben werden: $($_.Exception.Message)" }
+
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
+    }
+    elseif ($ThenCalibrate) {
+        Invoke-Calibrate
     }
 }
 
@@ -352,33 +487,105 @@ function Invoke-Start {
     Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
+# Abgebrochenen Lauf fortsetzen (TODO-52). Bewusst KEIN Push und KEIN Build (F28): neuer
+# Code heisst neuer Lauf. Weicht der lokale Stand ab, wird nur gewarnt.
+function Invoke-Resume {
+    Write-Step "Setze abgebrochenen Lauf '$Project' auf $Server fort"
+
+    $localHash = Get-LocalHash
+    $remoteHash = Get-RemoteHash
+    if ($localHash -ne $remoteHash) {
+        Write-Warn "Lokaler Code weicht vom Server ab. resume rechnet mit dem Stand auf dem Server weiter; neuer"
+        Write-Warn "Code braucht einen neuen Lauf (run)."
+    }
+
+    Invoke-Runner -Arguments 'resume'
+    Write-Host ""
+    Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
+function Invoke-Calibrate {
+    Write-Step "Starte Netzkalibrierung fuer '$Project' auf $Server"
+    Invoke-Runner -Arguments 'calibrate'
+    Write-Host ""
+    Write-Host "    Die Kalibrierung haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
+function Invoke-Recheck {
+    Write-Step "Starte Recheck fuer '$Project' auf $Server"
+    $rArgs = "recheck"
+    if ($Variant) { $rArgs += " '$Variant'" }
+    if ($Finer) { $rArgs += " $Finer" }
+    if ($Unsteady) { $rArgs += " --unsteady" }
+    Invoke-Runner -Arguments $rArgs
+    Write-Host ""
+    Write-Host "    Der Recheck haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
+    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+}
+
 function Invoke-Fetch {
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $target = Join-Path $RepoRoot (Join-Path $Out "${Server}_$stamp")
+    $scope = if ($All) { 'all' } elseif ($Champion) { 'champion' } else { 'standard' }
+    $target = Join-Path $RepoRoot (Join-Path $Out "${Server}_${Project}_$stamp")
     New-Item -ItemType Directory -Path $target -Force | Out-Null
 
-    Write-Step "Hole Ergebnisse nach $target"
+    Write-Step "Packe Ergebnisse fuer '$Project' auf $Server (Umfang: $scope)"
 
-    # Ergebnisse liegen seit TODO-25 unter Ergebnisse/<Projekt>/ -- geholt wird also
-    # gezielt das Projekt, nicht der gemeinsame Topf.
-    $remoteResults = "$RemoteDir/Ergebnisse/$Project"
-
-    if ($All) {
-        & scp -q -r "${Server}:$remoteResults" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Ergebnisse-Ordner von '$Project' konnte nicht geholt werden." }
-    }
-    else {
-        & scp -q "${Server}:$remoteResults/Simulation_Results.csv" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "Simulation_Results.csv konnte nicht geholt werden (schon ein Lauf von '$Project' gemacht?)." }
-
-        # Die effective-config.json ist klein und beantwortet spaeter die Frage, womit
-        # dieser Datensatz entstanden ist -- sie gehoert zur CSV dazu.
-        & scp -q "${Server}:$remoteResults/effective-config.json" $target
-        if ($LASTEXITCODE -ne 0) { Write-Warn "effective-config.json konnte nicht geholt werden." }
+    $packResult = Invoke-Remote -CommandLine "$RunnerCall pack '$Project' '$scope'" -Quiet -AllowFailure
+    if ($packResult.ExitCode -ne 0 -or -not $packResult.Output) {
+        throw "Packen auf $Server fehlgeschlagen (Exit-Code $($packResult.ExitCode))."
     }
 
-    & scp -q "${Server}:$RemoteDir/simulation.log" $target
-    if ($LASTEXITCODE -ne 0) { Write-Warn "simulation.log konnte nicht geholt werden." }
+    $remoteArchive = ($packResult.Output | Select-Object -Last 1).ToString().Trim()
+    if (-not $remoteArchive) {
+        throw "Der Server hat keinen Archivpfad zurueckgegeben."
+    }
+
+    $localArchive = Join-Path $env:TEMP "sim-fetch-${Project}-$stamp.tar.gz"
+
+    try {
+        Write-Step "Uebertrage Archiv von $Server"
+        & scp @SshOptions -q "${Server}:$remoteArchive" $localArchive
+        if ($LASTEXITCODE -ne 0) {
+            throw "Herunterladen des Archivs von $Server fehlgeschlagen."
+        }
+
+        Write-Step "Entpacke Ergebnisse nach $target"
+        & tar.exe -xzf $localArchive -C $target
+        if ($LASTEXITCODE -ne 0) {
+            throw "Entpacken mit tar.exe fehlgeschlagen (Exit-Code $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $localArchive -Force -ErrorAction SilentlyContinue
+        & ssh @SshOptions $Server "rm -f '$remoteArchive'" 2>$null
+    }
+
+    $logPath = Join-Path $target 'simulation.log'
+    if (Test-Path -LiteralPath $logPath) {
+        $logLines = Get-Content -LiteralPath $logPath -TotalCount 30 -ErrorAction SilentlyContinue
+        $match = $logLines | Select-String -Pattern '^\s*Projekt:\s*(.+)$' | Select-Object -First 1
+        if ($match) {
+            $logProject = $match.Matches[0].Groups[1].Value.Trim()
+            if ($logProject -and $logProject -ne $Project) {
+                Write-Warn "Das geholte Log gehoert laut Kopfzeile zu Projekt '$logProject', nicht zum gewaehlten '$Project'."
+            }
+        }
+    }
+
+    $csvPath = Join-Path $target 'Simulation_Results.csv'
+    if (-not (Test-Path -LiteralPath $csvPath)) {
+        Write-Host ""
+        Write-Host "FEHLER: Simulation_Results.csv fuer Projekt '$Project' fehlt nach dem Entpacken." -ForegroundColor Red
+        Write-Host "Auf $Server liegen Ergebnisse fuer folgende Projekte:" -ForegroundColor Red
+        $projectsResult = Invoke-Remote -CommandLine "$RunnerCall projects" -Quiet -AllowFailure
+        if ($projectsResult.Output) {
+            $projectsResult.Output | ForEach-Object { Write-Host "    $_" }
+        }
+        exit 1
+    }
 
     Get-ChildItem -Path $target -Recurse -File | ForEach-Object {
         Write-Host ("    {0,10:N1} KB  {1}" -f ($_.Length / 1KB), $_.Name)
@@ -426,20 +633,41 @@ function Invoke-Delete {
 try {
     # Sagen, mit welchem Projekt gerechnet wird, wenn der Aufruf es nicht nennt. Auf der
     # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
-    # bequem und darf bleiben -- aber nicht stumm. Die Liste der Befehle ist genau die,
-    # bei denen der Projektname das Ergebnis aendert (log liest die eine globale
-    # Logdatei, stop trifft den Prozess, projects fragt ja gerade nach den Namen,
-    # delete raeumt alle Projekte zugleich ab).
-    $projectBoundCommands = @('deploy', 'run', 'status', 'fetch', 'doctor')
-
-    if ($projectBoundCommands -contains $Command -and -not $PSBoundParameters.ContainsKey('Project')) {
-        Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
-        Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+    # bequem und darf bleiben -- aber nicht stumm.
+    #
+    # Bei fetch und status fragen wir das zuletzt auf dem Server gerechnete Projekt ab
+    # (TODO-31); bei deploy, run und doctor gilt weiterhin die Standardvorgabe.
+    if (-not $PSBoundParameters.ContainsKey('Project')) {
+        if (@('status', 'fetch') -contains $Command) {
+            Assert-RemoteDeployed
+            $remoteLast = Get-RemoteLastProject
+            if ($remoteLast) {
+                $Project = $remoteLast
+                Write-Host "Kein -Project angegeben - letzter Lauf auf $Server war '$Project', nehme dieses." -ForegroundColor Yellow
+            }
+            else {
+                Write-Warn "Kein -Project angegeben und kein letzter Lauf auf $Server ermittelt, es gilt die Vorgabe '$Project'."
+                Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+            }
+        }
+        elseif (@('deploy', 'run', 'resume', 'doctor', 'calibrate', 'recheck') -contains $Command) {
+            Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
+            Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+        }
     }
 
     switch ($Command) {
         'deploy' { Invoke-Deploy }
         'run' { Invoke-Deploy -ThenStart }
+        'calibrate' { Invoke-Deploy -ThenCalibrate }
+        'resume' {
+            Assert-RemoteDeployed
+            Invoke-Resume
+        }
+        'recheck' {
+            Assert-RemoteDeployed
+            Invoke-Recheck
+        }
 
         'build' {
             Assert-RemoteDeployed
@@ -500,7 +728,7 @@ try {
                 Write-Host "Strg+C beendet nur die Anzeige - der Lauf auf dem Server laeuft weiter." -ForegroundColor Yellow
             }
             # Direkt ohne Wrapper, damit Strg+C sauber durchschlaegt.
-            & ssh $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
+            & ssh @SshOptions $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
         }
     }
 }

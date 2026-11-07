@@ -1,15 +1,15 @@
 Skript:
 Fetch funktioniert irgendwie nicht so richtig
-
+Sicherstellen, dass keine Keys oder sensible Informationen irgendwo rumliegen im Code
 
 SU2 Verständinsfragen
 Randbdingungen wo wird gesagt wo ein und ausströmt? un Randbedingungen gesetzt für lösung der gleichung?
-
+--> das in kommentaren kurz in entsprechende konfigurations dateien schreiben.
 
 Neue Features:
 - instationäre datenauswertung, also über die zeit schauen wie sicht z.B. der drag verändert und das Plotten innerhalb von einer einzelnen Simulation
     Von SU2 als auch den verlauf der Kennwerte holen um simulation händisch zu überprüfen
--2D Simulation detailliert und schnell 
+-2D Simulation möglich machen (soll) detailliert und schnell. geht das mit SU2 und PicoGK? Wenn nicht gibt es einfache tools die man sich zunutze machen kann die open source sind? oder ist es vielleicht sogar einfacher die objektgenerierung einfach schnell in c# selber zu schreiben, analog zu picoGK aber eben ein 2D Kernel, der aber die gleichen features und befehle hat udn in dotnet läuft? was ist am elegantesten und auch am zukunftsfähigsten, wenn man später KI und LLMs integrieren will?
 
 
 Rechnungen sind nicht Physikalisch akkurat: 
@@ -19,12 +19,43 @@ Rechnungen sind nicht Physikalisch akkurat:
 - gewinner der simulation immer nochmal überprüfen in detailierter auflösung. 
 
 
+---> bis hier her gerade in bearbeitung
 
+
+----> dann einmal alles testen auf Server
+
+----> dann plan erarbeiten für folgende erweiterungen:
 
 #####################
 Erweiterungen:
 ####################
-Ganz neue Programteile Schreiben:
+Ganz neue Programteile;
+
+KI:
 Um Rechenzet zu sparen und ergebnisse zu verbessern und out of the box zu denken, überlege ich KI bzw MaschineLearing in das Programm zu übertragen.
 (Frage: Gäbe es auch eine möglichkeit ein Physical Informed LLM direkt den c# code bearbeiten zu lassen um die Geometrien ganz neu Anzupassen? Wie umfangreich wäre es den wirkflow von Leap71 mit Nyron und PicoGK komplett nachzubauen, also dass das ganze Framework von KI aus erzuegt wird?)
 (Frage: Gingen es dass ein KI Modell sowohl den Optimierungsalgorithmus als auch die Simulation ersetzt? oder müssen das zwei eigene sein. Macht das überhaupt sinn?)
+
+FEM: 
+Eine open source FEM tool, ähnliches Kaliber wie SU2 für FEM simulationen / kombinierte probleme integrieren.
+
+
+^ bis hierhin alles alt, bzw schon in plänen vorhanden. 
+6.11.26
+neue prompts für die zukunft.
+
+es wurde in diesem branch wirklich viel neu gemacht und umgesetzt. 
+es muss noch geschaut werden ob der neue testlauf vom manta auv mit neuem netz auch gut funktioniert. und tut was er soll. 
+es wurde alles einmal getestet, aber es ist auf jeden fall viel was auch noch unsauber sein kann, deshalb möchte ich dass nochmal ein starkes model rüberschaut und nach fehlern sucht. 
+z.b. soll natürlich nichts hardcoded und alles problemunabhängig sein, so, wie z.b. die option im nachlauf nach dem modell eine box mit detailiertem netzt mit genau den gleichen maßen wie das boxvolumen des körpers als on/off option die standardmäßig funktioniert
+generell hat das meshing viele probleme gemacht und ich bin mir nicht sicher ob alles so sauber gemeshed wurde. 
+auch soll z.b. nach anstellwinkel optimiert werden können. geht das schon? ich bin mir nicht sicher...
+Warung mit der Machnummer ist total nervig uns sinnlos. ich würde sagen wir entfernen die machnummer einfach komplett aus der eingabe. 
+die konsolenausgabe im logg einmal ein bisschen schöner und anschaulicher machen
+wenn alle fehler behoben und erkannt wurden bitte die pläne einmal etwas zusammenfassen und übersichtlicher kennzeichen welche veraltet sind, bzw ohne dass relevante infos verloren gehen komprimieren sodass die pläne nicht so viele tokens verballern wenn KIs die lesen. ; 
+ich würde dann gerne nochmal einen kleinen 5x5 testlauf in 2d mit allen neuen funktionen, wie z.b. kalibrierung und neuem besseren netz usw. 
+und da kurz einen kleinen bericht mit bildern und plots zu wie in manta auv.
+dann die KI pläne und integration umsetzten und dann genau den lauf nochmal starten
+
+dann nochmal eine wirklich schöne umfangreiche und dennoch nicht zu technisch detailierte latexdokumentation  über einen neuen lauf von mantaauv in 3d und dem naca profil in 2d (ist das egentlich korrekt von der form her? irgendwie sieht es nicht ganz korrekt aus) von einem durchlauf wo alles einmal richtig schön präsentiert wird mit tollen bildern, vergleichen zwischen optimierungsalgorithmen, prinzipien und kalibrierungs zeug usw  also einmal alle register ziehen und zeigen was das programm bis jetzt kann. 
+in diesem zuge wäre es auch geil unter scripts ein paar python skripte zu schreiben, die allgemein vorlagen für auswertung von den daten sind, also konvergenz und residuen von einzelnen rechnungen, aber auch die fitness über die varianten der optimierung. sodass die auswertung einfacher fällt. 

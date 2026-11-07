@@ -22,24 +22,29 @@ namespace MyPicoGkProject.Core
         /// und liefert stillschweigend <see cref="DefaultAlgorithm"/>; ein unbekannter
         /// Name (Tippfehler) liefert ihn ebenfalls, aber mit Warnung auf der Konsole.
         /// </summary>
-        public static IOptimizationAlgorithm Create(string? name, IFitnessCalculator fitnessCalculator)
+        /// <param name="random">
+        /// Zufallsquelle des Verfahrens. Im Lauf <c>new Random(seed)</c> aus
+        /// <see cref="SimulationConfig.RandomSeed"/> (TODO-50), damit Läufe wiederholbar sind
+        /// und die Wiederaufnahme per Wiedergabe greift. <c>null</c> = echter Zufall.
+        /// </param>
+        public static IOptimizationAlgorithm Create(string? name, IFitnessCalculator fitnessCalculator, Random? random = null)
         {
             switch ((name ?? string.Empty).Trim().ToLowerInvariant())
             {
                 case "rsm":
-                    return new RsmOptimizationAlgorithm(fitnessCalculator);
+                    return new RsmOptimizationAlgorithm(fitnessCalculator, random);
 
                 case "evolution":
-                    return new EvolutionaryAlgorithm(fitnessCalculator);
+                    return new EvolutionaryAlgorithm(fitnessCalculator, random);
 
                 case "":
-                    return new RsmOptimizationAlgorithm(fitnessCalculator);
+                    return new RsmOptimizationAlgorithm(fitnessCalculator, random);
 
                 default:
                     Console.WriteLine(
                         $"[WARNUNG] Unbekannter Optimierungsalgorithmus '{name}'. " +
                         $"Gueltig sind: {SupportedAlgorithms}. Nutze '{DefaultAlgorithm}'.");
-                    return new RsmOptimizationAlgorithm(fitnessCalculator);
+                    return new RsmOptimizationAlgorithm(fitnessCalculator, random);
             }
         }
     }

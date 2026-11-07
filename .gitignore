@@ -18,7 +18,9 @@ Serverergebnisse/
 
 # Stand des zuletzt auf den Server geschobenen Codes (liegt nur dort)
 .deploy_hash
+deploy-info.json
 .last_exit
+.last_project
 
 # OS generated files
 .DS_Store
@@ -31,4 +33,9 @@ Thumbs.db
 
 # PicoGK specific / other
 imgui.ini
+
+# Lokale Einstellungen von Claude Code (Freigaben, ggf. Pfade dieses Rechners).
+# Fiel bisher nur zufaellig unter *.local.json -- hier ausdruecklich, damit eine
+# Umbenennung des Musters oben sie nicht versehentlich ins Repo holt.
+.claude/settings.local.json
 

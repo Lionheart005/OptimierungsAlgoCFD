@@ -37,6 +37,29 @@ namespace MyPicoGkProject.Core
         /// </summary>
         public Dictionary<string, float> CurrentDeviations { get; set; } = new();
 
+        /// <summary>
+        /// Wirksamer Netzverfeinerungsfaktor dieses Laufs. Startet bei <see cref="SimulationConfig.MeshRefinementFactor"/>
+        /// und kann von Kalibrier- oder Verifikationsläufen überschrieben werden, ohne die Konfiguration zu ändern.
+        /// </summary>
+        public float EffectiveMeshRefinementFactor { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Herkunft des wirksamen Netzfaktors (TODO-42).
+        /// Standard: "MANUELL aus simulation.json", im Auto-Modus kalibriert.
+        /// </summary>
+        public string MeshRefinementSource { get; set; } = "MANUELL aus simulation.json";
+
+        /// <summary>
+        /// Relativer oder absoluter Pfad zum Kalibrierbericht, falls kalibriert (TODO-42).
+        /// </summary>
+        public string? CalibrationReportPath { get; set; } = null;
+
+        /// <summary>
+        /// Optionaler Bezeichner (Tag) für den aktuellen Lauf (z. B. "Kal3" oder "Verif").
+        /// Fließt in die Dateinamen der Netzdateien ein, um Überschreiben zu verhindern.
+        /// </summary>
+        public string CurrentRunTag { get; set; } = "";
+
         /// <param name="workingDirectory">
         /// Ohne Angabe <c>Ergebnisse/&lt;Projektname&gt;/</c> im Arbeitsverzeichnis.
         /// </param>
@@ -78,6 +101,10 @@ namespace MyPicoGkProject.Core
         {
             CurrentBaseParameters = new Dictionary<string, float>(Project.BaseParameters);
             CurrentDeviations = new Dictionary<string, float>(Project.MaxDeviations);
+            EffectiveMeshRefinementFactor = Config.MeshRefinementFactor > 0f ? Config.MeshRefinementFactor : 1.0f;
+            MeshRefinementSource = "MANUELL aus simulation.json";
+            CalibrationReportPath = null;
+            CurrentRunTag = "";
         }
 
         /// <summary>

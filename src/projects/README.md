@@ -1,12 +1,17 @@
 # Die Projekte
 
+> **Welche Einstellung was bewirkt und wo man sie findet:** [Bedienhandbuch](BEDIENHANDBUCH.md) — ohne Programmierkenntnisse lesbar.
+
 Ein **Projekt** ist ein Bauteil, das optimiert werden soll: sein Geometrie-Bauplan,
 seine Zielfunktion und seine Zahlen. Jedes Projekt ist genau ein Ordner hier drin.
 
 ```
 src/projects/
 ├── _Vorlage/        Kopiervorlage -- kein Projekt, siehe _Vorlage/README.md
-└── MantaAuv/        ein AUV in Mantarochen-Form
+├── _Vorlage2D/      2D-Kopiervorlage -- kein Projekt, siehe _Vorlage2D/README.md
+├── MantaAuv/        ein AUV in Mantarochen-Form (3D)
+├── TestprojektNACA/ 3D-Flügelsegment nach NACA 4-digit
+└── Naca2D/          2D-CFD NACA-Profil mit NASA-TMR-Validierung
 ```
 
 **Der Ordnername ist der Projektname.** Nicht ein Feld in einer JSON, nicht ein
@@ -36,7 +41,8 @@ dotnet run --project src\Automatisierung_v2 -- --list-projects   # lokal
 ### 1. Ordner erzeugen
 
 ```powershell
-.\scripts\new-project.ps1 Propeller
+.\scripts\new-project.ps1 Propeller                 # 3D-CFD (Standard)
+.\scripts\new-project.ps1 MeinProfil -Template 2D   # 2D-CFD (direkter 2D-Kernel)
 ```
 
 Das kopiert `_Vorlage/` nach `Propeller/` und ersetzt das Platzhalterwort

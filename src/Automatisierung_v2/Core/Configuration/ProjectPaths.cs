@@ -48,6 +48,11 @@ namespace MyPicoGkProject.Core
         public const string TemplateDirectoryName = "_Vorlage";
 
         /// <summary>
+        /// 2D-Vorlage für neue Projekte (TODO-47). Zählt ebenfalls nicht als Projekt.
+        /// </summary>
+        public const string Template2DDirectoryName = "_Vorlage2D";
+
+        /// <summary>
         /// Manifestdatei eines Projekts. Heißt in <b>jedem</b> Projekt gleich (Entscheidung 2):
         /// ein Dateiname, der überall derselbe ist, kann nicht mit dem Projektnamen verwechselt
         /// werden — <c>config/projects/MantaAuv.json</c> konnte das.
@@ -91,6 +96,20 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
+        /// Wurzel des Repositorys: der Ordner, in dem <c>src/projects/</c> liegt (TODO-50).
+        /// Dort stehen <c>.git</c> (lokal) bzw. <c>deploy-info.json</c> und <c>.deploy_hash</c>
+        /// (Server). <c>null</c>, wenn kein Projektverzeichnis gefunden wurde.
+        /// </summary>
+        public static string? ResolveRepositoryRoot(string? explicitPath = null)
+        {
+            string? projectsRoot = ResolveProjectsRoot(explicitPath);
+            if (projectsRoot == null) return null;
+
+            DirectoryInfo? source = Directory.GetParent(projectsRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return source?.Parent?.FullName;
+        }
+
+        /// <summary>
         /// Liefert den Ordner eines Projekts. Der Ordnername <b>ist</b> der Projektname
         /// (Entscheidung 1) — es gibt keine zweite Stelle, an der er stünde.
         /// Gibt <c>null</c> zurück, wenn es das Projektverzeichnis oder den Ordner nicht gibt.
@@ -122,7 +141,7 @@ namespace MyPicoGkProject.Core
                 .Select(Path.GetFileName)
                 .Where(name => !string.IsNullOrEmpty(name))
                 .Select(name => name!)
-                .Where(name => !string.Equals(name, TemplateDirectoryName, StringComparison.OrdinalIgnoreCase))
+                .Where(name => !name.StartsWith(TemplateDirectoryName, StringComparison.OrdinalIgnoreCase))
                 .Where(name => !IgnoredDirectories.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .Where(name => !name.StartsWith(".", StringComparison.Ordinal))
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)

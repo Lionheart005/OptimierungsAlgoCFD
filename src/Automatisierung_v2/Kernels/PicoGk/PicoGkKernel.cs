@@ -23,7 +23,13 @@ namespace MyPicoGkProject.Kernels.PicoGk
         // Library.Go erwartet einen ThreadStart. Der ist signaturgleich zu Action;
         // die Umwandlung bleibt hier, damit der Framework-Kern mit dem neutralen
         // Action-Delegaten auskommt.
+        //
+        // bEndAppWithTask: true -- ohne den Schalter hält Library.Go das Programm offen, bis
+        // jemand das Viewer-Fenster schließt. Unter xvfb-run tut das niemand: jeder PicoGK-Lauf
+        // lief nach seiner letzten Ausgabe endlos weiter (kein "Ende:" im Log, run-info.json
+        // blieb auf "laeuft"), und der unsichtbare Viewer rechnete per Software-OpenGL auf
+        // ~10 Kernen weiter (Servertest 06.11.2026).
         public void RunHosted(float voxelResolution, Action body)
-            => Library.Go(voxelResolution, new ThreadStart(body.Invoke));
+            => Library.Go(voxelResolution, new ThreadStart(body.Invoke), bEndAppWithTask: true);
     }
 }

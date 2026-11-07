@@ -114,7 +114,8 @@ namespace AutomatisierungCleanVersion.Tests
                 MaxIterations = iterations,
                 VariantsPerIteration = variants,
                 UseRubberBandScaler = useScaler,
-                TargetPicoGkSize = 50f
+                TargetPicoGkSize = 50f,
+                ChampionVerification = new ChampionVerificationConfig { Mode = "Off" }
             };
 
             var project = new ProjectConfig
@@ -179,14 +180,12 @@ namespace AutomatisierungCleanVersion.Tests
         private static IMeshGenerator Mesher(List<string> log, string name, bool throws = false)
         {
             var mock = new Mock<IMeshGenerator>();
-            mock.Setup(m => m.GenerateMesh(
-                    It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(),
-                    It.IsAny<SimulationConfig>(), It.IsAny<float>(), It.IsAny<string>()))
-                .Returns((string stl, int iter, int var_, SimulationConfig c, float scale, string dir) =>
+            mock.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>()))
+                .Returns((MeshRequest req) =>
                 {
                     log.Add(name);
                     if (throws) throw new InvalidOperationException($"{name} kann dieses Modell nicht vernetzen");
-                    return $"{name}_{iter}_{var_}.su2";
+                    return $"{name}_{req.Iteration}_{req.Variant}.su2";
                 });
             return mock.Object;
         }
@@ -334,11 +333,12 @@ namespace AutomatisierungCleanVersion.Tests
             var log = new List<string>();
             var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S", throws: true)) };
 
-            var context = Context(iterations: 1, variants: 2);
-            new WorkflowController(Geometry(), stages, PassthroughValidator(), Optimizer(), context)
+            var context = Context(iterations: 2, variants: 2);
+            new WorkflowController(Geometry(("Volume", 10f, MetricScaling.Volume)), stages,
+                    PassthroughValidator(), Optimizer(), context)
                 .RunOptimization();
 
-            Assert.Equal(2, context.History.Count);
+            Assert.Equal(4, context.History.Count);
             Assert.All(context.History, r => Assert.True(r.SimulationFailed));
         }
 
@@ -499,6 +499,57 @@ namespace AutomatisierungCleanVersion.Tests
             // Variante 1 ist fehlgeschlagen und wurde übersprungen; Variante 2 liefert Drag.
             Assert.True(context.History[0].SimulationFailed);
             Assert.Equal(3, context.History.Count);
+        }
+
+        [Fact]
+        public void WorkflowController_Records_MeshCells_When_Su2_Has_Nelem()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "meshcells_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                string dummyMesh = Path.Combine(tempDir, "sample.su2");
+                File.WriteAllLines(dummyMesh, new[]
+                {
+                    "NDIME= 3",
+                    "NELEM= 48120",
+                    "NPOIN= 9200"
+                });
+
+                var mesherMock = new Mock<IMeshGenerator>();
+                mesherMock.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>()))
+                    .Returns(dummyMesh);
+
+                var stages = new[] { new SolverStage(mesherMock.Object, Solver(new List<string>(), "S")) };
+                var context = Context(iterations: 1, variants: 1);
+                context.WorkingDirectory = tempDir;
+
+                new WorkflowController(Geometry(), stages, PassthroughValidator(), Optimizer(), context)
+                    .RunOptimization();
+
+                var record = context.History.Single();
+                Assert.True(record.PassiveParameters.ContainsKey("MeshCells"));
+                Assert.Equal(48120f, record.PassiveParameters["MeshCells"]);
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+            }
+        }
+
+        [Theory]
+        [InlineData(0f, "0")]
+        [InlineData(50f, "50")]
+        [InlineData(50.5f, "50.5")]
+        [InlineData(50.555f, "50.56")]
+        [InlineData(0.02f, "0.02")]
+        [InlineData(0.0025f, "0.0025")]
+        [InlineData(-0.1234f, "-0.1234")]
+        [InlineData(-10.5f, "-10.5")]
+        public void FormatParameterValue_Formats_Correctly(float value, string expected)
+        {
+            string actual = WorkflowController.FormatParameterValue(value);
+            Assert.Equal(expected, actual);
         }
     }
 }

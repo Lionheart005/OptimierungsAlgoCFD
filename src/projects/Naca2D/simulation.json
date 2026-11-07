@@ -1,0 +1,79 @@
+{
+  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // ===================================================================
+  //  Naca2D -- Framework-Einstellungen dieses Projekts
+  // ===================================================================
+  //
+  // 2D-CFD-Optimierung und NASA-TMR-Validierung (TODO-47).
+  // Pfade analog zu TestprojektNACA für den Hochschulserver (BIC_12).
+
+  // --- Pfade zu externer Software ---
+  // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
+  // mit MPICH gebaut. Unter OpenMPI startete "-n 12" zwoelf unabhaengige SERIELLE Kopien,
+  // die sich gegenseitig die Dateien ueberschrieben (Servertest 06.11.2026). Eingerichtet mit
+  // "conda create -n mpich -c conda-forge mpich" (siehe setup_server.sh).
+  "MpiRunPath": "/home/lpleissner/miniconda/envs/mpich/bin/mpiexec",
+  "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
+  "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
+
+  // --- Zeit & Umfang ---
+  "MaxIterations": 3,
+  "VariantsPerIteration": 3,
+  "BaseVoxelResolution": 0.5,
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+
+  // --- Abschaltbare Framework-Bausteine ---
+  // In 2D sind weder RubberBandScaler noch Voxel-Glättung aktiv (direkte 2D-Kontur).
+  "UseRubberBandScaler": false,
+  "UseStlSmoothing": false,
+
+  // --- CFD & SU2 ---
+  // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
+  // den Netzfaktor am Anfang selbst (Entscheidung 06.11.2026, TODO-W8).
+  //
+  // Normale Varianten: moderate Konvergenz. Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck) rechnen mit
+  // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, iterativer Fehler <= 1/10).
+  // Seit TODO-W3 entscheidet die Drift der Kennwerte im Endfenster, ob eine Rechnung konvergiert ist.
+  "Su2MaxIterations": 3000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
+  "MpiCores": 16,
+  "GmshCores": 16,
+
+  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  "OptimizationAlgorithm": "Rsm",
+
+  // --- Evolutionärer Algorithmus ---
+  "MinimalDeviationExploration": 1.0,
+  "MinimalDeviationExploitation": 0.05,
+  "RoleFineTuner": 0.2,
+  "RoleCautious": 0.4,
+  "RoleNormal": 0.6,
+
+  // --- RSM (Antwortflächen-Verfahren) ---
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---
+  // Auto: die Kalibrierung rechnet Stufen 2.0 ... 0.5 und verfeinert bei Bedarf weiter (0.35, 0.25, ...),
+  // bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt (kombinierte Toleranz mit Mindestbetrag).
+  "MeshCalibration": {
+    "Mode": "Auto",
+    "Tolerance": 0.02
+  },
+
+  // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
+  "ChampionVerification": {
+    "Mode": "FinalTopN",
+    "TopN": 3,
+    "RefinementSteps": 1
+  },
+
+  // --- Validierung des Champions (Bouncer) ---
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01
+}
