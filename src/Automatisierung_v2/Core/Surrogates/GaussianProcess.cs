@@ -28,6 +28,7 @@ namespace MyPicoGkProject.Core
         // Daten (Eingaben unverändert, Ausgaben standardisiert)
         private readonly List<double[]> _inputs = new();
         private readonly List<double> _outputs = new();
+        private readonly List<double> _extraNoise = new();   // bekannte Unsicherheit je Punkt, standardisiert
         private double _outputMean;
         private double _outputScale = 1.0;
         private int _dimension;
@@ -75,7 +76,7 @@ namespace MyPicoGkProject.Core
         }
 
         /// <inheritdoc/>
-        public void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs)
+        public void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs, IReadOnlyList<double>? noiseVariances = null)
         {
             if (inputs == null) throw new ArgumentNullException(nameof(inputs));
             if (outputs == null) throw new ArgumentNullException(nameof(outputs));
@@ -97,6 +98,14 @@ namespace MyPicoGkProject.Core
                     throw new ArgumentException($"Ausgabe {i} ist nicht endlich ({outputs[i]}).");
             }
 
+            if (noiseVariances != null)
+            {
+                if (noiseVariances.Count != inputs.Count)
+                    throw new ArgumentException($"Unsicherheiten ({noiseVariances.Count}) und Eingaben ({inputs.Count}) sind verschieden viele.");
+                if (noiseVariances.Any(v => !double.IsFinite(v) || v < 0))
+                    throw new ArgumentException("Eine Unsicherheit ist negativ oder nicht endlich.");
+            }
+
             if (_theta != null && _dimension != d) _theta = null;
             _dimension = d;
 
@@ -112,6 +121,9 @@ namespace MyPicoGkProject.Core
             _outputMean = mean;
             _outputScale = scale;
             foreach (double y in outputs) _outputs.Add((y - mean) / scale);
+            _extraNoise.Clear();
+            for (int i = 0; i < outputs.Count; i++)
+                _extraNoise.Add(noiseVariances != null ? noiseVariances[i] / (scale * scale) : 0.0);
 
             _theta = OptimizeHyperparameters();
             Refactor();
@@ -165,6 +177,7 @@ namespace MyPicoGkProject.Core
 
             _inputs.Add((double[])input.Clone());
             _outputs.Add((output - _outputMean) / _outputScale);
+            _extraNoise.Add(0.0);
             _chol.Add(row);
             _cholArray = _chol.ToArray();
             _alpha = DenseCholesky.Solve(_cholArray, _outputs.ToArray());
@@ -205,7 +218,7 @@ namespace MyPicoGkProject.Core
             {
                 k[i] = new double[i + 1];
                 for (int j = 0; j < i; j++) k[i][j] = KernelFast(_inputs[i], _inputs[j], lengths, sf2);
-                k[i][i] = sf2 + sn2;
+                k[i][i] = sf2 + sn2 + _extraNoise[i];
             }
 
             double[][] l = DenseCholesky.Factor(k, out _);
@@ -235,9 +248,11 @@ namespace MyPicoGkProject.Core
         /// gegen finite Differenzen geprüft werden kann.
         /// </summary>
         /// <param name="gradient">Wird gefüllt, wenn nicht <c>null</c> (Länge = theta.Length).</param>
+        /// <param name="extraNoise">Bekannte Varianz je Punkt (standardisiert), kommt auf die Diagonale.</param>
         /// <returns><see cref="double.NegativeInfinity"/>, wenn die Matrix nicht zerlegbar ist.</returns>
         public static double LogMarginalLikelihood(
-            IReadOnlyList<double[]> x, IReadOnlyList<double> y, double[] theta, double[]? gradient)
+            IReadOnlyList<double[]> x, IReadOnlyList<double> y, double[] theta, double[]? gradient,
+            IReadOnlyList<double>? extraNoise = null)
         {
             int n = x.Count;
             int d = theta.Length - 2;
@@ -267,7 +282,7 @@ namespace MyPicoGkProject.Core
                     k[i][j] = sf2 * (1.0 + s + 5.0 / 3.0 * r2) * e;
                     if (g != null) g[i][j] = 5.0 / 3.0 * sf2 * (1.0 + s) * e;
                 }
-                k[i][i] = sf2 + sn2;
+                k[i][i] = sf2 + sn2 + (extraNoise != null ? extraNoise[i] : 0.0);
             }
 
             double[][] l;
@@ -397,7 +412,7 @@ namespace MyPicoGkProject.Core
 
             for (int step = 1; step <= steps; step++)
             {
-                double logLik = LogMarginalLikelihood(_inputs, _outputs, theta, grad);
+                double logLik = LogMarginalLikelihood(_inputs, _outputs, theta, grad, _extraNoise);
 
                 if (double.IsNegativeInfinity(logLik) || double.IsNaN(logLik) || grad.Any(g => !double.IsFinite(g)))
                 {
@@ -426,7 +441,7 @@ namespace MyPicoGkProject.Core
             }
 
             // Der letzte Schritt wurde noch nicht bewertet.
-            double finalLogLik = LogMarginalLikelihood(_inputs, _outputs, theta, null);
+            double finalLogLik = LogMarginalLikelihood(_inputs, _outputs, theta, null, _extraNoise);
             if (finalLogLik > bestLogLik)
             {
                 bestLogLik = finalLogLik;

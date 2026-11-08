@@ -12,9 +12,14 @@ namespace MyPicoGkProject.Core
     public interface ISurrogateModel
     {
         /// <summary>Ersetzt alle Daten und lernt neu.</summary>
+        /// <param name="noiseVariances">
+        /// Optional: bekannte Messunsicherheit je Punkt als Varianz in Ausgabeeinheiten (z. B. aus der
+        /// Schwankung einer instationären Rechnung). Sie kommt zum gelernten, gemeinsamen Rauschen hinzu.
+        /// <c>null</c> = unbekannt.
+        /// </param>
         /// <exception cref="ArgumentException">Ungleich lange oder nicht endliche Daten.</exception>
         /// <exception cref="SurrogateFitException">Das Lernen ist numerisch gescheitert.</exception>
-        void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs);
+        void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs, IReadOnlyList<double>? noiseVariances = null);
 
         /// <summary>Erwartungswert und <b>latente</b> Varianz (ohne Messrauschen) am Ort <paramref name="input"/>.</summary>
         (double Mean, double Variance) Predict(double[] input);

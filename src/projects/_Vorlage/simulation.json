@@ -87,6 +87,7 @@
   // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
   // Rsm       = Antwortflaechen-Verfahren, lernt aus allen bisherigen Laeufen.
   // Evolution = Mutation um den jeweils besten Kandidaten.
+  // Bayes     = lernendes Ersatzmodell (Gauss-Prozess), spart bei teuren Rechnungen Varianten.
   // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm"
   // zurueck.
   "OptimizationAlgorithm": "Rsm",
@@ -96,13 +97,6 @@
   // hier eintragen.
   "RandomSeed": 0,
 
-  // --- Evolutionaerer Algorithmus (wirkt nur bei "Evolution") ---
-  "MinimalDeviationExploration": 1.0,
-  "MinimalDeviationExploitation": 0.05,
-  "RoleFineTuner": 0.2,
-  "RoleCautious": 0.4,
-  "RoleNormal": 0.6,
-
   // --- RSM / Antwortflaechen-Verfahren (wirkt nur bei "Rsm") ---
   // Virtuelle Stichproben auf der Ersatzfunktion -- kostet keine Rechenzeit im
   // Solver, nur Sekundenbruchteile im Speicher.
@@ -111,22 +105,12 @@
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
 
-  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
-  // SurrogateTarget: "Auto" (Metrics, wenn die Fitness ihre Kennwerte nennt, sonst Fitness),
-  //   "Fitness" (Note als Ganzes) oder "Metrics" (ein Modell je Kennwert).
-  // InitialSamples: Startrechnungen (Versuchsplan). 0 = automatisch: das Groessere von
-  //   VariantsPerIteration und 2 x freie Parameter + 2.
-  // CandidatePool: so viele Kandidaten prueft das Modell je Vorschlag.
-  // TrustRegion: "Auto" (ab 10 freien Parametern), "On" oder "Off".
-  // MaxTrainingPoints: Deckel fuer die Lernmenge (Rechenzeit des Modells waechst mit n^3).
-  // Jeder Parameter braucht Grenzen in project.json (ParameterBounds); MaxDeviations wirkt hier nicht.
-  "Bayes": {
-    "SurrogateTarget": "Auto",
-    "InitialSamples": 0,
-    "CandidatePool": 5000,
-    "TrustRegion": "Auto",
-    "MaxTrainingPoints": 400
-  },
+  // --- Evolution und Bayes: Einstellungen stehen bewusst nicht in der Vorlage ---
+  // Wer "OptimizationAlgorithm": "Evolution" nutzt und ihn einstellen will, traegt die Schluessel
+  // MinimalDeviationExploration, MinimalDeviationExploitation, RoleFineTuner, RoleCautious und
+  // RoleNormal aus dem Handbuch hier ein (ohne Eintrag gelten die dort genannten Vorgaben).
+  // "Bayes" braucht keine Einstellung. Optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }.
+  // Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
 
   // --- Validierung des Champions (Bouncer) ---
   // Der Gewinner einer Iteration wird mit minimal verstelltem Parameter noch

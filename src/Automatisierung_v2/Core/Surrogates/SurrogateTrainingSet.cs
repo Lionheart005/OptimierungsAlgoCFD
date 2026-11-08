@@ -30,11 +30,19 @@ namespace MyPicoGkProject.Core
         /// <summary>Normierte Orte fehlgeschlagener oder disqualifizierter Rechnungen.</summary>
         public IReadOnlyList<double[]> ExcludedPoints { get; }
 
-        private SurrogateTrainingSet(List<ModelRecord> records, List<double[]> inputs, List<double[]> excluded)
+        /// <summary>
+        /// Nur die echt fehlgeschlagenen Rechnungen (Vernetzung oder Solver abgebrochen), ohne die vom
+        /// Türsteher verworfenen. Ein verworfener Gewinner liegt oft gerade am steilen Optimum; als
+        /// „Absturz" gelernt, würde das Erfolgsmodell genau dort wegsteuern.
+        /// </summary>
+        public IReadOnlyList<double[]> FailedPoints { get; }
+
+        private SurrogateTrainingSet(List<ModelRecord> records, List<double[]> inputs, List<double[]> excluded, List<double[]> failed)
         {
             Records = records;
             Inputs = inputs;
             ExcludedPoints = excluded;
+            FailedPoints = failed;
         }
 
         public static SurrogateTrainingSet Build(SimulationContext context, ParameterSpace space)
@@ -42,6 +50,7 @@ namespace MyPicoGkProject.Core
             var records = new List<ModelRecord>();
             var inputs = new List<double[]>();
             var excluded = new List<double[]>();
+            var failed = new List<double[]>();
 
             foreach (ModelRecord record in context.History)
             {
@@ -50,7 +59,9 @@ namespace MyPicoGkProject.Core
 
                 if (record.SimulationFailed || record.Disqualified)
                 {
-                    excluded.Add(space.ToUnit(record.ActiveParameters));
+                    double[] point = space.ToUnit(record.ActiveParameters);
+                    excluded.Add(point);
+                    if (record.SimulationFailed) failed.Add(point);
                     continue;
                 }
 
@@ -60,7 +71,7 @@ namespace MyPicoGkProject.Core
                 inputs.Add(space.ToUnit(record.ActiveParameters));
             }
 
-            return new SurrogateTrainingSet(records, inputs, excluded);
+            return new SurrogateTrainingSet(records, inputs, excluded, failed);
         }
 
         private static bool SameMeshLevel(ModelRecord record, float effectiveFactor)

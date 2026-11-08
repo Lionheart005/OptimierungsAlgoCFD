@@ -540,10 +540,32 @@ namespace MyPicoGkProject.Solvers.Cfd
                     {
                         record.PassiveParameters[$"Su2_IterErr_{metricName}"] = iterErr;
                     }
+                    if (metricName.Length > 0 && historyResult.TailUncertainty.TryGetValue(columnName, out float uncertainty))
+                    {
+                        record.PassiveParameters[MetricUncertainty.KeyFor(metricName)] = uncertainty;
+                    }
                 }
             }
 
-            if (verdict.Assessed)
+            // Instationär, aber stabil (Paket B): die einfache Drift-Prüfung schlägt an, aber keiner der
+            // Kennwerte zeigt einen statistisch gesicherten Trend. Typisch für Wirbelablösung: der Wert
+            // pendelt um einen festen Mittelwert. Dann zählt der Mittelwert des Endfensters, mit seiner
+            // Unsicherheit, und die Rechnung ist kein Fehlschlag.
+            bool unsteadyStationary = verdict.Assessed && !converged && IsStationary(historyResult, wanted);
+            if (config != null && verdict.Assessed)
+            {
+                record.PassiveParameters["Su2_Unsteady"] = unsteadyStationary ? 1.0f : 0.0f;
+            }
+
+            if (unsteadyStationary)
+            {
+                string uncertaintyText = string.Join(", ", wanted
+                    .Where(e => historyResult.TailUncertainty.ContainsKey((e.Value ?? string.Empty).Trim()))
+                    .Select(e => $"{e.Key} ±{(historyResult.TailUncertainty[(e.Value ?? string.Empty).Trim()] * 100f).ToString("0.0", CultureInfo.InvariantCulture)} %"));
+                SimulationLog.Detail($"[HINWEIS] Instationär, aber statistisch stabil (kein gesicherter Trend im Endfenster): "
+                    + $"es zählt der Mittelwert des Endfensters ({uncertaintyText}).");
+            }
+            else if (verdict.Assessed)
             {
                 if (!converged)
                 {
@@ -653,7 +675,8 @@ namespace MyPicoGkProject.Solvers.Cfd
                 float finalMetricValue = value;
                 string averaging = (_options.ResultAveraging ?? string.Empty).Trim();
                 // Kontrollrechnungen liefern immer das Mittel des Endfensters, nie den letzten Zeitschritt.
-                if (controlRun) averaging = "TailMean";
+                // Instationär-stabile Rechnungen ebenso: der letzte Wert wäre eine zufällige Phase der Schwingung.
+                if (controlRun || unsteadyStationary) averaging = "TailMean";
 
                 if (averaging.Equals("TailMean", StringComparison.OrdinalIgnoreCase))
                 {
@@ -687,6 +710,24 @@ namespace MyPicoGkProject.Solvers.Cfd
             }
 
             if (!complete) record.SimulationFailed = true;
+        }
+
+        /// <summary>
+        /// Instationär, aber stabil: für jeden Kennwert ist die Blockmittel-Statistik vorhanden und
+        /// zeigt keinen gesicherten Trend (siehe <see cref="Su2HistoryAnalyzer.BatchStatistics"/>).
+        /// </summary>
+        internal static bool IsStationary(Su2HistoryResult history, IReadOnlyDictionary<string, string> wanted)
+        {
+            bool any = false;
+            foreach (string column in wanted.Values)
+            {
+                string name = (column ?? string.Empty).Trim();
+                if (name.Length == 0) continue;
+                if (!history.TrendSignificant.TryGetValue(name, out bool significant)) return false;
+                if (significant) return false;
+                any = true;
+            }
+            return any;
         }
 
         /// <summary>

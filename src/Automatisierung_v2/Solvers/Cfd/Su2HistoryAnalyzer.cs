@@ -68,6 +68,21 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// enthält sie keine Drift und eignet sich für die Warnung vor Wirbelablösung.
         /// </summary>
         public IReadOnlyDictionary<string, float> OscillationAmplitude { get; init; } = new Dictionary<string, float>();
+
+        /// <summary>
+        /// Relative Standardunsicherheit (1σ) des Fenstermittels je Kennwert, aus Blockmitteln
+        /// (<see cref="Su2HistoryAnalyzer.Batches"/> gleich lange Blöcke, um den linearen Trend bereinigt),
+        /// bezogen auf |Mittelwert|. Bei einer ruhigen Rechnung nahe 0, bei Wirbelablösung deutlich größer.
+        /// Fehlt, wenn das Endfenster kürzer als zwei Zeilen je Block ist.
+        /// </summary>
+        public IReadOnlyDictionary<string, float> TailUncertainty { get; init; } = new Dictionary<string, float>();
+
+        /// <summary>
+        /// Zeigt das Endfenster eine <b>statistisch gesicherte</b> Drift (Trend der Blockmittel größer als
+        /// das Dreifache seiner Unsicherheit)? Falsch heißt: der Wert schwankt um einen festen Mittelwert
+        /// (instationär, aber stabil), auch wenn die einfache Drift-Prüfung anschlägt.
+        /// </summary>
+        public IReadOnlyDictionary<string, bool> TrendSignificant { get; init; } = new Dictionary<string, bool>();
     }
 
     /// <summary>
@@ -75,6 +90,9 @@ namespace MyPicoGkProject.Solvers.Cfd
     /// </summary>
     public static class Su2HistoryAnalyzer
     {
+        /// <summary>Anzahl der Blöcke für Blockmittel (Trend-Test und Unsicherheit).</summary>
+        public const int Batches = 8;
+
         /// <summary>
         /// Wertet den Verlauf einer SU2-Simulation (<c>history.csv</c>) rein rechnerisch aus.
         /// </summary>
@@ -171,6 +189,8 @@ namespace MyPicoGkProject.Solvers.Cfd
             var tailMeans = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             var drift = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             var amplitude = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var uncertainty = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var trendSignificant = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             int tailRows = Math.Min(options.CauchyElems > 0 ? options.CauchyElems : dataRows.Count, dataRows.Count / 2);
 
             var columnsToEvaluate = options.MetricColumns ?? Array.Empty<string>();
@@ -243,6 +263,12 @@ namespace MyPicoGkProject.Solvers.Cfd
                         drift[metricCol] = Math.Abs(secondHalf - firstHalf);
 
                         amplitude[metricCol] = DetrendedPeakToPeak(tail) / Math.Max(Math.Abs(tailMean), 1e-7f);
+
+                        if (BatchStatistics(tail, out double standardError, out bool significant))
+                        {
+                            uncertainty[metricCol] = (float)(standardError / Math.Max(Math.Abs(tailMean), 1e-7));
+                            trendSignificant[metricCol] = significant;
+                        }
                     }
                 }
             }
@@ -253,7 +279,60 @@ namespace MyPicoGkProject.Solvers.Cfd
                 TailMeans = tailMeans,
                 WindowDrift = drift,
                 OscillationAmplitude = amplitude,
+                TailUncertainty = uncertainty,
+                TrendSignificant = trendSignificant,
             };
+        }
+
+        /// <summary>
+        /// Blockmittel-Statistik: Das Fenster wird in <see cref="Batches"/> gleich lange Blöcke geteilt.
+        /// Durch die Blockmittel wird eine Gerade gelegt. <paramref name="significant"/> ist wahr, wenn
+        /// ihre Steigung mehr als das Dreifache ihres Standardfehlers beträgt (gesicherte Drift).
+        /// <paramref name="standardError"/> ist der Standardfehler des Fenstermittels aus der Streuung
+        /// der Blockmittel um die Gerade. Blockmittel statt Einzelwerte, weil aufeinanderfolgende
+        /// Iterationen stark voneinander abhängen.
+        /// </summary>
+        public static bool BatchStatistics(IReadOnlyList<float> values, out double standardError, out bool significant)
+        {
+            standardError = double.NaN;
+            significant = false;
+
+            int size = values.Count / Batches;
+            if (size < 2) return false;
+
+            var means = new double[Batches];
+            int offset = values.Count - size * Batches;   // Rest vorne weglassen (Anlauf)
+            for (int b = 0; b < Batches; b++)
+            {
+                double sum = 0;
+                for (int i = 0; i < size; i++) sum += values[offset + b * size + i];
+                means[b] = sum / size;
+            }
+
+            double meanX = (Batches - 1) / 2.0, meanY = means.Average();
+            double sxy = 0, sxx = 0;
+            for (int b = 0; b < Batches; b++)
+            {
+                sxy += (b - meanX) * (means[b] - meanY);
+                sxx += (b - meanX) * (b - meanX);
+            }
+            double slope = sxy / sxx;
+
+            double ss = 0;
+            for (int b = 0; b < Batches; b++)
+            {
+                double r = means[b] - (meanY + slope * (b - meanX));
+                ss += r * r;
+            }
+            double residualSd = Math.Sqrt(ss / (Batches - 2));
+
+            // Untergrenze gegen Division durch null bei exakt linearen oder konstanten Verläufen
+            double floor = 1e-9 * Math.Max(Math.Abs(meanY), 1e-12);
+            double slopeError = Math.Max(residualSd, floor) / Math.Sqrt(sxx);
+
+            significant = Math.Abs(slope) > 3.0 * slopeError && Math.Abs(slope) * (Batches - 1) > floor * 10;
+            standardError = residualSd / Math.Sqrt(Batches);
+            return true;
         }
 
         /// <summary>Spannweite der Abweichungen von der Ausgleichsgeraden (kleinste Quadrate).</summary>

@@ -50,15 +50,12 @@
   "RsmExploitationSigma": 0.1,
 
   // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
-  // Zum Ausprobieren die Zeilen unten einkommentieren. Jeder Parameter braucht dann Grenzen in
+  // Meist nicht noetig: "Bayes" laeuft ohne Einstellung. Jeder Parameter braucht Grenzen in
   // project.json (ParameterBounds); MaxDeviations wirkt bei "Bayes" nicht. Erklaerung der Schluessel:
   // src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
   // "Bayes": {
   //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
-  //   "InitialSamples": 0,         // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
-  //   "CandidatePool": 5000,
-  //   "TrustRegion": "Auto",       // "Auto" (ab 10 freien Parametern) | "On" | "Off"
-  //   "MaxTrainingPoints": 400
+  //   "InitialSamples": 0          // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
   // },
 
   // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---

@@ -226,6 +226,30 @@ namespace AutomatisierungCleanVersion.Tests
         /// Framework-Schlüssel nennen. Ein neuer Schlüssel in <see cref="SimulationConfig"/>, der
         /// hier fehlt, wäre für einen neuen Nutzer unsichtbar.
         /// </summary>
+        /// <summary>
+        /// Bewusst nicht in den Vorlagen (Entscheidung 08.11.2026): die Einstellungen von "Evolution"
+        /// und "Bayes". Die Vorlage nennt sie in einem Kommentar mit Verweis aufs Handbuch.
+        /// </summary>
+        internal static readonly HashSet<string> OptionalAlgorithmKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "MinimalDeviationExploration", "MinimalDeviationExploitation",
+            "RoleFineTuner", "RoleCautious", "RoleNormal",
+            "Bayes"
+        };
+
+        [Fact]
+        public void The_Template_Comment_Points_To_The_Optional_Algorithm_Settings()
+        {
+            foreach (string folder in new[] { "_Vorlage", "_Vorlage2D" })
+            {
+                string? root = ProjectPaths.ResolveProjectsRoot();
+                string text = System.IO.File.ReadAllText(System.IO.Path.Combine(root!, folder, "simulation.json"));
+                foreach (string key in OptionalAlgorithmKeys)
+                    Assert.Contains(key, text);
+                Assert.Contains("BEDIENHANDBUCH.md", text);
+            }
+        }
+
         [Fact]
         public void The_Template_Simulation_Json_Names_Every_Framework_Key()
         {
@@ -234,6 +258,7 @@ namespace AutomatisierungCleanVersion.Tests
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
                 .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
+                .Where(name => !OptionalAlgorithmKeys.Contains(name))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
@@ -584,6 +609,7 @@ namespace AutomatisierungCleanVersion.Tests
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
                 .Where(name => !omittedIn2D.Contains(name))
+                .Where(name => !OptionalAlgorithmKeys.Contains(name))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 

@@ -153,14 +153,23 @@ namespace MyPicoGkProject.Core
         /// <summary>Anzahl der Startrechnungen (Versuchsplan). 0 = automatisch: max(VariantsPerIteration, 2 × freie Parameter + 2).</summary>
         public int InitialSamples { get; set; } = 0;
 
+    }
+
+    /// <summary>
+    /// Interne Stellschrauben des Bayes-Optimierers. Bewusst <b>nicht</b> in <c>simulation.json</c>
+    /// (Entscheidung 08.11.2026: so wenige Einstellungen wie möglich); die Vorgaben passen, und Tests
+    /// können sie über den Konstruktor ändern.
+    /// </summary>
+    public sealed class BayesTuning
+    {
         /// <summary>So viele Kandidaten prüft das Modell je Vorschlag auf seiner Landkarte.</summary>
-        public int CandidatePool { get; set; } = 5000;
+        public int CandidatePool { get; init; } = 5000;
 
         /// <summary>"Auto" (ab 10 freien Parametern), "On" oder "Off": Suche in einem Vertrauensbereich um den besten Punkt.</summary>
-        public string TrustRegion { get; set; } = "Auto";
+        public string TrustRegion { get; init; } = "Auto";
 
         /// <summary>Deckel für die Lernmenge. Hält die Rechenzeit des Modells klein (wächst mit n³).</summary>
-        public int MaxTrainingPoints { get; set; } = 400;
+        public int MaxTrainingPoints { get; init; } = 400;
     }
 
     /// <summary>

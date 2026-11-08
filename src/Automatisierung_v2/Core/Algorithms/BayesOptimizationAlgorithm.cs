@@ -66,6 +66,7 @@ namespace MyPicoGkProject.Core
 
         private readonly IFitnessCalculator _fitness;
         private readonly BayesConfig? _configOverride;
+        private readonly BayesTuning _tuning;
         private readonly Random _random;
         private readonly Func<ISurrogateModel> _modelFactory;
 
@@ -95,14 +96,17 @@ namespace MyPicoGkProject.Core
         /// <param name="config">Nur für Tests. Im Lauf kommt die Konfiguration aus <c>context.Config.Bayes</c>.</param>
         /// <param name="random">Zufallsquelle, im Lauf aus dem Lauf-Seed (TODO-50). Ohne Angabe echter Zufall.</param>
         /// <param name="modelFactory">Erzeugt die Ersatzmodelle. Vorgabe ist der Gauß-Prozess; in Tests austauschbar.</param>
+        /// <param name="tuning">Interne Stellschrauben (nur für Tests), siehe <see cref="BayesTuning"/>.</param>
         public BayesOptimizationAlgorithm(
             IFitnessCalculator fitness,
             BayesConfig? config = null,
             Random? random = null,
-            Func<ISurrogateModel>? modelFactory = null)
+            Func<ISurrogateModel>? modelFactory = null,
+            BayesTuning? tuning = null)
         {
             _fitness = fitness;
             _configOverride = config;
+            _tuning = tuning ?? new BayesTuning();
             _random = random ?? new Random();
 
             if (modelFactory != null)
@@ -168,7 +172,7 @@ namespace MyPicoGkProject.Core
                 ? config.InitialSamples
                 : Math.Max(variants, 2 * space.Dimension + 2);
 
-            if (TrustRegionState.IsActive(config.TrustRegion, space.Dimension))
+            if (TrustRegionState.IsActive(_tuning.TrustRegion, space.Dimension))
                 _trust = new TrustRegionState(space.Dimension, variants);
 
             // Versuchsplan: n0 - 1 Punkte, der erste Punkt ist der Startwert (Iteration 1, Variante 1).
@@ -189,15 +193,8 @@ namespace MyPicoGkProject.Core
             if (!In(config.SurrogateTarget, "Auto", "Fitness", "Metrics"))
                 throw new InvalidOperationException(
                     $"[KONFIGURATION] Bayes.SurrogateTarget '{config.SurrogateTarget}' ist unbekannt. Gültig sind 'Auto', 'Fitness' und 'Metrics'.");
-            if (!In(config.TrustRegion, "Auto", "On", "Off"))
-                throw new InvalidOperationException(
-                    $"[KONFIGURATION] Bayes.TrustRegion '{config.TrustRegion}' ist unbekannt. Gültig sind 'Auto', 'On' und 'Off'.");
             if (config.InitialSamples < 0)
                 throw new InvalidOperationException("[KONFIGURATION] Bayes.InitialSamples darf nicht negativ sein (0 = automatisch).");
-            if (config.CandidatePool < 100)
-                throw new InvalidOperationException("[KONFIGURATION] Bayes.CandidatePool muss mindestens 100 sein.");
-            if (config.MaxTrainingPoints < 10)
-                throw new InvalidOperationException("[KONFIGURATION] Bayes.MaxTrainingPoints muss mindestens 10 sein.");
         }
 
         private static SurrogateTargetMode ResolveMode(BayesConfig config, IFitnessCalculator fitness)
@@ -284,11 +281,16 @@ namespace MyPicoGkProject.Core
             int d = _space!.Dimension;
 
             var proposals = new List<Proposal>();
+            var deferredDoe = new List<Proposal>();
             Diagnostics? diagnostics = null;
 
             if (usable < _initialSamples)
             {
+                // Versuchsplan fortsetzen. Was über diese Runde hinausgeht, bleibt für die nächsten Runden
+                // in der Warteschlange (bis 08.11.2026 ging es hier verloren, wenn der Plan länger als
+                // eine Runde reichte).
                 proposals.AddRange(leftoverDoe.Take(slots));
+                deferredDoe.AddRange(leftoverDoe.Skip(slots));
                 int missing = Math.Max(0, _initialSamples - usable);
                 int failed = training.ExcludedPoints.Count;
                 string note = failed > 0 ? $" ({failed} fehlgeschlagene oder verworfene Rechnung(en) zählen nicht mit)" : "";
@@ -325,6 +327,7 @@ namespace MyPicoGkProject.Core
             }
 
             foreach (Proposal proposal in proposals) _queue.Enqueue(proposal);
+            foreach (Proposal proposal in deferredDoe) _queue.Enqueue(proposal);
             _lastRoundHadModelPoints = modelUsed;
 
             int iterationNumber = currentRecords.Count > 0 ? currentRecords[0].Iteration : _historyRows.Count + 1;
@@ -366,6 +369,8 @@ namespace MyPicoGkProject.Core
             public IReadOnlyList<double[]> Excluded = Array.Empty<double[]>();
             /// <summary>Vorschläge der laufenden Runde: untereinander abgestoßen, damit ein Block nicht aus Beinahe-Dubletten besteht.</summary>
             public List<double[]> Chosen = new();
+            /// <summary>Lernt „Rechnung gelingt" (1) gegen „stürzt ab" (0); <c>null</c> ohne Abstürze.</summary>
+            public ISurrogateModel? SuccessModel;
             public double RepulsionRadius;
             public double[] Relevance = Array.Empty<double>();
 
@@ -409,6 +414,18 @@ namespace MyPicoGkProject.Core
             _lastRelevance = fit.Relevance;
 
             fit.Excluded = training.ExcludedPoints;
+            // Erfolgsmodell (Paket B, 08.11.2026): ein eigener Gauß-Prozess auf 1 = gelungen, 0 = abgestürzt
+            // (vom Türsteher verworfene Varianten zählen nicht, sie stoßen nur lokal ab). Seine Vorhersage ist eine geglättete Erfolgswahrscheinlichkeit, mit der die
+            // Auswahlregel multipliziert wird. Anders als eine feste Abstoßung verallgemeinert es: liegt das
+            // Optimum direkt an einer Absturzzone (Strömungsabriss), meidet es die ganze Zone, nicht nur die
+            // Umgebung einzelner Abstürze (gemessen: 87 → 65 Abstürze je 100 Rechnungen, besseres Ergebnis).
+            if (training.FailedPoints.Count > 0)
+            {
+                var inputs = training.Inputs.Concat(training.FailedPoints).ToList();
+                var labels = training.Inputs.Select(_ => 1.0).Concat(training.FailedPoints.Select(_ => 0.0)).ToList();
+                fit.SuccessModel = ModelFor("__Erfolg");
+                fit.SuccessModel.Fit(inputs, labels);
+            }
             fit.RepulsionRadius = 0.05 * Math.Sqrt(d);
 
             // Zufallssätze für das Monte-Carlo-Verfahren, einmal je Iteration (ruhiger Vergleich)
@@ -447,7 +464,7 @@ namespace MyPicoGkProject.Core
             }
 
             // Kandidatenpool: halb gleichverteilt im Bereich, halb gaußsche Streuung um die besten Rechnungen
-            double[][] pool = BuildPool(training, lo, hi, _config.CandidatePool);
+            double[][] pool = BuildPool(training, lo, hi, _tuning.CandidatePool);
 
             var chosen = fit.Chosen;
             var known = training.Inputs.ToList();
@@ -493,7 +510,7 @@ namespace MyPicoGkProject.Core
         private List<int> SelectTrainingIndices(SurrogateTrainingSet training, double[] center)
         {
             int n = training.Records.Count;
-            int cap = _config.MaxTrainingPoints;
+            int cap = _tuning.MaxTrainingPoints;
             if (n <= cap) return Enumerable.Range(0, n).ToList();
 
             int keepBest = Math.Max(1, (int)Math.Ceiling(0.1 * cap));
@@ -553,7 +570,16 @@ namespace MyPicoGkProject.Core
 
                 slot.Model = ModelFor(slot.Name);
                 slot.OutputVariance = Variance(outputs);
-                slot.Model.Fit(inputs, outputs);
+
+                // Bekannte Unsicherheit je Rechnung (z. B. Wirbelablösung) als Rauschen je Punkt.
+                var noise = selected.Select(i =>
+                {
+                    ModelRecord r = training.Records[i];
+                    if (!MetricUncertainty.TryGetFitness(r, _fitness.RequiredMetrics, out double u)) return 0.0;
+                    return slot.Log ? u * u : Math.Pow(u * r.Fitness, 2);
+                }).ToList();
+
+                slot.Model.Fit(inputs, outputs, noise.Any(v => v > 0) ? noise : null);
                 fit.Slots.Add(slot);
 
                 fit.Offset = ImprovementOffset * Math.Sqrt(slot.OutputVariance);
@@ -578,7 +604,15 @@ namespace MyPicoGkProject.Core
 
                     slot.Model = ModelFor(metric);
                     slot.OutputVariance = Variance(outputs);
-                    slot.Model.Fit(rows.Select(i => training.Inputs[i]).ToList(), outputs);
+
+                    var noise = rows.Select(i =>
+                    {
+                        ModelRecord r = training.Records[i];
+                        if (!MetricUncertainty.TryGet(r, metric, out double u)) return 0.0;
+                        return slot.Log ? u * u : Math.Pow(u * r.PassiveParameters[metric], 2);
+                    }).ToList();
+
+                    slot.Model.Fit(rows.Select(i => training.Inputs[i]).ToList(), outputs, noise.Any(v => v > 0) ? noise : null);
                     fit.Slots.Add(slot);
                 }
 
@@ -722,7 +756,7 @@ namespace MyPicoGkProject.Core
         private double[] FindRestartCenter(Fitted fit, ParameterSpace space)
         {
             int d = space.Dimension;
-            double[][] pool = UniformPool(Math.Max(500, _config.CandidatePool / 5), d, _random);
+            double[][] pool = UniformPool(Math.Max(500, _tuning.CandidatePool / 5), d, _random);
 
             double[] values;
             if (ActiveMode == SurrogateTargetMode.Fitness)
@@ -878,7 +912,7 @@ namespace MyPicoGkProject.Core
         /// <summary>Der Erkunder: größte Unsicherheit im ganzen Raum (Sicherheitsnetz gegen ein selbstsicheres, falsches Modell).</summary>
         private double[]? PickExplorer(Fitted fit, List<double[]> known, List<double[]> chosen, int d)
         {
-            double[][] pool = UniformPool(Math.Max(500, _config.CandidatePool / 2), d, _random);
+            double[][] pool = UniformPool(Math.Max(500, _tuning.CandidatePool / 2), d, _random);
             var (_, unc) = Score(fit, pool, 1);
             return Enumerable.Range(0, pool.Length)
                 .OrderByDescending(i => unc[i])
@@ -986,14 +1020,16 @@ namespace MyPicoGkProject.Core
         }
 
         /// <summary>
-        /// Abstoßung (Faktor 0..1). Fehlgeschlagene und verworfene Orte stoßen mit dem Radius
-        /// <c>0,05·√d</c> ab, die bereits gewählten Vorschläge derselben Runde mit dem halben Radius (höchstens 0,05, sonst wirkt er bei vielen Parametern zu stark):
+        /// Dämpfung der Auswahlregel (Faktor 0..1): Erfolgswahrscheinlichkeit aus dem Erfolgsmodell,
+        /// dazu die harte Abstoßung um fehlgeschlagene und verworfene Orte (Radius <c>0,05·√d</c>), die bereits gewählten Vorschläge derselben Runde mit dem halben Radius (höchstens 0,05, sonst wirkt er bei vielen Parametern zu stark):
         /// Kriging Believer allein reicht nicht, wenn das Modell kaum Streuung hat (gemessen am
         /// 08.11.2026: vier Vorschläge einer Runde lagen fast aufeinander).
         /// </summary>
         private static double Repulsion(Fitted fit, double[] x)
         {
             double factor = 1.0;
+            if (fit.SuccessModel != null)
+                factor *= Math.Clamp(fit.SuccessModel.Predict(x).Mean, 0.0, 1.0);
             factor *= RepulsionFrom(fit.Excluded, x, fit.RepulsionRadius);
             factor *= RepulsionFrom(fit.Chosen, x, Math.Min(0.5 * fit.RepulsionRadius, 0.05));
             return factor;

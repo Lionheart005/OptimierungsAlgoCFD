@@ -305,12 +305,91 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(900, big.CauchyElements);
         }
 
+        // ------------------------------------------------------------------ Paket B: drei Zustände
+
+        [Fact]
+        public void Batch_Statistics_Tell_An_Oscillation_From_A_Drift()
+        {
+            var oscillation = Enumerable.Range(0, 400).Select(i => (float)(0.03 * (1 + 0.3 * Math.Sin(i * 0.37)))).ToList();
+            var drift = Enumerable.Range(0, 400).Select(i => (float)(0.03 * (1 + 0.0005 * i))).ToList();
+            var constant = Enumerable.Repeat(0.03f, 400).ToList();
+
+            Assert.True(Su2HistoryAnalyzer.BatchStatistics(oscillation, out double seOsc, out bool sigOsc));
+            Assert.False(sigOsc);
+            Assert.True(seOsc > 0);
+
+            Assert.True(Su2HistoryAnalyzer.BatchStatistics(drift, out _, out bool sigDrift));
+            Assert.True(sigDrift);
+
+            Assert.True(Su2HistoryAnalyzer.BatchStatistics(constant, out double seConst, out bool sigConst));
+            Assert.False(sigConst);
+            Assert.Equal(0.0, seConst, 9);
+
+            Assert.False(Su2HistoryAnalyzer.BatchStatistics(new List<float> { 1, 2, 3 }, out _, out _));   // zu kurz
+        }
+
+        private static ModelRecord ReadWithFailOnUnconverged(string[] history, out string path)
+        {
+            path = Path.Combine(Path.GetTempPath(), "hist_" + Guid.NewGuid().ToString("N") + ".csv");
+            File.WriteAllLines(path, history);
+            var options = new Su2SolverOptions { ResultMetrics = new() { ["Drag"] = "CD" }, ResultAveraging = "Last", TreatUnconvergedAsFailed = true };
+            var config = new SimulationConfig { Su2MaxIterations = 2000, CauchyElements = 200 };
+            var record = new ModelRecord { Iteration = 1, Variant = 1 };
+            new Su2Solver(options).ReadMetricsFromHistory(path, record, config);
+            return record;
+        }
+
+        [Fact]
+        public void Vortex_Shedding_Is_Unsteady_But_Stable_Not_A_Failure()
+        {
+            // CD pendelt langsam und kräftig (±20 %, Periode etwa 70 Zeilen) um 0,03: die Halbfenster-Mittel
+            // unterscheiden sich, die einfache Drift-Prüfung schlägt an, aber es gibt keinen Trend.
+            var record = ReadWithFailOnUnconverged(History(800, i => 0.03 * (1 + 0.2 * Math.Sin(i * 0.09)), i => 1.0), out string path);
+            try
+            {
+                Assert.False(record.SimulationFailed);
+                Assert.Equal(1f, record.PassiveParameters["Su2_Unsteady"]);
+                Assert.InRange(record.PassiveParameters["Drag"], 0.029f, 0.031f);   // Fenstermittel, nicht der letzte Wert
+                Assert.True(MetricUncertainty.TryGet(record, "Drag", out double u));
+                Assert.InRange(u, 1e-5, 0.1);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void A_Real_Drift_Still_Counts_As_Failed_When_Configured()
+        {
+            // CD wandert stetig weiter: echter iterativer Fehler.
+            var record = ReadWithFailOnUnconverged(History(800, i => 0.03 * (1 + 0.0005 * i), i => 1.0), out string path);
+            try
+            {
+                Assert.True(record.SimulationFailed);
+                Assert.Equal(0f, record.PassiveParameters["Su2_Unsteady"]);
+            }
+            finally { File.Delete(path); }
+        }
+
+        [Fact]
+        public void A_Converged_Run_Has_A_Tiny_Uncertainty()
+        {
+            var record = ReadWithFailOnUnconverged(History(800, i => 0.03, i => 1.0), out string path);
+            try
+            {
+                Assert.False(record.SimulationFailed);
+                Assert.Equal(0f, record.PassiveParameters["Su2_Unsteady"]);
+                Assert.True(MetricUncertainty.TryGet(record, "Drag", out double u));
+                Assert.True(u < 1e-6, $"u = {u}");
+            }
+            finally { File.Delete(path); }
+        }
+
         [Fact]
         public void Control_Runs_Always_Use_The_Tail_Mean()
         {
             string path = Path.Combine(Path.GetTempPath(), "hist_" + Guid.NewGuid().ToString("N") + ".csv");
-            // Letzter Wert weicht vom Mittel des Endfensters ab.
-            File.WriteAllLines(path, History(400, i => i == 399 ? 0.05 : 0.03, i => 1.0));
+            // Auskonvergiert, nur der letzte Wert weicht minimal ab: normale Rechnung nimmt ihn ("Last"),
+            // die Kontrollrechnung das Mittel des Endfensters.
+            File.WriteAllLines(path, History(400, i => i == 399 ? 0.0302 : 0.03, i => 1.0));
             try
             {
                 var options = new Su2SolverOptions { ResultMetrics = new() { ["Drag"] = "CD" }, ResultAveraging = "Last" };
@@ -322,7 +401,7 @@ namespace AutomatisierungCleanVersion.Tests
                 var controlRecord = new ModelRecord { Iteration = 1, Variant = 1 };
                 solver.ReadMetricsFromHistory(path, controlRecord, config, controlRun: true);
 
-                Assert.Equal(0.05f, normalRecord.PassiveParameters["Drag"], 4);
+                Assert.Equal(0.0302f, normalRecord.PassiveParameters["Drag"], 5);
                 Assert.InRange(controlRecord.PassiveParameters["Drag"], 0.0299f, 0.0306f);
             }
             finally { File.Delete(path); }
