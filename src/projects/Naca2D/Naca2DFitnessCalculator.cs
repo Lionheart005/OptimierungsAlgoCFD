@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.Naca2D
+namespace OptimierungsAlgoCFD.Projects.Naca2D
 {
     /// <summary>
     /// Aerodynamische Bewertung für das 2D-NACA-Flügelprofil (TODO-47).

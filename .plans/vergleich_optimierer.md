@@ -1,16 +1,21 @@
 # Vergleichslauf Rsm vs. Evolution vs. Bayes (AP 2.7 / TODO-60)
 
-> **Stand: 08.11.2026**, Server BIC_12, Projekt `Naca2D`. Rohdaten lokal unter
+> **Stand: 08.11.2026 (abends)**, Server BIC_12, Projekt `Naca2D`. Teil 1 (5 × 5) und Teil 2 (10 × 10, ab Abschnitt „Ergebnis 10 × 10“). Rohdaten lokal unter
 > `Serverergebnisse/Vergleich_Rsm/`, `Vergleich_Evolution/`, `Vergleich_Bayes/` (erster Bayes-Lauf) und
-> `Serverergebnisse/Vergleich_Seeds/` (vier weitere Läufe, jeweils mit `Simulation_Results.csv`, `run-info.json`, `simulation.log`).
+> `Serverergebnisse/Vergleich_Seeds/` (vier weitere Läufe, jeweils mit `Simulation_Results.csv`, `run-info.json`, `simulation.log`)
+> sowie `Serverergebnisse/Vergleich10x10/` (neun Läufe des 10 × 10-Vergleichs).
 
 ## Kurzfazit
 
-**Bei diesem kleinen Budget (5 × 5 = 25 Rechnungen, 4 Parameter) ist Bayes deutlich besser als Evolution, aber nicht besser als Rsm.**
-Das belegt weder die Überlegenheit noch die Unterlegenheit des Bayes-Optimierers: 10 der 25 Rechnungen sind bei Bayes
-noch Versuchsplan, und Rsm besteht bei so wenigen Rechnungen praktisch aus Zufallssuche, die in vier Dimensionen
-mit 25 Punkten schon erstaunlich gut ist. Ob das Modell seinen Vorteil ausspielt, zeigt erst ein größeres Budget
-(Empfehlung unten). **`Rsm` bleibt Standard.**
+**Teil 1 (5 × 5 = 25 Rechnungen, 2 Seeds):** Bayes klar besser als Evolution, aber nicht besser als Rsm. 10 der 25 Rechnungen sind bei
+Bayes noch Versuchsplan, und Rsm besteht bei so wenigen Rechnungen praktisch aus Zufallssuche, die in vier Dimensionen mit 25 Punkten
+schon erstaunlich gut ist.
+
+**Teil 2 (10 × 10 = 100 Rechnungen, 3 Seeds): Bayes ist klar am besten.** Beste Gleitzahl nach 100 Rechnungen auf dem groben Netz:
+Bayes 58,1, Rsm 51,0, Evolution 44,4 (Mittel). Nach der Feinprüfung der drei Besten: **Bayes 65,9, Rsm 54,7, Evolution 48,5**. Bayes gewinnt auf
+**allen drei** Seeds und streut kaum (64,9 bis 66,9, Rsm 47,8 bis 63,6). Er überholt Rsm ab etwa 40 Rechnungen; bei 20 Rechnungen liegt Rsm noch vorn.
+Dabei lief der Bayes-Optimierer in den Läufen mit einem Fehler, der später ganze Runden verschwendete (Abschnitt „Fehler in der späten Phase“);
+mit Korrektur ist eher mehr zu erwarten. **Empfehlung: `Bayes` als Standard ab etwa 40 Rechnungen. Entscheidung am 09.11.2026: `Bayes` ist Standard** (MantaAuv bleibt vorerst bei `Rsm`).
 
 ## Aufbau
 
@@ -81,9 +86,9 @@ mit 25 Punkten schon erstaunlich gut ist. Ob das Modell seinen Vorteil ausspielt
   wächst mit der Rechenzeit je Variante und der Parameterzahl; der eigentliche Einsatzfall ist `MantaAuv`
   (5 Parameter, 3D, teure Rechnung, Fitness mit Sprungstelle, Modus `Metrics`). Der ist hier **nicht** gemessen.
 
-## Empfehlung und offene Entscheidung
+## Empfehlung und offene Entscheidung (Teil 1, 5 × 5; überholt durch Teil 2 unten)
 
-1. **Standard bleibt `Rsm`.** Dieser Lauf rechtfertigt keinen Wechsel.
+1. **Standard bleibt `Rsm`.** Dieser Lauf rechtfertigt keinen Wechsel. (Überholt: siehe Teil 2, `Bayes` ist seit 09.11.2026 Standard.)
 2. **Aussagekräftiger Vergleich:** dasselbe auf `Naca2D` mit **10 × 10** (100 Rechnungen, je Verfahren etwa 15 bis 25 min bei
    Faktor 2,0) und drei Seeds. Dann hat Bayes 90 modellgeführte Rechnungen gegenüber 10, und die Auswertung
    zeigt, ob das Modell die Landschaft besser nutzt. Aufwand etwa 2 bis 3 Stunden Serverzeit.
@@ -100,14 +105,67 @@ mit 25 Punkten schon erstaunlich gut ist. Ob das Modell seinen Vorteil ausspielt
 * `sim.ps1 run` meldet nach dem Start eine `tmux`-Bibliothekswarnung als `FEHLER:`, obwohl der Lauf startet. Das ist ein
   Anzeigeproblem der Meldung, kein Fehler des Laufs.
 
-## Folgelauf 10 × 10 (gestartet 08.11.2026, 18:23) — Auswertung offen
+## Ergebnis 10 × 10 (08.11.2026, 18:23 bis 21:04)
 
-* **Läuft auf BIC_12** über `~/driver10.sh` (nohup, unabhängig von sim.ps1): Rsm, Evolution, Bayes mit je
-  3 Seeds (20261108, 424242, 777), 10 × 10 Varianten, Netzfaktor fest 2.0, Feinprüfung `FinalTopN` (3),
-  Code-Stand `1f580d3` (mit Erfolgsmodell und instationär-stabilen Rechnungen). Geschätzt 3 bis 4 Stunden.
-* **Fortschritt:** `ssh BIC_12 "cat ~/vergleich10/driver.log"`, je Lauf ein Ordner `~/vergleich10/<Verfahren>_<Seed>/`
-  (CSV, `run-info.json`, `effective-config.json`, `Verifikation.csv`, `Bayes_Verlauf.csv`, Log).
-  Holen: `scp -r BIC_12:vergleich10 Serverergebnisse/Vergleich10x10`.
-* **Achtung:** Der Treiber ändert die `src/projects/Naca2D/simulation.json` **auf dem Server** (Seed, Netzfaktor,
-  `Mode: Manual`). Bis `ALLES FERTIG` im Log steht: **nicht deployen** (stoppt den laufenden Lauf). Ein späteres
-  `deploy` stellt die Datei aus dem Repo wieder her.
+**Aufbau:** `Naca2D`, je 10 Runden × 10 Varianten, drei Seeds (20261108, 424242, 777), Netzfaktor fest 2,0 (grob), Feinprüfung der drei Besten
+(`FinalTopN`, feineres Netz), Code-Stand `1f580d3`, gleiche Konfiguration für alle Verfahren. Rohdaten: `Serverergebnisse/Vergleich10x10/<Verfahren>_<Seed>/`.
+
+### Beste gültige Gleitzahl nach n Rechnungen (Mittel über 3 Seeds, grobes Netz)
+
+| Verfahren | 10 | 20 | 30 | 40 | 50 | 60 | 70 | 80 | 90 | 100 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Rsm | 38,7 | 47,5 | 49,3 | 49,9 | 50,1 | 50,3 | 50,4 | 50,5 | 50,9 | 51,0 |
+| Evolution | 33,3 | 37,3 | 38,5 | 38,6 | 39,5 | 40,2 | 40,3 | 42,3 | 43,4 | 44,4 |
+| **Bayes** | 37,7 | 45,8 | 48,9 | **54,3** | **55,0** | **56,2** | **57,2** | **58,1** | 58,1 | 58,1 |
+
+### Nach der Feinprüfung (Top 3 auf feinerem Netz, beste feine Gleitzahl)
+
+| Verfahren | Seed 20261108 | Seed 424242 | Seed 777 | Mittel |
+| --- | ---: | ---: | ---: | ---: |
+| Rsm | 63,6 | 47,8 | 52,7 | 54,7 |
+| Evolution | 52,5 | 47,3 | 45,7 | 48,5 |
+| **Bayes** | **66,0** | **64,9** | **66,9** | **65,9** |
+
+Auf dem feinen Netz liegen alle Werte höher als auf dem groben; wichtig ist der Abstand zwischen den Verfahren und dass Bayes auf jedem Seed vorn liegt.
+
+### Wo die Sieger liegen
+
+| | Wölbung | Wölbungslage | Dicke | Anstellwinkel |
+| --- | --- | --- | --- | --- |
+| Bayes (3 Seeds) | **8,00 / 8,00 / 8,00** | 50 / 31 / 36 % | **6,00 / 6,00 / 6,00** | 2,4 / 3,8 / 3,1° |
+| Rsm (3 Seeds) | 7,8 / 6,6 / 5,5 | 44 / 68 / 70 % | 8,9 / 11,4 / 7,1 | 3,0 / 1,9 / 1,5° |
+| Evolution (3 Seeds) | 5,1 / 3,4 / 4,6 | 15 / 16 / 75 % | 6,0 / 6,6 / 9,7 | 5,0 / 4,8 / 0,4° |
+
+**Bayes findet auf jedem Seed dasselbe Optimum, und es liegt in einer Ecke des Suchraums:** größte erlaubte Wölbung (8) und kleinste erlaubte Dicke (6).
+Rsm und Evolution streuen und bleiben dahinter. **Die Grenzen in `Naca2D/project.json` (`MaxCamber` ≤ 8, `MaxThickness` ≥ 6) sind damit die eigentliche
+Obergrenze des Ergebnisses.** Ob sie erweitert werden sollen, ist eine Frage der Aufgabe (Struktur, Baubarkeit), nicht des Optimierers.
+
+### Ausfälle, Instationäres, Dauer
+
+| Verfahren | fehlgeschlagen (je Seed) | „instationär, aber stabil“ (je Seed) | Dauer je Lauf |
+| --- | --- | --- | --- |
+| Rsm | 1 / 17 / 2 | 2 / 3 / 1 | 13 / 13 / 29 min |
+| Evolution | 3 / 0 / 11 | 1 / 0 / 2 | 13 / 10 / 19 min |
+| Bayes | 13 / 5 / 13 | 11 / 14 / 14 | 23 / 19 / 21 min |
+
+Alle instationären Rechnungen liegen bei Anstellwinkeln von 14 bis 30° (Strömungsabriss, Wirbelablösung). Bei Bayes sind es 39 von 300, **alle aus den verschwendeten späten Runden**
+(siehe unten), bei Rsm 6 und bei Evolution 3. Die Erkennung (Paket B) schlägt auf echten Daten also an und verhindert, dass diese Rechnungen als Fehlschlag aussortiert
+werden; ihre Unsicherheit liegt beim Widerstand bei bis zu 9 bis 10 %. Auch die höhere Zahl von Fehlschlägen und die längere Laufzeit von Bayes stammen vor allem aus
+diesen Runden. Der Rechenaufwand des Modells selbst ist klein.
+
+### Fehler in der späten Phase (gefunden und behoben am 08.11.2026)
+
+Auffällig war: Bayes hatte sein Optimum meist schon in Runde 5 bis 8 gefunden und rechnete danach **ganze Runden Unsinn** (Anstellwinkel 15 bis 30°, Wölbung und Dicke an den
+Grenzen, Gleitzahl 0 bis 10), das Modell hatte diese Punkte selbst als schlecht vorhergesagt. Ursache: Die Auswahlregel nahm als Ausweichregel „größte Unsicherheit im ganzen Raum“,
+sobald die erwartete Verbesserung exakt null war; winzige Restwerte im Strömungsabriss (Quotient aus zwei unabhängig modellierten Größen hat lange Schwänze) lenkten ebenfalls dorthin.
+Behoben: Bei vernachlässigbarer erwarteter Verbesserung (< 0,2 %) wird jetzt **verfeinert** (höchste vorhergesagte Fitness), und der Erkunder sucht nur unter Punkten, die noch gut sein könnten.
+Im synthetischen Gegenstück stieg der Anteil sinnvoller Varianten ab Runde 5 von 72 % auf 95 %. Die Zahlen oben stammen noch vom Stand **vor** der Korrektur.
+Die Regressionstests spielen echte Serverdaten nach (`BayesRealDataReplayTests`) und prüfen die späte Phase (`BayesConvergedPhaseTests`). Ein Wiederholungslauf auf dem Server
+steht aus; erwartet wird derselbe Sieger bei besserer Ausbeute der letzten Runden.
+
+### Einschränkungen
+
+* Ein Projekt (`Naca2D`), vier Parameter, drei Seeds, grobes Netz. Aussagen zu mehr Parametern oder `MantaAuv` (Modus `Metrics`, 3D, teure Rechnung) stehen aus.
+* Auf dem groben Netz liegt die Streuung durch Wirbelablösung (bis 9 % beim Widerstand) in der Größenordnung der Unterschiede zwischen den besten Varianten. Die Feinprüfung ist deshalb der
+  belastbare Vergleich, die Zahlen nach n Rechnungen zeigen die Tendenz.
+* Rsm ist bei kleinem Budget (bis etwa 25 Rechnungen) gleichwertig und einfacher; ein Wechsel des Standards lohnt ab etwa 40 Rechnungen.

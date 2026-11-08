@@ -1,0 +1,95 @@
+{
+  // MeinProjekt -- Framework-Einstellungen. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  //
+  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Core/Models/SimulationConfig.cs).
+  // Die Standards sind auf genaue Rechnungen ausgelegt. Abweichungen: MaxIterations und
+  // VariantsPerIteration (kleiner Testlauf) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
+  // In einem echten Projekt bleibt nur stehen, was abweicht -- den Rest loeschen.
+  // Ein unbekannter Schluessel bricht den Start ab. Rechnerspezifisches gehoert in simulation.local.json.
+
+  // --- Programme (PATH-relativ; `.\scripts\sim.ps1 doctor` zeigt, was gefunden wird) ---
+  // ACHTUNG Server: MpiRunPath muss ein MPICH-mpiexec sein (z. B. ~/miniconda/envs/mpich/bin/mpiexec). Das OpenMPI,
+  // das "mpirun" dort per PATH findet, startet zwoelf serielle Kopien und liefert unbrauchbare Ergebnisse
+  // (das Programm warnt dann beim Start). Einrichtung: scripts/README.md.
+  "MpiRunPath": "mpirun",
+  "Su2Path": "SU2_CFD",
+  "GmshPath": "gmsh",
+
+  // --- Umfang: MaxIterations x VariantsPerIteration = Zahl der Rechnungen (Code-Standard 10 x 10) ---
+  "MaxIterations": 5,
+  "VariantsPerIteration": 5,
+
+  // --- Geometrie (PicoGK) ---
+  "BaseVoxelResolution": 0.5,
+  "TargetPicoGkSize": 50.0,
+  "VoxelSmoothingIterations": 40,
+  "VoxelSmoothingPremeltingSteps": 2,
+  "UseRubberBandScaler": true,
+  "UseStlSmoothing": true,
+  "UseProjectedFrontalArea": true,
+
+  // --- CFD & SU2 ---
+  // MeshRefinementFactor steht bewusst nicht hier: bei MeshCalibration "Auto" kalibriert der Lauf ihn
+  // selbst, und ein eingetragener Wert bricht den Start ab. Nur bei "Manual" eintragen.
+  "Su2MaxIterations": 3000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
+  "MpiCores": 12,
+  "GmshCores": 12,
+
+  // --- Optimierungsverfahren: "Bayes" (Standard), "Rsm" oder "Evolution" ---
+  // Bayes lernt aus den bisherigen Rechnungen und braucht Grenzen je Parameter (ParameterBounds in project.json).
+  // Rsm ist bei sehr kleinem Budget (bis etwa 25 Rechnungen) gleichwertig und braucht keine Grenzen.
+  "OptimizationAlgorithm": "Bayes",
+  // 0 = bei jedem Lauf neu ziehen (steht in run-info.json); fester Wert = exakt wiederholbar.
+  "RandomSeed": 0,
+
+  // --- Rsm (am besten so lassen) ---
+  "RsmVirtualSimulations": 50000,
+  "RsmIdwPower": 3.0,
+  "RsmExploitationRatio": 0.7,
+  "RsmExploitationSigma": 0.1,
+
+  // Evolution und Bayes stehen bewusst nicht in der Vorlage. Wer "Evolution" einstellen will, traegt
+  // MinimalDeviationExploration, MinimalDeviationExploitation, RoleFineTuner, RoleCautious und
+  // RoleNormal aus dem Handbuch (Abschnitt 4.2) hier ein; "Bayes" braucht keine Einstellung
+  // (optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }).
+
+  // --- Tuersteher (Bouncer): Champion wird mit leicht verstelltem Parameter nachgerechnet ---
+  "BouncerTolerance": 0.2,
+  "BouncerJitter": 0.01,
+
+  // --- Konvergenz ---
+  // Normale Varianten: erlaubte Drift im Endfenster als Bruchteil der Netz-Toleranz.
+  // ControlRuns: strengeres Profil nur fuer Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck).
+  // In 3D Su2MaxIterations hier senken (MantaAuv: 8000), sonst werden die Kontrollen sehr lang.
+  "IterativeToleranceFraction": 0.25,
+  "ControlRuns": {
+    "Su2MaxIterations": 20000,
+    "CauchyElements": 500,
+    "CauchyTolerance": "1e-6",
+    "IterativeToleranceFraction": 0.1
+  },
+
+  // --- Netzkalibrierung ---
+  // "Auto": der Lauf bestimmt den Netzfaktor am Anfang selbst. In 3D dauert das Stunden; fuer einen
+  // schnellen Rauchtest "Manual" einstellen und MeshRefinementFactor eintragen.
+  // MaxCells2D/MaxCells3D deckeln die Verfeinerung. Use2DPrecalibration nur fuer Koerper mit einheitlichem Profil.
+  "MeshCalibration": {
+    "Mode": "Auto",
+    "Tolerance": 0.05,
+    "Use2DPrecalibration": false,
+    "AbsoluteTolerances": {},
+    "MaxCells2D": 2000000,
+    "MaxCells3D": 3000000
+  },
+
+  // --- Feinpruefung: die TopN besten Varianten am Ende auf feinerem Netz nachrechnen ---
+  // Mode: "Off" | "Final" | "FinalTopN" | "EachIteration"
+  "ChampionVerification": {
+    "Mode": "FinalTopN",
+    "TopN": 3,
+    "RefinementSteps": 1,
+    "Tolerance": 0.05
+  }
+}

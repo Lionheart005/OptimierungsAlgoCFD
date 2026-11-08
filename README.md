@@ -16,7 +16,7 @@ Nun schickt man sein Bauteil durch die Optimierungsschleife und am Ende gibt ein
 --> 'Unser Bauteil ist am besten 30 cm lang und 5 cm hoch, um das beste Verhältnis aus Volumen und Widerstand zu bekommen.'
 Und wir bekommen gleich das druckbare .stl-Modell dazu!
 
-Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Zur Wahl stehen ein Antwortflächen-Verfahren (`Rsm`, Standard), ein evolutionäres Verfahren (`Evolution`) und eine **Bayes-Optimierung** (`Bayes`): Sie lernt aus den bisherigen Rechnungen ein Ersatzmodell (Gauß-Prozess, rein in C#, ohne Vortraining und ohne GPU) samt Unsicherheit und rechnet dort weiter, wo die Chance am größten ist, den bisher Besten zu schlagen. Das spart bei teuren Rechnungen Varianten; jede Variante wird trotzdem echt gerechnet. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
+Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Zur Wahl stehen eine **Bayes-Optimierung** (`Bayes`, Standard) sowie ein Antwortflächen-Verfahren (`Rsm`) und ein evolutionäres Verfahren (`Evolution`). `Bayes`: Sie lernt aus den bisherigen Rechnungen ein Ersatzmodell (Gauß-Prozess, rein in C#, ohne Vortraining und ohne GPU) samt Unsicherheit und rechnet dort weiter, wo die Chance am größten ist, den bisher Besten zu schlagen. Das spart bei teuren Rechnungen Varianten; jede Variante wird trotzdem echt gerechnet. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
 
 Für die technischen Details sind die folgenden Handbücher und .md-Dateien da. Dort steht alles, was man an Einstellungen wissen muss. (Und halleluja, sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
 
@@ -35,15 +35,17 @@ Die detaillierte Dokumentation ist thematisch aufgeteilt, sodass jedes Thema gen
 - **[Bedienhandbuch (`src/projects/BEDIENHANDBUCH.md`)](src/projects/BEDIENHANDBUCH.md)**  
   Vollständiges Nachschlagewerk für die Bedienung ohne Programmierkenntnisse: Ablauf eines Laufs, häufige Aufgaben („Ich will …“), Erklärung **aller** JSON-Einstellungen (`project.json`, `simulation.json`, `su2.json`, `gmsh.json` für 3D und 2D), Ergebnisdateien, Konsolenbefehle und Fehlermeldungen. **Hier anfangen.**
 - **[Neues Bauteil / Projekt anlegen (`src/projects/README.md`)](src/projects/README.md)**  
-  Schritt-für-Schritt-Anleitung zum Erstellen eigener 3D- und 2D-Projekte per `.\scripts\new-project.ps1`, Programmierung von Geometrie (`IGeometryGenerator`) und Zielfunktion (`IFitnessCalculator`) sowie Umgang mit den Kopiervorlagen [`_Vorlage/`](src/projects/_Vorlage/README.md) (3D) und [`_Vorlage2D/`](src/projects/_Vorlage2D/README.md) (2D).
-- **[3D-Geometrie-Handbuch: PicoGK (`src/Automatisierung_v2/Kernels/PicoGk/README.md`)](src/Automatisierung_v2/Kernels/PicoGk/README.md)**  
+  Schritt-für-Schritt-Anleitung zum Erstellen eigener 3D- und 2D-Projekte per `.\scripts\new-project.ps1`, Programmierung von Geometrie (`IGeometryGenerator`) und Zielfunktion (`IFitnessCalculator`) sowie Umgang mit den Kopiervorlagen [`_Vorlage3D/`](src/projects/_Vorlage3D/README.md) (3D) und [`_Vorlage2D/`](src/projects/_Vorlage2D/README.md) (2D).
+- **[3D-Geometrie-Handbuch: PicoGK (`src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md`)](src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md)**  
   Anleitung zur 3D-Voxel-Modellierung mit PicoGK (`Lattice`, `Voxels`, `Mesh`, Boolesche Operationen, `Offset`-Verrundung, STL-Glättung, `PicoGkMeshMetrics`) inkl. Links zur offiziellen PicoGK-Dokumentation.
-- **[2D-Geometrie-Handbuch: Eigener `Planar2D`-Kernel (`src/Automatisierung_v2/Kernels/Planar2D/README.md`)](src/Automatisierung_v2/Kernels/Planar2D/README.md)**  
+- **[2D-Geometrie-Handbuch: Eigener `Planar2D`-Kernel (`src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md`)](src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md)**  
   Anleitung zum eigens geschriebenen analytischen 2D-Geometriekern (`Shape2D`, `Lattice2D`, `BBox2`, Polygone, Catmull-Rom-Splines, `TripleOffset`, automatische Knickpunkterkennung für 2D-CFD-Grenzschichten, JSON- & SVG-Export).
-- **[Architektur- & Entwicklerhandbuch (`src/Automatisierung_v2/README.md`)](src/Automatisierung_v2/README.md)**  
+- **[Architektur- & Entwicklerhandbuch (`src/OptimierungsAlgoCFD/README.md`)](src/OptimierungsAlgoCFD/README.md)**  
   Technische Dokumentation des C#-Frameworks: Repository- und Schichtarchitektur (`Core`, `Composition`, `Kernels`, `Solvers`), Interfaces, Datenmodelle, Algorithmen, Konfigurations-Loader, Anbindung von PicoGK, Gmsh und SU2 sowie Test-Architektur.
 - **[Server-, Deployment- & Einrichtungs-Handbuch (`scripts/README.md`)](scripts/README.md)**  
   Steuerung und Überwachung von Läufen auf dem Linux-Hochschulserver von Windows aus (`sim.ps1`, `sim-runner.sh`, `resume`, `fetch`), Konvergenz-Auswertung (`plot_history.py`) sowie die komplette Anleitung zur erstmaligen Server-Einrichtung ohne Admin-/Sudo-Rechte (`setup_server.sh` & manuelle Installation).
+- **[Software von Dritten (`THIRD_PARTY_NOTICES.md`)](THIRD_PARTY_NOTICES.md)**  
+  Welche Bibliotheken und Programme (PicoGK, Clipper2, SU2, Gmsh, MPICH) benutzt werden, unter welcher Lizenz sie stehen und was daraus folgt.
 - **[Lokale Ausnahmekonfiguration (`config/README.md`)](config/README.md)**  
   Funktionsweise des Notausgangs über gitignorierte `*.local.json`-Dateien für maschinenspezifische Programmpfade.
 - **[Entwicklungs-Roadmap & Projektpläne (`.plans/README.md`)](.plans/README.md)**  

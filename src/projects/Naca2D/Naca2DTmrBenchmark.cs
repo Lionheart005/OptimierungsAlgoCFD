@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-using MyPicoGkProject.Solvers.Cfd;
+using OptimierungsAlgoCFD.Solvers.Cfd;
 
-namespace MyPicoGkProject.Projects.Naca2D
+namespace OptimierungsAlgoCFD.Projects.Naca2D
 {
     /// <summary>
     /// Ergebnis eines Validierungsabgleichs gegen die NASA-TMR-Referenzdaten (TODO-47).

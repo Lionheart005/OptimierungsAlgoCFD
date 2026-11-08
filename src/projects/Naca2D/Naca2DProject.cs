@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 
-using MyPicoGkProject.Composition;
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Composition;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.Naca2D
+namespace OptimierungsAlgoCFD.Projects.Naca2D
 {
     /// <summary>
     /// Verdrahtung des 2D-CFD-Projekts Naca2D (TODO-47).

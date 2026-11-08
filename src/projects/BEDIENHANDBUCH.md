@@ -7,7 +7,7 @@ schlägt Alarm, wenn eine Einstellung hier fehlt.
 
 > **Weiterführende Dokumente:**
 > - Neues Bauteil / Projekt programmieren: [`src/projects/README.md`](README.md)
-> - Framework-Architektur & C#-Entwicklung: [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
+> - Framework-Architektur & C#-Entwicklung: [`src/OptimierungsAlgoCFD/README.md`](../OptimierungsAlgoCFD/README.md)
 > - Server-Steuerung, Deployment & Einrichtung: [`scripts/README.md`](../../scripts/README.md)
 > - Lokale Ausnahmedateien (`*.local.json`): [`config/README.md`](../../config/README.md)
 
@@ -94,7 +94,7 @@ und nie überschrieben; sie stellen also still Werte um, die man im Repo nicht s
 herum, zeigt das Programm beim Start einen auffälligen **Warnblock** mit jedem Wert, den sie
 verändert (siehe [Abschnitt 7](#7-häufige-meldungen-und-was-zu-tun-ist)).
 
-**Die Vorlage `_Vorlage/`** enthält *jede* Einstellung mit ihrem Standardwert und einer
+**Die Vorlage `_Vorlage3D/`** enthält *jede* Einstellung mit ihrem Standardwert und einer
 Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt man mit
 `.\scripts\new-project.ps1 <Name>` an; das kopiert die Vorlage.
 
@@ -113,7 +113,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … **Luft statt Wasser** | `solvers/su2.json` | `Density`, `DynamicViscosity` | Luft: `1.225` und `1.81e-5`; Meerwasser: `1025` und `0.001001` |
 | … zusätzlich den **Auftrieb** (oder andere Kennwerte) haben | `solvers/su2.json` | `ResultMetrics` | `"Lift": "CL"` dazuschreiben; in der Bewertungsformel (C#) verwenden |
 | … ein **anderes Turbulenzmodell** | `solvers/su2.json` | `TurbulenceModel` | `"SA"` (Standard) oder `"SST"` |
-| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Rsm"` (Ersatzmodell, Standard), `"Evolution"` oder `"Bayes"` (lernendes Ersatzmodell, spart teure Rechnungen; siehe Abschnitt 4.2) |
+| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Bayes"` (Standard: lernendes Ersatzmodell, spart teure Rechnungen; siehe Abschnitt 4.2), `"Rsm"` (einfacher, braucht keine Parametergrenzen) oder `"Evolution"` |
 | … **Startwerte** oder **Grenzen** eines Parameters ändern | `project.json` | `BaseParameters`, `ParameterBounds` | Startwert muss innerhalb der Grenzen liegen |
 | … einen **Parameter fest einstellen** (nicht optimieren) | `project.json` | `ParameterBounds` | `Min` und `Max` auf denselben Wert setzen — der Parameter wird dann immer auf diesen Wert geklemmt |
 | … dass der Optimierer **größere/kleinere Sprünge** macht | `project.json` | `MaxDeviations` | Streuung je Parameter, in dessen Einheit |
@@ -121,7 +121,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … dass Gewinner **strenger/milder** nachgeprüft werden | `simulation.json` | `BouncerTolerance` | `0.2` = 20 % Abweichung erlaubt |
 | … einen **größeren Windkanal** | `solvers/gmsh.json` | `TunnelSizeX/Y/Z` | in mm; größer = weniger Randeinfluss, aber mehr Zellen |
 | … ein **neues Projekt** | — | `.\scripts\new-project.ps1 <Name>` | danach Form und Bewertung im neuen Ordner ausfüllen |
-| … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project TestprojektNACA` |
+| … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project Naca2D` |
 | … **Ergebnisse holen** | — | `.\scripts\sim.ps1 fetch -Project <Name>` | **`-Project` immer angeben**, sonst wird MantaAuv geholt (siehe Abschnitt 7) |
 | … eine **Rechnung von Hand prüfen** | — | `fetch`, dann `plot_history.py` | Konvergenz prüfen; bei Bedarf `fetch -Champion` und ParaView für die VTUs (Details in `scripts/README.md`) |
 | … nachsehen, **womit ein Lauf gerechnet hat** | — | `effective-config.json`, `run-info.json` | siehe [Abschnitt 5](#5-welche-werte-galten-wirklich) |
@@ -200,13 +200,13 @@ bestraft. Höhere Fitness = besser.
 
 Der Standard ist nur der Programmname; das funktioniert, wenn der Rechner die Programme „von
 allein" findet. **Auf dem Hochschulserver tut er das nicht**, deshalb tragen MantaAuv und
-TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doctor`.
+Naca2D die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doctor`.
 
 **Optimierer**
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `OptimizationAlgorithm` | `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. `"Bayes"` = Bayes-Optimierung: lernt ebenfalls eine Landkarte, **zeichnet aber zusätzlich den „Nebel" ein**, also wo sie sich nicht auskennt, und rechnet dort, wo die Chance am größten ist, den bisher Besten zu schlagen. Spart bei teuren Rechnungen die meisten Varianten (Entscheidungshilfe unten). Ein unbekannter Name führt zu einer Warnung und `"Rsm"`. | `"Rsm"` | 🟡 |
+| `OptimizationAlgorithm` | **Standard `"Bayes"`** (im 10 × 10-Vergleich auf Naca2D bei 100 Rechnungen klar am besten, siehe `.plans/vergleich_optimierer.md`). `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. `"Bayes"` = Bayes-Optimierung: lernt ebenfalls eine Landkarte, **zeichnet aber zusätzlich den „Nebel" ein**, also wo sie sich nicht auskennt, und rechnet dort, wo die Chance am größten ist, den bisher Besten zu schlagen. Spart bei teuren Rechnungen die meisten Varianten (Entscheidungshilfe unten). Ein unbekannter Name führt zu einer Warnung und `"Bayes"`. | `"Bayes"` | 🟡 |
 | `RandomSeed` | Startwert des Zufalls (Optimierer und Türsteher). `0` = bei jedem Lauf neu ziehen; der gezogene Wert steht im Log (`[SYSTEM] Zufalls-Seed: …`) und in `run-info.json`. Wer einen Lauf **exakt wiederholen** will, trägt diesen Wert hier ein. | `0` | 🟢 |
 
 *Nur für `"Rsm"`:*
@@ -220,10 +220,12 @@ TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\si
 
 *Nur für `"Bayes"` (Abschnitt `Bayes` in `simulation.json`, alles optional, die Vorgaben passen meist):*
 
-> **Entscheidungshilfe:** Sind die Rechnungen **teuer** (Minuten bis Stunden je Variante) und gibt es
-> **bis etwa 20 Parameter**: `"Bayes"`. Für einen **Vergleich oder eine Gegenprobe**: `"Rsm"` oder
-> `"Evolution"`. Alle drei verwenden dieselbe Bewertungsformel und denselben Türsteher; wer nichts
-> ändert, bleibt bei `"Rsm"`.
+> **Entscheidungshilfe:** Standard ist `"Bayes"`: Sind die Rechnungen **teuer** (Minuten bis Stunden je
+> Variante) und gibt es **bis etwa 20 Parameter**, ist es ab etwa 40 Rechnungen deutlich besser als die
+> anderen. Bei einem **sehr kleinen Budget** (bis etwa 25 Rechnungen) ist `"Rsm"` gleichwertig und
+> einfacher, es braucht keine Parametergrenzen. Für einen **Vergleich oder eine Gegenprobe**: `"Rsm"`
+> oder `"Evolution"`. Alle drei verwenden dieselbe Bewertungsformel und denselben Türsteher. MantaAuv
+> bleibt vorerst bei `"Rsm"`, bis Bayes im 3D-Fall auf dem Server gemessen ist.
 >
 > **Zwei Regeln für `"Bayes"`:** (1) Für **jeden** Parameter müssen Grenzen in `ParameterBounds`
 > stehen (`project.json`); fehlt eine, bricht der Lauf **vor der ersten Rechnung** ab und nennt den
@@ -240,8 +242,12 @@ TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\si
 **Was `"Bayes"` im Lauf tut:** Variante 1 der ersten Runde ist der Startwert, danach folgt der
 Versuchsplan (gleichmäßig im Raum verteilt). Ab genügend Rechnungen lernt das Modell und schlägt je
 Runde `VariantsPerIteration` neue Varianten vor. Bei **4 oder mehr Varianten je Runde** ist die letzte
-ein **Erkunder**: Sie liegt dort, wo das Modell sich am wenigsten auskennt, als Absicherung gegen ein
-selbstsicheres, aber falsches Modell. Rechnungen, die abgestürzt sind oder vom Türsteher verworfen
+ein **Erkunder**: Er sucht die größte Unsicherheit, aber nur unter Stellen, die nach Ansicht des Modells
+noch gut sein könnten, als Absicherung gegen ein selbstsicheres, aber falsches Modell. Ist nirgends mehr
+eine nennenswerte Verbesserung zu erwarten (das Optimum ist gefunden, oder der Beste ist ein Ausreißer
+nach oben), **verfeinert** das Verfahren dort, wo die vorhergesagte Note am höchsten ist, statt in
+Randgebieten zu raten. Bis zum 08.11.2026 verbrauchte es in dieser Lage ganze Runden an den Rändern des
+Suchraums (Serverlauf: Anstellwinkel 15 bis 30°). Rechnungen, die abgestürzt sind oder vom Türsteher verworfen
 wurden, lernt das Modell nicht, und es sucht in ihrer Umgebung nicht weiter. Stürzen Rechnungen ab
 (Netz oder SU2), lernt ein zweites, kleines Modell, **wo** das passiert, und das Verfahren meidet diese
 ganze Zone, nicht nur die Stelle des einzelnen Absturzes. Das hilft, wenn das beste Gebiet direkt an einer
@@ -279,7 +285,7 @@ nicht erst geprüft.
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. | `0.2` | 🟡 |
+| `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. Schwanken die Rechnungen von Natur aus (Wirbelablösung, `Uncertainty_<Kennwert>`), gilt mindestens die doppelte Schwankung beider Rechnungen; das Log nennt dann die erweiterte Grenze. | `0.2` | 🟡 |
 | `BouncerJitter` | Um wie viel der eine Parameter verstellt wird, **in dessen Einheit** (nicht in Prozent!). Bei Parametern mit kleinen Zahlen (z. B. 0,02) ist `0.01` schon riesig. | `0.01` | 🔴 |
 
 **Genauigkeit der Konvergenz (TODO-W3, TODO-W4)**
@@ -320,7 +326,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | --- | --- | --- | --- |
 | `MeshCalibration` | Abschnitt für die automatisierte Netzkalibrierung. | `{}` | 🟡 |
 | `Mode` | Modus der Kalibrierung: `"Auto"` (Standard: Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein) oder `"Manual"` (`MeshRefinementFactor` gilt). In 2D dauert die Kalibrierung Sekunden bis Minuten, in 3D Stunden (MantaAuv ~4 h, steht deshalb auf `"Manual"`). | `"Auto"` | 🟡 |
-| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). | `0.05` | 🟡 |
+| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). Bei schwankenden Rechnungen (Wirbelablösung) gilt mindestens die doppelte Schwankung beider Stufen (`Uncertainty_<Kennwert>`), sonst entschiede Rauschen über die Netzfeinheit. | `0.05` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
 | `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
 | `MaxCells2D` | Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). | `2000000` | 🔴 |
@@ -336,7 +342,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (prüft den Gesamtsieger am Ende), `"FinalTopN"` (Standard, prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"FinalTopN"` | 🟡 |
 | `TopN` | Anzahl der besten Varianten am Ende bei `Mode` = `"FinalTopN"`. | `3` | 🟡 |
 | `RefinementSteps` | Anzahl der Verfeinerungsstufen gegenüber dem wirksamen Faktor (÷ √2 je Stufe). | `1` | 🟡 |
-| `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). | `0.05` | 🟡 |
+| `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). Auch hier gilt bei schwankenden Rechnungen mindestens die doppelte Schwankung beider Werte. | `0.05` | 🟡 |
 
 ### 4.3 `solvers/su2.json` – die Strömungsrechnung
 
@@ -450,7 +456,7 @@ sich die Schichten), wiederholt das Programm automatisch mit weniger äußeren S
 
 ### 4.5 `solvers/gmsh.json` (2D-Projekte, `Gmsh2DMesherOptions`)
 
-Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder 2D-Vorkalibrierung in `TestprojektNACA`, TODO-45/48) erzeugt `Gmsh2DMesher` ein ebenes Rechennetz um die Kontur. Die Bezugslänge ist die Sehne $L$.
+Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder die 2D-Vorkalibrierung für 3D-Projekte, TODO-45/48) erzeugt `Gmsh2DMesher` ein ebenes Rechennetz um die Kontur. Die Bezugslänge ist die Sehne $L$.
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
@@ -563,13 +569,13 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 
 | Aufgabe | Befehl |
 | --- | --- |
-| **Alle Unit-Tests ausführen** (ohne Solver lauffähig) | `dotnet test Automatisierung.sln` |
-| **Vorhandene Projekte auflisten** | `dotnet run --project src/Automatisierung_v2 -- --list-projects` |
-| **Konfiguration & Pfade prüfen (Dry-Run)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --print-config` |
-| **Simulation lokal starten** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
-| **Lokale Netzkalibrierung** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
-| **Lokaler Recheck (stationär / URANS)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --recheck=Gen3_Var2 --finer=1 [--unsteady]` |
-| **Lokalen Lauf fortsetzen** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --resume` |
+| **Alle Unit-Tests ausführen** (ohne Solver lauffähig) | `dotnet test OptimierungsAlgoCFD.sln` |
+| **Vorhandene Projekte auflisten** | `dotnet run --project src/OptimierungsAlgoCFD -- --list-projects` |
+| **Konfiguration & Pfade prüfen (Dry-Run)** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --print-config` |
+| **Simulation lokal starten** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv` |
+| **Lokale Netzkalibrierung** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --calibrate` |
+| **Lokaler Recheck (stationär / URANS)** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --recheck=Gen3_Var2 --finer=1 [--unsteady]` |
+| **Lokalen Lauf fortsetzen** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --resume` |
 | **Direkt auf dem Linux-Server per SSH** | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 
 > **Kein stiller Standard beim direkten Aufruf:** Ohne Projektnamen bricht `dotnet run` (ebenso wie `sim-runner.sh`) sofort ab und listet die verfügbaren Projekte auf, damit ein Tippfehler niemals stundenlang das falsche Projekt rechnet. Optional kann als zweites Argument ein abweichender Pfad zu `src/projects` übergeben oder `SIM_PROJECTS_DIR` gesetzt werden.
@@ -582,7 +588,6 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | --- | --- | --- |
 | `'…' nennt einen Schlüssel, den der Typ … nicht kennt` | Tippfehler in einer JSON-Datei. | Die Meldung nennt den vermutlich gemeinten Namen bzw. alle gültigen. Korrigieren. |
 | `[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt` | Eine `*.local.json` verändert still Werte. | Gehören die Werte zum Projekt: in die Projektdatei übernehmen und die local-Datei löschen. |
-| `[WARNUNG] 'MachNumber' in … ist wirkungslos, weil in solvers/su2.json 'FreestreamVelocity' (… m/s) gesetzt ist.` | In `solvers/su2.json` ist eine explizite Anströmgeschwindigkeit vorgegeben. SU2 rechnet direkt mit dieser Geschwindigkeit; der Wert `MachNumber` aus der Simulationskonfiguration hat keinen Einfluss auf die Anströmung. | Soll wieder über Mach gerechnet werden: `FreestreamVelocity` in `su2.json` auf `0` setzen. Sonst ist die Meldung nur ein Hinweis darauf, dass `MachNumber` wirkungslos ist. |
 | `Kein -Project angegeben, es gilt die Vorgabe 'MantaAuv'` | Der Befehl wirkt auf MantaAuv. | Gilt bei `run`/`deploy`/`doctor`. Bei `fetch` und `status` fragt das Skript automatisch das letzte Projekt auf dem Server ab. |
 | `FEHLER: Simulation_Results.csv fuer Projekt '…' fehlt nach dem Entpacken` | Für dieses Projekt liegen noch keine Ergebnisse auf dem Server vor. | Die Meldung listet die vorhandenen Projekte auf dem Server auf. Projektname prüfen oder Lauf erst abwarten. |
 | `[WARNUNG] Das geholte Log gehoert laut Kopfzeile zu Projekt '…'` | `simulation.log` stammt von einem anderen Projekt als die geholten Ergebnisse. | Das gewünschte Projekt mit `-Project` angeben oder einen neuen Lauf starten. |
@@ -595,6 +600,8 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |
+| `⚠ HINWEIS: Das Optimum liegt an der Grenze des Suchraums` (am Ende des Laufs, gelb) | Der Gewinner liegt bei einem oder mehreren Parametern höchstens 1 % der Spanne von einer Grenze in `ParameterBounds` entfernt. Dann bestimmt die Grenze das Ergebnis, und ein besserer Wert liegt möglicherweise dahinter. Das Framework erweitert Grenzen **nie** von selbst. | Prüfen, ob die Grenze fachlich sinnvoll ist (Festigkeit, Baubarkeit, Physik). Wenn nicht: in `project.json` unter `ParameterBounds` erweitern und neu rechnen. |
+| `[WARNUNG] [MPI] MpiRunPath '…' ist OpenMPI. …` | `MpiRunPath` zeigt auf OpenMPI. Das offizielle SU2-Binary ist mit MPICH gebaut: unter OpenMPI läuft jeder Kern als eigene serielle Kopie und überschreibt die Dateien der anderen, ohne Fehlermeldung. | `MpiRunPath` auf das `mpiexec` des MPICH-Environments setzen (Server: `~/miniconda/envs/mpich/bin/mpiexec`, siehe `scripts/README.md`). `sim.ps1 doctor` prüft das ebenfalls. |
 | `[ABGELEHNT] Modell ist instabil. Disqualifiziert.` | Der Bouncer hat einen Zufallstreffer aussortiert. Das ist normal. | Passiert es fast immer: `BouncerTolerance` lockern oder `BouncerJitter` verkleinern. |
 | `[WIEDERAUFNAHME] Kein abgebrochener Lauf gefunden` | Für dieses Projekt gibt es kein Journal (noch nie gerechnet, oder Ergebnisse mit `delete` gelöscht). | Neu starten mit `.\scripts\sim.ps1 run -Project <Name>`. |
 | `[WIEDERAUFNAHME] Die Konfiguration hat sich seit dem Start des Laufs geändert: …` | Eine der genannten Dateien hat andere Werte als beim Start. Ein Weiterrechnen würde Ergebnisse mischen. | Die Änderung zurücknehmen (die Werte des Laufs stehen in `effective-config.json`) oder mit `run` neu starten. |
@@ -642,7 +649,7 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | **Bayes-Optimierung** | Optimierer, der nach jeder Runde ein Ersatzmodell lernt und die nächsten Varianten dort rechnen lässt, wo die Chance am größten ist, den Besten zu schlagen. Spart bei teuren Rechnungen viele Varianten. |
 | **Ersatzmodell (Gauß-Prozess)** | Das Modell dahinter: Es schätzt die Fitness an jeder Stelle **und** wie sicher es sich dabei ist („Nebel"). Es lernt in jedem Lauf neu, in Sekunden, auf dem normalen Prozessor. |
 | **Instationär, aber stabil** | Eine Rechnung, deren Ergebnis pendelt (Wirbel lösen sich ab), aber nicht wegläuft. Sie liefert einen gültigen Mittelwert mit Unsicherheit. Erst ein gesichertes Weiterwandern (Drift) gilt als nicht konvergiert. |
-| **Erkunder** | Die letzte Variante einer Runde bei `"Bayes"` (ab 4 Varianten): Sie liegt dort, wo das Modell sich am wenigsten auskennt. |
+| **Erkunder** | Die letzte Variante einer Runde bei `"Bayes"` (ab 4 Varianten): Sie liegt dort, wo das Modell sich am wenigsten auskennt, aber nur an Stellen, die noch gut sein könnten. |
 | **Vertrauensbereich** | Bei vielen Parametern (ab 10) sucht `"Bayes"` nur in einem Würfel um den besten Punkt, der nach Erfolgen wächst und nach Misserfolgen schrumpft. |
 | **Parameter-Wichtigkeit** | Wie stark ein Parameter die Note beeinflusst, aus dem Ersatzmodell gelesen (`Relevanz_<Parameter>`). Hilft zu erkennen, welche Parameter man festsetzen kann. |
 | **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |

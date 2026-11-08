@@ -32,7 +32,7 @@
   // startet bash nicht-interaktiv und Ubuntus ~/.bashrc steigt sofort wieder aus,
   // deshalb greift dort nichts aus conda init.
   //
-  // Die Pfade stammen aus ServerHochschuleEinrichten2.txt und setup_server.sh.
+  // Die Pfade stammen aus setup_server.sh.
   // Aendert sich die Gmsh-Version, aendert sich auch dieser Pfad.
   //
   // Auf einem anderen Server: diese drei Zeilen loeschen, dann gilt wieder der
@@ -66,6 +66,10 @@
   // --- CFD & SU2 ---
   // Seit 06.11.2026 (TODO-W8) rechnet MantaAuv mit Prismen-Wandschicht (y+ ~ 1) und grossem Kanal:
   // Ergebnisse davor (y+ 40-70, Kanal 6 L) und danach sind NICHT vergleichbar.
+  // Netzfaktor 0.71: so lief der validierte Servertest (4 x 4, Feinpruefung der Top 3 mit 0.50; 06.11.2026). Der Widerstand
+  // ist auf diesem Netz noch nicht netzunabhaengig (CD 0.171 grob gegen 0.146 fein), die Rangfolge der Varianten haelt
+  // aber zu 100 %. Absolute Werte daher nur mit Vorsicht lesen; fuer genaue Werte `sim.ps1 calibrate` und den Faktor ersetzen.
+  "MeshRefinementFactor": 0.71,
   "Su2MaxIterations": 2000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",
@@ -73,7 +77,8 @@
   "GmshCores": 16,
 
   // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
-  // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
+  // Der Code-Standard ist seit 08.11.2026 "Bayes". MantaAuv bleibt ausdruecklich bei "Rsm", bis Bayes im 3D-Fall (Modus
+  // "Metrics") auf dem Server gemessen ist; dann diese Zeile loeschen. Ein unbekannter Name warnt und faellt auf den Standard zurueck.
   "OptimizationAlgorithm": "Rsm",
 
   // --- Evolutionärer Algorithmus ---

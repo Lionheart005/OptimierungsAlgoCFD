@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Legt ein neues Projekt an: kopiert src/projects/_Vorlage und setzt den Namen ein.
+    Legt ein neues Projekt an: kopiert src/projects/_Vorlage3D und setzt den Namen ein.
 
 .DESCRIPTION
     Ein Projekt ist ein Ordner unter src/projects/ (Entscheidung 1: der Ordnername IST der
@@ -19,7 +19,7 @@
 .PARAMETER Name
     Der Projektname und damit der Ordnername. Muss ein gueltiger C#-Bezeichner sein, denn er
     wird auch zum Klassennamen (<Name>Project) und zum Namensraum
-    (MyPicoGkProject.Projects.<Name>).
+    (OptimierungsAlgoCFD.Projects.<Name>).
 
 .EXAMPLE
     .\scripts\new-project.ps1 Propeller
@@ -42,7 +42,7 @@ $ProjectsRoot = Join-Path $RepoRoot 'src\projects'
 $TemplateDir = if ($Template -eq '2D') {
     Join-Path $ProjectsRoot '_Vorlage2D'
 } else {
-    Join-Path $ProjectsRoot '_Vorlage'
+    Join-Path $ProjectsRoot '_Vorlage3D'
 }
 
 # Das Wort, das in der Vorlage ueberall steht, wo der Projektname hin muss. Bewusst ein Wort,
@@ -75,7 +75,7 @@ function Write-Warn([string]$Text) {
 # Leerzeichen oder eine fuehrende Ziffer wuerden erst beim naechsten Build auffallen -- und
 # dann mit einer Fehlermeldung, die nicht von diesem Skript spricht.
 if ($Name -notmatch '^[A-Za-z][A-Za-z0-9_]*$') {
-    throw "Ungueltiger Projektname '$Name'. Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern und Unterstrich -- der Name wird auch Klassenname (${Name}Project) und Namensraum (MyPicoGkProject.Projects.${Name})."
+    throw "Ungueltiger Projektname '$Name'. Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern und Unterstrich -- der Name wird auch Klassenname (${Name}Project) und Namensraum (OptimierungsAlgoCFD.Projects.${Name})."
 }
 
 if ($Name -eq $Placeholder -or $Name -eq 'MeinProjekt2D') {
@@ -104,7 +104,7 @@ if ($existing) {
 # Kopieren
 # ---------------------------------------------------------------------------
 
-$templateName = if ($Template -eq '2D') { '_Vorlage2D' } else { '_Vorlage' }
+$templateName = if ($Template -eq '2D') { '_Vorlage2D' } else { '_Vorlage3D' }
 Write-Step "Lege src/projects/$Name an (Kopie von $templateName)"
 
 Copy-Item -Path $TemplateDir -Destination $TargetDir -Recurse
@@ -205,13 +205,13 @@ Write-Host @"
 
     Ohne Server pruefen, ob die Konfigurationskette steht:
 
-        dotnet build Automatisierung.sln
-        dotnet run --project src\Automatisierung_v2 --no-build -- $Name --print-config
+        dotnet build OptimierungsAlgoCFD.sln
+        dotnet run --project src\OptimierungsAlgoCFD --no-build -- $Name --print-config
 
     Und dann rechnen:
 
         .\scripts\sim.ps1 run -Project $Name
 
-    src/projects/_Vorlage bleibt unberuehrt liegen, MantaAuv ebenso -- die Projekte
+    src/projects/_Vorlage3D bleibt unberuehrt liegen, MantaAuv ebenso -- die Projekte
     kommen sich nicht in die Quere, auch die Ergebnisse nicht (Ergebnisse/$Name/).
 "@

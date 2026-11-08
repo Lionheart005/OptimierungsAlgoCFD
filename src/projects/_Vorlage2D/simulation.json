@@ -7,7 +7,10 @@
   // VariantsPerIteration (kleiner Testlauf) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
   // In einem echten Projekt bleibt nur stehen, was abweicht -- den Rest loeschen.
 
-  // --- Programme (PATH-relativ) ---
+  // --- Programme (PATH-relativ; `.\scripts\sim.ps1 doctor` zeigt, was gefunden wird) ---
+  // ACHTUNG Server: MpiRunPath muss ein MPICH-mpiexec sein (z. B. ~/miniconda/envs/mpich/bin/mpiexec). Das OpenMPI,
+  // das "mpirun" dort per PATH findet, startet zwoelf serielle Kopien und liefert unbrauchbare Ergebnisse
+  // (das Programm warnt dann beim Start). Einrichtung: scripts/README.md.
   "MpiRunPath": "mpirun",
   "Su2Path": "SU2_CFD",
   "GmshPath": "gmsh",
@@ -27,8 +30,10 @@
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
-  "OptimizationAlgorithm": "Rsm",
+  // --- Optimierungsverfahren: "Bayes" (Standard), "Rsm" oder "Evolution" ---
+  // Bayes lernt aus den bisherigen Rechnungen und braucht Grenzen je Parameter (ParameterBounds in project.json).
+  // Rsm ist bei sehr kleinem Budget (bis etwa 25 Rechnungen) gleichwertig und braucht keine Grenzen.
+  "OptimizationAlgorithm": "Bayes",
   // 0 = bei jedem Lauf neu ziehen (steht in run-info.json); fester Wert = exakt wiederholbar.
   "RandomSeed": 0,
 

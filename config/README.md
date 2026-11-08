@@ -2,7 +2,7 @@
 
 > **Weiterführende Dokumente (ohne Doppelung):**
 > - **Bedienung & Alle JSON-Einstellungen (Stufen 1–4):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
-> - **Architektur des Konfigurations-Loaders:** [`src/Automatisierung_v2/README.md`](../src/Automatisierung_v2/README.md)
+> - **Architektur des Konfigurations-Loaders:** [`src/OptimierungsAlgoCFD/README.md`](../src/OptimierungsAlgoCFD/README.md)
 > - **Server-Steuerung & Deployment:** [`scripts/README.md`](../scripts/README.md)
 
 **Im Normalfall bleibt dieser Ordner bis auf diese README komplett leer.** Alle regulären Einstellungen eines Projekts liegen direkt in dessen Projektordner unter `src/projects/<Projekt>/` (`project.json`, `simulation.json`, `solvers/su2.json`, `solvers/gmsh.json`). Ein Test (`ProjectLayoutTests.The_Config_Folder_Holds_No_Checked_In_Json`) stellt sicher, dass hier niemals versehentlich reguläre JSON-Dateien eingecheckt werden.

@@ -5,7 +5,7 @@
   // ===================================================================
   //
   // 2D-CFD-Optimierung und NASA-TMR-Validierung (TODO-47).
-  // Pfade analog zu TestprojektNACA für den Hochschulserver (BIC_12).
+  // Pfade für den Hochschulserver (BIC_12).
 
   // --- Pfade zu externer Software ---
   // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
@@ -33,8 +33,7 @@
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
-  "OptimizationAlgorithm": "Rsm",
+  // --- Optimierungsverfahren: nichts eingetragen, es gilt der Standard "Bayes" (10 x 10-Vergleich 08.11.2026) ---
 
   // --- Evolutionärer Algorithmus ---
   "MinimalDeviationExploration": 1.0,

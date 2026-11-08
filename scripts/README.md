@@ -3,7 +3,7 @@
 > **Weiterführende Dokumente (ohne Doppelung):**
 > - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
 > - **Neues Bauteil / Projekt anlegen (3D & 2D):** [`src/projects/README.md`](../src/projects/README.md)
-> - **Framework-Architektur & C#-Entwicklung:** [`src/Automatisierung_v2/README.md`](../src/Automatisierung_v2/README.md)
+> - **Framework-Architektur & C#-Entwicklung:** [`src/OptimierungsAlgoCFD/README.md`](../src/OptimierungsAlgoCFD/README.md)
 > - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../config/README.md)
 
 Zwei Skripte, eine Aufgabe: den Optimierungslauf von Windows aus auf dem
@@ -13,7 +13,7 @@ Hochschulrechner starten und beobachten.
 |---|---|---|
 | `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
-| `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage`) |
+| `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage3D`) |
 | `plot_history.py` | Windows / Linux | Konvergenzverläufe (history.csv) prüfen, auswerten und plotten |
 
 `new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
@@ -405,7 +405,7 @@ Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
   den `MESA_*`-Zeilen ist gesetzt. `sim-runner.sh` baut sich seine Umgebung deshalb
   in jedem Aufruf selbst.
 - **`pkill -9 -f dotnet`** aus der alten Anleitung träfe *jeden* .NET-Prozess des
-  Nutzers. `stop` killt gezielt `Automatisierung_v2.dll` und dessen Kindprozesse.
+  Nutzers. `stop` killt gezielt `OptimierungsAlgoCFD.dll` und dessen Kindprozesse.
 - **Xvfb-Reste** werden bewusst nicht abgeschossen: `xvfb-run -a` sucht sich eine
   freie Display-Nummer. Wenn doch nötig: `pkill -9 -f Xvfb`.
 - **Tote VPN-Verbindung hängt ewig:** Ohne Zeitgrenze wartet ssh/scp bei einem
@@ -438,7 +438,7 @@ Wenn das System auf einem neuen Linux-Hochschulserver (Ubuntu, ohne `sudo`-Recht
 
 ### Weg 1: Automatische Einrichtung via `setup_server.sh` (Empfohlen)
 
-1. Kopiere [`src/Automatisierung_v2/setup_server.sh`](../src/Automatisierung_v2/setup_server.sh) auf den Server und führe es aus:
+1. Kopiere [`src/OptimierungsAlgoCFD/setup_server.sh`](../src/OptimierungsAlgoCFD/setup_server.sh) auf den Server und führe es aus:
    ```bash
    chmod +x setup_server.sh
    ./setup_server.sh
@@ -466,13 +466,19 @@ source ~/.bashrc
 rm ~/miniconda.sh
 ```
 
-#### 2. System-Bibliotheken, OpenMPI, Xvfb & tmux über Conda
+#### 2. System-Bibliotheken, Xvfb & tmux über Conda
 ```bash
 conda install -y -c conda-forge git boost-cpp tbb-devel blosc pkg-config \
   xorg-libxrandr xorg-libxinerama xorg-libxcursor xorg-libxi xorg-xvfb-server tmux \
   xorg-libxext xorg-randrproto xorg-renderproto xorg-libxrender xorg-xorgproto \
   gcc_linux-64 gxx_linux-64 mesalib libglu freeglut xorg-libx11 openmpi
 ```
+
+**Wichtig: SU2 braucht MPICH, nicht OpenMPI.** Das offizielle SU2-Binary (Schritt 3) ist statisch mit MPICH gebaut. Unter dem OpenMPI aus dem Befehl oben startet `-n 12` zwölf unabhängige *serielle* Kopien, die sich gegenseitig die Dateien überschreiben, ohne jede Fehlermeldung; die Ergebnisse sind unbrauchbar. Deshalb zusätzlich ein eigenes MPICH-Environment anlegen:
+```bash
+conda create -y -n mpich -c conda-forge mpich
+```
+In der `simulation.json` des Projekts steht dann `"MpiRunPath": "/home/<benutzer>/miniconda/envs/mpich/bin/mpiexec"`. Das Programm prüft die Variante beim Start (`[MPI]`-Warnung im Log, Eintrag `MPI-Variante` in `run-info.json`), und `sim.ps1 doctor` meldet OpenMPI als Problem. `setup_server.sh` legt das Environment automatisch an.
 
 #### 3. Externe Werkzeuge herunterladen (CMake, SU2, Gmsh)
 ```bash
@@ -540,7 +546,7 @@ mkdir -p ~/software/PicoGK/build && cd ~/software/PicoGK/build
 make -j $(nproc)
 
 # Bibliothek unter beiden Namen (libpicogk.so und libpicogk.26.2.so) bereitstellen:
-TARGET_BIN="$HOME/Documents/AutomatisierungCleanVersion/src/Automatisierung_v2/bin/Debug/net9.0"
+TARGET_BIN="$HOME/Documents/AutomatisierungCleanVersion/src/OptimierungsAlgoCFD/bin/Debug/net9.0"
 mkdir -p "$TARGET_BIN"
 PICOGK_LIB=$(find ~/software/PicoGK/build -iname "*picogk.so" | head -n 1)
 cp "$PICOGK_LIB" "$TARGET_BIN/libpicogk.so"
@@ -583,14 +589,14 @@ export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/
 export LD_LIBRARY_PATH=$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}
 export HWLOC_HIDE_ERRORS=1
 export LIBGL_ALWAYS_SOFTWARE=1
-xvfb-run -a dotnet run --project src/Automatisierung_v2 -- MantaAuv > simulation.log 2>&1
+xvfb-run -a dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv > simulation.log 2>&1
 
 # 3. Aus tmux abkoppeln (Detach): Strg+B drücken, loslassen, dann D drücken
 # Wieder einhängen: ~/miniconda/bin/tmux attach -t sim
 
 # 4. Manueller Not-Aus (nur eigene Prozesse, niemals globales 'pkill dotnet'!):
 ~/miniconda/bin/tmux kill-session -t sim
-pkill -9 -f Automatisierung_v2.dll || true
+pkill -9 -f OptimierungsAlgoCFD.dll || true
 pkill -9 -f SU2_CFD || true
 pkill -9 -f mpirun || true
 pkill -9 -f Xvfb || true
@@ -598,12 +604,14 @@ pkill -9 -f Xvfb || true
 
 ### Troubleshooting & Fehlerbehebung auf dem Server
 
+- **Rechnung wirkt falsch, SU2 läuft zwölfmal einzeln, `[MPI]`-Warnung im Log:**  
+  `MpiRunPath` zeigt auf OpenMPI (z. B. `miniconda/bin/mpirun`). Das offizielle SU2-Binary ist mit MPICH gebaut. Auf `$HOME/miniconda/envs/mpich/bin/mpiexec` umstellen (Einrichtung siehe Schritt 2). Der Standardwert `"mpirun"` reicht auf dem Server **nicht**: Er findet über den PATH das OpenMPI.
 - **`symbol lookup error` bei `mpirun` / OpenMPI:**  
-  Das System greift auf ein unpassendes globales OpenMPI statt der Conda-Version zu. Mit `which mpirun` prüfen — es muss `$HOME/miniconda/bin/mpirun` sein (`$HOME/miniconda/bin` muss im `PATH` vorne stehen oder in `simulation.json` unter `MpiRunPath` angegeben sein).
+  Das System greift auf ein unpassendes globales OpenMPI zu. Das MPICH-`mpiexec` aus dem Environment `mpich` verwenden (siehe oben) und in `simulation.json` unter `MpiRunPath` mit vollem Pfad eintragen.
 - **`prterun was unable to launch` / `Executable not found`:**  
   `SU2_CFD` liegt nicht unter dem konfigurierten Pfad oder ist nicht ausführbar. Prüfen mit `ls -l ~/software/bin/SU2_CFD` und ggf. `chmod +x ~/software/bin/SU2_CFD`.
 - **`DllNotFoundException: Unable to load shared library 'libpicogk'`:**  
-  `dotnet build` hat das Ausgabeverzeichnis bereinigt. `sim-runner.sh` kopiert die Bibliothek automatisch nach; bei manuellem Build beide Dateien (`libpicogk.so` und `libpicogk.26.2.so`) wie in Schritt 5 wieder nach `src/Automatisierung_v2/bin/Debug/net9.0/` kopieren.
+  `dotnet build` hat das Ausgabeverzeichnis bereinigt. `sim-runner.sh` kopiert die Bibliothek automatisch nach; bei manuellem Build beide Dateien (`libpicogk.so` und `libpicogk.26.2.so`) wie in Schritt 5 wieder nach `src/OptimierungsAlgoCFD/bin/Debug/net9.0/` kopieren.
 - **CPU-Auslastung nur 100 % (Single-Core statt Multi-Core):**  
   SU2 läuft nicht über `mpirun` oder `MpiCores` steht auf `1`. In `src/projects/<Projekt>/simulation.json` prüfen, ob `MpiCores` (z. B. `12`) und `MpiRunPath` gesetzt sind, und mit `top -u $USER` kontrollieren, ob mehrere `SU2_CFD`-Prozesse starten.
 - **`X connection broken` / `Display already in use`:**  
