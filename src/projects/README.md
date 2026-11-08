@@ -2,9 +2,9 @@
 
 > **Weiterführende Dokumente (ohne Doppelung):**
 > - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md)
-> - **3D-Modellierung mit PicoGK:** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](../Automatisierung_v2/Kernels/PicoGk/README.md)
-> - **2D-Modellierung mit dem eigenen `Planar2D`-Kernel:** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](../Automatisierung_v2/Kernels/Planar2D/README.md)
-> - **Framework-Architektur & C#-Entwicklung:** [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
+> - **3D-Modellierung mit PicoGK:** [`src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md`](../OptimierungsAlgoCFD/Kernels/PicoGk/README.md)
+> - **2D-Modellierung mit dem eigenen `Planar2D`-Kernel:** [`src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md`](../OptimierungsAlgoCFD/Kernels/Planar2D/README.md)
+> - **Framework-Architektur & C#-Entwicklung:** [`src/OptimierungsAlgoCFD/README.md`](../OptimierungsAlgoCFD/README.md)
 > - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
 > - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
 
@@ -13,10 +13,9 @@ seine Zielfunktion und seine Zahlen. Jedes Projekt ist genau ein Ordner hier dri
 
 ```
 src/projects/
-├── _Vorlage/        Kopiervorlage -- kein Projekt, siehe _Vorlage/README.md
+├── _Vorlage3D/        Kopiervorlage -- kein Projekt, siehe _Vorlage3D/README.md
 ├── _Vorlage2D/      2D-Kopiervorlage -- kein Projekt, siehe _Vorlage2D/README.md
 ├── MantaAuv/        ein AUV in Mantarochen-Form (3D)
-├── TestprojektNACA/ 3D-Flügelsegment nach NACA 4-digit
 └── Naca2D/          2D-CFD NACA-Profil mit NASA-TMR-Validierung
 ```
 
@@ -31,12 +30,12 @@ Projekt mit
 Zwei Projekte existieren nebeneinander und kommen sich nicht in die Quere: eigene
 Zahlen, eigener Code, eigene Ergebnisse unter `Ergebnisse/<Projekt>/`. Umgeschaltet
 wird **nur** über den Startaufruf — am Framework unter
-[`src/Automatisierung_v2/`](../Automatisierung_v2/) ändert sich dafür nichts.
+[`src/OptimierungsAlgoCFD/`](../OptimierungsAlgoCFD/) ändert sich dafür nichts.
 
 Welche Projekte es gibt:
 
 ```powershell
-dotnet run --project src\Automatisierung_v2 -- --list-projects   # lokal
+dotnet run --project src\OptimierungsAlgoCFD -- --list-projects   # lokal
 .\scripts\sim.ps1 projects                                       # auf dem Server
 ```
 
@@ -51,7 +50,7 @@ dotnet run --project src\Automatisierung_v2 -- --list-projects   # lokal
 .\scripts\new-project.ps1 MeinProfil -Template 2D   # 2D-CFD (direkter 2D-Kernel)
 ```
 
-Das kopiert `_Vorlage/` nach `Propeller/` und ersetzt das Platzhalterwort
+Das kopiert `_Vorlage3D/` nach `Propeller/` und ersetzt das Platzhalterwort
 `MeinProjekt` überall — in Dateinamen, Klassennamen, Namensraum und in den
 Kommentarköpfen der JSONs. Der Name muss ein gültiger C#-Bezeichner sein, denn er
 wird auch Klassen- und Namensraumname.
@@ -104,8 +103,8 @@ erlaubter Parameter: was hier steht, existiert.
 ### 3. Geometrie bauen
 
 > **Ausführliche Modellierungs-Handbücher:**
-> - **Für 3D-Projekte (PicoGK `Lattice`, `Voxels`, `Mesh`):** [`src/Automatisierung_v2/Kernels/PicoGk/README.md`](../Automatisierung_v2/Kernels/PicoGk/README.md)
-> - **Für 2D-Projekte (Eigener Kernel `Shape2D`, `Lattice2D`, `BBox2`):** [`src/Automatisierung_v2/Kernels/Planar2D/README.md`](../Automatisierung_v2/Kernels/Planar2D/README.md)
+> - **Für 3D-Projekte (PicoGK `Lattice`, `Voxels`, `Mesh`):** [`src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md`](../OptimierungsAlgoCFD/Kernels/PicoGk/README.md)
+> - **Für 2D-Projekte (Eigener Kernel `Shape2D`, `Lattice2D`, `BBox2`):** [`src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md`](../OptimierungsAlgoCFD/Kernels/Planar2D/README.md)
 
 In `PropellerGeometryGenerator.cs`. Die Vorlage baut einen Quader; ersetze
 `BuildVoxelModel` (bzw. `BuildProfileContour` in 2D). Am Ende meldest du deine Messwerte:
@@ -152,6 +151,16 @@ ihre Namen in `RequiredTargets` ein: dann bricht ein fehlender Wert beim Verdrah
 ab und nicht nach Stunden Rechenzeit. Für Messwerte gilt dasselbe über
 `RequiredMetrics` — die prüft der Controller nach der ersten gerechneten Variante.
 
+> **Für den Bayes-Optimierer (`"OptimizationAlgorithm": "Bayes"`):** Nennt `RequiredMetrics` die
+> Kennwerte der Formel, kann er im Modus `"Metrics"` für jeden Kennwert ein eigenes Ersatzmodell
+> lernen und die Fitness über **deine** Formel verrechnen. Strafen und Grenzen (Sprünge) wirken dann
+> automatisch richtig. Das funktioniert nur, wenn die Formel **ausschließlich** mit den Parametern
+> und den Kennwerten aus `RequiredMetrics` rechnet. Liest sie weitere Werte aus `PassiveParameters`,
+> merkt der Optimierer das in einer Gegenprobe und fällt automatisch und ohne Schaden auf den Modus
+> `"Fitness"` zurück. Eine Formel darf zusätzliche Schlüssel **schreiben** (wie `GlideRatio` in
+> `Naca2D`); sie dürfen nur nicht in die Fitness eingehen. Für den Bayes-Optimierer braucht außerdem
+> jeder Parameter Grenzen in `ParameterBounds`.
+
 > **Vorsicht vor „Reward Hacking".** Optimierungsalgorithmen sind gnadenlos. Ohne
 > eine untere Volumengrenze schrumpft der Algorithmus das Bauteil auf Staubkorngröße,
 > weil das den geringsten Widerstand hat. Harte Grenzen sind kein Beiwerk.
@@ -163,10 +172,11 @@ dem Code-Standard als Wert. Das ist als Nachschlagewerk gedacht, nicht als
 Konfiguration: **lösche alles, was du nicht änderst.** Ein Schlüssel mit dem
 Standardwert ist Rauschen, das beim nächsten Framework-Update veraltet.
 
-Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 1` und
-`VariantsPerIteration = 2`. Der erste Lauf soll ein **Rauchtest** sein — läuft die
-Kette PicoGK → STL → Gmsh → SU2 → Fitness überhaupt durch? Sitzt das, werden beide
-Zahlen hochgesetzt.
+Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 5` und
+`VariantsPerIteration = 5` (statt 10 × 10), damit der erste Lauf überschaubar bleibt.
+Außerdem fehlt `MeshRefinementFactor`: Die Netzkalibrierung steht auf `"Auto"` und
+bestimmt ihn selbst. In 3D dauert sie Stunden; für einen schnellen Rauchtest („läuft die
+Kette PicoGK → STL → Gmsh → SU2 → Fitness durch?“) auf `"Manual"` stellen und den Faktor eintragen.
 
 Was welcher Schlüssel im Einzelnen bedeutet, steht im
 [**Bedienhandbuch** (`BEDIENHANDBUCH.md`, Abschnitt 4)](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).
@@ -177,8 +187,8 @@ Erst ohne Server gegenprüfen, dass die Konfigurationskette steht — das läuft
 Windows und braucht kein PicoGK:
 
 ```powershell
-dotnet build Automatisierung.sln
-dotnet run --project src\Automatisierung_v2 --no-build -- Propeller --print-config
+dotnet build OptimierungsAlgoCFD.sln
+dotnet run --project src\OptimierungsAlgoCFD --no-build -- Propeller --print-config
 ```
 
 Dann rechnen:

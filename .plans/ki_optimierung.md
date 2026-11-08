@@ -5,7 +5,11 @@
 > 05.11.2026. Die Nummerierung geht hier mit **TODO-50** weiter, Entscheidungen mit **E13**,
 > Festlegungen mit **F9**.
 >
-> **Status (06.11.2026):** Block V (TODO-50 bis TODO-52) ist im Code umgesetzt und lokal geprüft,
+> **Status (08.11.2026): Der KI-Teil (TODO-53 bis TODO-60) ist umgesetzt** (Branch `KI_Integration`, alle Tests grün, Server-Vergleichsläufe 5×5 und 10×10 in
+> `.plans/vergleich_optimierer.md`; Bewertung der LLM-Geometriegenerierung in `.plans/llm_geometrie_bewertung.md`). Abweichungen vom Plan stehen am Ende
+> dieses Dokuments im Abschnitt „Umsetzungsstand KI-Teil". Der Text darunter ist der Stand vom 06.11.2026.
+>
+> **Status (06.11.2026, historisch und überholt, siehe Status oben):** Block V (TODO-50 bis TODO-52) ist im Code umgesetzt und lokal geprüft,
 > der Server-Praxistest von TODO-52 ist am 06.11.2026 bestanden. **Vor dem KI-Teil kommt Block W
 > (`.plans/physik_feinschliff.md`, TODO-W1 bis W10).** Der KI-Teil ab TODO-53 ist noch nicht begonnen.
 > FEM ist zurückgestellt, siehe `.plans/fem_ausblick.md`.
@@ -30,14 +34,14 @@
 | V | TODO-50 | Zufalls-Seed, Fahrtenschreiber `run-info.json`, Kopie des Projekt-Quellstands | lokal | [x] |
 | V | TODO-51 | Lauf-Journal und Wiedergabe: der Kern der Wiederaufnahme | lokal | [x] |
 | V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [x] Praxistest am 06.11.2026 bestanden (`servertest_2026-11-06.md`) |
-| G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [ ] |
-| G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [ ] |
-| H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [ ] |
-| H | TODO-56 | Modus „Metrics": ein Ersatzmodell je Kennwert (**Idee 2**) | lokal | [ ] |
-| H | TODO-57 | Viele Parameter, lange Läufe: Vertrauensbereich und Deckel für die Lernmenge | lokal | [ ] |
-| H | TODO-58 | Transparenz: Vorhersage gegen Ergebnis, Modellgüte, Parameter-Wichtigkeit | lokal | [ ] |
-| I | TODO-59 | Bedienhandbuch, READMEs, Kommentarköpfe der JSON-Dateien | lokal | [ ] |
-| I | TODO-60 | Vergleichslauf Rsm, Evolution und Bayes auf dem Server | **Server (du)** | [ ] |
+| G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [x] |
+| G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [x] |
+| H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [x] |
+| H | TODO-56 | Modus „Metrics": ein Ersatzmodell je Kennwert (**Idee 2**) | lokal | [x] |
+| H | TODO-57 | Viele Parameter, lange Läufe: Vertrauensbereich und Deckel für die Lernmenge | lokal | [x] |
+| H | TODO-58 | Transparenz: Vorhersage gegen Ergebnis, Modellgüte, Parameter-Wichtigkeit | lokal | [x] |
+| I | TODO-59 | Bedienhandbuch, READMEs, Kommentarköpfe der JSON-Dateien | lokal | [x] |
+| I | TODO-60 | Vergleichslauf Rsm, Evolution und Bayes auf dem Server | **Server (du)** | [x] 08.11.2026, Auswertung in `vergleich_optimierer.md` |
 
 **Verifikationsstand:** vor Beginn (06.11.2026) 443/443 Tests grün, 0 Warnungen. Nach Block V
 **481/481 grün, 0 Warnungen** (neu: `tests/…/ReproducibilityAndResumeTests.cs`). `sim.ps1` ohne
@@ -403,7 +407,7 @@ gerechnet werden, und ersetzt keine einzige echte Rechnung im Ergebnis.
 | 9 | **`EvaluateAndSelectBest` wird auch für einzelne Feinprüf-Datensätze aufgerufen.** | `WorkflowController.cs`, die Lambdas an `ChampionFineVerifier.VerifyIterationWinner` / `VerifyFinal` | Diese Methode darf außer der Fitness keinen Zustand ändern. |
 | 10 | **Verschachtelte Konfigurationsabschnitte werden streng geprüft**, und das Handbuch muss jeden Schlüssel erklären. | `Core/Configuration/ConfigSchema.cs` (rekursiv), `tests/.../HandbookCoverageTests.cs:41` (`SettingTypes`) | Der neue Abschnitt `Bayes` braucht Handbucheinträge, und sein Typ muss in `SettingTypes` stehen. |
 | 11 | **Ein Test verlangt, dass MantaAuv `Rsm` nutzt.** | `tests/.../OptimizationAlgorithmFactoryTests.cs:67` | Wird Manta später umgestellt, muss dieser Test bewusst mitgeändert werden. |
-| 12 | **Es gibt keine Bibliothek für lineare Algebra im Projekt.** | `src/Automatisierung_v2/Automatisierung_v2.csproj` (nur Clipper2, PicoGK) | Siehe F10. |
+| 12 | **Es gibt keine Bibliothek für lineare Algebra im Projekt.** | `src/OptimierungsAlgoCFD/OptimierungsAlgoCFD.csproj` (nur Clipper2, PicoGK) | Siehe F10. |
 | 13 | **Naca2D hat 3 Parameter, rechnet in 2D und braucht kein PicoGK.** | `src/projects/Naca2D/project.json:16-20` | Ideal als schneller Vergleichslauf (TODO-60). |
 
 ---
@@ -480,7 +484,7 @@ auf.
 * `Core/Pipeline/ChampionValidator.cs:80`, `:85`: zusätzlich `candidate.Disqualified = true`.
   Die Fitness 0,0001 bleibt, so dass Rsm und Evolution unverändert rechnen.
 * `Core/Models/SimulationContext.cs:138`: CSV-Spalte `Disqualified` (0/1) **hinten** anhängen, nach
-  `SimulationFailed`. `scripts/Plot_RSM.py` liest über Spaltennamen, das ist geprüft. Tests, die den
+  `SimulationFailed`. Die Auswerteskripte unter `scripts/` lesen über Spaltennamen, das ist geprüft. Tests, die den
   exakten Kopf erwarten, werden nachgezogen.
 * neu `Core/Surrogates/ParameterSpace.cs`
   * Aufgebaut aus `context.CurrentBaseParameters` (Reihenfolge der Schlüssel = Reihenfolge der
@@ -766,11 +770,11 @@ entsteht keine solche Datei.
 * `src/projects/README.md`: Regel für Fitness-Autoren. Der Modus „Metrics" wirkt nur, wenn die
   Fitness ausschließlich mit `RequiredMetrics` und Parametern rechnet. Sonst fällt er automatisch
   und ohne Schaden zurück.
-* `src/Automatisierung_v2/README.md`: Abschnitt „Bayes-Optimierer und Ersatzmodelle". Inhalt:
+* `src/OptimierungsAlgoCFD/README.md`: Abschnitt „Bayes-Optimierer und Ersatzmodelle". Inhalt:
   `Core/Surrogates/`, `ISurrogateModel`, Trainingsdaten-Regel, Modi, Vertrauensbereich, Grenzen des
   Verfahrens und die Andockstelle für fremde Modelle (siehe Ausblick).
 * `README.md` (Hauptverzeichnis): Kernfunktionen um den Bayes-Optimierer ergänzen.
-* Kommentarköpfe der `simulation.json` in `MantaAuv`, `Naca2D`, `TestprojektNACA`, `_Vorlage` und
+* Kommentarköpfe der `simulation.json` in `MantaAuv`, `Naca2D`, `_Vorlage3D` und
   `_Vorlage2D`: `"Rsm", "Evolution" oder "Bayes"`, dazu der `Bayes`-Block **auskommentiert** als
   Beispiel. Die Werte bleiben, wie sie sind (F9), auch die zwei erlaubten Abweichungen der Vorlage.
 
@@ -835,7 +839,7 @@ KI-Teil:   TODO-53 ──► TODO-54 ──► TODO-55 ──► TODO-56 ──�
 | Sprünge in der Fitness (Strafen) | Modus „Metrics" (TODO-56) und `ln`-Transformation |
 | Die Fitness liest nicht deklarierte Kennwerte. | Gegenprobe mit automatischem Rückfall auf „Fitness" |
 | Ganzzahlige Parameter (z. B. Flossenzahl) | Sie werden stetig behandelt, der Generator rundet. Das Modell sieht Stufen, das ist vertretbar. Im Handbuch erwähnen. |
-| Viele Abstürze in einer Region (Vernetzung) | Abstoßung (TODO-55). Ein eigenes Modell, das Ausfälle vorhersagt, steht im Ideenspeicher. |
+| Viele Abstürze in einer Region (Vernetzung) | Abstoßung (TODO-55) und, seit Paket B (08.11.2026), ein Erfolgsmodell, das Absturzzonen als Ganzes meidet. |
 | Numerisches Scheitern (Cholesky) | Jitter-Leiter, danach LHS-Ersatzpunkte. Der Lauf bricht nie wegen des Modells ab (F22). |
 | Rechenzeit des Modells wächst mit n³. | `MaxTrainingPoints`, `CandidatePool` und das zweistufige Monte-Carlo. Erwartet sind Sekunden bis unter eine Minute je Iteration, verglichen mit CFD-Minuten bis -Stunden. |
 | Rechnungen verschiedener Netzstufen werden vermischt. | Filter auf `MeshRefinementFactor` (F13) |
@@ -948,9 +952,9 @@ dass der Partner C# können muss:
 
 ## Offene Fragen
 
-Zurzeit keine, die die Umsetzung blockiert. Nach TODO-60 ist zu entscheiden:
-* Wird `Bayes` Standard im Code (`OptimizationAlgorithmFactory.DefaultAlgorithm`) und/oder in
-  MantaAuv?
+Zurzeit keine, die die Umsetzung blockiert. Nach TODO-60 (10×10-Vergleich ausgewertet, `vergleich_optimierer.md`) ist zu entscheiden:
+* Wird `Bayes` Standard im Code (`OptimizationAlgorithmFactory.DefaultAlgorithm`)? **Entschieden am 09.11.2026: ja.** Auch ein leerer oder unbekannter Name fällt jetzt auf `Bayes` zurück; Naca2D und die Vorlagen nutzen den Standard, MantaAuv bleibt ausdrücklich bei `Rsm`.
+* Für MantaAuv (3D, Modus `Metrics`) erst nach einem Servertest.
 
 ---
 
@@ -966,3 +970,50 @@ Zurzeit keine, die die Umsetzung blockiert. Nach TODO-60 ist zu entscheiden:
   Projekte. Der `WorkflowController` bekommt nur das optionale Journal (TODO-51). Ohne Journal
   verhält er sich wie heute. Am `ChampionValidator` kommen nur der Seed und die Markierung
   `Disqualified` hinzu.
+
+---
+
+## Umsetzungsstand KI-Teil (08.11.2026)
+
+Umgesetzt wie beschrieben (TODO-53 bis TODO-59), mit diesen bewussten Abweichungen und Erkenntnissen:
+
+* **Neue Dateien:** `Core/Surrogates/` (`ISurrogateModel`, `GaussianProcess`, `DenseCholesky`, `LatinHypercube`, `NormalDistribution`, `ParameterSpace`, `SurrogateTrainingSet`, `TrustRegionState`), `Core/Algorithms/BayesOptimizationAlgorithm.cs`, `Core/Interfaces/IOptimizationPreflight.cs`. Tests: `GaussianProcessTests`, `SurrogateDataTests`, `BayesOptimizationAlgorithmTests` (inkl. Bayes in der Kernprüfung der Wiederaufnahme: fortgesetzter Lauf bytegleich).
+* **`IOptimizationPreflight`** (neu, nicht im Plan): Der Optimierer prüft seine Voraussetzungen (Parametergrenzen, Modus) in `Program` **vor** der Netzkalibrierung, nicht erst beim ersten Vorschlag.
+* **Vorlagen:** `_Vorlage3D` und `_Vorlage2D` enthalten den `Bayes`-Block **aktiv mit den Code-Standards** (nicht auskommentiert), weil `TemplateProjectTests` verlangt, dass die Vorlage jeden Schlüssel zeigt. In MantaAuv und Naca2D steht er auskommentiert. (Stand 08.11.2026 weiter überholt: die Vorlagen enthalten keinen `Bayes`-Block mehr, siehe unten.)
+* **Batch-Abstoßung (neu):** Die Vorschläge einer Runde stoßen sich gegenseitig ab (Radius `min(0,025·√d, 0,05)`). Grund: Im ersten Serverlauf lagen vier Vorschläge einer Runde fast aufeinander; Kriging Believer allein verhinderte das nicht.
+* **Neustart des Vertrauensbereichs im Modus „Metrics":** Das neue Zentrum wählt die erwartete Verbesserung (8 Zufallssätze), im Modus „Fitness" `μ + 2σ` wie geplant.
+* **Hyperparameter-Suche:** Schrittzahl und Startzahl hängen von n ab (n ≤ 100: 200 Schritte, 4 Starts; n > 200: 40 Schritte, nur Warmstart), die Starts laufen parallel (deterministisch). Der Standard-Start der Längenskala ist `clamp(0,3·√d, 0,5, 5)` statt fest 0,5.
+* **`Bayes_Verlauf.csv`** enthält die letzte Runde eines Laufs nicht (nach der letzten Iteration wird nichts mehr vorbereitet). `fetch` holt sie jetzt mit (`std_items` in `sim-runner.sh`).
+* **Messungen auf synthetischen Problemen** (Branin, Hartmann-6, 20D, Manta-ähnlich) stehen als Kommentare an den Tests. Kurz: Bayes liegt auf Branin und im 20D-Fall klar vorn, auf Hartmann-6 bei 36 Rechnungen gleichauf mit Rsm (stark zufallsabhängig). Im Manta-ähnlichen Fall mit Sprungstelle ist `Metrics` rund 35 % besser als `Fitness` und Rsm; `Fitness` ist dort nicht besser als Rsm.
+* **Server (TODO-60):** siehe `vergleich_optimierer.md`. Ob `Bayes` Standard wird, ist weiter offen und deine Entscheidung.
+* **Fehler behoben (08.11.2026, nach dem Servertest):** Reichte der Versuchsplan über mehr als die nächste Runde, verwarf `PrepareNextIteration` die überzähligen Startpunkte (betroffen, wenn `InitialSamples − 1 > 2 · VariantsPerIteration`, z. B. der 20D-Test; Naca2D 5×5 und die Serverläufe nicht). Regressionstest `A_Design_Longer_Than_One_Round_Is_Used_Completely`.
+* **Längenskalen-Vorgabe (Hvarfner et al. 2024) gemessen und wieder entfernt:** Eine Log-Normal-Vorgabe `ln ℓ ~ N(√2 + ½ ln d, 3)` (optional auch auf das Rauschen) war im Vergleich (Branin, Hartmann-6, Ackley/Rosenbrock/Plateau in 4D, auch mit Rauschen, je 8 Seeds, 25 bis 100 Rechnungen) meist gleich gut oder schlechter als ohne; nur Ackley profitierte ab 50 Rechnungen. Die Vorgabe zielt auf viele Dimensionen. `TrustRegion` erzwungen an brachte in 4D ebenfalls keinen klaren Gewinn.
+* **Paket B (08.11.2026): Abstürze und instationäre Rechnungen.**
+  * `Su2HistoryAnalyzer.BatchStatistics`: Endfenster in 8 Blöcke; Trend der Blockmittel gesichert, wenn |Steigung| > 3 · Standardfehler. Neue Ergebnisse `TailUncertainty` und `TrendSignificant`.
+  * `Su2Solver`: drei Zustände. Konvergiert (wie bisher) / **instationär-stabil** (Drift-Prüfung schlägt an, aber kein gesicherter Trend): kein Fehlschlag, Fenstermittel zählt, `Su2_Unsteady = 1` / echte Drift: wie bisher, Fehlschlag nur mit `TreatUnconvergedAsFailed`. Jede beurteilte Rechnung schreibt `Uncertainty_<Kennwert>` (Konvention `Core/Models/MetricUncertainty.cs`).
+  * `GaussianProcess.Fit(..., noiseVariances)`: bekannte Unsicherheit je Punkt auf der Diagonale. Bayes übergibt sie aus `Uncertainty_*` (Modus „Fitness": Wurzel der Quadratsumme der Kennwert-Unsicherheiten).
+  * **Erfolgsmodell statt reiner Abstoßung:** ein Gauß-Prozess auf 1 = gelungen / 0 = abgestürzt (nur `SimulationFailed`, nicht `Disqualified`), Erfolgswahrscheinlichkeit dämpft die Auswahlregel; die alte Abstoßung bleibt zusätzlich. Gemessen (10 Seeds): Optimum direkt neben Absturzzone, 100 Rechnungen: 0,095 → −0,042 bei 87 → 65 Abstürzen; Branin mit Absturzzone 1,34 → 1,24; ohne Abstürze identisch. Eine Kernel-Dichte-Variante brachte kaum etwas und wurde verworfen.
+* **Rsm-Startplan (Latin Hypercube, 2k + 2 statt (k+1)(k+2)/2 + 2) gemessen und nicht übernommen:** bei 10 Parametern klar besser, bei 4 bis 6 Parametern gemischt (Ackley 4D und Hartmann-6 schlechter). Rsm bleibt unverändert.
+* **Konfiguration verschlankt:** `Bayes` hat nur noch `SurrogateTarget` und `InitialSamples`; `CandidatePool`, `TrustRegion`, `MaxTrainingPoints` sind interne Vorgaben (`BayesTuning`). Die Vorlagen enthalten weder Evolution- noch Bayes-Schlüssel, nur einen Kommentar mit Verweis aufs Handbuch (`TemplateProjectTests.OptionalAlgorithmKeys`).
+
+---
+
+## Nachtrag: Aufräum-Durchgang und Auswertung des 10 × 10-Laufs (08.11.2026, abends)
+
+**Ergebnis des Vergleichs:** Siehe `vergleich_optimierer.md`. Bei 100 Rechnungen ist Bayes klar am besten (nach Feinprüfung 65,9 gegen Rsm 54,7 und Evolution 48,5), auf allen drei Seeds, und findet jedes Mal dasselbe Optimum.
+
+**Gefundener Fehler (spätes Stadium):** Nach gefundenem Optimum rechnete Bayes ganze Runden Unsinn (Anstellwinkel 15 bis 30°, Parameter an den Grenzen); das Modell hatte diese Punkte selbst als schlecht vorhergesagt (Gleitzahl 0 bis 10) und lag damit fast exakt richtig.
+* *Ursache:* `PickByExpectedImprovement` wich, sobald die erwartete Verbesserung **überall exakt null** war, auf „größte Unsicherheit im ganzen Raum“ aus. Das tritt auf, wenn das Modell sehr sicher ist oder der bisher Beste ein Ausreißer nach oben ist (grobes Netz, Wirbelablösung). Zusätzlich lenkten **winzige Restwerte** der erwarteten Verbesserung im Strömungsabriss dorthin: Im Modus `Metrics` sind Drag und Lift unabhängige Modelle, ihr Quotient hat dort sehr lange Schwänze.
+* *Reproduktion:* synthetisches Naca2D-ähnliches Problem (`BayesConvergedPhaseTests`): nur 72 % der Varianten ab Runde 5 lagen bei mindestens 50 % des Besten, die Ausweichregel griff 38-mal. Die Server-Daten selbst ließen sich im Nachspiel nicht eins zu eins reproduzieren (die Hyperparameter-Suche startet zufällig), das Nachspiel (`BayesRealDataReplayTests`, echte Daten in `BayesRealDataFixtures`) dient als Wächter.
+* *Behoben:* (1) Erwartete Verbesserung unter 0,2 % (log. Fitness) zählt als „keine“; dann wird **verfeinert**: höchste *vorhergesagte* Fitness, mit der Abstoßung gegen Dubletten. (2) Der Erkunder wählt die größte Unsicherheit nur unter Punkten, deren optimistische Schätzung noch mindestens die halbe beste Fitness erreicht (bester von 8 Stichproben im Modus `Metrics`, `μ + 2,4σ` im Modus `Fitness`). Danach 95 % sinnvolle Varianten ab Runde 5, alle früher auf gemessene Zahlen abgestimmten Benchmarks (Branin, Hartmann, 20D, Manta-ähnlich, Absturzzone) blieben grün.
+* *Kleinigkeit dabei:* Die Anzeige „Ø Abweichung“ in `Bayes_Verlauf.csv` teilte durch den Istwert und zeigte bei Fitness 0 Millionen Prozent (Wert 2878 in Runde 9). Jetzt symmetrisch bezogen auf den Mittelwert beider Zahlen (0 bis 2).
+
+**Weitere Korrekturen aus dem „Gartenrundgang“:**
+* *MPI-Falle:* Das offizielle SU2-Binary ist mit MPICH gebaut. `scripts/README.md` verlangte aber in der Handeinrichtung OpenMPI, und der Vorlagenstandard `"mpirun"` findet auf dem Server per PATH das OpenMPI (zwölf serielle Kopien, keine Fehlermeldung). Jetzt: Variantenprüfung beim Start (`[MPI]`-Warnung, `MPI-Variante` in `run-info.json`), Prüfung in `sim.ps1 doctor`, Handbuch und Vorlagenkommentar korrigiert, `setup_server.sh` legt das MPICH-Environment an und das richtige Zielverzeichnis.
+* *Schwankende Rechnungen (Wirbelablösung):* Türsteher, Feinprüfung und Netzkalibrierung vergleichen jetzt mindestens mit der doppelten kombinierten Unsicherheit (`MetricTolerance.WithUncertainty`), und die Kalibrierung hält „instationär, aber stabil“ für konvergiert. Vorher las nur Bayes die Unsicherheit. Auf den Serverdaten lag sie beim Widerstand bei bis zu 9 bis 10 %, die Feinprüfungs-Toleranz bei 5 %.
+* *Ergebnistabelle:* Die Spalte `AngleOfAttackDeg` stand doppelt (Parameter und Solver-Kennwert); Zahlen werden mit fester Kultur (Punkt) geschrieben, sonst stand auf deutschem Windows ein Komma.
+* *`--print-config`* zeigt verschachtelte Abschnitte (`MeshCalibration.Mode` usw.) und markiert den Netzfaktor im Auto-Modus.
+* *Toter Code entfernt:* `WarnIfMachNumberOverridden` (tat nichts, aber Aufrufer, drei Tests und ein Handbucheintrag), `SimulationLog.WriteColored`, `scripts/Plot_RSM.py`.
+* *MantaAuv:* der eingecheckte Stand rechnete mit Netzfaktor 1,0, validiert war 0,71; jetzt 0,71 eingetragen (nicht netzunabhängig, siehe Kommentar in `simulation.json`).
+* *Grenz-Hinweis (09.11.2026):* `BoundaryHint` meldet am Ende des Laufs sichtbar, wenn der Gewinner höchstens 1 % der Spanne von einer Parametergrenze entfernt liegt. Grenzen werden nie automatisch erweitert.
+* *Umbenennungen:* `src/Automatisierung_v2` → `src/OptimierungsAlgoCFD`, Namespace `MyPicoGkProject` → `OptimierungsAlgoCFD`, Tests → `OptimierungsAlgoCFD.Tests`, `_Vorlage` → `_Vorlage3D`, Solution → `OptimierungsAlgoCFD.sln`. `TestprojektNACA` entfernt; die 2D-Vorkalibrierung (`IHasRepresentativeSection`) ist jetzt per Stub getestet. `ProjectPaths` erkennt Vorlagen über das Präfix `_Vorlage`.

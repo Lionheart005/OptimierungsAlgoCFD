@@ -9,9 +9,9 @@
 #     cd ~/Documents/AutomatisierungCleanVersion
 #     bash scripts/sim-runner.sh status
 #
-# Fasst die Handgriffe aus ServerHochschuleEinrichten2.txt (Teil 2 bis Teil 6)
-# zusammen. Das Erst-Setup des Servers macht weiterhin setup_server.sh --
-# dieses Skript setzt voraus, dass Miniconda, SU2, Gmsh, PicoGK und .NET liegen.
+# Fasst die Handgriffe fuer Bauen, Starten, Beobachten und Holen zusammen. Das Erst-Setup
+# des Servers macht setup_server.sh -- dieses Skript setzt voraus, dass Miniconda, SU2,
+# Gmsh, PicoGK und .NET liegen.
 
 set -euo pipefail
 
@@ -34,9 +34,9 @@ SESSION="${SIM_SESSION:-sim}"
 # es nur einmal gibt.
 PROJECT_NAME="${SIM_PROJECT:-}"
 
-APP_PROJECT="$REPO_DIR/src/Automatisierung_v2/Automatisierung_v2.csproj"
-BIN_DIR="$REPO_DIR/src/Automatisierung_v2/bin/Debug/net9.0"
-APP_DLL="$BIN_DIR/Automatisierung_v2.dll"
+APP_PROJECT="$REPO_DIR/src/OptimierungsAlgoCFD/OptimierungsAlgoCFD.csproj"
+BIN_DIR="$REPO_DIR/src/OptimierungsAlgoCFD/bin/Debug/net9.0"
+APP_DLL="$BIN_DIR/OptimierungsAlgoCFD.dll"
 
 # Seit TODO-24 liegt alles Einstellbare im Projektordner. config/ enthaelt nur noch
 # die README und ggf. eine maschinenspezifische *.local.json -- es ist kein
@@ -63,7 +63,7 @@ PICOGK_BUILD_DIR="${PICOGK_BUILD_DIR:-$HOME/software/PicoGK/build}"
 # Das Prozessmuster, an dem wir unseren eigenen Lauf erkennen. Bewusst die DLL und
 # nicht "dotnet": ein pkill auf "dotnet" wuerde jeden anderen .NET-Prozess des
 # Nutzers mit abschiessen.
-PROCESS_PATTERN="Automatisierung_v2.dll"
+PROCESS_PATTERN="OptimierungsAlgoCFD.dll"
 
 # ---------------------------------------------------------------------------
 # Umgebung
@@ -114,7 +114,7 @@ list_project_folders() {
     [ -d "$PROJECTS_DIR" ] || return 0
 
     find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-        | grep -Ev '^(_Vorlage|bin|obj|\..*)$' | sort || true
+        | grep -Ev '^(_Vorlage3D|bin|obj|\..*)$' | sort || true
 }
 
 # Bricht ab, wenn kein Projekt angegeben wurde, und leitet erst danach die
@@ -300,11 +300,27 @@ cmd_doctor() {
                 continue
             fi
 
+            # Wie das Programm selbst: heisst es nur mpirun/mpiexec, gewinnt das MPICH-Environment (falls vorhanden)
+            # vor dem PATH, in dem das OpenMPI liegt.
+            if [ "$entry" = "MpiRunPath" ]; then
+                case "$configured" in
+                    mpirun|mpiexec) [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ] && configured="$HOME/miniconda/envs/mpich/bin/mpiexec" ;;
+                esac
+            fi
+
             if resolved="$(resolve_tool "$configured")"; then
                 if [ "$resolved" = "$configured" ]; then
                     ok "$entry -> $resolved"
                 else
                     ok "$entry -> $configured (ueber PATH: $resolved)"
+                fi
+
+                # Das offizielle SU2-Binary ist mit MPICH gebaut. Unter OpenMPI startet "-n 12" zwoelf
+                # unabhaengige serielle Kopien, die sich die Dateien ueberschreiben -- ohne Fehlermeldung.
+                if [ "$entry" = "MpiRunPath" ] && "$resolved" --version 2>&1 | grep -qiE "open mpi|openrte|prrte"; then
+                    fail "$entry ist OpenMPI, SU2 braucht MPICH (sonst rechnet jeder Kern als eigene serielle Kopie)"
+                    say  "          Eintragen: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (Einrichtung: scripts/README.md)"
+                    problems=$((problems + 1))
                 fi
             else
                 fail "$entry -> $configured (weder Datei noch im PATH)"
@@ -963,6 +979,7 @@ cmd_pack() {
             "run-info.json"
             "Quellstand"
             "Analyseergebnisse/Verlaeufe"
+            "Analyseergebnisse/Bayes_Verlauf.csv"
             "Kalibrierung"
             "Verifikation.csv"
         )

@@ -1,0 +1,57 @@
+{
+  // MeinProjekt -- Gmsh-Vernetzer. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  //
+  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Solvers/Cfd/GmshMesherOptions.cs).
+  // In einem echten Projekt bleibt nur stehen, was abweicht. Ein unbekannter Schluessel bricht den
+  // Start ab. Nicht hier, sondern in ../simulation.json: GmshCores, GmshPath.
+  // Rechnerspezifisches gehoert in gmsh.local.json.
+
+  // --- Windkanal in mm ("Box" aus TunnelSize*, "Cylinder" aus TunnelDiameter/-Length/-Segments) ---
+  // Der Kanal muss deutlich groesser sein als das Modell, sonst wird der Widerstand zu hoch. Die Vorgabe
+  // passt zu etwa 50 mm Modelllaenge: 6 L davor, 14 L dahinter (Faustregel >= 10 L Nachlauf).
+  // Bei groesseren Modellen proportional mitwachsen lassen (MantaAuv, ~100 mm: 1200 lang, Mitte 300).
+  "TunnelShape": "Box",
+  "TunnelSizeX": 1000.0,
+  "TunnelSizeY": 300.0,
+  "TunnelSizeZ": 300.0,
+  "TunnelCenterX": 200.0,
+  "TunnelCenterY": 0.0,
+  "TunnelCenterZ": 0.0,
+  "TunnelDiameter": 300.0,
+  "TunnelLength": 1000.0,
+  "TunnelSegments": 64,
+
+  // --- Zellgroessen im Abstandsfeld (mm): SizeMin bis DistMin Abstand von der Wand, SizeMax ab DistMax ---
+  "BoundaryLayerSizeMin": 1.2,
+  "BoundaryLayerSizeMax": 120.0,
+  "BoundaryLayerDistMin": 3.0,
+  "BoundaryLayerDistMax": 40.0,
+
+  // --- Feine Boxen hinter dem Modell (Nachlauf bestimmt den Druckwiderstand mit) ---
+  // WakeCellSize / DetailBoxCellSize in mm auf Stufe 1.0; 0 = automatisch. Die Detailbox kostet in 3D
+  // viele Zellen; die Netzkalibrierung prueft sie mit, MaxCells3D deckelt die Zellzahl.
+  "WakeRefinement": true,
+  "WakeLengthFactor": 2.0,
+  "WakeWidthFactor": 0.5,
+  "WakeCellSize": 0.0,
+  "DetailBox": true,
+  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxWidthFactor": 0.25,
+  "DetailBoxCellSize": 0.0,
+
+  // --- Wandschicht ---
+  // "Prism": Prismenschichten, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
+  // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe. "Hexa": nur glatte Koerper ohne scharfe Kanten.
+  // TargetYPlus gleich wie in su2.json. Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
+  "BoundaryLayerMode": "Prism",
+  "TargetYPlus": 1.0,
+  "BoundaryLayerMinLayers": 4,
+  "BoundaryLayerGrowthRate": 1.2,
+  "BoundaryLayerLayers": 0,
+  "SurfaceCellSize": 0.0,
+
+  // --- Neuvernetzung der Oberflaeche ---
+  "MeshSizeFromCurvature": false,
+  "CurvatureElements": 20,
+  "ClassifyAngleDeg": 40.0
+}

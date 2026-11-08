@@ -5,7 +5,7 @@
   // ===================================================================
   //
   // 2D-CFD-Optimierung und NASA-TMR-Validierung (TODO-47).
-  // Pfade analog zu TestprojektNACA für den Hochschulserver (BIC_12).
+  // Pfade für den Hochschulserver (BIC_12).
 
   // --- Pfade zu externer Software ---
   // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
@@ -22,7 +22,7 @@
 
   // --- CFD & SU2 ---
   // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
-  // den Netzfaktor am Anfang selbst (Entscheidung 06.11.2026, TODO-W8).
+  // den Netzfaktor am Anfang selbst.
   //
   // Normale Varianten: moderate Konvergenz. Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck) rechnen mit
   // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, iterativer Fehler <= 1/10).
@@ -33,8 +33,7 @@
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
-  "OptimizationAlgorithm": "Rsm",
+  // --- Optimierungsverfahren: nichts eingetragen, es gilt der Standard "Bayes" (10 x 10-Vergleich 08.11.2026) ---
 
   // --- Evolutionärer Algorithmus ---
   "MinimalDeviationExploration": 1.0,
@@ -49,12 +48,21 @@
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
 
+  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
+  // Meist nicht noetig: "Bayes" laeuft ohne Einstellung. Jeder Parameter braucht Grenzen in
+  // project.json (ParameterBounds); MaxDeviations wirkt bei "Bayes" nicht. Erklaerung der Schluessel:
+  // src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // "Bayes": {
+  //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
+  //   "InitialSamples": 0          // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
+  // },
+
   // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---
   // Auto: die Kalibrierung rechnet Stufen 2.0 ... 0.5 und verfeinert bei Bedarf weiter (0.35, 0.25, ...),
   // bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt (kombinierte Toleranz mit Mindestbetrag).
   "MeshCalibration": {
     "Mode": "Auto",
-    "Tolerance": 0.10
+    "Tolerance": 0.05
   },
 
   // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
@@ -62,7 +70,7 @@
     "Mode": "FinalTopN",
     "TopN": 3,
     "RefinementSteps": 1,
-    "Tolerance": 0.10
+    "Tolerance": 0.05
   },
 
   // --- Validierung des Champions (Bouncer) ---

@@ -1,33 +1,26 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
-  // ===================================================================
-  //  MeinProjekt2D -- SU2-Solver
-  // ===================================================================
+  // MeinProjekt2D -- SU2-Solver. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
   //
-  // Auch diese Datei nennt JEDEN Schluessel mit dem Code-Standard aus
-  // Solvers/Cfd/Su2SolverOptions.cs -- als Nachschlagewerk.
-  //
-  // Randbedingungen (Fernfeld und Wall) und Gleichungen (inkompressible RANS, SA)
-  // werden automatisch im 2D-CFD-Workflow erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Solvers/Cfd/Su2SolverOptions.cs).
+  // In einem echten Projekt bleibt nur stehen, was abweicht.
 
-  // --- Fluideigenschaften ---
+  // --- Fluid (Standard Meerwasser; Luft: 1.225 kg/m3 und 1.81e-5 Pa*s) ---
   "Density": 1025.0,            // kg/m3
-  "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
+  "DynamicViscosity": 0.001001, // Pa*s
   "TurbulenceModel": "SA",      // SA oder SST
-  "SpeedOfSound": 343.2,        // m/s
+  "SpeedOfSound": 343.2,        // m/s, Luftwert; nur fuer den Mach-Weg (FreestreamVelocity 0)
 
-  "FreestreamVelocity": 0.0,    // m/s (0 = MachNumber x SpeedOfSound)
+  // Anstroemgeschwindigkeit in m/s (Beispiel Naca2D: Luft, 51.48). 0 = MachNumber x SpeedOfSound.
+  "FreestreamVelocity": 2.0,
 
-  // --- Dimension & Anstellwinkel (TODO-46) ---
-  // In Cfd2DProjectDefinition wird Dimensions zur Laufzeit automatisch auf 2 gefuehrt.
+  // --- Dimension, Anstellwinkel, Referenzwerte ---
+  // Dimensions wird im 2D-Ablauf zur Laufzeit auf 2 gesetzt. Die Bezugsflaeche ist in 2D die Sehne ("Chord").
   "Dimensions": 3,
   "AngleOfAttackDeg": 0.0,
-
-  // --- Referenzwerte ---
   "ReferenceLength": 0.01,
   "ReferenceAreaMetric": "FrontalArea",
 
-  // --- Ergebnisgroessen: welche Zahl kommt unter welchem Namen an? ---
+  // --- Ergebnisgroessen (links: Name in der Fitness-Formel, rechts: Spalte der history.csv) ---
   "ResultMetrics": {
     "Drag": "CD"
   },
@@ -35,12 +28,14 @@
   "ConvergenceField": "DRAG",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- Auswertung & Konvergenzbewertung (TODO-35) ---
-  "OscillationWarnLimit": 0.02,
-  "TreatUnconvergedAsFailed": false,
-  "ResultAveraging": "Last",
+  // --- Konvergenzbewertung ---
+  // Echte Drift im Endfenster = fehlgeschlagen; reines Schwingen (Wirbelabloesung) bleibt gueltig.
+  // TailMean = Mittel des Endfensters statt Endwert; OscillationWarnLimit ist nur eine Warnschwelle.
+  "OscillationWarnLimit": 0.05,
+  "TreatUnconvergedAsFailed": true,
+  "ResultAveraging": "TailMean",
 
-  // --- CFL-Steuerung ---
+  // --- CFL ---
   "CflNumber": 5.0,
   "CflAdapt": true,
   "CflAdaptFactorDown": 0.5,
@@ -48,14 +43,11 @@
   "CflAdaptMin": 1.0,
   "CflAdaptMax": 50.0,
 
-  // --- y+-Ziel und Grenzschichtpruefung (TODO-41) ---
+  // --- y+-Pruefung ---
   "TargetYPlus": 1.0,
-  "YPlusWarnFactor": 2.0,
+  "YPlusWarnFactor": 3.0,
 
-  // --- Zeitgenauer Modus / URANS (TODO-37) ---
-  // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).
-  // Vorgaben seit TODO-W7: 1000 Zeitschritte = 20 Perioden (50 je Periode), Mittelung ueber die letzten 10.
-  // RestartIteration: 0 = Start aus dem Freistrom; 2 = Neustart aus der stationaeren Loesung (setzt der Recheck selbst).
+  // --- Zeitgenaue Rechnung (URANS) ---
   "TimeDomain": {
     "Enabled": false,
     "TimeStep": 0.0,

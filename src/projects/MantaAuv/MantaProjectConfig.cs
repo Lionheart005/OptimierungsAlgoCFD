@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.MantaAuv
+namespace OptimierungsAlgoCFD.Projects.MantaAuv
 {
     /// <summary>
     /// Projektspezifische Konfiguration für das Manta-Ray AUV.

@@ -1,67 +1,61 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
-  // ===================================================================
-  //  MeinProjekt2D -- Framework-Einstellungen dieses Projekts
-  // ===================================================================
+  // MeinProjekt2D -- Framework-Einstellungen. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
   //
-  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt alle fuer 2D relevanten
-  // Schluessel des Frameworks mit dem Wert aus dem Code-Standard
-  // (Core/Models/SimulationConfig.cs). Reine 3D-Voxel- und Voxel-Glaettungsparameter
-  // (BaseVoxelResolution, TargetPicoGkSize, VoxelSmoothingIterations, VoxelSmoothingPremeltingSteps,
-  // UseRubberBandScaler, UseStlSmoothing) sind in 2D funktionslos und hier bewusst ausgelassen.
-  // Zwei Ausnahmen -- MaxIterations und VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt.
+  // Diese Datei nennt alle fuer 2D relevanten Schluessel mit ihrem Code-Standard
+  // (Core/Models/SimulationConfig.cs); die reinen 3D-Voxel-Schluessel fehlen bewusst.
+  // Die Standards sind auf genaue Rechnungen ausgelegt. Abweichungen: MaxIterations und
+  // VariantsPerIteration (kleiner Testlauf) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
+  // In einem echten Projekt bleibt nur stehen, was abweicht -- den Rest loeschen.
 
-  // --- Pfade zu externer Software ---
+  // --- Programme (PATH-relativ; `.\scripts\sim.ps1 doctor` zeigt, was gefunden wird) ---
+  // Server: Heisst das Programm nur "mpirun" oder "mpiexec", nimmt das Programm automatisch das MPICH-Environment
+  // (~/miniconda/envs/mpich/bin/mpiexec, legt setup_server.sh an), falls es existiert. Das OpenMPI im PATH startet
+  // zwoelf serielle Kopien und liefert unbrauchbare Ergebnisse. Ein ausdruecklich eingetragener Pfad gilt unveraendert
+  // (das Programm warnt beim Start, wenn er OpenMPI ist). Einrichtung: scripts/README.md.
   "MpiRunPath": "mpirun",
   "Su2Path": "SU2_CFD",
   "GmshPath": "gmsh",
 
-  // --- Zeit & Umfang ---
-  // Vorlage steht auf 1 x 2 = 2 Varianten fuer den ersten Rauchtest:
-  "MaxIterations": 1,
-  "VariantsPerIteration": 2,
+  // --- Umfang: MaxIterations x VariantsPerIteration = Zahl der Rechnungen (Code-Standard 10 x 10) ---
+  "MaxIterations": 5,
+  "VariantsPerIteration": 5,
 
-  // --- Abschaltbare Framework-Bausteine ---
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  "MeshRefinementFactor": 1.0,
-  "Su2MaxIterations": 500,
-  "CauchyElements": 150,
-  "CauchyTolerance": "1e-4",
+  // MeshRefinementFactor steht bewusst nicht hier: bei MeshCalibration "Auto" kalibriert der Lauf ihn
+  // selbst, und ein eingetragener Wert bricht den Start ab. Nur bei "Manual" eintragen.
+  "Su2MaxIterations": 3000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
-  "OptimizationAlgorithm": "Rsm",
-
-  // --- Startwert des Zufalls: 0 = bei jedem Lauf neu ziehen (siehe run-info.json) ---
+  // --- Optimierungsverfahren: "Bayes" (Standard), "Rsm" oder "Evolution" ---
+  // Bayes lernt aus den bisherigen Rechnungen und braucht Grenzen je Parameter (ParameterBounds in project.json).
+  // Rsm ist bei sehr kleinem Budget (bis etwa 25 Rechnungen) gleichwertig und braucht keine Grenzen.
+  "OptimizationAlgorithm": "Bayes",
+  // 0 = bei jedem Lauf neu ziehen (steht in run-info.json); fester Wert = exakt wiederholbar.
   "RandomSeed": 0,
 
-  // --- Evolutionaerer Algorithmus ---
-  "MinimalDeviationExploration": 1.0,
-  "MinimalDeviationExploitation": 0.05,
-  "RoleFineTuner": 0.2,
-  "RoleCautious": 0.4,
-  "RoleNormal": 0.6,
-
-  // --- RSM / Antwortflaechen-Verfahren ---
+  // --- Rsm (am besten so lassen) ---
   "RsmVirtualSimulations": 50000,
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
 
-  // --- Validierung des Champions (Bouncer) ---
+  // Evolution und Bayes stehen bewusst nicht in der Vorlage. Wer "Evolution" einstellen will, traegt
+  // MinimalDeviationExploration, MinimalDeviationExploitation, RoleFineTuner, RoleCautious und
+  // RoleNormal aus dem Handbuch (Abschnitt 4.2) hier ein; "Bayes" braucht keine Einstellung
+  // (optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }).
+
+  // --- Tuersteher (Bouncer): Champion wird mit leicht verstelltem Parameter nachgerechnet ---
   "BouncerTolerance": 0.2,
   "BouncerJitter": 0.01,
 
-  // --- Genauigkeit der Konvergenz (TODO-W3, TODO-W4) ---
-  // IterativeToleranceFraction: wie weit der ITERATIVE Fehler einer normalen Variante unter der
-  //   Netz-Toleranz liegen muss (0.25 = ein Viertel). Gemessen wird die Drift der Kennwerte im
-  //   Endfenster, nicht das Residuum.
-  // ControlRuns: strenges Profil NUR fuer Kontrollrechnungen (Netzkalibrierung, Feinpruefung, Recheck):
-  //   Su2MaxIterations, CauchyElements, CauchyTolerance und IterativeToleranceFraction (0.1 = ein Zehntel,
-  //   Celik et al. 2008). Es gilt nie weniger als bei normalen Varianten.
+  // --- Konvergenz ---
+  // Normale Varianten: erlaubte Drift im Endfenster als Bruchteil der Netz-Toleranz.
+  // ControlRuns: strengeres Profil nur fuer Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck).
   "IterativeToleranceFraction": 0.25,
   "ControlRuns": {
     "Su2MaxIterations": 20000,
@@ -70,19 +64,20 @@
     "IterativeToleranceFraction": 0.1
   },
 
-  // --- Netzkalibrierung (TODO-42) ---
+  // --- Netzkalibrierung ("Auto": der Lauf bestimmt den Netzfaktor am Anfang selbst; in 2D wenige Minuten) ---
   "MeshCalibration": {
-    "Mode": "Manual",
-    "Tolerance": 0.02,
+    "Mode": "Auto",
+    "Tolerance": 0.05,
     "Use2DPrecalibration": false,
     "AbsoluteTolerances": {},
     "MaxCells2D": 2000000,
-    "MaxCells3D": 50000000
+    "MaxCells3D": 3000000
   },
 
-  // --- Verifikation des Champions (TODO-43) ---
+  // --- Feinpruefung: die TopN besten Varianten am Ende auf feinerem Netz nachrechnen ---
+  // Mode: "Off" | "Final" | "FinalTopN" | "EachIteration"
   "ChampionVerification": {
-    "Mode": "Final",
+    "Mode": "FinalTopN",
     "TopN": 3,
     "RefinementSteps": 1,
     "Tolerance": 0.05

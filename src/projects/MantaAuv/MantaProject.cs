@@ -1,7 +1,7 @@
-using MyPicoGkProject.Composition;
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Composition;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.MantaAuv
+namespace OptimierungsAlgoCFD.Projects.MantaAuv
 {
     /// <summary>
     /// Das Manta-Ray AUV, verdrahtet (TODO-23). Diese Klasse ersetzt den <c>case "MantaAuv":</c>,

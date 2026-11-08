@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.MeinProjekt2D
+namespace OptimierungsAlgoCFD.Projects.MeinProjekt2D
 {
     /// <summary>
     /// Die Bewertung eines zweidimensionalen CFD-Projekts (TODO-47).

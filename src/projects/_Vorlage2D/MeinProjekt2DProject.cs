@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 
-using MyPicoGkProject.Composition;
-using MyPicoGkProject.Core;
+using OptimierungsAlgoCFD.Composition;
+using OptimierungsAlgoCFD.Core;
 
-namespace MyPicoGkProject.Projects.MeinProjekt2D
+namespace OptimierungsAlgoCFD.Projects.MeinProjekt2D
 {
     /// <summary>
     /// Die Verdrahtung eines zweidimensionalen CFD-Projekts (TODO-47).
@@ -18,7 +18,7 @@ namespace MyPicoGkProject.Projects.MeinProjekt2D
     ///
     /// <para>
     /// <b>Warum die Vorlage selbst nicht startbar ist:</b> <c>src/projects/_Vorlage2D/</c> ist aus
-    /// dem Build des Programms ausgeschlossen (siehe <c>Automatisierung_v2.csproj</c>).
+    /// dem Build des Programms ausgeschlossen (siehe <c>OptimierungsAlgoCFD.csproj</c>).
     /// Compiliert wird der Ordner trotzdem — vom Testprojekt, damit Schnittstellenänderungen sofort auffallen.
     /// </para>
     /// </summary>

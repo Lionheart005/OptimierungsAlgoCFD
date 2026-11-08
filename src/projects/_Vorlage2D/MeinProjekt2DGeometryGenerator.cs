@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
-using MyPicoGkProject.Core;
-using MyPicoGkProject.Kernels.Planar2D;
+using OptimierungsAlgoCFD.Core;
+using OptimierungsAlgoCFD.Kernels.Planar2D;
 
-namespace MyPicoGkProject.Projects.MeinProjekt2D
+namespace OptimierungsAlgoCFD.Projects.MeinProjekt2D
 {
     /// <summary>
     /// Die Geometrie eines zweidimensionalen CFD-Projekts (TODO-47).

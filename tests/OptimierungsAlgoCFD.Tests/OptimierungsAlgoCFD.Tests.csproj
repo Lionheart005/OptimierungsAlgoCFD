@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OptimierungsAlgoCFD\OptimierungsAlgoCFD.csproj" />
+  </ItemGroup>
+
+  <!--
+    src/projects/_Vorlage3D/ wird HIER compiliert, nicht im Programm (TODO-27).
+
+    Das Programm muss die Vorlage ausschliessen: sie bringt eine vollstaendige
+    IProjectDefinition mit dem Platzhalternamen "MeinProjekt" mit, zu dem es keinen
+    Projektordner gibt. Die ProjectRegistry wuerde beim Start abbrechen.
+
+    Gar nicht compiliert waere sie aber totes Textmaterial. Aendert sich eine Schnittstelle
+    des Frameworks, soll die Vorlage MIT brechen, und zwar hier und sofort, nicht erst, wenn
+    Monate spaeter jemand ein neues Projekt daraus anlegt. Dass die Klassen dadurch in der
+    Test-Assembly landen, stoert nichts: ProjectRegistry.Discover() scannt die
+    Programm-Assembly, nicht diese.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\projects\_Vorlage3D\**\*.cs"
+             Exclude="..\..\src\projects\_Vorlage3D\**\bin\**;..\..\src\projects\_Vorlage3D\**\obj\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\projects\_Vorlage2D\**\*.cs"
+             Exclude="..\..\src\projects\_Vorlage2D\**\bin\**;..\..\src\projects\_Vorlage2D\**\obj\**" />
+  </ItemGroup>
+
+</Project>

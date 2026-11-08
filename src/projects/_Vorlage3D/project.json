@@ -1,0 +1,43 @@
+{
+  // MeinProjekt -- Projektvorgaben. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  //
+  // Der Projektname steht nur im Ordnernamen, nicht in dieser Datei. Gestartet wird mit
+  // `.\scripts\sim.ps1 run -Project <Ordnername>`.
+  // Was hier fehlt, kommt aus MeinProjektProject.CreateDefaults(); beide sind absichtlich deckungsgleich
+  // (ein Test haelt sie zusammen). Ein unbekannter Schluessel bricht den Start ab, ausser innerhalb
+  // der Zuordnungen unten (dort sind die Schluessel frei waehlbare Parameternamen).
+  // Das Optimierungsverfahren steht in simulation.json, Geometrie und Fitness-Formel sind C#-Code nebenan.
+
+  // --- Startwerte der Parameter (mm) ---
+  // Die Namen sind der Vertrag mit MeinProjektGeometryGenerator: wer hier umbenennt, benennt dort mit,
+  // sonst rechnet der Generator still mit einem Ersatzwert.
+  "BaseParameters": {
+    "Length": 50.0,
+    "Width": 30.0,
+    "Height": 20.0
+  },
+
+  // --- Anfaengliche Streuung je Parameter (Faustregel: etwa ein Zehntel der Spanne) ---
+  "MaxDeviations": {
+    "Length": 5.0,
+    "Width": 3.0,
+    "Height": 2.0
+  },
+
+  // --- Harte Grenzen; der Algorithmus verlaesst sie nie ---
+  "ParameterBounds": {
+    "Length": { "Min": 20.0, "Max": 100.0 },
+    "Width": { "Min": 10.0, "Max": 80.0 },
+    "Height": { "Min": 5.0, "Max": 50.0 }
+  },
+
+  // --- Optimierungsziele fuer die Fitness-Formel ---
+  // Leer, weil die Vorlagen-Fitness nur den Widerstand minimiert (1 / Drag). Ein Ziel dazunehmen:
+  // hier eintragen, in MeinProjektProject.CreateDefaults() denselben Wert setzen und den Namen in
+  // MeinProjektFitnessCalculator unter RequiredTargets aufnehmen (fehlt er, bricht der Lauf sofort ab).
+  "OptimizationTargets": {},
+
+  // --- Parameter, die eine Laenge sind (werden mitskaliert) ---
+  // Verhaeltnisse, Winkel und Zaehlwerte gehoeren nicht hierher, sie wuerden falsch mitskaliert.
+  "DimensionalParameters": [ "Length", "Width", "Height" ]
+}

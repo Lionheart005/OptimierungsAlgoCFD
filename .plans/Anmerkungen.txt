@@ -1,0 +1,19 @@
+Zu dem LaTeX Bericht:
+
+
+natürlich framework erklären und so weiter wie in der roadmap....
+
+
+2D Naca durchlauf:
+- jeder algorithmus 1 mal mit kalibrierung und gleichen configs zum verleich (sowohl fitness und ergebnisse )
+- rsm zusätzlich auch einmal manuell total fein und mit kalibriertem durchlauf vergleichen (zeit und akkuratess)
+-werte mit nasa vergleichen und überpüfen ob realistische ergebnisse
+(auch professionelle quellen...)
+
+3D Durchlauf Manta AUV
+- nur einmal durchlaufen lassen und mit schönen bildchen dokumentieren, aber nicht vergleichen wie oben, dafür aber relativ detailiert und akkurat.
+
+ausblick zu fem...
+
+
+auch was noch hinzugefügt werden muss ist dass alles auf englisch übersetzt wird.

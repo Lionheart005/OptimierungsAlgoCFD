@@ -2,12 +2,12 @@
 
 Dieses Handbuch erklärt **ohne Programmierkenntnisse**, wo man das Programm einstellt, was jede
 Einstellung bewirkt und welche man besser in Ruhe lässt. Es beschreibt den Stand vom
-**07.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
+**08.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
 schlägt Alarm, wenn eine Einstellung hier fehlt.
 
 > **Weiterführende Dokumente:**
 > - Neues Bauteil / Projekt programmieren: [`src/projects/README.md`](README.md)
-> - Framework-Architektur & C#-Entwicklung: [`src/Automatisierung_v2/README.md`](../Automatisierung_v2/README.md)
+> - Framework-Architektur & C#-Entwicklung: [`src/OptimierungsAlgoCFD/README.md`](../OptimierungsAlgoCFD/README.md)
 > - Server-Steuerung, Deployment & Einrichtung: [`scripts/README.md`](../../scripts/README.md)
 > - Lokale Ausnahmedateien (`*.local.json`): [`config/README.md`](../../config/README.md)
 
@@ -94,7 +94,7 @@ und nie überschrieben; sie stellen also still Werte um, die man im Repo nicht s
 herum, zeigt das Programm beim Start einen auffälligen **Warnblock** mit jedem Wert, den sie
 verändert (siehe [Abschnitt 7](#7-häufige-meldungen-und-was-zu-tun-ist)).
 
-**Die Vorlage `_Vorlage/`** enthält *jede* Einstellung mit ihrem Standardwert und einer
+**Die Vorlage `_Vorlage3D/`** enthält *jede* Einstellung mit ihrem Standardwert und einer
 Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt man mit
 `.\scripts\new-project.ps1 <Name>` an; das kopiert die Vorlage.
 
@@ -113,7 +113,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … **Luft statt Wasser** | `solvers/su2.json` | `Density`, `DynamicViscosity` | Luft: `1.225` und `1.81e-5`; Meerwasser: `1025` und `0.001001` |
 | … zusätzlich den **Auftrieb** (oder andere Kennwerte) haben | `solvers/su2.json` | `ResultMetrics` | `"Lift": "CL"` dazuschreiben; in der Bewertungsformel (C#) verwenden |
 | … ein **anderes Turbulenzmodell** | `solvers/su2.json` | `TurbulenceModel` | `"SA"` (Standard) oder `"SST"` |
-| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Rsm"` (Ersatzmodell, Standard) oder `"Evolution"` |
+| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Bayes"` (Standard: lernendes Ersatzmodell, spart teure Rechnungen; siehe Abschnitt 4.2), `"Rsm"` (einfacher, braucht keine Parametergrenzen) oder `"Evolution"` |
 | … **Startwerte** oder **Grenzen** eines Parameters ändern | `project.json` | `BaseParameters`, `ParameterBounds` | Startwert muss innerhalb der Grenzen liegen |
 | … einen **Parameter fest einstellen** (nicht optimieren) | `project.json` | `ParameterBounds` | `Min` und `Max` auf denselben Wert setzen — der Parameter wird dann immer auf diesen Wert geklemmt |
 | … dass der Optimierer **größere/kleinere Sprünge** macht | `project.json` | `MaxDeviations` | Streuung je Parameter, in dessen Einheit |
@@ -121,7 +121,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … dass Gewinner **strenger/milder** nachgeprüft werden | `simulation.json` | `BouncerTolerance` | `0.2` = 20 % Abweichung erlaubt |
 | … einen **größeren Windkanal** | `solvers/gmsh.json` | `TunnelSizeX/Y/Z` | in mm; größer = weniger Randeinfluss, aber mehr Zellen |
 | … ein **neues Projekt** | — | `.\scripts\new-project.ps1 <Name>` | danach Form und Bewertung im neuen Ordner ausfüllen |
-| … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project TestprojektNACA` |
+| … das **Projekt wechseln** | — | `-Project <Name>` beim Befehl | z. B. `.\scripts\sim.ps1 run -Project Naca2D` |
 | … **Ergebnisse holen** | — | `.\scripts\sim.ps1 fetch -Project <Name>` | **`-Project` immer angeben**, sonst wird MantaAuv geholt (siehe Abschnitt 7) |
 | … eine **Rechnung von Hand prüfen** | — | `fetch`, dann `plot_history.py` | Konvergenz prüfen; bei Bedarf `fetch -Champion` und ParaView für die VTUs (Details in `scripts/README.md`) |
 | … nachsehen, **womit ein Lauf gerechnet hat** | — | `effective-config.json`, `run-info.json` | siehe [Abschnitt 5](#5-welche-werte-galten-wirklich) |
@@ -183,10 +183,10 @@ bestraft. Höhere Fitness = besser.
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
 | `MachNumber` | **Veralteter/optionaler Rückfallwert** zur Geschwindigkeit: Geschwindigkeit = `MachNumber` × `SpeedOfSound` (aus `su2.json`). Wirkt **nur**, wenn in `su2.json` `FreestreamVelocity` 0 ist. In Standardprojekten zugunsten von `FreestreamVelocity` aus `simulation.json` entfernt. | `0.1` | 🎯 | 🟡 |
-| `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. | `1.0` | ⏱🎯 | 🟡 |
-| `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. | `500` | ⏱🎯 | 🟡 |
-| `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `150` | ⏱🎯 | 🔴 |
-| `CauchyTolerance` | Wie wenig er sich dabei noch ändern darf. **In Anführungszeichen**, z. B. `"1e-4"`. Kleiner = genauer, länger. | `"1e-4"` | ⏱🎯 | 🟡 |
+| `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. **Nur bei `MeshCalibration.Mode = "Manual"` eintragen;** im Auto-Modus (Standard) bricht ein eingetragener Faktor den Start ab, die Vorlagen lassen ihn deshalb weg. | `1.0` | ⏱🎯 | 🟡 |
+| `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. 3000 reicht für RANS mit y+ ≈ 1 in 2D und 3D; eine ruhige Rechnung hört über das Cauchy-Kriterium früher auf. | `3000` | ⏱🎯 | 🟡 |
+| `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `300` | ⏱🎯 | 🔴 |
+| `CauchyTolerance` | Wie wenig er sich dabei noch ändern darf. **In Anführungszeichen**, z. B. `"1e-5"`. Kleiner = genauer, länger. | `"1e-5"` | ⏱🎯 | 🟡 |
 | `MpiCores` | Rechenkerne für SU2. | `12` | ⏱ | 🟡 |
 | `GmshCores` | Rechenkerne für die Netzerzeugung. | `12` | ⏱ | 🟡 |
 
@@ -194,19 +194,19 @@ bestraft. Höhere Fitness = besser.
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `MpiRunPath` | Pfad zu `mpirun` (startet SU2 auf mehreren Kernen). | `mpirun` | 🔴 |
+| `MpiRunPath` | Pfad zu `mpirun`/`mpiexec` (startet SU2 auf mehreren Kernen). **Das SU2-Programm braucht MPICH.** Bei dem Namen `mpirun` oder `mpiexec` nimmt das Programm automatisch das MPICH-Environment `~/miniconda/envs/mpich/bin/mpiexec`, falls es existiert (legt `setup_server.sh` an); sonst gilt der PATH. Ein ausdrücklich eingetragener Pfad gilt unverändert; zeigt er auf OpenMPI, warnt das Programm beim Start. | `mpirun` | 🔴 |
 | `Su2Path` | Pfad zu `SU2_CFD`. | `SU2_CFD` | 🔴 |
 | `GmshPath` | Pfad zu `gmsh`. | `gmsh` | 🔴 |
 
 Der Standard ist nur der Programmname; das funktioniert, wenn der Rechner die Programme „von
 allein" findet. **Auf dem Hochschulserver tut er das nicht**, deshalb tragen MantaAuv und
-TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doctor`.
+Naca2D die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doctor`.
 
 **Optimierer**
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `OptimizationAlgorithm` | `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. Ein unbekannter Name führt zu einer Warnung und `"Rsm"`. | `"Rsm"` | 🟡 |
+| `OptimizationAlgorithm` | **Standard `"Bayes"`** (im 10 × 10-Vergleich auf Naca2D bei 100 Rechnungen klar am besten, siehe `.plans/vergleich_optimierer.md`). `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. `"Bayes"` = Bayes-Optimierung: lernt ebenfalls eine Landkarte, **zeichnet aber zusätzlich den „Nebel" ein**, also wo sie sich nicht auskennt, und rechnet dort, wo die Chance am größten ist, den bisher Besten zu schlagen. Spart bei teuren Rechnungen die meisten Varianten (Entscheidungshilfe unten). Ein unbekannter Name führt zu einer Warnung und `"Bayes"`. | `"Bayes"` | 🟡 |
 | `RandomSeed` | Startwert des Zufalls (Optimierer und Türsteher). `0` = bei jedem Lauf neu ziehen; der gezogene Wert steht im Log (`[SYSTEM] Zufalls-Seed: …`) und in `run-info.json`. Wer einen Lauf **exakt wiederholen** will, trägt diesen Wert hier ein. | `0` | 🟢 |
 
 *Nur für `"Rsm"`:*
@@ -218,12 +218,55 @@ TestprojektNACA die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\si
 | `RsmExploitationRatio` | Anteil der Kandidaten, die rund um den bisher Besten gesucht werden; der Rest wird frei im ganzen Bereich gesucht. Höher = gezielter, aber Gefahr, ein besseres Gebiet zu übersehen. | `0.7` | 🟡 |
 | `RsmExploitationSigma` | Wie weit um den Besten gesucht wird, als Anteil des Parameterbereichs (`0.1` = 10 %). | `0.1` | 🟡 |
 
+*Nur für `"Bayes"` (Abschnitt `Bayes` in `simulation.json`, alles optional, die Vorgaben passen meist):*
+
+> **Entscheidungshilfe:** Standard ist `"Bayes"`: Sind die Rechnungen **teuer** (Minuten bis Stunden je
+> Variante) und gibt es **bis etwa 20 Parameter**, ist es ab etwa 40 Rechnungen deutlich besser als die
+> anderen. Bei einem **sehr kleinen Budget** (bis etwa 25 Rechnungen) ist `"Rsm"` gleichwertig und
+> einfacher, es braucht keine Parametergrenzen. Für einen **Vergleich oder eine Gegenprobe**: `"Rsm"`
+> oder `"Evolution"`. Alle drei verwenden dieselbe Bewertungsformel und denselben Türsteher. MantaAuv
+> bleibt vorerst bei `"Rsm"`, bis Bayes im 3D-Fall auf dem Server gemessen ist.
+>
+> **Zwei Regeln für `"Bayes"`:** (1) Für **jeden** Parameter müssen Grenzen in `ParameterBounds`
+> stehen (`project.json`); fehlt eine, bricht der Lauf **vor der ersten Rechnung** ab und nennt den
+> Parameter. (2) `MaxDeviations` wirkt hier **nicht**, die Grenzen bestimmen den Suchraum. Ganzzahlige
+> Parameter (z. B. eine Flossenzahl) behandelt das Verfahren als stetig; der Generator rundet, das
+> Modell sieht dann Stufen, was vertretbar ist.
+
+| Einstellung | Bedeutung | Standard | Wann |
+| --- | --- | --- | --- |
+| `Bayes` | Abschnitt für den Bayes-Optimierer. Meist nicht nötig: `"Bayes"` läuft ohne jede Einstellung. In den Vorlagen steht er deshalb nur als Kommentar. | `{}` | 🟡 |
+| `SurrogateTarget` | Was das Ersatzmodell lernt. `"Fitness"` = die Note als Ganzes. `"Metrics"` = **jeden Kennwert einzeln** (z. B. Widerstand, Volumen); die Bewertungsformel des Projekts rechnet daraus die Note. Das ist besser, wenn die Formel Sprünge hat (Strafen, Grenzen), weil die Kennwerte selbst glatt verlaufen. `"Auto"` nimmt `"Metrics"`, wenn die Bewertungsformel ihre Kennwerte nennt (`RequiredMetrics`), sonst `"Fitness"`. Liest die Formel in Wahrheit mehr Kennwerte, als sie nennt, wechselt der Lauf mit einer Warnung selbst auf `"Fitness"`. | `"Auto"` | 🟡 |
+| `InitialSamples` | Wie viele Startrechnungen (Versuchsplan) vor dem ersten Modell. `0` = automatisch: das Größere von `VariantsPerIteration` und `2 × freie Parameter + 2`. | `0` | 🔴 |
+
+**Was `"Bayes"` im Lauf tut:** Variante 1 der ersten Runde ist der Startwert, danach folgt der
+Versuchsplan (gleichmäßig im Raum verteilt). Ab genügend Rechnungen lernt das Modell und schlägt je
+Runde `VariantsPerIteration` neue Varianten vor. Bei **4 oder mehr Varianten je Runde** ist die letzte
+ein **Erkunder**: Er sucht die größte Unsicherheit, aber nur unter Stellen, die nach Ansicht des Modells
+noch gut sein könnten, als Absicherung gegen ein selbstsicheres, aber falsches Modell. Ist nirgends mehr
+eine nennenswerte Verbesserung zu erwarten (das Optimum ist gefunden, oder der Beste ist ein Ausreißer
+nach oben), **verfeinert** das Verfahren dort, wo die vorhergesagte Note am höchsten ist, statt in
+Randgebieten zu raten. Bis zum 08.11.2026 verbrauchte es in dieser Lage ganze Runden an den Rändern des
+Suchraums (Serverlauf: Anstellwinkel 15 bis 30°). Rechnungen, die abgestürzt sind oder vom Türsteher verworfen
+wurden, lernt das Modell nicht, und es sucht in ihrer Umgebung nicht weiter. Stürzen Rechnungen ab
+(Netz oder SU2), lernt ein zweites, kleines Modell, **wo** das passiert, und das Verfahren meidet diese
+ganze Zone, nicht nur die Stelle des einzelnen Absturzes. Das hilft, wenn das beste Gebiet direkt an einer
+Absturzzone liegt (z. B. kurz vor dem Strömungsabriss). Schwankt das Ergebnis einer Rechnung
+(Wirbelablösung, siehe `Uncertainty_<Kennwert>`), zählt es im Modell entsprechend weniger stark.
+**Jeder Vorschlag wird echt gerechnet**; das Modell entscheidet nur, welche Varianten gerechnet werden.
+
+Die inneren Stellschrauben (Größe des Kandidatenpools, Deckel der Lernmenge, Vertrauensbereich ab 10
+freien Parametern) sind feste Vorgaben und nicht einstellbar; im Test hatten andere Werte keinen klaren
+Vorteil.
+
+*Zurück zu `"Rsm"`:*
+
 In der ersten Runde zieht `"Rsm"` die Varianten zufällig (außer Variante 1 = Startwerte), um
 eine erste Landkarte zu bekommen. Bevor das Ersatzmodell greift, benötigt `"Rsm"` mindestens
 `((k+1)(k+2))/2 + 2` **gelungene** Simulationen bei `k` Parametern (bei 5 Parametern also 23);
 solange würfelt es gleichverteilt im erlaubten Bereich (Log: `Benötige noch N Basis-Simulationen (DoE)`).
 
-*Nur für `"Evolution"`:*
+*Nur für `"Evolution"` (stehen nicht in den Vorlagen; wer sie ändern will, trägt sie in die `simulation.json` des Projekts ein, sonst gelten die Vorgaben):*
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
@@ -242,7 +285,7 @@ nicht erst geprüft.
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. | `0.2` | 🟡 |
+| `BouncerTolerance` | Erlaubte Abweichung der Fitness bei der Nachprüfung (`0.2` = 20 %). Kleiner = strenger. Schwanken die Rechnungen von Natur aus (Wirbelablösung, `Uncertainty_<Kennwert>`), gilt mindestens die doppelte Schwankung beider Rechnungen; das Log nennt dann die erweiterte Grenze. | `0.2` | 🟡 |
 | `BouncerJitter` | Um wie viel der eine Parameter verstellt wird, **in dessen Einheit** (nicht in Prozent!). Bei Parametern mit kleinen Zahlen (z. B. 0,02) ist `0.01` schon riesig. | `0.01` | 🔴 |
 
 **Genauigkeit der Konvergenz (TODO-W3, TODO-W4)**
@@ -282,12 +325,12 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `MeshCalibration` | Abschnitt für die automatisierte Netzkalibrierung. | `{}` | 🟡 |
-| `Mode` | Modus der Kalibrierung: `"Manual"` (Standard, `MeshRefinementFactor` gilt) oder `"Auto"` (Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein). | `"Manual"` | 🟡 |
-| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.02` = 2 %). | `0.02` | 🟡 |
+| `Mode` | Modus der Kalibrierung: `"Auto"` (Standard: Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein) oder `"Manual"` (`MeshRefinementFactor` gilt). In 2D dauert die Kalibrierung Sekunden bis Minuten, in 3D Stunden (MantaAuv ~4 h, steht deshalb auf `"Manual"`). | `"Auto"` | 🟡 |
+| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). Bei schwankenden Rechnungen (Wirbelablösung) gilt mindestens die doppelte Schwankung beider Stufen (`Uncertainty_<Kennwert>`), sonst entschiede Rauschen über die Netzfeinheit. | `0.05` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
 | `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
 | `MaxCells2D` | Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). | `2000000` | 🔴 |
-| `MaxCells3D` | Dasselbe für 3D. | `50000000` | 🔴 |
+| `MaxCells3D` | Dasselbe für 3D. 3 Mio. wie bei MantaAuv; mehr kostet schnell Tage. | `3000000` | 🔴 |
 
 **Gewinner fein nachrechnen (`ChampionVerification`, TODO-43)**
 
@@ -296,16 +339,16 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `ChampionVerification` | Abschnitt für die Verifikation der Gewinner auf feinem Netz. | `{}` | 🟡 |
-| `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (Standard, prüft den Gesamtsieger am Ende), `"FinalTopN"` (prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"Final"` | 🟡 |
+| `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (prüft den Gesamtsieger am Ende), `"FinalTopN"` (Standard, prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"FinalTopN"` | 🟡 |
 | `TopN` | Anzahl der besten Varianten am Ende bei `Mode` = `"FinalTopN"`. | `3` | 🟡 |
 | `RefinementSteps` | Anzahl der Verfeinerungsstufen gegenüber dem wirksamen Faktor (÷ √2 je Stufe). | `1` | 🟡 |
-| `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). | `0.05` | 🟡 |
+| `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). Auch hier gilt bei schwankenden Rechnungen mindestens die doppelte Schwankung beider Werte. | `0.05` | 🟡 |
 
 ### 4.3 `solvers/su2.json` – die Strömungsrechnung
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
-| `FreestreamVelocity` | **Anströmgeschwindigkeit in m/s.** Ist sie größer als 0, gilt sie; dann spielt `MachNumber` keine Rolle. `0` = alter Weg über `MachNumber` × `SpeedOfSound`. MantaAuv: `2.0`. | `0.0` | 🎯 | 🟢 |
+| `FreestreamVelocity` | **Anströmgeschwindigkeit in m/s.** Ist sie größer als 0, gilt sie; dann spielt `MachNumber` keine Rolle. `0` = alter Weg über `MachNumber` × `SpeedOfSound` (in Wasser unrealistisch). Standard `2.0` passt zum Standardfluid Meerwasser (übliche AUV-Geschwindigkeit). | `2.0` | 🎯 | 🟢 |
 | `Density` | Dichte des Fluids in kg/m³. Meerwasser `1025`, Süßwasser ~`998`, Luft `1.225`. | `1025` | 🎯 | 🟢 |
 | `DynamicViscosity` | Zähigkeit des Fluids in Pa·s. Meerwasser `0.001001`, Luft `1.81e-5`. | `0.001001` | 🎯 | 🟢 |
 | `TurbulenceModel` | Rechenmodell für Turbulenz: `"SA"` (Spalart-Allmaras) oder `"SST"`. | `"SA"` | 🎯 | 🟡 |
@@ -315,9 +358,9 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `ResultMetrics` | Welche SU2-Kennwerte unter welchem Namen ankommen. Links der Name für die Bewertung, rechts die SU2-Spalte: `CD` Widerstand, `CL` Auftrieb, `CSF` Seitenkraft, `CMx`/`CMy`/`CMz` Momente. **Eintragen ergänzt nur**: `Drag` bleibt immer dabei. Fehlt eine eingetragene Spalte, gilt die Variante als fehlgeschlagen. | `{ "Drag": "CD" }` | 🎯 | 🟡 |
 | `ConvergenceField` | An welchem Kennwert SU2 entscheidet, ob die Rechnung fertig ist: `"DRAG"` oder bei Auftriebsprojekten `"LIFT"`. | `"DRAG"` | 🎯⏱ | 🟡 |
 | `HistoryOutput` | Welche Spaltengruppen SU2 mitschreibt. `AERO_COEFF` liefert alle Beiwerte; ohne sie findet `ResultMetrics` nichts. | `["ITER","RMS_RES","AERO_COEFF"]` | ⚙ | 🔴 |
-| `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.02` = 2 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). | `0.02` | 🎯 | 🟡 |
-| `TreatUnconvergedAsFailed` | Ob Rechnungen, die bei Erreichen von `Su2MaxIterations` (ITER) noch nicht konvergiert sind, als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `false`: Wert wird trotzdem übernommen. | `false` | 🎯 | 🟡 |
-| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (Standard); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase). **Kontrollrechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"Last"` | 🎯 | 🟡 |
+| `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.05` = 5 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). Nur eine Warnung. | `0.05` | 🎯 | 🟡 |
+| `TreatUnconvergedAsFailed` | Ob Rechnungen, deren Kennwerte im Endfenster noch **gesichert weiterwandern** (echte Drift), als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `true`: driftende Rechnungen gehen nicht in die Optimierung ein (`false` = Wert wird trotzdem übernommen). **Eine Rechnung, die nur schwingt (Wirbelablösung), ist davon nicht betroffen:** Sie gilt als „instationär, aber stabil" (`Su2_Unsteady = 1`), es zählt der Mittelwert des Endfensters, und sie ist kein Fehlschlag. | `true` | 🎯 | 🟡 |
+| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (früheres Verhalten); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase; Standard). **Kontrollrechnungen und instationär-stabile Rechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"TailMean"` | 🎯 | 🟡 |
 | `CflNumber` | Schrittweite des SU2-Verfahrens beim Start. Größer = schneller, aber Gefahr, dass die Rechnung „explodiert". | `5.0` | ⏱ | 🔴 |
 | `CflAdapt` | Ob SU2 die Schrittweite selbst anpasst. | `true` | ⏱ | 🔴 |
 | `CflAdaptFactorDown` | Wie stark verkleinert wird, wenn es unruhig wird. | `0.5` | ⏱ | 🔴 |
@@ -325,7 +368,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `CflAdaptMin` | Kleinste erlaubte Schrittweite. | `1.0` | ⏱ | 🔴 |
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
 | `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
-| `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
+| `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `3.0` | 🎯 | 🟡 |
 | `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). Kann auch als aktiver Optimierungsparameter in `project.json` definiert werden. | `0.0` | 🎯 | 🟢 |
 | `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
 | `TimeDomain` | Block für zeitgenaue CFD-Rechnungen (URANS, Dual-Time-Stepping, TODO-37). Details siehe unten. | `{}` | 🎯⏱ | 🟡 |
@@ -354,29 +397,29 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
 | `TunnelShape` | Form des Windkanals: `"Box"` (Quader) oder `"Cylinder"` (Zylinder entlang x). Unbekannter Name → Warnung und `"Box"`. | `"Box"` | 🎯 | 🟡 |
-| `TunnelSizeX` | Länge des Quaders in Strömungsrichtung (mm). | `600` | 🎯⏱ | 🟡 |
+| `TunnelSizeX` | Länge des Quaders in Strömungsrichtung (mm). Die Vorgabe passt zu einem Modell von etwa 50 mm (6 L davor, 14 L dahinter); ein größeres Modell braucht einen proportional größeren Kanal. | `1000` | 🎯⏱ | 🟡 |
 | `TunnelSizeY` | Breite des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
 | `TunnelSizeZ` | Höhe des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
-| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf (Empfehlung: ≥ 10 Modelllängen hinter dem Modell). | `0` | 🎯 | 🟡 |
+| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf (Empfehlung: ≥ 10 Modelllängen hinter dem Modell). | `200` | 🎯 | 🟡 |
 | `TunnelCenterY` | Mittelpunkt, y (mm). | `0` | 🎯 | 🔴 |
 | `TunnelCenterZ` | Mittelpunkt, z (mm). | `0` | 🎯 | 🔴 |
 | `TunnelDiameter` | Durchmesser des Zylinders (mm), nur bei `"Cylinder"`. | `300` | 🎯⏱ | 🟡 |
-| `TunnelLength` | Länge des Zylinders (mm), nur bei `"Cylinder"`. | `600` | 🎯⏱ | 🟡 |
+| `TunnelLength` | Länge des Zylinders (mm), nur bei `"Cylinder"`. | `1000` | 🎯⏱ | 🟡 |
 | `TunnelSegments` | Wie rund der Zylinder ist (Anzahl Kanten am Umfang). | `64` | ⚙ | 🔴 |
 | `BoundaryLayerSizeMin` | Kleinste Zellgröße nahe am Modell (mm). Kleiner = genauer, aber viel mehr Zellen. | `1.2` | 🎯⏱ | 🟡 |
 | `BoundaryLayerSizeMax` | Größte Zellgröße weit weg vom Modell (mm). | `120` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMin` | Bis zu diesem Abstand vom Modell gilt die kleinste Zellgröße (mm). | `3.0` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMax` | Ab diesem Abstand gilt die größte Zellgröße; dazwischen wird übergeblendet (mm). | `40` | 🎯⏱ | 🟡 |
-| `WakeRefinement` | Nachlauf-Verfeinerung an/aus. Bei `true` wird eine dynamische Nachlauf-Box hinter dem Modell eingefügt. | `false` | 🎯⏱ | 🟡 |
+| `WakeRefinement` | Nachlauf-Verfeinerung an/aus. Bei `true` wird eine dynamische Nachlauf-Box hinter dem Modell eingefügt. | `true` | 🎯⏱ | 🟡 |
 | `WakeLengthFactor` | Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge `lenX`. | `2.0` | 🎯⏱ | 🟡 |
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
-| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. In 3D standardmäßig **aus**, weil sie viele Zellen kostet (Manta: einige hunderttausend). | `false` | 🎯⏱ | 🟡 |
+| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard **an**; sie kostet in 3D viele Zellen (Manta: einige hunderttausend, dort deshalb aus), `MaxCells3D` deckelt die Kalibrierung. | `true` | 🎯⏱ | 🟡 |
 | `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.0` | 🎯⏱ | 🟡 |
 | `DetailBoxWidthFactor` | Überstand der Detailbox in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
 | `DetailBoxCellSize` | Zellgröße in der Detailbox in mm auf Stufe 1.0; `0.0` = automatisch 2,5 × Oberflächen-Zellgröße. | `0.0` | 🎯⏱ | 🟡 |
 | `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
-| `BoundaryLayerMode` | Modus der Grenzschicht: `"Threshold"` (Vorgabe, unstrukturiert wie bisher, **y+ ≈ 30–70**), `"Prism"` (flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Threshold"` | 🎯⏱ | 🟢 |
+| `BoundaryLayerMode` | Modus der Grenzschicht: `"Prism"` (Vorgabe: flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**), `"Threshold"` (unstrukturiert, **y+ ≈ 30–70**, für das SA-Modell zu grob, nur für schnelle Vorabläufe) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Prism"` | 🎯⏱ | 🟢 |
 | `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand. Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.0` | 🎯 | 🟡 |
 | `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
 | `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
@@ -413,7 +456,7 @@ sich die Schichten), wiederholt das Programm automatisch mit weniger äußeren S
 
 ### 4.5 `solvers/gmsh.json` (2D-Projekte, `Gmsh2DMesherOptions`)
 
-Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder 2D-Vorkalibrierung in `TestprojektNACA`, TODO-45/48) erzeugt `Gmsh2DMesher` ein ebenes Rechennetz um die Kontur. Die Bezugslänge ist die Sehne $L$.
+Für zweidimensionale CFD-Simulationen (z. B. Profilschnitte wie `Naca2D` oder die 2D-Vorkalibrierung für 3D-Projekte, TODO-45/48) erzeugt `Gmsh2DMesher` ein ebenes Rechennetz um die Kontur. Die Bezugslänge ist die Sehne $L$.
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
@@ -453,7 +496,8 @@ inzwischen geändert sind:
 | **`Ergebnisse/<Projekt>/run-info.json`** | Der **Fahrtenschreiber** des Laufs: Code-Stand (`Commit`, `Branch`, `DeployHash`, `DeployZeit`, `UncommittedChanges`), Programmversionen (SU2, Gmsh, mpirun, PicoGK), `ZufallsSeed`, Rechner, Aufruf, `Status` (`laeuft`/`abgeschlossen`/`abgebrochen`) und jede Wiederaufnahme. Steht nach einem Server-Neustart noch `laeuft` darin, wurde der Lauf hart unterbrochen. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Quellstand/`** | Kopie des Projektcodes (`*.cs` und `*.json` aus `src/projects/<Projekt>/`) zum Start des Laufs. Damit ist auch Monate später klar, mit welcher Geometrie und welcher Bewertungsformel gerechnet wurde. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Wiederaufnahme/`** | Lauf-Journal `journal.jsonl` für `resume` (eine Zeile je fertiger Rechnung). Ältere Journale heißen `journal_<Zeitstempel>.jsonl` |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung). **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `Disqualified` (1 = vom Türsteher als instabil verworfen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `Su2_Unsteady` (1 = instationär, aber stabil: der Wert pendelt ohne Trend, es zählt der Mittelwert des Endfensters), `Uncertainty_<Metrik>` (relative Unsicherheit des Werts, 1σ, aus Blockmitteln des Endfensters: nahe 0 bei ruhiger Rechnung, z. B. 0,05 = ±5 % bei Wirbelablösung), `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung). Bei `"Bayes"` kommen `Bayes_PredictedFitness`, `Bayes_PredictedLow`, `Bayes_PredictedHigh` (vorhergesagte Fitness samt 95-%-Band) und `Bayes_Explorer` (1 = Erkunder) hinzu; Zeilen des Versuchsplans zeigen dort `0`, weil es für sie keine Vorhersage gibt. **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
+| **`Ergebnisse/<Projekt>/Analyseergebnisse/Bayes_Verlauf.csv`** | Nur bei `"Bayes"`: eine Zeile je Runde, nach jeder Runde neu geschrieben. Spalten: `Iteration`, `Modus` (`DoE` = noch Versuchsplan, sonst `Fitness` oder `Metrics`), `Lernpunkte` (aus wie vielen Rechnungen das Modell lernte), `Vertrauensbereich_L` (Größe des Suchwürfels, leer = aus), `Abweichung_Mittel` (mittlere relative Abweichung zwischen Vorhersage und Ergebnis der Runde), `Anteil_im_Band` (Anteil der Varianten, die im 95-%-Band lagen), `BesteFitness` und `Relevanz_<Parameter>` (1 = wichtigster Parameter, nahe 0 = hat kaum Einfluss). **Lesebeispiel:** `Abweichung_Mittel` 0.06 und `Anteil_im_Band` 0.9 heißt: Das Modell lag im Mittel 6 % daneben und hat 9 von 10 Varianten richtig eingeschätzt, es taugt. Liegt `Anteil_im_Band` dauerhaft unter 0.5, ist das Modell unsicher oder die Ergebnisse rauschen stark; dann hilft ein Vergleichslauf mit `"Rsm"`. Die letzte Runde eines Laufs steht nicht darin, weil danach nichts mehr vorbereitet wird. Dieselben Angaben stehen als `[BAYES]`-Zeilen im Log. |
 | **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
 | **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
@@ -525,13 +569,13 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 
 | Aufgabe | Befehl |
 | --- | --- |
-| **Alle Unit-Tests ausführen** (ohne Solver lauffähig) | `dotnet test Automatisierung.sln` |
-| **Vorhandene Projekte auflisten** | `dotnet run --project src/Automatisierung_v2 -- --list-projects` |
-| **Konfiguration & Pfade prüfen (Dry-Run)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --print-config` |
-| **Simulation lokal starten** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv` |
-| **Lokale Netzkalibrierung** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --calibrate` |
-| **Lokaler Recheck (stationär / URANS)** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --recheck=Gen3_Var2 --finer=1 [--unsteady]` |
-| **Lokalen Lauf fortsetzen** | `dotnet run --project src/Automatisierung_v2 -- MantaAuv --resume` |
+| **Alle Unit-Tests ausführen** (ohne Solver lauffähig) | `dotnet test OptimierungsAlgoCFD.sln` |
+| **Vorhandene Projekte auflisten** | `dotnet run --project src/OptimierungsAlgoCFD -- --list-projects` |
+| **Konfiguration & Pfade prüfen (Dry-Run)** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --print-config` |
+| **Simulation lokal starten** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv` |
+| **Lokale Netzkalibrierung** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --calibrate` |
+| **Lokaler Recheck (stationär / URANS)** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --recheck=Gen3_Var2 --finer=1 [--unsteady]` |
+| **Lokalen Lauf fortsetzen** | `dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv --resume` |
 | **Direkt auf dem Linux-Server per SSH** | `SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh start` |
 
 > **Kein stiller Standard beim direkten Aufruf:** Ohne Projektnamen bricht `dotnet run` (ebenso wie `sim-runner.sh`) sofort ab und listet die verfügbaren Projekte auf, damit ein Tippfehler niemals stundenlang das falsche Projekt rechnet. Optional kann als zweites Argument ein abweichender Pfad zu `src/projects` übergeben oder `SIM_PROJECTS_DIR` gesetzt werden.
@@ -544,23 +588,31 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | --- | --- | --- |
 | `'…' nennt einen Schlüssel, den der Typ … nicht kennt` | Tippfehler in einer JSON-Datei. | Die Meldung nennt den vermutlich gemeinten Namen bzw. alle gültigen. Korrigieren. |
 | `[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt` | Eine `*.local.json` verändert still Werte. | Gehören die Werte zum Projekt: in die Projektdatei übernehmen und die local-Datei löschen. |
-| `[WARNUNG] 'MachNumber' in … ist wirkungslos, weil in solvers/su2.json 'FreestreamVelocity' (… m/s) gesetzt ist.` | In `solvers/su2.json` ist eine explizite Anströmgeschwindigkeit vorgegeben. SU2 rechnet direkt mit dieser Geschwindigkeit; der Wert `MachNumber` aus der Simulationskonfiguration hat keinen Einfluss auf die Anströmung. | Soll wieder über Mach gerechnet werden: `FreestreamVelocity` in `su2.json` auf `0` setzen. Sonst ist die Meldung nur ein Hinweis darauf, dass `MachNumber` wirkungslos ist. |
 | `Kein -Project angegeben, es gilt die Vorgabe 'MantaAuv'` | Der Befehl wirkt auf MantaAuv. | Gilt bei `run`/`deploy`/`doctor`. Bei `fetch` und `status` fragt das Skript automatisch das letzte Projekt auf dem Server ab. |
 | `FEHLER: Simulation_Results.csv fuer Projekt '…' fehlt nach dem Entpacken` | Für dieses Projekt liegen noch keine Ergebnisse auf dem Server vor. | Die Meldung listet die vorhandenen Projekte auf dem Server auf. Projektname prüfen oder Lauf erst abwarten. |
 | `[WARNUNG] Das geholte Log gehoert laut Kopfzeile zu Projekt '…'` | `simulation.log` stammt von einem anderen Projekt als die geholten Ergebnisse. | Das gewünschte Projekt mit `-Project` angeben oder einen neuen Lauf starten. |
 | `[WARNUNG] … Referenzfläche …` / `Die Metrik '…' fehlt` | Die Bezugsfläche (`ReferenceAreaMetric`) gibt es nicht. CD/CL sind dann falsch. | Den Namen in `su2.json` an die Metrik anpassen, die die Geometrie meldet (die Meldung listet sie auf). |
 | `[WARNUNG] Ergebnisgröße '…' <- Spalte '…'` | Ein Eintrag in `ResultMetrics` passt zu keiner SU2-Spalte. Die Variante gilt als fehlgeschlagen. | Spaltennamen korrigieren (die Meldung listet die vorhandenen). |
 | `[WARNUNG] SU2 hat ITER=… erreicht, ohne dass das Kriterium erfüllt war – … ist der Stand bei Iteration …, kein konvergierter Wert.` | Die Strömungsrechnung hat die maximale Iterationszahl erreicht, bevor der Wert stabil war. Der Wert ist eine Momentaufnahme und noch nicht verlässlich. | `Su2MaxIterations` in `simulation.json` erhöhen (z. B. 1000) oder prüfen, ob die Strömung schwingt. Soll der Lauf unvollständige Rechnungen verwerfen: `TreatUnconvergedAsFailed` in `su2.json` auf `true` setzen. |
+| `[HINWEIS] Instationär, aber statistisch stabil (kein gesicherter Trend im Endfenster): es zählt der Mittelwert des Endfensters (Drag ±… %).` | Der Wert pendelt um einen festen Mittelwert, typisch für Wirbelablösung an stumpfen Körpern. Die Rechnung ist gültig, ihr Ergebnis aber unsicherer (Spalte `Uncertainty_<Kennwert>`). | Nichts. Für genaue Werte des Champions: `recheck -Unsteady` (zeitgenaue Rechnung). Tritt es fast überall auf und soll die Strömung stationär sein: Netz und Geometrie prüfen. |
 | `[WARNUNG] … schwingt um ±… % – Hinweis auf instationäre Strömung (Wirbelablösung).` | Der Beiwert schwankt im Cauchy-Fenster stärker als `OscillationWarnLimit` (z. B. ±2 %). Meist lösen sich periodisch Wirbel ab (z. B. Kármánsche Wirbelstraße bei stumpfen Körpern). | Prüfen, ob die Geometrie zu stumpf ist, oder `ResultAveraging` in `su2.json` auf `"CauchyWindowMean"` setzen, um über die Schwingung zu mitteln. Schwellenwert mit `OscillationWarnLimit` anpassen. |
 | `[WARNUNG] y+ (95 %-Quantil = …, Max = …) überschreitet das Limit … (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.` | Der dimensionslose Wandabstand y+ ist an der Bauteilwand zu groß (das 95 %-Quantil P95 übersteigt das Limit). Das Turbulenzmodell (SA/SST) löst die viskose Unterschicht nicht optimal auf, wodurch der Reibungswiderstand ungenau werden kann. | `BoundaryLayerMode` ("Prism") aktivieren, `TargetYPlus` prüfen, `BoundaryLayerSizeMin` bzw. `SurfaceCellSize` verfeinern oder `YPlusWarnFactor` erhöhen, falls ein größerer Wandabstand für die Grobauslegung ausreicht. |
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |
 | `Gmsh konnte … nicht erstellen` | Das Netz ließ sich nicht bauen. | Meist reißt die Geometrie an dünnen Stellen ab: `BaseVoxelResolution` verkleinern oder Mindestdicken im Geometrie-Code erhöhen. |
 | `Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) …` | Die Bewertungsformel braucht einen Wert, den niemand liefert. | Fehlt ein SU2-Wert: in `ResultMetrics` eintragen. Fehlt ein Geometriewert: im Geometrie-Code melden. |
+| `⚠ HINWEIS: Das Optimum liegt an der Grenze des Suchraums` (am Ende des Laufs, gelb) | Der Gewinner liegt bei einem oder mehreren Parametern höchstens 1 % der Spanne von einer Grenze in `ParameterBounds` entfernt. Dann bestimmt die Grenze das Ergebnis, und ein besserer Wert liegt möglicherweise dahinter. Das Framework erweitert Grenzen **nie** von selbst. | Prüfen, ob die Grenze fachlich sinnvoll ist (Festigkeit, Baubarkeit, Physik). Wenn nicht: in `project.json` unter `ParameterBounds` erweitern und neu rechnen. |
+| `[WARNUNG] [MPI] MpiRunPath '…' ist OpenMPI. …` | `MpiRunPath` zeigt auf OpenMPI. Das offizielle SU2-Binary ist mit MPICH gebaut: unter OpenMPI läuft jeder Kern als eigene serielle Kopie und überschreibt die Dateien der anderen, ohne Fehlermeldung. | `MpiRunPath` auf das `mpiexec` des MPICH-Environments setzen (Server: `~/miniconda/envs/mpich/bin/mpiexec`, siehe `scripts/README.md`). `sim.ps1 doctor` prüft das ebenfalls. |
 | `[ABGELEHNT] Modell ist instabil. Disqualifiziert.` | Der Bouncer hat einen Zufallstreffer aussortiert. Das ist normal. | Passiert es fast immer: `BouncerTolerance` lockern oder `BouncerJitter` verkleinern. |
 | `[WIEDERAUFNAHME] Kein abgebrochener Lauf gefunden` | Für dieses Projekt gibt es kein Journal (noch nie gerechnet, oder Ergebnisse mit `delete` gelöscht). | Neu starten mit `.\scripts\sim.ps1 run -Project <Name>`. |
 | `[WIEDERAUFNAHME] Die Konfiguration hat sich seit dem Start des Laufs geändert: …` | Eine der genannten Dateien hat andere Werte als beim Start. Ein Weiterrechnen würde Ergebnisse mischen. | Die Änderung zurücknehmen (die Werte des Laufs stehen in `effective-config.json`) oder mit `run` neu starten. |
 | `[WIEDERAUFNAHME] Der Lauf ist bereits abgeschlossen, nichts zu tun.` | Der Lauf ist regulär zu Ende gegangen. | Nichts. Ergebnisse mit `fetch` holen. |
 | `[WARNUNG] Wiederaufnahme: Aufruf … weicht vom Journal ab` | Beim Fortsetzen hat das Programm eine andere Variante vorgeschlagen als beim ersten Mal (meist: anderer Code). | Nichts. Alles bis dahin wurde übernommen, ab dort wird neu gerechnet. Das alte Journal liegt als `journal_abweichung_<Zeitstempel>.jsonl` daneben. |
+| `[KONFIGURATION] Der Bayes-Optimierer braucht für jeden Parameter eine Grenze …` | Für den genannten Parameter fehlt in `ParameterBounds` das Min/Max. Der Bayes-Optimierer braucht den Suchraum. | Grenzen in `src/projects/<Projekt>/project.json` unter `ParameterBounds` eintragen (bei einem festen Parameter `Min` = `Max`). |
+| `[KONFIGURATION] Bayes.SurrogateTarget = 'Metrics' verlangt, dass die Fitness … ihre Kennwerte nennt` | `"Metrics"` geht nur, wenn die Bewertungsformel des Projekts `RequiredMetrics` angibt. | `"Auto"` oder `"Fitness"` eintragen. |
+| `[BAYES] Die Fitness liest mehr als die deklarierten Kennwerte …` | Die Gegenprobe hat gezeigt, dass die Formel Werte benutzt, die sie nicht als `RequiredMetrics` nennt. Der Lauf geht mit `"Fitness"` weiter. | Nichts, der Lauf ist gültig. Wer `"Metrics"` nutzen will: die fehlenden Kennwerte in `RequiredMetrics` der Bewertungsformel nachtragen. |
+| `[BAYES] Modell noch unsicher oder Ergebnisse stark verrauscht.` | Weniger als die Hälfte der Varianten der Runde lag im vorhergesagten Band. | Bei den ersten Runden normal. Hält es an: Netz/Konvergenz prüfen (Rauschen) oder Vergleichslauf mit `"Rsm"`. |
+| `[BAYES] Das Ersatzmodell konnte nicht gelernt werden …` | Rechnerisches Problem beim Lernen. Der Lauf bricht nicht ab: Die Runde wird mit Versuchsplan-Punkten gefüllt. | Nichts. Tritt es dauernd auf, die Ausgabe an die Entwicklung geben. |
+| `[BAYES] Vertrauensbereich ausgereizt, erkunde neues Gebiet.` | Der Suchwürfel wurde nach vielen Misserfolgen zu klein; die Suche beginnt an einer neuen Stelle. | Nichts, das ist gewollt. |
 | `Unbekanntes Projekt '…'` | Projektname vertippt (Groß-/Kleinschreibung zählt). | `.\scripts\sim.ps1 projects` zeigt die gültigen Namen. |
 | `sim.ps1` bricht nach ein bis drei Minuten mit einem SSH-Fehler ab | Die Verbindung (VPN) war tot. | VPN prüfen, Befehl wiederholen. **Ein laufender Lauf auf dem Server rechnet trotzdem weiter.** |
 | `[KONFIGURATION] Im Auto-Modus wird der Netzfaktor kalibriert. Bitte 'MeshRefinementFactor' aus … entfernen` | Im Auto-Modus kalibriert das Framework den Netzfaktor selbst; ein fester Faktor würde dem widersprechen. | `MeshRefinementFactor` aus der genannten Datei löschen und nur `Tolerance` unter `MeshCalibration` angeben. |
@@ -594,6 +646,12 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | **Cauchy-Kriterium** | SU2 hört auf, wenn sich die überwachte Ergebnisgröße (`ConvergenceField`, z. B. Widerstand) über die letzten `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. Das ist SU2s eigenes Abbruchkriterium. Ob die Rechnung als konvergiert gilt (`Su2_Converged = 1`), entscheidet seit TODO-W3 die **Drift-Prüfung** im Endfenster (siehe „Genauigkeit der Konvergenz“). Über dasselbe Fenster misst der Analyzer die echte Schwingungsamplitude nach Abzug des Trends (`Su2_Osc_<Metrik>`). |
 | **CFL-Zahl** | Schrittweite des Rechenverfahrens: größer = schneller, aber weniger stabil. |
 | **RSM (Ersatzmodell)** | Optimierer, der aus allen bisherigen Rechnungen eine geschätzte Fitness-Landkarte baut und dort sucht. |
+| **Bayes-Optimierung** | Optimierer, der nach jeder Runde ein Ersatzmodell lernt und die nächsten Varianten dort rechnen lässt, wo die Chance am größten ist, den Besten zu schlagen. Spart bei teuren Rechnungen viele Varianten. |
+| **Ersatzmodell (Gauß-Prozess)** | Das Modell dahinter: Es schätzt die Fitness an jeder Stelle **und** wie sicher es sich dabei ist („Nebel"). Es lernt in jedem Lauf neu, in Sekunden, auf dem normalen Prozessor. |
+| **Instationär, aber stabil** | Eine Rechnung, deren Ergebnis pendelt (Wirbel lösen sich ab), aber nicht wegläuft. Sie liefert einen gültigen Mittelwert mit Unsicherheit. Erst ein gesichertes Weiterwandern (Drift) gilt als nicht konvergiert. |
+| **Erkunder** | Die letzte Variante einer Runde bei `"Bayes"` (ab 4 Varianten): Sie liegt dort, wo das Modell sich am wenigsten auskennt, aber nur an Stellen, die noch gut sein könnten. |
+| **Vertrauensbereich** | Bei vielen Parametern (ab 10) sucht `"Bayes"` nur in einem Würfel um den besten Punkt, der nach Erfolgen wächst und nach Misserfolgen schrumpft. |
+| **Parameter-Wichtigkeit** | Wie stark ein Parameter die Note beeinflusst, aus dem Ersatzmodell gelesen (`Relevanz_<Parameter>`). Hilft zu erkennen, welche Parameter man festsetzen kann. |
 | **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |
 | **`*.local.json`** | Notausgang für Einstellungen, die nur auf einem Rechner gelten sollen. Soll es normalerweise nicht geben. |
 
@@ -601,6 +659,6 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 
 ## 9. Grenzen des Systems
 
-- **Fluch der Dimensionalität:** Das RSM-Ersatzmodell (`"Rsm"`) arbeitet besonders effizient bei etwa 3 bis 15 Parametern. Mit steigender Parameterzahl wächst die Zahl der nötigen DoE-Stützstellen quadratisch (`((k+1)(k+2))/2 + 2`). Bei sehr vielen freien Parametern empfiehlt sich `"Evolution"`.
+- **Fluch der Dimensionalität:** Das RSM-Ersatzmodell (`"Rsm"`) arbeitet besonders effizient bei etwa 3 bis 15 Parametern. Mit steigender Parameterzahl wächst die Zahl der nötigen DoE-Stützstellen quadratisch (`((k+1)(k+2))/2 + 2`). Bei sehr vielen freien Parametern empfiehlt sich `"Evolution"` oder `"Bayes"`; `"Bayes"` schaltet ab 10 freien Parametern einen Vertrauensbereich zu und ist für etwa 5 bis 20 Parameter gedacht. Darüber (über 30) ist noch kein Verfahren vorbereitet.
 - **Voxel-Auflösung (Konzeptphase):** 3D-Voxelgeometrie aus PicoGK ist trotz Oberflächenglättung für die frühe Konzeptphase und den Vergleich von Makroformen ausgelegt. Für die Submillimeter-Feinpolitur glatter Profilkonturen sind direkte analytische Konturen (wie der 2D-Kernel `Shape2D` in `Naca2D`) im Vorteil.
 - **Physikalischer Modellrahmen:** Gerechnet wird inkompressibles RANS (`SOLVER= INC_RANS` mit `SA` oder `SST`), wahlweise stationär oder zeitgenau via Dual-Time-Stepping (URANS). Mehrphasenströmungen (freie Oberfläche, Kavitation), Kompressibilität bei hohen Mach-Zahlen sowie bewegte/rotierende Netze sind damit nicht abgedeckt.
