@@ -8,9 +8,10 @@
   // Ein unbekannter Schluessel bricht den Start ab. Rechnerspezifisches gehoert in simulation.local.json.
 
   // --- Programme (PATH-relativ; `.\scripts\sim.ps1 doctor` zeigt, was gefunden wird) ---
-  // ACHTUNG Server: MpiRunPath muss ein MPICH-mpiexec sein (z. B. ~/miniconda/envs/mpich/bin/mpiexec). Das OpenMPI,
-  // das "mpirun" dort per PATH findet, startet zwoelf serielle Kopien und liefert unbrauchbare Ergebnisse
-  // (das Programm warnt dann beim Start). Einrichtung: scripts/README.md.
+  // Server: Heisst das Programm nur "mpirun" oder "mpiexec", nimmt das Programm automatisch das MPICH-Environment
+  // (~/miniconda/envs/mpich/bin/mpiexec, legt setup_server.sh an), falls es existiert. Das OpenMPI im PATH startet
+  // zwoelf serielle Kopien und liefert unbrauchbare Ergebnisse. Ein ausdruecklich eingetragener Pfad gilt unveraendert
+  // (das Programm warnt beim Start, wenn er OpenMPI ist). Einrichtung: scripts/README.md.
   "MpiRunPath": "mpirun",
   "Su2Path": "SU2_CFD",
   "GmshPath": "gmsh",

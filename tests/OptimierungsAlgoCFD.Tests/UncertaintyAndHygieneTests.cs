@@ -129,6 +129,54 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.Null(ToolVersionProbe.MpiWarning(unknown, "mpirun"));
         }
 
+        private string HomeWithMpichEnvironment()
+        {
+            string home = Sub("home_mit_mpich");
+            string bin = Path.Combine(home, "miniconda", "envs", "mpich", "bin");
+            Directory.CreateDirectory(bin);
+            File.WriteAllText(Path.Combine(bin, "mpiexec"), "#!/bin/sh");
+            return home;
+        }
+
+        [Theory]
+        [InlineData("mpirun")]
+        [InlineData("mpiexec")]
+        [InlineData("MPIRUN")]
+        public void A_Bare_Mpi_Name_Picks_The_Mpich_Environment_When_It_Exists(string configured)
+        {
+            string home = HomeWithMpichEnvironment();
+
+            string resolved = ExecutableResolver.Resolve(configured, "mpi", TextWriter.Null, home);
+
+            Assert.Equal(Path.Combine(home, "miniconda", "envs", "mpich", "bin", "mpiexec"), resolved);
+        }
+
+        [Fact]
+        public void An_Explicit_Mpi_Path_Is_Left_Alone()
+        {
+            string home = HomeWithMpichEnvironment();
+            string explicitPath = Path.Combine(Sub("anderes"), "mpirun");
+            File.WriteAllText(explicitPath, "#!/bin/sh");
+
+            Assert.Equal(explicitPath, ExecutableResolver.Resolve(explicitPath, "mpi", TextWriter.Null, home));
+        }
+
+        [Fact]
+        public void Without_The_Mpich_Environment_A_Bare_Name_Stays_As_It_Is()
+        {
+            string emptyHome = Sub("home_leer");
+
+            Assert.Equal("mpirun", ExecutableResolver.Resolve("mpirun", "mpi", TextWriter.Null, emptyHome));
+        }
+
+        [Fact]
+        public void Other_Tools_Are_Not_Redirected_To_The_Mpich_Environment()
+        {
+            string home = HomeWithMpichEnvironment();
+
+            Assert.DoesNotContain("mpich", ExecutableResolver.Resolve("gmsh", "gmsh", TextWriter.Null, home));
+        }
+
         // ------------------------------------------------------------------ Ergebnistabelle
 
         private static SimulationContext ContextWithAngleOfAttackAsParameterAndMetric(string directory)

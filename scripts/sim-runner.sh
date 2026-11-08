@@ -300,6 +300,14 @@ cmd_doctor() {
                 continue
             fi
 
+            # Wie das Programm selbst: heisst es nur mpirun/mpiexec, gewinnt das MPICH-Environment (falls vorhanden)
+            # vor dem PATH, in dem das OpenMPI liegt.
+            if [ "$entry" = "MpiRunPath" ]; then
+                case "$configured" in
+                    mpirun|mpiexec) [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ] && configured="$HOME/miniconda/envs/mpich/bin/mpiexec" ;;
+                esac
+            fi
+
             if resolved="$(resolve_tool "$configured")"; then
                 if [ "$resolved" = "$configured" ]; then
                     ok "$entry -> $resolved"

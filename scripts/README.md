@@ -478,7 +478,7 @@ conda install -y -c conda-forge git boost-cpp tbb-devel blosc pkg-config \
 ```bash
 conda create -y -n mpich -c conda-forge mpich
 ```
-In der `simulation.json` des Projekts steht dann `"MpiRunPath": "/home/<benutzer>/miniconda/envs/mpich/bin/mpiexec"`. Das Programm prüft die Variante beim Start (`[MPI]`-Warnung im Log, Eintrag `MPI-Variante` in `run-info.json`), und `sim.ps1 doctor` meldet OpenMPI als Problem. `setup_server.sh` legt das Environment automatisch an.
+Danach genügt der Standardwert `"MpiRunPath": "mpirun"`: Das Programm nimmt bei den Namen `mpirun` und `mpiexec` automatisch dieses MPICH-Environment, noch vor dem PATH (ein ausdrücklich eingetragener Pfad wie `/home/<benutzer>/miniconda/envs/mpich/bin/mpiexec` gilt unverändert). Das Programm prüft die Variante beim Start (`[MPI]`-Warnung im Log, Eintrag `MPI-Variante` in `run-info.json`), und `sim.ps1 doctor` meldet OpenMPI als Problem. `setup_server.sh` legt das Environment automatisch an.
 
 #### 3. Externe Werkzeuge herunterladen (CMake, SU2, Gmsh)
 ```bash
@@ -605,7 +605,7 @@ pkill -9 -f Xvfb || true
 ### Troubleshooting & Fehlerbehebung auf dem Server
 
 - **Rechnung wirkt falsch, SU2 läuft zwölfmal einzeln, `[MPI]`-Warnung im Log:**  
-  `MpiRunPath` zeigt auf OpenMPI (z. B. `miniconda/bin/mpirun`). Das offizielle SU2-Binary ist mit MPICH gebaut. Auf `$HOME/miniconda/envs/mpich/bin/mpiexec` umstellen (Einrichtung siehe Schritt 2). Der Standardwert `"mpirun"` reicht auf dem Server **nicht**: Er findet über den PATH das OpenMPI.
+  `MpiRunPath` zeigt auf OpenMPI (z. B. `miniconda/bin/mpirun`). Das offizielle SU2-Binary ist mit MPICH gebaut. Auf `$HOME/miniconda/envs/mpich/bin/mpiexec` umstellen oder den Eintrag löschen (der Standard `"mpirun"` wählt das MPICH-Environment selbst, sofern es nach Schritt 2 existiert).
 - **`symbol lookup error` bei `mpirun` / OpenMPI:**  
   Das System greift auf ein unpassendes globales OpenMPI zu. Das MPICH-`mpiexec` aus dem Environment `mpich` verwenden (siehe oben) und in `simulation.json` unter `MpiRunPath` mit vollem Pfad eintragen.
 - **`prterun was unable to launch` / `Executable not found`:**  

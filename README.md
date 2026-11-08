@@ -50,3 +50,9 @@ Die detaillierte Dokumentation ist thematisch aufgeteilt, sodass jedes Thema gen
   Funktionsweise des Notausgangs über gitignorierte `*.local.json`-Dateien für maschinenspezifische Programmpfade.
 - **[Entwicklungs-Roadmap & Projektpläne (`.plans/README.md`)](.plans/README.md)**  
   Übersicht über die nächsten Ausbaustufen ([`ROADMAP.md`](.plans/ROADMAP.md)), KI-/Bayes-Optimierung ([`ki_optimierung.md`](.plans/ki_optimierung.md)) und geplante FEM-Strukturkopplung ([`fem_ausblick.md`](.plans/fem_ausblick.md)).
+
+---
+
+## Lizenz
+
+Der Code in diesem Repository steht unter der [MIT-Lizenz](LICENSE). Die verwendeten Bibliotheken und Programme (PicoGK, Clipper2, SU2, Gmsh, MPICH) haben eigene Lizenzen, siehe [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

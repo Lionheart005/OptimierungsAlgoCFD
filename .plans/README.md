@@ -1,7 +1,7 @@
 # Projektpläne & Roadmap (Übersicht für KI-Sessions)
 
 > **Stand: 08.11.2026 (abends)** — Meilenstein 1 abgeschlossen und archiviert, **Meilenstein 2 (KI-Integration) auf Branch `KI_Integration` umgesetzt und ausgewertet**; Aufräum-Durchgang erledigt.  
-> **Test- & Buildstatus:** 656/656 Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler. Vergleichsläufe auf BIC_12 (5×5 und 10×10) ausgewertet; der Server-Deploy mit dem neuen Ordnernamen steht noch aus.  
+> **Test- & Buildstatus:** 662/662 Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler. Vergleichsläufe auf BIC_12 (5×5 und 10×10) ausgewertet; der Server-Deploy mit dem neuen Ordnernamen steht noch aus.  
 > **Namen:** Framework `src/OptimierungsAlgoCFD/` (Namespace `OptimierungsAlgoCFD`, wie das GitHub-Repository), Tests `tests/OptimierungsAlgoCFD.Tests/`, Vorlagen `_Vorlage3D` und `_Vorlage2D`. Frühere Pläne in `.old/` nennen noch die alten Namen (`Automatisierung_v2`, `MyPicoGkProject`, `_Vorlage`, `TestprojektNACA`).
 
 ---

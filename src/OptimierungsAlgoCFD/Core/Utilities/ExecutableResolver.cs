@@ -16,13 +16,29 @@ namespace OptimierungsAlgoCFD.Core
         /// <param name="configuredPath">Der aus der Konfiguration gelesene Pfad oder Befehlsname.</param>
         /// <param name="toolKind">Optional: Werkzeug-Art ("gmsh", "su2", "mpi"). Wenn null, wird sie aus dem Namen abgeleitet.</param>
         /// <param name="output">Optional: Ausgabe-Writer für Log-Meldungen bei Fallbacks (Standard: Console.Out).</param>
+        /// <param name="homeOverride">Nur für Tests: Ersatz für das Benutzerverzeichnis.</param>
         /// <returns>Der aufgelöste Pfad oder Befehl.</returns>
-        public static string Resolve(string configuredPath, string? toolKind = null, TextWriter? output = null)
+        public static string Resolve(string configuredPath, string? toolKind = null, TextWriter? output = null, string? homeOverride = null)
         {
             if (string.IsNullOrWhiteSpace(configuredPath))
                 return configuredPath;
 
             string expanded = ExpandHome(configuredPath);
+            string home = homeOverride ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            // MPI: Das offizielle SU2-Binary ist mit MPICH gebaut, unter OpenMPI startet jeder Kern eine eigene serielle
+            // Kopie. Heißt das Programm nur "mpirun" oder "mpiexec", gewinnt deshalb das MPICH-Environment, wenn es
+            // existiert (legt setup_server.sh an), noch vor dem PATH, in dem auf dem Server das OpenMPI liegt.
+            // Ein ausdrücklich eingetragener Pfad bleibt unangetastet.
+            if (IsBareMpiName(toolKind, expanded))
+            {
+                string mpich = MpichMpiexec(home);
+                if (File.Exists(mpich))
+                {
+                    (output ?? Console.Out).WriteLine($"[RESOLVER] '{configuredPath}' -> MPICH-Environment: {mpich}");
+                    return mpich;
+                }
+            }
 
             // 1. Wenn der Pfad Pfadtrenner enthält und File.Exists(expanded) wahr ist -> direkt zurückgeben
             bool hasPathSeparators = expanded.Contains('/') || expanded.Contains('\\');
@@ -38,7 +54,6 @@ namespace OptimierungsAlgoCFD.Core
             }
 
             // 3. Andernfalls Standard-Server-Fallback-Pfade unter ~ prüfen
-            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             string toolIdentifier = toolKind ?? configuredPath;
             string[]? candidates = GetToolCandidates(toolIdentifier, home);
 
@@ -124,6 +139,15 @@ namespace OptimierungsAlgoCFD.Core
             }
 
             return null;
+        }
+
+        private static string MpichMpiexec(string home) => Path.Combine(home, "miniconda", "envs", "mpich", "bin", "mpiexec");
+
+        private static bool IsBareMpiName(string? toolKind, string expanded)
+        {
+            if (!string.Equals(toolKind, "mpi", StringComparison.OrdinalIgnoreCase)) return false;
+            return string.Equals(expanded, "mpirun", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(expanded, "mpiexec", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string[]? GetToolCandidates(string identifier, string home)

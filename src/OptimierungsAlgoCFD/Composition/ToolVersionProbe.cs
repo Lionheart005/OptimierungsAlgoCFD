@@ -45,12 +45,15 @@ namespace OptimierungsAlgoCFD.Composition
         /// <summary>Name → Version für alle Programme des Laufs.</summary>
         public static Dictionary<string, string> Probe(SimulationConfig config)
         {
+            // Dieselbe Auflösung wie beim Rechnen (Tilde, MPICH-Environment, Fallbacks), sonst würde etwas anderes geprüft als gestartet.
+            string mpi = ExecutableResolver.Resolve(config.MpiRunPath, "mpi", TextWriter.Null);
+
             return new Dictionary<string, string>
             {
                 ["SU2"] = Query(config.Su2Path, "", Su2Version, DefaultTimeout),
                 ["Gmsh"] = Query(config.GmshPath, "--version", AnyVersion, DefaultTimeout),
-                ["mpirun"] = Query(config.MpiRunPath, "--version", AnyVersion, DefaultTimeout),
-                ["MPI-Variante"] = MpiVariant(config.MpiRunPath),
+                ["mpirun"] = Query(mpi, "--version", AnyVersion, DefaultTimeout),
+                ["MPI-Variante"] = MpiVariant(mpi),
                 ["PicoGK"] = PicoGkVersion()
             };
         }

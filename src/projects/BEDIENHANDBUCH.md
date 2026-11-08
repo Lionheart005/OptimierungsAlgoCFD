@@ -194,7 +194,7 @@ bestraft. Höhere Fitness = besser.
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `MpiRunPath` | Pfad zu `mpirun` (startet SU2 auf mehreren Kernen). | `mpirun` | 🔴 |
+| `MpiRunPath` | Pfad zu `mpirun`/`mpiexec` (startet SU2 auf mehreren Kernen). **Das SU2-Programm braucht MPICH.** Bei dem Namen `mpirun` oder `mpiexec` nimmt das Programm automatisch das MPICH-Environment `~/miniconda/envs/mpich/bin/mpiexec`, falls es existiert (legt `setup_server.sh` an); sonst gilt der PATH. Ein ausdrücklich eingetragener Pfad gilt unverändert; zeigt er auf OpenMPI, warnt das Programm beim Start. | `mpirun` | 🔴 |
 | `Su2Path` | Pfad zu `SU2_CFD`. | `SU2_CFD` | 🔴 |
 | `GmshPath` | Pfad zu `gmsh`. | `gmsh` | 🔴 |
 
