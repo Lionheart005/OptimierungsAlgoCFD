@@ -32,7 +32,7 @@
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
   "OptimizationAlgorithm": "Rsm",
 
   // --- Startwert des Zufalls: 0 = bei jedem Lauf neu ziehen (siehe run-info.json) ---
@@ -50,6 +50,23 @@
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
+
+  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
+  // SurrogateTarget: "Auto" (Metrics, wenn die Fitness ihre Kennwerte nennt, sonst Fitness),
+  //   "Fitness" (Note als Ganzes) oder "Metrics" (ein Modell je Kennwert).
+  // InitialSamples: Startrechnungen (Versuchsplan). 0 = automatisch: das Groessere von
+  //   VariantsPerIteration und 2 x freie Parameter + 2.
+  // CandidatePool: so viele Kandidaten prueft das Modell je Vorschlag.
+  // TrustRegion: "Auto" (ab 10 freien Parametern), "On" oder "Off".
+  // MaxTrainingPoints: Deckel fuer die Lernmenge (Rechenzeit des Modells waechst mit n^3).
+  // Jeder Parameter braucht Grenzen in project.json (ParameterBounds); MaxDeviations wirkt hier nicht.
+  "Bayes": {
+    "SurrogateTarget": "Auto",
+    "InitialSamples": 0,
+    "CandidatePool": 5000,
+    "TrustRegion": "Auto",
+    "MaxTrainingPoints": 400
+  },
 
   // --- Validierung des Champions (Bouncer) ---
   "BouncerTolerance": 0.2,

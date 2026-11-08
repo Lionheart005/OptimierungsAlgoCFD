@@ -1,8 +1,8 @@
 # Entwicklungs-Roadmap (Post-Merge `MajorPhysikFixes`)
 
 > **Status:** Aktiv — Stand: 08.11.2026  
-> **Basis:** Konsolidierte Anforderungen aus `.plans/Anmerkungen.txt` (Z. 30–61) sowie den Detailplänen `.plans/ki_optimierung.md`, `.plans/fem_ausblick.md` und `.plans/ms1_auswertung_und_logdesign.md`.  
-> **Ausgangslage:** Erfolgreicher Merge von `MajorPhysikFixes` in `main`. Alle 560 Unit-Tests grün, **Meilenstein 1 (Python-Auswerteskripte, Log-Redesign & 10×10 `Naca2D`-Referenzlauf) erfolgreich abgeschlossen**.
+> **Basis:** Konsolidierte Anforderungen aus `.plans/Anmerkungen.txt` (Z. 30–61) sowie den Detailplänen `.plans/ki_optimierung.md`, `.plans/vergleich_optimierer.md`, `.plans/llm_geometrie_bewertung.md` und `.plans/fem_ausblick.md`.  
+> **Ausgangslage:** Meilenstein 1 (Python-Auswerteskripte, Log-Redesign & 10×10 `Naca2D`-Referenzlauf) ist abgeschlossen und archiviert (`.plans/.old/ms1_auswertung_und_logdesign.md`). **Meilenstein 2 (KI-Integration) ist auf Branch `KI_Integration` umgesetzt:** 637 Unit-Tests grün, Server-Vergleichslauf ausgewertet (`vergleich_optimierer.md`).
 
 ---
 
@@ -10,22 +10,15 @@
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 1: 2D-Referenzlauf & Python-Auswerte-Vorlagen (scripts/)        │
-│ ├── AP 1.1: Generische Python-Auswerteskripte (History, Opt, Calibration)   │
-│ └── AP 1.2: Kompakter 5×5-Testlauf Naca2D mit Auto-Kalibrierung & Detailbox │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 2: KI- & Machine-Learning-Integration (ki_optimierung.md)       │
-│ ├── AP 2.1: Datenhygiene & Bouncer-Markierung (TODO-53)                     │
-│ ├── AP 2.2: Gauß-Prozess-Surrogatkern & Cholesky-Numerik (TODO-54)          │
-│ ├── AP 2.3: Bayes-Optimierer mit Expected Improvement (TODO-55)             │
-│ ├── AP 2.4: Mehrziel-Kennwert-Modellierung "Metrics" (TODO-56)              │
-│ ├── AP 2.5: Vertrauensbereiche & Lernmengen-Deckel TuRBO (TODO-57)          │
-│ ├── AP 2.6: Transparenz, Treffsicherheit & Verlauf-CSV (TODO-58)            │
-│ ├── AP 2.7: 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes, TODO-60)       │
-│ └── AP 2.8: Architektur-Bewertung für LLM-Geometriegenerierung              │
+│ Meilenstein 2: KI- & Machine-Learning-Integration  ✔ UMGESETZT (08.11.2026) │
+│ ├── AP 2.1: Datenhygiene & Bouncer-Markierung (TODO-53)                  [x] │
+│ ├── AP 2.2: Gauß-Prozess-Surrogatkern & Cholesky-Numerik (TODO-54)       [x] │
+│ ├── AP 2.3: Bayes-Optimierer mit Expected Improvement (TODO-55)          [x] │
+│ ├── AP 2.4: Mehrziel-Kennwert-Modellierung "Metrics" (TODO-56)           [x] │
+│ ├── AP 2.5: Vertrauensbereiche & Lernmengen-Deckel TuRBO (TODO-57)       [x] │
+│ ├── AP 2.6: Transparenz, Treffsicherheit & Verlauf-CSV (TODO-58)         [x] │
+│ ├── AP 2.7: 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes, TODO-60)    [x] │
+│ └── AP 2.8: Architektur-Bewertung für LLM-Geometriegenerierung           [x] │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
@@ -49,58 +42,15 @@
 
 ---
 
-## Meilenstein 1: 2D-Referenzlauf & Python-Auswerte-Vorlagen (`scripts/`)
+## Meilenstein 2: KI- & Machine-Learning-Integration (`ki_optimierung.md`) — ✔ umgesetzt
 
-### Ziel
-Schaffung eines standardisierten, universellen Post-Processing-Toolings in Python sowie Durchführung eines sauberen 2D-Referenzlaufs (`Naca2D`), um das neue Vernetzungs- und Kalibrierungsfundament vollständig zu verifizieren und für Dokumentationen aufzubereiten.
-
-### Arbeitspakete
-
-#### AP 1.1: Universelle Python-Auswerteskripte in `scripts/`
-Die Skripte sollen projektunabhängig funktionieren, d. h. beliebige Spalten aus `Simulation_Results.csv`, `calibration.csv` und `history.csv` dynamisch erkennen, ohne auf feste Parameternamen (wie früher in `Plot_RSM.py`) angewiesen zu sein.
-
-1. **`scripts/plot_history.py` (Residuen- & Konvergenzverlauf einzelner SU2-Rechnungen):**
-   - *Status:* Grundgerüst vorhanden (Modes A, B, C).
-   - *Erweiterungen:*
-     - Robuste automatische Erkennung der Residuen-Spalten (z. B. `rms[Rho]`, `rms[P]`, `rms[Nu]`, `rms[Tke]`).
-     - Zweite y-Achse für Kraftbeiwerte ($C_d$, $C_l$, $C_{my}$) über Iterationen.
-     - Visualisierung des Cauchy-Konvergenzfensters (`CONV_CAUCHY_ELEMS` und $\varepsilon$).
-     - Export als Vektor-Grafik (`.svg` und `.pdf`) für Publikationen sowie hochauflösendes `.png`.
-
-2. **`scripts/plot_optimization.py` (NEU: Optimierungs- und Evolutionsverlauf):**
-   - *Eingabe:* `Simulation_Results.csv` eines beliebigen Projekts.
-   - *Funktionen:*
-     - **Fitness-Trend:** Streudiagramm aller Varianten je Generation mit Hervorhebung des jeweiligen Generationen-Champions und der "Best-so-Far"-Kurve.
-     - **Parameter-Evolution:** Boxplots oder Violin-Plots für jeden freien Entwurfsparameter über die Generationen hinweg, um Konvergenz oder Drift der Parameter zu visualisieren.
-     - **Beiwerte-Entwicklung:** $C_d$- und $C_l$-Verlauf über alle Varianten hinweg.
-     - **Pareto-Front:** 2D-Scatter ($C_d$ vs. $C_l$ oder Drag vs. Volume) mit Farbkodierung nach Generation.
-     - **Champion-Vergleich:** Balkendiagramm der relativen Parameter-Änderungen des Gesamtsiegers gegenüber dem Basisentwurf (Gen 1, Var 1).
-
-3. **`scripts/plot_calibration.py` (NEU: Gitterkonvergenz & GCI-Plot):**
-   - *Eingabe:* `calibration.csv` (erzeugt von `CfdMeshCalibrator`).
-   - *Funktionen:*
-     - Plot der aerodynamischen Kennwerte ($C_d$, $C_l$) über der Element-/Knotenanzahl $N$ bzw. dem Verfeinerungsfaktor $h$.
-     - Richardson-Extrapolation: Darstellung des asymptotischen Grenzwerts $f_{h \to 0}$ mit Fehlerbalken nach Roache (Grid Convergence Index, GCI).
-     - Plot des mittleren und maximalen $y^+$-Werts über den Verfeinerungsstufen.
-     - Kennzeichnung des automatisch gewählten Betriebsgitters (`Selected = true`).
-
-#### AP 1.2: Kompakter 5×5-Testlauf in 2D (`Naca2D`)
-- **Konfiguration:**
-  - 5 Generationen × 5 Varianten (insgesamt 25 Varianten + Kalibrierung).
-  - Algorithmus: `Evolution` (oder `Rsm`).
-  - Aktive automatische Gitterkalibrierung (3–5 Stufen, $y^+ \le 1$, Quad-Grenzschicht).
-  - Nachlauf-Detailbox aktiv (`WakeBox = true`).
-  - Parametrisierung: Dickenrücklage, Wölbungsrücklage, Anstellwinkel (`AngleOfAttackDeg`).
-- **Verifikation:**
-  - Prüfen der Profilkontur-Generierung in `Planar2D` (Sicherstellung, dass Ober- und Unterseite exakt geschlossen und knickfrei sind).
-  - Validierung des Knickpunkt-Schutzes an der scharfen Hinterkante (B14).
-- **Kurzbericht:**
-  - Generierung aller Plots mit den neuen Python-Skripten.
-  - Dokumentation von Rechenzeiten, Gitterkonvergenz und erzielter $C_l/C_d$-Gleitzahl-Verbesserung.
-
----
-
-## Meilenstein 2: KI- & Machine-Learning-Integration (`ki_optimierung.md`)
+> **Ergebnis (08.11.2026):** `"OptimizationAlgorithm": "Bayes"` ist implementiert (C#, ohne neue Abhängigkeit) und getestet
+> (637/637 Tests grün, 0 Warnungen). Vergleichslauf auf dem Server (`Naca2D`, 5×5, gleicher Seed): siehe
+> **[`vergleich_optimierer.md`](vergleich_optimierer.md)** (Ergebnis: Bayes klar besser als Evolution, bei 25 Rechnungen und 4 Parametern aber nicht besser als Rsm;
+> aussagekräftiger wird ein 10×10-Vergleich oder `MantaAuv`). AP 2.8 steht in
+> **[`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md)**. Offen bleibt nur die Entscheidung, ob `Bayes` Standard wird
+> (`OptimizationAlgorithmFactory.DefaultAlgorithm`); sie hängt an der Auswertung im Vergleichsdokument.
+> Die folgenden Abschnitte beschreiben den Plan und bleiben als Referenz stehen.
 
 ### Ziel
 Erhöhung der Optimierungseffizienz durch Ersatzmodellierung (Surrogate Modeling) und Bayes-Optimierung (Active Learning). Anstelle blind-heuristischer Suchschritte leitet ein Gauß-Prozess (GP) mit Expected Improvement (EI) die Auswahl der nächsten CFD-Varianten.
@@ -157,7 +107,7 @@ TODO-56 (Mehrziel/Metrics)                                                      
      - Lauf 3: `Bayes` (Bayesian Optimization)
    - Quantitativer Vergleich von Konvergenzgeschwindigkeit, bester Fitness und Berechnungsaufwand.
 
-#### AP 2.8: Architektur-Bewertung für LLM-gestützte Geometriegenerierung
+#### AP 2.8: Architektur-Bewertung für LLM-gestützte Geometriegenerierung — ✔ siehe [`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md)
 *Hintergrund (Anmerkungen.txt Z. 36):* Frage nach der Machbarkeit von Physics-Informed LLMs zur Code-Synthese auf `Planar2D` / `PicoGK` (Leap71/Nyron-Workflow).
 - **Architektur-Konzept:**
   - Trennung zwischen algorithmischer Formfindung (SDF-Code) und deterministischer Validierung.
@@ -230,11 +180,10 @@ Erweiterung des Frameworks zu einer echten multiphysikalischen Optimierungsplatt
 
 ## Priorisierte Umsetzungsreihenfolge
 
-| Schritt | Paket | Beschreibung | Primäres Ziel / Nutzen |
-| :--- | :--- | :--- | :--- |
-| **1** | **AP 1.1** | Python-Auswerteskripte (`scripts/`) fertigstellen | Robuste Auswertungsbasis für alle künftigen Läufe |
-| **2** | **AP 1.2** | 2D-Referenzlauf `Naca2D` (5×5) auf Server BIC_12 | Validierung der neuen Physik-/Netz-Features in 2D |
-| **3** | **AP 2.1–2.7** | KI-Bayes-Optimierer (Block G–I, TODO-53 bis 60) | Dramatische Beschleunigung der Konvergenz |
-| **4** | **AP 2.8** | 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes) | Quantitativer Beweis der KI-Überlegenheit |
-| **5** | **AP 3.1–3.4** | Große LaTeX-Gesamtdokumentation & Showcase | Hochwertige wissenschaftliche Präsentation der Ergebnisse |
-| **6** | **AP 4.1–4.4** | CalculiX-FEM-Integration | Multiphysik (Fluid-Struktur-Kopplung) |
+| Schritt | Paket | Beschreibung | Primäres Ziel / Nutzen | Stand |
+| :--- | :--- | :--- | :--- | :--- |
+| ~~1~~ | ~~AP 1.1–1.2~~ | ~~Python-Auswerteskripte und 2D-Referenzlauf `Naca2D`~~ | ~~Auswertungsbasis und Validierung in 2D~~ | ✔ Meilenstein 1, archiviert in `.old/` |
+| ~~2~~ | ~~AP 2.1–2.7~~ | ~~KI-Bayes-Optimierer und 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes)~~ | ~~Beschleunigung der Konvergenz, quantitativer Vergleich~~ | ✔ umgesetzt, Auswertung in `vergleich_optimierer.md` |
+| ~~3~~ | ~~AP 2.8~~ | ~~Bewertung LLM-Geometriegenerierung~~ | ~~Entscheidungsgrundlage~~ | ✔ `llm_geometrie_bewertung.md` |
+| **4** | **AP 3.1–3.4** | Große LaTeX-Gesamtdokumentation & Showcase | Hochwertige wissenschaftliche Präsentation der Ergebnisse | offen |
+| **5** | **AP 4.1–4.4** | CalculiX-FEM-Integration | Multiphysik (Fluid-Struktur-Kopplung) | offen |

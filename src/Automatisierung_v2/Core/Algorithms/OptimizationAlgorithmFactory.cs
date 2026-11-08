@@ -14,7 +14,7 @@ namespace MyPicoGkProject.Core
         public const string DefaultAlgorithm = "Rsm";
 
         /// <summary>Gültige Werte, so wie sie in der Konfiguration stehen dürfen.</summary>
-        public const string SupportedAlgorithms = "Rsm, Evolution";
+        public const string SupportedAlgorithms = "Rsm, Evolution, Bayes";
 
         /// <summary>
         /// Baut den Algorithmus zum angegebenen Namen. Groß-/Kleinschreibung und
@@ -36,6 +36,9 @@ namespace MyPicoGkProject.Core
 
                 case "evolution":
                     return new EvolutionaryAlgorithm(fitnessCalculator, random);
+
+                case "bayes":
+                    return new BayesOptimizationAlgorithm(fitnessCalculator, random: random);
 
                 case "":
                     return new RsmOptimizationAlgorithm(fitnessCalculator, random);

@@ -527,6 +527,9 @@ namespace AutomatisierungCleanVersion.Tests
         [InlineData("Evolution", 7, false)]
         [InlineData("Evolution", 15, true)]
         [InlineData("Rsm", 0, false)]
+        [InlineData("Bayes", 6, false)]
+        [InlineData("Bayes", 14, true)]
+        [InlineData("Bayes", 0, false)]
         public void A_Resumed_Run_Computes_Only_The_Missing_Calls_And_Ends_Byte_Identical(string algorithm, int k, bool halfLine)
         {
             var (fullDirectory, n, lines) = FullRun(algorithm);

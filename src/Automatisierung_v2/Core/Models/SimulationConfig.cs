@@ -80,7 +80,7 @@ namespace MyPicoGkProject.Core
 
         // 3. Wahl des Optimierungsverfahrens
         /// <summary>
-        /// Welches Optimierungsverfahren gefahren wird: <c>"Rsm"</c> oder <c>"Evolution"</c>.
+        /// Welches Optimierungsverfahren gefahren wird: <c>"Rsm"</c>, <c>"Evolution"</c> oder <c>"Bayes"</c>.
         /// Aufgelöst über <see cref="OptimizationAlgorithmFactory"/>; ein unbekannter Name
         /// führt zu einer Warnung und dem Standardverfahren.
         /// </summary>
@@ -106,6 +106,10 @@ namespace MyPicoGkProject.Core
         public float RsmIdwPower { get; set; } = 3.0f;
         public float RsmExploitationRatio { get; set; } = 0.7f;
         public float RsmExploitationSigma { get; set; } = 0.1f;
+
+        // 4a. Algorithmus Bayes (TODO-55). Alles optional, die Vorgaben passen meist.
+        /// <summary>Einstellungen des Bayes-Optimierers; wirkt nur bei <c>"OptimizationAlgorithm": "Bayes"</c>.</summary>
+        public BayesConfig Bayes { get; set; } = new();
 
         // 5. Validierung des Champions (Bouncer)
         /// <summary>Erlaubte relative Abweichung der Fitness bei der Re-Simulation (0.20 = 20%).</summary>
@@ -136,6 +140,27 @@ namespace MyPicoGkProject.Core
             clone.IterativeToleranceFraction = ControlRuns.IterativeToleranceFraction;
             return clone;
         }
+    }
+
+    /// <summary>
+    /// Einstellungen des Bayes-Optimierers (TODO-55 bis TODO-57). Alles optional.
+    /// </summary>
+    public class BayesConfig
+    {
+        /// <summary>"Auto" (Standard), "Fitness" oder "Metrics". Auto = Metrics, wenn die Fitness des Projekts <c>RequiredMetrics</c> nennt.</summary>
+        public string SurrogateTarget { get; set; } = "Auto";
+
+        /// <summary>Anzahl der Startrechnungen (Versuchsplan). 0 = automatisch: max(VariantsPerIteration, 2 × freie Parameter + 2).</summary>
+        public int InitialSamples { get; set; } = 0;
+
+        /// <summary>So viele Kandidaten prüft das Modell je Vorschlag auf seiner Landkarte.</summary>
+        public int CandidatePool { get; set; } = 5000;
+
+        /// <summary>"Auto" (ab 10 freien Parametern), "On" oder "Off": Suche in einem Vertrauensbereich um den besten Punkt.</summary>
+        public string TrustRegion { get; set; } = "Auto";
+
+        /// <summary>Deckel für die Lernmenge. Hält die Rechenzeit des Modells klein (wächst mit n³).</summary>
+        public int MaxTrainingPoints { get; set; } = 400;
     }
 
     /// <summary>

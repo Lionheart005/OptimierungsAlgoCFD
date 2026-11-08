@@ -135,7 +135,7 @@ namespace MyPicoGkProject.Core
             string header = "Iteration;Variant;" +
                             string.Join(";", activeKeys) + ";" +
                             string.Join(";", passiveKeys) + ";" +
-                            "Fitness;StlPath;MeshPath;SimulationFailed";
+                            "Fitness;StlPath;MeshPath;SimulationFailed;Disqualified";
             csvBuilder.AppendLine(header);
 
             // Daten
@@ -148,7 +148,7 @@ namespace MyPicoGkProject.Core
                               $"{string.Join(";", activeVals)};" +
                               $"{string.Join(";", passiveVals)};" +
                               $"{record.Fitness:F5};{record.StlPath};{record.MeshPath};" +
-                              $"{(record.SimulationFailed ? 1 : 0)}";
+                              $"{(record.SimulationFailed ? 1 : 0)};{(record.Disqualified ? 1 : 0)}";
                 csvBuilder.AppendLine(line);     
             }
 

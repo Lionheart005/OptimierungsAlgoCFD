@@ -323,6 +323,10 @@ namespace MyPicoGkProject
             IOptimizationAlgorithm optimizer = OptimizationAlgorithmFactory.Create(
                 context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
 
+            // Voraussetzungen des Verfahrens (z. B. Parametergrenzen beim Bayes-Optimierer) vor der
+            // ersten teuren Rechnung prüfen, auch vor der Netzkalibrierung.
+            (optimizer as IOptimizationPreflight)?.Preflight(simulationContext);
+
             // Die Pflicht-Metriken gehen als reine Namensliste hinein, nicht als Rechner:
             // der Controller bewertet nichts selbst (TODO-13).
             var controller = new WorkflowController(

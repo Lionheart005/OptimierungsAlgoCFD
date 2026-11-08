@@ -72,7 +72,7 @@
   "MpiCores": 16,
   "GmshCores": 16,
 
-  // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
+  // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
   // Ein unbekannter Name bricht nicht ab, sondern warnt und faellt auf "Rsm" zurueck.
   "OptimizationAlgorithm": "Rsm",
 
@@ -88,6 +88,18 @@
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
+
+  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
+  // Zum Ausprobieren die Zeilen unten einkommentieren. Jeder Parameter braucht dann Grenzen in
+  // project.json (ParameterBounds); MaxDeviations wirkt bei "Bayes" nicht. Erklaerung der Schluessel:
+  // src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // "Bayes": {
+  //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
+  //   "InitialSamples": 0,         // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
+  //   "CandidatePool": 5000,
+  //   "TrustRegion": "Auto",       // "Auto" (ab 10 freien Parametern) | "On" | "Off"
+  //   "MaxTrainingPoints": 400
+  // },
 
   // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
   // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 8000 Iterationen begrenzt

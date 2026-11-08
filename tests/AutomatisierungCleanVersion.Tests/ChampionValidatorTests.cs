@@ -74,6 +74,23 @@ namespace AutomatisierungCleanVersion.Tests
 
             Assert.Equal(2, winner.Variant);
             Assert.Equal(0.0001f, best.Fitness, 6);   // disqualifiziert
+            Assert.True(best.Disqualified);           // und gekennzeichnet (TODO-53)
+            Assert.False(second.Disqualified);
+        }
+
+        /// <summary>TODO-53: auch der Zweig "Re-Simulation wirft" kennzeichnet den Kandidaten.</summary>
+        [Fact]
+        public void A_Failing_Resimulation_Also_Sets_The_Disqualified_Flag()
+        {
+            var candidate = Candidate(1, 10f);
+            var validator = new ChampionValidator(FitnessReturning(10f), new Random(1));
+
+            validator.ValidateChampion(
+                new List<ModelRecord> { candidate }, Config(),
+                _ => throw new InvalidOperationException("Netz gescheitert"));
+
+            Assert.True(candidate.Disqualified);
+            Assert.Equal(0.0001f, candidate.Fitness, 6);
         }
 
         /// <summary>

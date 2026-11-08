@@ -963,6 +963,7 @@ cmd_pack() {
             "run-info.json"
             "Quellstand"
             "Analyseergebnisse/Verlaeufe"
+            "Analyseergebnisse/Bayes_Verlauf.csv"
             "Kalibrierung"
             "Verifikation.csv"
         )

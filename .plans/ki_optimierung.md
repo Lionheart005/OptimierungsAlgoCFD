@@ -5,6 +5,10 @@
 > 05.11.2026. Die Nummerierung geht hier mit **TODO-50** weiter, Entscheidungen mit **E13**,
 > Festlegungen mit **F9**.
 >
+> **Status (08.11.2026): Der KI-Teil (TODO-53 bis TODO-60) ist umgesetzt** (Branch `KI_Integration`, 638 Tests grün, Server-Vergleichslauf in
+> `.plans/vergleich_optimierer.md`; Bewertung der LLM-Geometriegenerierung in `.plans/llm_geometrie_bewertung.md`). Abweichungen vom Plan stehen am Ende
+> dieses Dokuments im Abschnitt „Umsetzungsstand KI-Teil". Der Text darunter ist der Stand vom 06.11.2026.
+>
 > **Status (06.11.2026):** Block V (TODO-50 bis TODO-52) ist im Code umgesetzt und lokal geprüft,
 > der Server-Praxistest von TODO-52 ist am 06.11.2026 bestanden. **Vor dem KI-Teil kommt Block W
 > (`.plans/physik_feinschliff.md`, TODO-W1 bis W10).** Der KI-Teil ab TODO-53 ist noch nicht begonnen.
@@ -30,14 +34,14 @@
 | V | TODO-50 | Zufalls-Seed, Fahrtenschreiber `run-info.json`, Kopie des Projekt-Quellstands | lokal | [x] |
 | V | TODO-51 | Lauf-Journal und Wiedergabe: der Kern der Wiederaufnahme | lokal | [x] |
 | V | TODO-52 | Befehl `resume` (Programm, `sim.ps1`, `sim-runner.sh`), Anzeige in `status` | lokal + kurzer Servertest | [x] Praxistest am 06.11.2026 bestanden (`servertest_2026-11-06.md`) |
-| G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [ ] |
-| G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [ ] |
-| H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [ ] |
-| H | TODO-56 | Modus „Metrics": ein Ersatzmodell je Kennwert (**Idee 2**) | lokal | [ ] |
-| H | TODO-57 | Viele Parameter, lange Läufe: Vertrauensbereich und Deckel für die Lernmenge | lokal | [ ] |
-| H | TODO-58 | Transparenz: Vorhersage gegen Ergebnis, Modellgüte, Parameter-Wichtigkeit | lokal | [ ] |
-| I | TODO-59 | Bedienhandbuch, READMEs, Kommentarköpfe der JSON-Dateien | lokal | [ ] |
-| I | TODO-60 | Vergleichslauf Rsm, Evolution und Bayes auf dem Server | **Server (du)** | [ ] |
+| G | TODO-53 | Markierung „disqualifiziert", Parameterraum, Regel für Trainingsdaten | lokal | [x] |
+| G | TODO-54 | Mathematischer Kern: Gauß-Prozess, Cholesky, Latin Hypercube | lokal | [x] |
+| H | TODO-55 | `BayesOptimizationAlgorithm`, Modus „Fitness" (**Idee 1**) | lokal | [x] |
+| H | TODO-56 | Modus „Metrics": ein Ersatzmodell je Kennwert (**Idee 2**) | lokal | [x] |
+| H | TODO-57 | Viele Parameter, lange Läufe: Vertrauensbereich und Deckel für die Lernmenge | lokal | [x] |
+| H | TODO-58 | Transparenz: Vorhersage gegen Ergebnis, Modellgüte, Parameter-Wichtigkeit | lokal | [x] |
+| I | TODO-59 | Bedienhandbuch, READMEs, Kommentarköpfe der JSON-Dateien | lokal | [x] |
+| I | TODO-60 | Vergleichslauf Rsm, Evolution und Bayes auf dem Server | **Server (du)** | [x] 08.11.2026, Auswertung in `vergleich_optimierer.md` |
 
 **Verifikationsstand:** vor Beginn (06.11.2026) 443/443 Tests grün, 0 Warnungen. Nach Block V
 **481/481 grün, 0 Warnungen** (neu: `tests/…/ReproducibilityAndResumeTests.cs`). `sim.ps1` ohne
@@ -966,3 +970,19 @@ Zurzeit keine, die die Umsetzung blockiert. Nach TODO-60 ist zu entscheiden:
   Projekte. Der `WorkflowController` bekommt nur das optionale Journal (TODO-51). Ohne Journal
   verhält er sich wie heute. Am `ChampionValidator` kommen nur der Seed und die Markierung
   `Disqualified` hinzu.
+
+---
+
+## Umsetzungsstand KI-Teil (08.11.2026)
+
+Umgesetzt wie beschrieben (TODO-53 bis TODO-59), mit diesen bewussten Abweichungen und Erkenntnissen:
+
+* **Neue Dateien:** `Core/Surrogates/` (`ISurrogateModel`, `GaussianProcess`, `DenseCholesky`, `LatinHypercube`, `NormalDistribution`, `ParameterSpace`, `SurrogateTrainingSet`, `TrustRegionState`), `Core/Algorithms/BayesOptimizationAlgorithm.cs`, `Core/Interfaces/IOptimizationPreflight.cs`. Tests: `GaussianProcessTests`, `SurrogateDataTests`, `BayesOptimizationAlgorithmTests` (inkl. Bayes in der Kernprüfung der Wiederaufnahme: fortgesetzter Lauf bytegleich).
+* **`IOptimizationPreflight`** (neu, nicht im Plan): Der Optimierer prüft seine Voraussetzungen (Parametergrenzen, Modus) in `Program` **vor** der Netzkalibrierung, nicht erst beim ersten Vorschlag.
+* **Vorlagen:** `_Vorlage` und `_Vorlage2D` enthalten den `Bayes`-Block **aktiv mit den Code-Standards** (nicht auskommentiert), weil `TemplateProjectTests` verlangt, dass die Vorlage jeden Schlüssel zeigt. In MantaAuv, Naca2D und TestprojektNACA steht er auskommentiert.
+* **Batch-Abstoßung (neu):** Die Vorschläge einer Runde stoßen sich gegenseitig ab (Radius `min(0,025·√d, 0,05)`). Grund: Im ersten Serverlauf lagen vier Vorschläge einer Runde fast aufeinander; Kriging Believer allein verhinderte das nicht.
+* **Neustart des Vertrauensbereichs im Modus „Metrics":** Das neue Zentrum wählt die erwartete Verbesserung (8 Zufallssätze), im Modus „Fitness" `μ + 2σ` wie geplant.
+* **Hyperparameter-Suche:** Schrittzahl und Startzahl hängen von n ab (n ≤ 100: 200 Schritte, 4 Starts; n > 200: 40 Schritte, nur Warmstart), die Starts laufen parallel (deterministisch). Der Standard-Start der Längenskala ist `clamp(0,3·√d, 0,5, 5)` statt fest 0,5.
+* **`Bayes_Verlauf.csv`** enthält die letzte Runde eines Laufs nicht (nach der letzten Iteration wird nichts mehr vorbereitet). `fetch` holt sie jetzt mit (`std_items` in `sim-runner.sh`).
+* **Messungen auf synthetischen Problemen** (Branin, Hartmann-6, 20D, Manta-ähnlich) stehen als Kommentare an den Tests. Kurz: Bayes liegt auf Branin und im 20D-Fall klar vorn, auf Hartmann-6 bei 36 Rechnungen gleichauf mit Rsm (stark zufallsabhängig). Im Manta-ähnlichen Fall mit Sprungstelle ist `Metrics` rund 35 % besser als `Fitness` und Rsm; `Fitness` ist dort nicht besser als Rsm.
+* **Server (TODO-60):** siehe `vergleich_optimierer.md`. Ob `Bayes` Standard wird, ist weiter offen und deine Entscheidung.

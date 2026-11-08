@@ -87,11 +87,13 @@ namespace MyPicoGkProject.Core
 
                     SimulationLog.Detail("[ABGELEHNT] Modell ist instabil. Disqualifiziert.");
                     candidate.Fitness = DisqualifiedFitness;
+                    candidate.Disqualified = true;
                 }
                 catch (Exception)
                 {
                     SimulationLog.Detail("[FEHLER] Validierung fehlgeschlagen. Disqualifiziert.");
                     candidate.Fitness = DisqualifiedFitness;
+                    candidate.Disqualified = true;
                 }
             }
 

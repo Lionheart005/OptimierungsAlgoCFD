@@ -23,6 +23,14 @@ namespace MyPicoGkProject.Core
         /// </summary>
         public bool SimulationFailed { get; set; }
 
+        /// <summary>
+        /// Vom Türsteher (<see cref="ChampionValidator"/>) als instabil verworfen (TODO-53).
+        /// Die Fitness bleibt dabei auf dem niedrigen Strafwert, damit Rsm und Evolution wie
+        /// bisher rechnen. Das Kennzeichen ist rein informativ; nur der Bayes-Optimierer
+        /// nutzt es, um solche Rechnungen nicht als Lerndaten zu verwenden.
+        /// </summary>
+        public bool Disqualified { get; set; }
+
         public float Fitness { get; set; }
         public string StlPath { get; set; } = "";
         public string MeshPath { get; set; } = "";

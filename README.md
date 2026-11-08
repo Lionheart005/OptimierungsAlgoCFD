@@ -16,7 +16,7 @@ Nun schickt man sein Bauteil durch die Optimierungsschleife und am Ende gibt ein
 --> 'Unser Bauteil ist am besten 30 cm lang und 5 cm hoch, um das beste Verhältnis aus Volumen und Widerstand zu bekommen.'
 Und wir bekommen gleich das druckbare .stl-Modell dazu!
 
-Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
+Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Zur Wahl stehen ein Antwortflächen-Verfahren (`Rsm`, Standard), ein evolutionäres Verfahren (`Evolution`) und eine **Bayes-Optimierung** (`Bayes`): Sie lernt aus den bisherigen Rechnungen ein Ersatzmodell (Gauß-Prozess, rein in C#, ohne Vortraining und ohne GPU) samt Unsicherheit und rechnet dort weiter, wo die Chance am größten ist, den bisher Besten zu schlagen. Das spart bei teuren Rechnungen Varianten; jede Variante wird trotzdem echt gerechnet. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
 
 Für die technischen Details sind die folgenden Handbücher und .md-Dateien da. Dort steht alles, was man an Einstellungen wissen muss. (Und halleluja, sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
 

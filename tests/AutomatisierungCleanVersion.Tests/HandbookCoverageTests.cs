@@ -41,6 +41,7 @@ namespace AutomatisierungCleanVersion.Tests
         public static IEnumerable<object[]> SettingTypes() => new[]
         {
             new object[] { typeof(SimulationConfig), "simulation.json" },
+            new object[] { typeof(BayesConfig), "simulation.json (Bayes)" },
             new object[] { typeof(Su2SolverOptions), "solvers/su2.json" },
             new object[] { typeof(GmshMesherOptions), "solvers/gmsh.json" },
             new object[] { typeof(Gmsh2DMesherOptions), "solvers/gmsh.json (2D)" },

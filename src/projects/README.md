@@ -152,6 +152,16 @@ ihre Namen in `RequiredTargets` ein: dann bricht ein fehlender Wert beim Verdrah
 ab und nicht nach Stunden Rechenzeit. Für Messwerte gilt dasselbe über
 `RequiredMetrics` — die prüft der Controller nach der ersten gerechneten Variante.
 
+> **Für den Bayes-Optimierer (`"OptimizationAlgorithm": "Bayes"`):** Nennt `RequiredMetrics` die
+> Kennwerte der Formel, kann er im Modus `"Metrics"` für jeden Kennwert ein eigenes Ersatzmodell
+> lernen und die Fitness über **deine** Formel verrechnen. Strafen und Grenzen (Sprünge) wirken dann
+> automatisch richtig. Das funktioniert nur, wenn die Formel **ausschließlich** mit den Parametern
+> und den Kennwerten aus `RequiredMetrics` rechnet. Liest sie weitere Werte aus `PassiveParameters`,
+> merkt der Optimierer das in einer Gegenprobe und fällt automatisch und ohne Schaden auf den Modus
+> `"Fitness"` zurück. Eine Formel darf zusätzliche Schlüssel **schreiben** (wie `GlideRatio` in
+> `Naca2D`); sie dürfen nur nicht in die Fitness eingehen. Für den Bayes-Optimierer braucht außerdem
+> jeder Parameter Grenzen in `ParameterBounds`.
+
 > **Vorsicht vor „Reward Hacking".** Optimierungsalgorithmen sind gnadenlos. Ohne
 > eine untere Volumengrenze schrumpft der Algorithmus das Bauteil auf Staubkorngröße,
 > weil das den geringsten Widerstand hat. Harte Grenzen sind kein Beiwerk.
