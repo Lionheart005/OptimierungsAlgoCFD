@@ -711,8 +711,50 @@ cmd_status() {
     if [ -f "$LOG_FILE" ]; then
         say ""
         say "--- letzte Logzeilen ---"
-        tail -n "${1:-12}" "$LOG_FILE"
+        tail -n "${1:-12}" "$LOG_FILE" | colorize_log
     fi
+}
+
+colorize_log() {
+    awk '
+    BEGIN {
+        ESC = sprintf("%c", 27)
+        RESET = ESC "[0m"
+        CYAN = ESC "[1;36m"
+        BLUE = ESC "[1;34m"
+        LIGHT_CYAN = ESC "[36m"
+        GREEN = ESC "[1;32m"
+        RED = ESC "[1;31m"
+        YELLOW = ESC "[33m"
+        GRAY = ESC "[90m"
+    }
+    {
+        line = $0
+        color = ""
+
+        if (line ~ /(\[FEHLER\]|\[KRITISCHER FEHLER\]|\[ABGELEHNT\]|✖)/) {
+            color = RED
+        } else if (line ~ /\[WARNUNG\]/) {
+            color = YELLOW
+        } else if (line ~ /(★|🏆|ABSOLUTER CHAMPION|\[ERGEBNIS\]|Champion ist|\[OK\] Stabil)/) {
+            color = GREEN
+        } else if (line ~ /(╔|║|╚|===|ITERATION|FINALE GEWINNER-VERIFIKATION|VERIFIKATIONSERGEBNIS|OPTIMIERUNG ERFOLGREICH)/) {
+            color = CYAN
+        } else if (line ~ /(┌─ \[Iteration|--- \[Iteration|--- Variante)/) {
+            color = BLUE
+        } else if (line ~ /(▸ Gene:|-> Gene:)/) {
+            color = LIGHT_CYAN
+        } else if (line ~ /(· Diagnose:|· Geometrie:|Anströmung|Strömungsanalyse läuft|\[CONFIG\]|y\+|Wandschicht|Flächennetz generiert|Oberflächengitter)/) {
+            color = GRAY
+        }
+
+        if (color != "") {
+            print color line RESET
+        } else {
+            print line
+        }
+        fflush()
+    }'
 }
 
 cmd_log() {
@@ -725,9 +767,9 @@ cmd_log() {
         # -F statt -f: cmd_start verschiebt das alte Log nach logs/ und legt ein neues
         # an. -f bliebe an der verschobenen Datei haengen und zeigte nie wieder etwas;
         # -F folgt dem Dateinamen und springt auf das neue Log um.
-        tail -n "$lines" -F "$LOG_FILE"
+        tail -n "$lines" -F "$LOG_FILE" | colorize_log
     else
-        tail -n "$lines" "$LOG_FILE"
+        tail -n "$lines" "$LOG_FILE" | colorize_log
     fi
 }
 

@@ -89,9 +89,7 @@ namespace MyPicoGkProject.Core
             // =========================================================
             for (int iter = 1; iter <= _context.Config.MaxIterations; iter++)
             {
-                Console.WriteLine("\n==================================================");
-                Console.WriteLine($" ITERATION {iter} VON {_context.Config.MaxIterations}");
-                Console.WriteLine("==================================================");
+                SimulationLog.PrintIterationBanner(iter, _context.Config.MaxIterations);
                 
                 List<ModelRecord> currentIterationRecords = new List<ModelRecord>();
 
@@ -105,11 +103,18 @@ namespace MyPicoGkProject.Core
                     // 1. Parameter vom Algorithmus generieren lassen
                     var activeParams = _optimizer.GenerateParameters(_context, iter, var, _context.Config.VariantsPerIteration);
 
-                    PrintVariantHeader(iter, var, activeParams);
+                    SimulationLog.PrintVariantHeader(iter, _context.Config.MaxIterations, var, _context.Config.VariantsPerIteration);
+                    SimulationLog.PrintGeneLine(activeParams);
 
                     // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
                     ModelRecord record = RunPipeline(activeParams, iter, var);
                     bool replayed = LastCallWasReplayed;
+
+                    // Sofort je Variante bewerten (wenn nicht fehlgeschlagen):
+                    if (!record.SimulationFailed)
+                    {
+                        _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { record }, _context);
+                    }
 
                     // 6a. Liefert die Pipeline überhaupt, was die Fitness-Formel braucht?
                     if (!requiredMetricsChecked && !record.SimulationFailed)
@@ -123,6 +128,8 @@ namespace MyPicoGkProject.Core
                     currentIterationRecords.Add(record);
                     _context.ExportToCsv(); 
 
+                    SimulationLog.PrintVariantResult(record);
+                    SimulationLog.PrintVariantDiagnostics(record);
                     UpdateTimer(timer, replayed, ref completedVariants, ref liveVariants, ref totalSecondsPassed, totalVariants);
                 } 
 
@@ -151,8 +158,7 @@ namespace MyPicoGkProject.Core
                 
                 _context.ExportToCsv(); 
                 
-                Console.WriteLine($"\n[ERGEBNIS] Iteration {iter} abgeschlossen.");
-                Console.WriteLine($"           Champion ist Variante {trueWinner.Variant} (Score: {trueWinner.Fitness:F3})");
+                SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, currentIterationRecords, trueWinner);
 
                 if (iter < _context.Config.MaxIterations)
                 {
@@ -322,7 +328,7 @@ namespace MyPicoGkProject.Core
             ApplyGeometryMetrics(record, geoResult, scaler);
             record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
 
-            Console.WriteLine($"       -> Voxel-Geometrie erstellt. (Metriken: {string.Join(", ", record.PassiveParameters.Where(p => p.Key != "ScaleFactor").Select(p => $"{p.Key}={p.Value:F1}"))})");
+            SimulationLog.PrintGeometry(geoResult.StlPath, record.PassiveParameters);
 
             try
             {
@@ -359,7 +365,7 @@ namespace MyPicoGkProject.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"       -> [FEHLER] Simulation abgebrochen: {ex.Message}");
+                SimulationLog.Error($"Simulation abgebrochen: {ex.Message}");
                 // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
                 // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
                 record.SimulationFailed = true;
@@ -395,31 +401,23 @@ namespace MyPicoGkProject.Core
             return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        private void PrintVariantHeader(int iter, int variant, Dictionary<string, float> parameters)
-        {
-            Console.WriteLine($"\n--- [Iteration {iter}/{_context.Config.MaxIterations} | Variante {variant}/{_context.Config.VariantsPerIteration}] ---");
-            Console.Write("       -> Gene: ");
-            foreach (var kvp in parameters) Console.Write($"[{kvp.Key}: {FormatParameterValue(kvp.Value)}]  ");
-            Console.WriteLine();
-        }
-
         private void UpdateTimer(Stopwatch timer, bool replayed, ref int completed, ref int live, ref double totalSeconds, int totalVariants)
         {
             timer.Stop();
             completed++;
 
-            // Wiedergegebene Varianten dauern Millisekunden und würden die Schätzung
-            // verfälschen (TODO-51) — sie zählen nur als erledigt, nicht in den Schnitt.
-            if (replayed) return;
-
-            live++;
-            totalSeconds += timer.Elapsed.TotalSeconds;
+            TimeSpan? timeLeft = null;
+            if (!replayed)
+            {
+                live++;
+                totalSeconds += timer.Elapsed.TotalSeconds;
+                
+                double avgSeconds = totalSeconds / live;
+                int variantsLeft = totalVariants - completed;
+                timeLeft = TimeSpan.FromSeconds(variantsLeft * avgSeconds);
+            }
             
-            double avgSeconds = totalSeconds / live;
-            int variantsLeft = totalVariants - completed;
-            TimeSpan timeLeft = TimeSpan.FromSeconds(variantsLeft * avgSeconds);
-            
-            Console.WriteLine($"       -> Dauer: {timer.Elapsed.TotalSeconds:F1}s (Geschätzte Restzeit gesamt: {timeLeft:hh\\:mm\\:ss})");
+            SimulationLog.PrintVariantFooter(timer.Elapsed.TotalSeconds, timeLeft);
         }
 
         private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
@@ -429,22 +427,26 @@ namespace MyPicoGkProject.Core
             int valid = _context.History.Count(r => !r.SimulationFailed);
             bool anySucceeded = valid > 0;
 
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine(anySucceeded
-                ? " OPTIMIERUNG ERFOLGREICH BEENDET"
-                : " OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
-            Console.WriteLine("==================================================");
+            if (anySucceeded)
+            {
+                SimulationLog.PrintBanner("OPTIMIERUNG ERFOLGREICH BEENDET");
+            }
+            else
+            {
+                SimulationLog.PrintBanner("OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
+            }
 
             if (!anySucceeded)
             {
-                Console.WriteLine($"[WARNUNG] Alle {_context.History.Count} Varianten sind gescheitert (Vernetzung oder SU2). Die Fehlerprotokolle liegen unter FehlerLogs/.");
+                SimulationLog.Warning($"Alle {_context.History.Count} Varianten sind gescheitert (Vernetzung oder SU2). Die Fehlerprotokolle liegen unter FehlerLogs/.");
                 return;
             }
 
             if (champion != null)
             {
-                Console.WriteLine($"\n🏆 ABSOLUTER CHAMPION: Iteration {champion.Iteration} | Variante {champion.Variant}");
-                Console.WriteLine($"   Score: {champion.Fitness:F2}");
+                Console.WriteLine();
+                SimulationLog.WriteLineColored($"🏆 ABSOLUTER CHAMPION: Iteration {champion.Iteration} | Variante {champion.Variant}", ConsoleColor.Green);
+                SimulationLog.WriteLineColored($"   Score: {champion.Fitness:F2}", ConsoleColor.Green);
 
                 // Sichtbar machen, wenn der beste Lauf nicht der letzte war — sonst wundert
                 // sich der Nutzer über zwei verschiedene Varianten in der Ausgabe.

@@ -89,14 +89,14 @@ namespace MyPicoGkProject.Solvers.Cfd
 
             if (aoaFromActive)
             {
-                Console.WriteLine($"    -> Anstellwinkel (aktiv optimiert): {effectiveAoA.ToString("0.##", CultureInfo.InvariantCulture)}°");
+                SimulationLog.Detail($"Anstellwinkel (aktiv optimiert): {effectiveAoA.ToString("0.##", CultureInfo.InvariantCulture)}°");
             }
 
             FlowConditions flow = _flow ?? FlowConditions.From(config, _options);
 
             if (!_velocityReported)
             {
-                Console.WriteLine($"    -> Anströmung: {flow.Velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({flow.VelocitySource}).");
+                SimulationLog.Detail($"Anströmung: {flow.Velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({flow.VelocitySource}).");
                 _velocityReported = true;
             }
 
@@ -187,16 +187,16 @@ namespace MyPicoGkProject.Solvers.Cfd
                 }
             }
 
-            Console.WriteLine(
-                $"    -> Anströmung {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
+            SimulationLog.Detail(
+                $"Anströmung {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
 
             if (!_transitionalReported && reynolds > 0f && reynolds < 5e5f)
             {
-                Console.WriteLine("    -> [HINWEIS] Re_L liegt im laminar-transitionalen Bereich (< 5e5); das Turbulenzmodell rechnet vollturbulent.");
+                SimulationLog.Detail("[HINWEIS] Re_L liegt im laminar-transitionalen Bereich (< 5e5); das Turbulenzmodell rechnet vollturbulent.");
                 _transitionalReported = true;
             }
 
-            Console.WriteLine($"    -> Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
+            SimulationLog.Detail($"Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
             
             string configPath = Path.Combine(workingDirectory, "current_config.cfg");
             string historyPath = Path.Combine(workingDirectory, "history.csv");
@@ -227,7 +227,7 @@ namespace MyPicoGkProject.Solvers.Cfd
             SimulationConfig runConfig = isControlRun ? config.WithControlRunProfile() : config;
             if (isControlRun)
             {
-                Console.WriteLine($"    -> Kontrollrechnung: strenges Profil (bis {runConfig.Su2MaxIterations} Iterationen, Fenster {runConfig.CauchyElements}, "
+                SimulationLog.Detail($"Kontrollrechnung: strenges Profil (bis {runConfig.Su2MaxIterations} Iterationen, Fenster {runConfig.CauchyElements}, "
                     + $"iterativer Fehler höchstens {runConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
             }
 
@@ -307,8 +307,10 @@ namespace MyPicoGkProject.Solvers.Cfd
                     string modelName = Path.GetFileNameWithoutExtension(meshPath);
                     string errorLogPath = Path.Combine(errorLogDirectory, $"SU2_Error_{modelName}.txt");
                     File.WriteAllText(errorLogPath, su2Output.Length == 0 ? "Kein Konsolen-Output von SU2 abgefangen." : su2Output.ToString());
-                    Console.WriteLine($"\n[WARNUNG] CFD-Simulation für {modelName} abgebrochen.");
-                    Console.WriteLine($"-> Details exportiert nach: Ergebnisse/FehlerLogs/{Path.GetFileName(errorLogPath)}\n");
+                    Console.WriteLine();
+                    SimulationLog.Warning($"CFD-Simulation für {modelName} abgebrochen.");
+                    SimulationLog.Detail($"Details exportiert nach: Ergebnisse/FehlerLogs/{Path.GetFileName(errorLogPath)}");
+                    Console.WriteLine();
                     
                     // Nur noch das generische Flag: vor TODO-26 stand hier
                     // PassiveParameters["Drag"] = float.MaxValue und damit der letzte
@@ -399,7 +401,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                 float warnLimit = _options.YPlusWarnFactor * _options.TargetYPlus;
                 if (stats.P95 > warnLimit)
                 {
-                    Console.WriteLine(
+                    SimulationLog.Detail(
                         $"[WARNUNG] y+ (95 %-Quantil = {stats.P95.ToString("0.00", CultureInfo.InvariantCulture)}, Max = {stats.Max.ToString("0.00", CultureInfo.InvariantCulture)}) überschreitet das Limit {warnLimit.ToString("0.00", CultureInfo.InvariantCulture)} (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.");
                 }
             }
@@ -550,7 +552,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                     float driftPercent = historyResult.WindowDrift.TryGetValue(worstColumn, out float dr)
                         && historyResult.TailMeans.TryGetValue(worstColumn, out float tm)
                         ? dr / Math.Max(Math.Abs(tm), 1e-7f) * 100f : float.NaN;
-                    Console.WriteLine($"[WARNUNG] SU2 nicht auskonvergiert nach {historyResult.Iterations} Iterationen: {worst} driftet im Endfenster "
+                    SimulationLog.Detail($"[WARNUNG] SU2 nicht auskonvergiert nach {historyResult.Iterations} Iterationen: {worst} driftet im Endfenster "
                         + $"({historyResult.TailRows} Zeilen) um {driftPercent.ToString("0.00", CultureInfo.InvariantCulture)} % "
                         + $"({verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der erlaubten Drift).");
 
@@ -563,14 +565,14 @@ namespace MyPicoGkProject.Solvers.Cfd
                 {
                     // ITER erreicht, aber die Kennwerte stehen: das Cauchy-Kriterium von SU2 ist bei
                     // schwingenden Rechnungen oft zu streng, die Rechnung ist trotzdem brauchbar.
-                    Console.WriteLine($"    -> SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, die Kennwerte stehen aber (iterativer Fehler "
+                    SimulationLog.Detail($"SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, die Kennwerte stehen aber (iterativer Fehler "
                         + $"{verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der Grenze, Ergebnis = Mittel des Endfensters).");
                 }
             }
             else if (!historyResult.Converged)
             {
                 string convCol = ResolveConvergenceColumn(wanted);
-                Console.WriteLine($"[WARNUNG] SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, ohne dass das Kriterium erfüllt war – {convCol} ist der Stand bei Iteration {historyResult.Iterations}, kein konvergierter Wert.");
+                SimulationLog.Detail($"[WARNUNG] SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, ohne dass das Kriterium erfüllt war – {convCol} ist der Stand bei Iteration {historyResult.Iterations}, kein konvergierter Wert.");
 
                 if (_options.TreatUnconvergedAsFailed)
                 {
@@ -586,7 +588,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                 {
                     float percent = osc * 100f;
                     string shownName = metricName.Length > 0 ? metricName : columnName;
-                    Console.WriteLine($"[WARNUNG] {shownName} schwingt um ±{percent.ToString("0.#", CultureInfo.InvariantCulture)} % – Hinweis auf instationäre Strömung (Wirbelablösung).");
+                    SimulationLog.Detail($"[WARNUNG] {shownName} schwingt um ±{percent.ToString("0.#", CultureInfo.InvariantCulture)} % – Hinweis auf instationäre Strömung (Wirbelablösung).");
                 }
             }
 
@@ -681,7 +683,7 @@ namespace MyPicoGkProject.Solvers.Cfd
                 }
 
                 record.PassiveParameters[metricName] = finalMetricValue;
-                Console.WriteLine($"    -> Analyse erfolgreich. {metricName} ({columnName}): {finalMetricValue:F5}");
+                SimulationLog.Detail($"Analyse erfolgreich. {metricName} ({columnName}): {finalMetricValue:F5}");
             }
 
             if (!complete) record.SimulationFailed = true;

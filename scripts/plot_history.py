@@ -31,6 +31,30 @@ import numpy as np
 KNOWN_AERO_PREFIXES = ["CD", "CL", "CSF", "CMX", "CMY", "CMZ", "CEFF"]
 
 
+def parse_export_formats(args):
+    """Ermittelt die Liste der Exportformate aus --formats und --vector."""
+    if getattr(args, "vector", False):
+        return ["png", "pdf", "svg"]
+    if getattr(args, "formats", None):
+        formats = [f.strip().lower().lstrip(".") for f in args.formats.split(",") if f.strip()]
+        return formats if formats else ["png"]
+    return ["png"]
+
+
+def save_figure_multi_formats(fig, base_path, formats, dpi=150):
+    """Speichert eine Matplotlib-Figure in mehreren Formaten."""
+    base = Path(base_path)
+    if base.suffix.lower() in [".png", ".pdf", ".svg", ".jpg", ".jpeg"]:
+        base = base.with_suffix("")
+    saved = []
+    for fmt in formats:
+        out_file = base.with_suffix(f".{fmt}")
+        fig.savefig(out_file, dpi=dpi, bbox_inches="tight")
+        saved.append(out_file)
+        print(f"Plot gespeichert: {out_file}")
+    return saved
+
+
 def parse_su2_cfg(cfg_path):
     """
     Liest ITER, CONV_CAUCHY_ELEMS und CONV_CAUCHY_EPS aus einer SU2-Konfigurationsdatei (.cfg).
@@ -397,7 +421,6 @@ def plot_single_variant(csv_path, args, cfg_defaults):
         m = metrics[0]
         ax1.plot(x, df[m], label=m, color="#1f77b4", linewidth=1.5)
         ax1.set_ylabel(m, fontsize=10)
-        ax1.legend(loc="best")
     elif len(metrics) == 2:
         m1, m2 = metrics[0], metrics[1]
         c1, c2 = "#1f77b4", "#ff7f0e"
@@ -409,16 +432,35 @@ def plot_single_variant(csv_path, args, cfg_defaults):
         line2 = ax1_twin.plot(x, df[m2], label=m2, color=c2, linewidth=1.5)
         ax1_twin.set_ylabel(m2, color=c2, fontsize=10)
         ax1_twin.tick_params(axis="y", labelcolor=c2)
-
-        # Gemeinsame Legende
-        lines = line1 + line2
-        labels = [l.get_label() for l in lines]
-        ax1.legend(lines, labels, loc="best")
     else:
         colors = plt.cm.tab10(np.linspace(0, 1, max(len(metrics), 3)))
         for idx, m in enumerate(metrics):
             ax1.plot(x, df[m], label=m, color=colors[idx % len(colors)], linewidth=1.5)
         ax1.set_ylabel("Beiwert", fontsize=10)
+
+    # Cauchy-Fenster & Toleranzband dezent auch in Subplot 1 visualisieren
+    if len(x) >= 2 and cauchy_elems is not None and cauchy_elems > 0:
+        w_len = min(cauchy_elems, len(x))
+        ax1.axvspan(x.iloc[-w_len], x.iloc[-1], color="#2ca02c", alpha=0.08, label=f"Cauchy-Fenster ({w_len} Iter.)")
+
+    primary_m = metrics[0] if metrics else None
+    if primary_m and primary_m in df.columns and cauchy_eps is not None and cauchy_eps > 0:
+        ser = df[primary_m].dropna()
+        if len(ser) > 0:
+            f_val = float(ser.iloc[-1])
+            ax1.axhspan(f_val - cauchy_eps, f_val + cauchy_eps, color="#2ca02c", alpha=0.10, linestyle=":", label=f"±ε-Band ({primary_m})")
+
+    if len(metrics) == 2:
+        lines = line1 + line2
+        labels = [l.get_label() for l in lines]
+        # Zusätzliche Handles von ax1 (z.B. vspan/hspan)
+        h, l = ax1.get_legend_handles_labels()
+        for handle, label in zip(h, l):
+            if label not in labels:
+                lines.append(handle)
+                labels.append(label)
+        ax1.legend(lines, labels, loc="best")
+    else:
         ax1.legend(loc="best")
 
     ax1.grid(True, linestyle="--", alpha=0.5)
@@ -479,9 +521,9 @@ def plot_single_variant(csv_path, args, cfg_defaults):
 
     plt.tight_layout()
 
-    out_png = csv_file.with_suffix(".png")
-    fig.savefig(out_png, dpi=150, bbox_inches="tight")
-    print(f"Plot gespeichert: {out_png}")
+    formats = parse_export_formats(args)
+    saved_files = save_figure_multi_formats(fig, csv_file, formats, dpi=150)
+    out_png = saved_files[0] if saved_files else csv_file.with_suffix(".png")
 
     if args.show:
         plt.show()
@@ -529,6 +571,22 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
         if rms_cols and rms_cols[0] in df.columns:
             ax2.plot(x, df[rms_cols[0]], label=var_name, color=color, linewidth=1.2)
 
+    # Cauchy-Fenster visualisieren, falls konfiguriert
+    cauchy_elems = args.cauchy_elems if args.cauchy_elems is not None else cfg_defaults.get("cauchy_elems", None)
+    if cauchy_elems and cauchy_elems > 0:
+        # Ermittle die maximale X-Koordinate über alle Kurven
+        all_x_max = 0
+        for f in history_files:
+            try:
+                tdf = read_history_csv(f)
+                tx, _ = resolve_x_axis(tdf)
+                if len(tx) > 0:
+                    all_x_max = max(all_x_max, float(tx.iloc[-1]))
+            except Exception:
+                pass
+        if all_x_max > cauchy_elems:
+            ax1.axvspan(all_x_max - cauchy_elems, all_x_max, color="#2ca02c", alpha=0.10, hatch="//", label=f"Cauchy-Fenster ({cauchy_elems} Iter.)")
+
     ax1.set_title(f"Kennwert: {primary_metric}", fontsize=10, fontweight="bold")
     ax1.set_ylabel(primary_metric, fontsize=10)
     ax1.grid(True, linestyle="--", alpha=0.5)
@@ -542,9 +600,10 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
 
     plt.tight_layout()
 
-    out_png = Path(target_dir) / "History_Compare.png"
-    fig.savefig(out_png, dpi=150, bbox_inches="tight")
-    print(f"Vergleichs-Plot gespeichert: {out_png}")
+    formats = parse_export_formats(args)
+    out_base = Path(target_dir) / "History_Compare"
+    saved_files = save_figure_multi_formats(fig, out_base, formats, dpi=150)
+    out_png = saved_files[0] if saved_files else out_base.with_suffix(".png")
 
     if args.show:
         plt.show()
@@ -717,6 +776,8 @@ def main():
     parser.add_argument("--cauchy-elems", type=int, default=None, dest="cauchy_elems", help="Fenstergröße der Cauchy-Konvergenz (Vorgabe: aus Config oder 150)")
     parser.add_argument("--cauchy-eps", type=float, default=None, dest="cauchy_eps", help="Toleranzband der Cauchy-Konvergenz (Vorgabe: aus Config oder 1e-4)")
     parser.add_argument("--max-iter", type=int, default=None, dest="max_iter", help="Maximale Iterationsanzahl ITER (Vorgabe: aus Config oder 500)")
+    parser.add_argument("--formats", default=None, help="Kommagetrennte Liste der Bildformate (z.B. png,pdf,svg; Standard: png)")
+    parser.add_argument("--vector", action="store_true", help="Erzeugt zusätzlich Publikations-Vektorgrafiken (.pdf und .svg)")
     parser.add_argument("--show", action="store_true", help="Öffnet das interaktive Matplotlib-Fenster")
 
     args = parser.parse_args()

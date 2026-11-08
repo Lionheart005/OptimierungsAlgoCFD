@@ -1,4 +1,13 @@
+Der Testlauf für Naca2D Läuft gerade (10x10)
 
-Kleine Korrekturen die mir noch eingefallen sind:
+biite währenddessen für die kleine Datenauswertungsskripte schreiben (siehe roadmap)
+wenn der lauf fertig ist, bitte einmal die ergebnisse analysieren und den log und schauen ob das programm aktuell noch probleme hat oder ob alles so läuft wie es soll und pyhsikalisch und auch für den workflow und die arbeit so sinn macht oder ob noch irgendwo grenzwerte oder warungen ausgegeben werden die eigentlich quatsch sind.  
+dann die auswertungsskripte an dem fertigen lauf testen, alles unter serverergebnisse in einem neuen ordner schön für mich aufbereiten. 
 
-Die Frontal Area wird im moment über die Box des Modells berechnet. wenn das jetzt aber ein sehr langer dünner stab ist bekommt er eine große fläche obwohl das nicht stimmt. das ist eigentlich echt schlecht. gibt es da eine bessere möglichkeit? wie könnte man das relativ einfach fixen?
+währenddessen auch noch diese kleinigkeiten anschauen und bearbeiten:
+auch in den 2D .json dateien steht picoGKtargetsize. ist das so richtig, weil wir da keinen unterschied zwischen 2d und 3d machen, oder könnte man das weglassen?
+
+außerdem eine kleine andere aufgabe: ich mag nicht so sehr wie die log datei im moment aussieht von design her.
+ich will übersichtlicher und schöner dargestellt die wichtigen ifnromtaionen wie fitness und variante, und technsiche details wie y+ usw vom design her, dass man sie nicht beachten muss wenn man nicht weiß was sie bedeuten. 
+also eine ästhetische überarbeitung der konsole bzw des logs. es sollen alle informationen wie jetzt auch drin bleiben, aber ästhetischer, professioneller und anschaulicher dargestellt werden. 
+(frage; geht es auch in der .log datei mit farbe zu arbeiten und diese dann wenn man mit sim.ps1 log sich das wieder auf die konsole holt auch noch farblich zu halten, oder nicht? (wenn nicht, ist auch okay. ))

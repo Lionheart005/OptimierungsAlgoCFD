@@ -16,21 +16,24 @@
   "BaseParameters": {
     "MaxCamber": 0.0,
     "CamberPosition": 40.0,
-    "MaxThickness": 12.0
+    "MaxThickness": 12.0,
+    "AngleOfAttackDeg": 0.0
   },
 
   // --- Anfaengliche Mutationsstaerke (Sigma-Streuung) ---
   "MaxDeviations": {
     "MaxCamber": 0.8,
     "CamberPosition": 6.0,
-    "MaxThickness": 2.0
+    "MaxThickness": 2.0,
+    "AngleOfAttackDeg": 2.0
   },
 
   // --- Harte Grenzen fuer physikalische Plausibilitaet ---
   "ParameterBounds": {
     "MaxCamber": { "Min": 0.0, "Max": 8.0 },
     "CamberPosition": { "Min": 15.0, "Max": 75.0 },
-    "MaxThickness": { "Min": 6.0, "Max": 24.0 }
+    "MaxThickness": { "Min": 6.0, "Max": 24.0 },
+    "AngleOfAttackDeg": { "Min": -10.0, "Max": 30.0 }
   },
 
   // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---

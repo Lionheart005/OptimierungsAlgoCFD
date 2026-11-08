@@ -17,17 +17,8 @@
   "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
 
   // --- Zeit & Umfang ---
-  "MaxIterations": 3,
-  "VariantsPerIteration": 3,
-  "BaseVoxelResolution": 0.5,
-  "TargetPicoGkSize": 50.0,
-  "VoxelSmoothingIterations": 40,
-  "VoxelSmoothingPremeltingSteps": 2,
-
-  // --- Abschaltbare Framework-Bausteine ---
-  // In 2D sind weder RubberBandScaler noch Voxel-Glättung aktiv (direkte 2D-Kontur).
-  "UseRubberBandScaler": false,
-  "UseStlSmoothing": false,
+  "MaxIterations": 10,
+  "VariantsPerIteration": 10,
 
   // --- CFD & SU2 ---
   // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
@@ -39,8 +30,8 @@
   "Su2MaxIterations": 3000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",
-  "MpiCores": 16,
-  "GmshCores": 16,
+  "MpiCores": 12,
+  "GmshCores": 12,
 
   // --- Optimierungsverfahren: "Rsm" oder "Evolution" ---
   "OptimizationAlgorithm": "Rsm",
@@ -63,17 +54,18 @@
   // bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt (kombinierte Toleranz mit Mindestbetrag).
   "MeshCalibration": {
     "Mode": "Auto",
-    "Tolerance": 0.02
+    "Tolerance": 0.10
   },
 
   // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
   "ChampionVerification": {
     "Mode": "FinalTopN",
     "TopN": 3,
-    "RefinementSteps": 1
+    "RefinementSteps": 1,
+    "Tolerance": 0.10
   },
 
   // --- Validierung des Champions (Bouncer) ---
-  "BouncerTolerance": 0.2,
+  "BouncerTolerance": 0.10,
   "BouncerJitter": 0.01
 }

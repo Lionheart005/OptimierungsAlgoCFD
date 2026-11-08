@@ -570,9 +570,20 @@ namespace AutomatisierungCleanVersion.Tests
         {
             var keys = Template2DProjectFiles.TopLevelKeys("simulation.json");
 
+            var omittedIn2D = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "MachNumber",
+                "BaseVoxelResolution",
+                "TargetPicoGkSize",
+                "VoxelSmoothingIterations",
+                "VoxelSmoothingPremeltingSteps",
+                "UseRubberBandScaler",
+                "UseStlSmoothing"
+            };
+
             var missing = TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig))
                 .Select(property => property.Name)
-                .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
+                .Where(name => !omittedIn2D.Contains(name))
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 

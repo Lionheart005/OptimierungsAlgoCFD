@@ -95,6 +95,12 @@ erlaubter Parameter: was hier steht, existiert.
 > Verhältnis, ein Winkel oder ein Zählwert würde dabei verfälscht. MantaAuv lässt
 > `TailTaper` aus genau diesem Grund bewusst weg — das war einmal ein Fehler.
 
+> **Anstellwinkel mitoptimieren:** Heißt ein Parameter `"AngleOfAttackDeg"` (oder
+> `"AngleOfAttack"`), fängt der SU2-Solver ihn automatisch ab, steuert den Anstellwinkel
+> je Variante direkt im Strömungslöser an und legt ihn in `PassiveParameters["AngleOfAttackDeg"]`
+> ab. Der Geometrie-Generator muss das Profil dafür **nicht** rotieren! Niemals in
+> `DimensionalParameters` eintragen (Grad, keine Länge). Details: [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md).
+
 ### 3. Geometrie bauen
 
 > **Ausführliche Modellierungs-Handbücher:**

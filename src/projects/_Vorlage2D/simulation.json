@@ -4,10 +4,12 @@
   //  MeinProjekt2D -- Framework-Einstellungen dieses Projekts
   // ===================================================================
   //
-  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt JEDEN Schluessel, den das
-  // Framework kennt, mit dem Wert aus dem Code-Standard
-  // (Core/Models/SimulationConfig.cs). Zwei Ausnahmen -- MaxIterations und
-  // VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt.
+  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt alle fuer 2D relevanten
+  // Schluessel des Frameworks mit dem Wert aus dem Code-Standard
+  // (Core/Models/SimulationConfig.cs). Reine 3D-Voxel- und Voxel-Glaettungsparameter
+  // (BaseVoxelResolution, TargetPicoGkSize, VoxelSmoothingIterations, VoxelSmoothingPremeltingSteps,
+  // UseRubberBandScaler, UseStlSmoothing) sind in 2D funktionslos und hier bewusst ausgelassen.
+  // Zwei Ausnahmen -- MaxIterations und VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt.
 
   // --- Pfade zu externer Software ---
   "MpiRunPath": "mpirun",
@@ -19,15 +21,7 @@
   "MaxIterations": 1,
   "VariantsPerIteration": 2,
 
-  // Voxelparameter (in 2D inaktiv, aber im Framework-Nachschlagewerk vollstaendig vorhanden):
-  "BaseVoxelResolution": 0.5,
-  "TargetPicoGkSize": 50.0,
-  "VoxelSmoothingIterations": 40,
-  "VoxelSmoothingPremeltingSteps": 2,
-
   // --- Abschaltbare Framework-Bausteine ---
-  "UseRubberBandScaler": true,
-  "UseStlSmoothing": true,
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---

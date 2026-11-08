@@ -126,7 +126,7 @@ namespace MyPicoGkProject.Core
 
             string tag = $"Fein_Gen{iteration}";
 
-            Console.WriteLine($"\n[VERIFIKATION] Iterationssieger Gen {iteration} wird fein nachgerechnet (Faktor: {fineFactor:0.00}, Tag: {tag})...");
+            SimulationLog.Detail($"[VERIFIKATION] Iterationssieger Gen {iteration} wird fein nachgerechnet (Faktor: {fineFactor:0.00}, Tag: {tag})...");
 
             ModelRecord fineRecord = resimulate(winner.ActiveParameters, fineFactor, tag);
             evaluateFitness(fineRecord);
@@ -139,12 +139,12 @@ namespace MyPicoGkProject.Core
             winner.PassiveParameters["FineVerified"] = 1f;
             winner.PassiveParameters["FineDeviation"] = maxRelDev;
 
-            Console.WriteLine($"       -> Normale Fitness: {winner.Fitness:F4} | Feine Fitness: {fineRecord.Fitness:F4} | Max. Kennwert-Abweichung: {maxRelDev * 100:0.0} %");
+            SimulationLog.Detail($"Normale Fitness: {winner.Fitness:F4} | Feine Fitness: {fineRecord.Fitness:F4} | Max. Kennwert-Abweichung: {maxRelDev * 100:0.0} %");
 
             if (maxNorm > 1.0f)
             {
-                Console.WriteLine(
-                    $"[WARNUNG] Ergebnis netzabhängig – Abweichung im feinen Netz beträgt {maxRelDev * 100:0.0} % "
+                SimulationLog.Warning(
+                    $"Ergebnis netzabhängig – Abweichung im feinen Netz beträgt {maxRelDev * 100:0.0} % "
                     + $"(Erlaubt: {context.Config.ChampionVerification.Tolerance * 100:0.0} % plus Mindestbetrag; normiert {maxNorm:0.0}, erlaubt höchstens 1) – Kalibrierung prüfen!");
             }
         }
@@ -188,11 +188,10 @@ namespace MyPicoGkProject.Core
 
             if (itemsToVerify.Count == 0) return;
 
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine($" FINALE GEWINNER-VERIFIKATION (Modus: {mode})");
-            Console.WriteLine($" Feiner Netzfaktor: {fineFactor:0.00} (Verfeinerungsstufen: {context.Config.ChampionVerification.RefinementSteps})");
-            Console.WriteLine($" Zu prüfende Kandidaten: {itemsToVerify.Count}");
-            Console.WriteLine("==================================================");
+            SimulationLog.PrintBanner(
+                $"FINALE GEWINNER-VERIFIKATION (Modus: {mode})",
+                $"Feiner Netzfaktor: {fineFactor:0.00} (Verfeinerungsstufen: {context.Config.ChampionVerification.RefinementSteps})",
+                $"Zu prüfende Kandidaten: {itemsToVerify.Count}");
 
             var results = new List<VerificationRow>();
 
@@ -202,7 +201,7 @@ namespace MyPicoGkProject.Core
                 // Der Tag nennt den Kandidaten (Fein1_Gen5_Var1): sonst hießen alle Dateien Gen99_Var99_Fein1.
                 string tag = $"Fein{i + 1}_Gen{candidate.Iteration}_Var{candidate.Variant}";
 
-                Console.WriteLine($"\n[VERIFIKATION] Prüfe Kandidat {i + 1}/{itemsToVerify.Count}: Iteration {candidate.Iteration}, Variante {candidate.Variant}...");
+                SimulationLog.Detail($"[VERIFIKATION] Prüfe Kandidat {i + 1}/{itemsToVerify.Count}: Iteration {candidate.Iteration}, Variante {candidate.Variant}...");
 
                 ModelRecord fineRecord = resimulate(candidate.ActiveParameters, fineFactor, tag);
                 evaluateFitness(fineRecord);
@@ -245,14 +244,22 @@ namespace MyPicoGkProject.Core
             context.ExportToCsv();
 
             // Konsolenausgabe
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine(" VERIFIKATIONSERGEBNIS");
-            Console.WriteLine("==================================================");
+            SimulationLog.PrintBanner("VERIFIKATIONSERGEBNIS");
             if (failedFine > 0)
             {
-                Console.WriteLine($"[WARNUNG] {failedFine} von {results.Count} feinen Rechnungen sind gescheitert – für sie ist nichts verifiziert (FineVerified = 0).");
+                SimulationLog.Warning($"{failedFine} von {results.Count} feinen Rechnungen sind gescheitert – für sie ist nichts verifiziert (FineVerified = 0).");
             }
-            Console.WriteLine($"Rangfolge stabil im feinen Netz: {(rankingHolds ? "JA (Rangfolge hält)" : failedFine > 0 ? "NICHT PRÜFBAR (feine Rechnung gescheitert)" : "NEIN (Rangfolge geändert)")}");
+            
+            string rankingText = rankingHolds ? "JA (Rangfolge hält)" : failedFine > 0 ? "NICHT PRÜFBAR (feine Rechnung gescheitert)" : "NEIN (Rangfolge geändert)";
+            if (rankingHolds)
+            {
+                SimulationLog.Success($"Rangfolge stabil im feinen Netz: {rankingText}");
+            }
+            else
+            {
+                SimulationLog.Warning($"Rangfolge stabil im feinen Netz: {rankingText}");
+            }
+
             Console.WriteLine("Iter | Var | Normal-Rang | Fein-Rang | Normal-Score | Fein-Score | Max. Abw. | normiert (<= 1 ok)");
             Console.WriteLine("--------------------------------------------------------------------------------------------------");
 
@@ -271,8 +278,9 @@ namespace MyPicoGkProject.Core
 
             if (anyWarning)
             {
-                Console.WriteLine(
-                    $"\n[WARNUNG] Ergebnis netzabhängig – Abweichung im feinen Netz übersteigt die Toleranz "
+                Console.WriteLine();
+                SimulationLog.Warning(
+                    $"Ergebnis netzabhängig – Abweichung im feinen Netz übersteigt die Toleranz "
                     + $"von {context.Config.ChampionVerification.Tolerance * 100:0.0} % – Kalibrierung prüfen!");
             }
             Console.WriteLine("==================================================\n");

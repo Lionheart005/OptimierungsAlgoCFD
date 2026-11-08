@@ -1,8 +1,8 @@
 # Entwicklungs-Roadmap (Post-Merge `MajorPhysikFixes`)
 
-> **Status:** Aktiv — Stand: 07.11.2026  
-> **Basis:** Konsolidierte Anforderungen aus `.plans/Anmerkungen.txt` (Z. 30–61) sowie den Detailplänen `.plans/ki_optimierung.md` und `.plans/fem_ausblick.md`.  
-> **Ausgangslage:** Erfolgreicher Merge von `MajorPhysikFixes` in `main`. Alle 557 Unit-Tests grün, stabiles 2D/3D-Netzfundament mit Wandauflösung ($y^+ \approx 1$), adaptiver Kalibrierung, Nachlauf-Detailbox, scharfem Hinterkantenschutz (B14) und robustem Champion-Validator (KP-2).
+> **Status:** Aktiv — Stand: 08.11.2026  
+> **Basis:** Konsolidierte Anforderungen aus `.plans/Anmerkungen.txt` (Z. 30–61) sowie den Detailplänen `.plans/ki_optimierung.md`, `.plans/fem_ausblick.md` und `.plans/ms1_auswertung_und_logdesign.md`.  
+> **Ausgangslage:** Erfolgreicher Merge von `MajorPhysikFixes` in `main`. Alle 560 Unit-Tests grün, **Meilenstein 1 (Python-Auswerteskripte, Log-Redesign & 10×10 `Naca2D`-Referenzlauf) erfolgreich abgeschlossen**.
 
 ---
 

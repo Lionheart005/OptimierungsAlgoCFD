@@ -50,7 +50,8 @@ namespace MyPicoGkProject.Core
             if (candidates.Count == 0)
                 throw new InvalidOperationException("[VALIDIERUNG] Keine Kandidaten zum Prüfen vorhanden.");
 
-            Console.WriteLine("\n[VALIDIERUNG] Teste Stabilität des Champions...");
+            Console.WriteLine();
+            SimulationLog.Detail("VALIDIERUNG: Teste Stabilität des Champions...");
             var sortedCandidates = candidates.OrderByDescending(r => r.Fitness).ToList();
 
             float tolerance = config.BouncerTolerance;
@@ -60,7 +61,7 @@ namespace MyPicoGkProject.Core
                 if (candidate.Fitness < MinimumFitnessToTest) break;
 
                 float originalFitness = candidate.Fitness;
-                Console.WriteLine($"       -> Prüfe Variante {candidate.Variant} (Referenz-Fitness: {originalFitness:F4})");
+                SimulationLog.Detail($"Prüfe Variante {candidate.Variant} (Referenz-Fitness: {originalFitness:F4})");
 
                 var testParams = JitterParameters(candidate.ActiveParameters, config.BouncerJitter);
 
@@ -76,25 +77,25 @@ namespace MyPicoGkProject.Core
                     float reference = Math.Max(Math.Abs(originalFitness), float.Epsilon);
                     float deviation = Math.Abs(validatedFitness - originalFitness) / reference;
 
-                    Console.WriteLine($"       -> Validierungs-Fitness: {validatedFitness:F4} (Abweichung: {deviation * 100:F1}%)");
+                    SimulationLog.Detail($"Validierungs-Fitness: {validatedFitness:F4} (Abweichung: {deviation * 100:F1}%)");
 
                     if (deviation <= tolerance)
                     {
-                        Console.WriteLine("       -> [OK] Stabil. Champion bestätigt.");
+                        SimulationLog.Detail("[OK] Stabil. Champion bestätigt.");
                         return candidate;
                     }
 
-                    Console.WriteLine("       -> [ABGELEHNT] Modell ist instabil. Disqualifiziert.");
+                    SimulationLog.Detail("[ABGELEHNT] Modell ist instabil. Disqualifiziert.");
                     candidate.Fitness = DisqualifiedFitness;
                 }
                 catch (Exception)
                 {
-                    Console.WriteLine("       -> [FEHLER] Validierung fehlgeschlagen. Disqualifiziert.");
+                    SimulationLog.Detail("[FEHLER] Validierung fehlgeschlagen. Disqualifiziert.");
                     candidate.Fitness = DisqualifiedFitness;
                 }
             }
 
-            Console.WriteLine("       -> [WARNUNG] Kein Modell stabil. Wähle das Beste der Reste.");
+            SimulationLog.Detail("[WARNUNG] Kein Modell stabil. Wähle das Beste der Reste.");
             return sortedCandidates[0];
         }
 

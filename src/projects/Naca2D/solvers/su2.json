@@ -46,7 +46,8 @@
   "CflAdaptMin": 1.0,
   "CflAdaptMax": 50.0,
 
-  // --- y+-Ziel und Grenzschichtprüfung ---
+  // --- y+-Ziel, Grenzschicht- und Schwingungsprüfung ---
   "TargetYPlus": 1.0,
-  "YPlusWarnFactor": 2.0
+  "YPlusWarnFactor": 3.0,
+  "OscillationWarnLimit": 0.05
 }

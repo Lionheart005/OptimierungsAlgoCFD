@@ -68,12 +68,12 @@ namespace MyPicoGkProject.Solvers.Cfd
                 }
 
                 thicknessScale *= 0.5f;
-                Console.WriteLine($"       -> [WARNUNG] Wandschicht ließ sich nicht vernetzen (meist Kollision an der Hinterkante) – neuer Versuch mit {thicknessScale * 100f:0} % der Schichtdicke.");
+                SimulationLog.Detail($"[WARNUNG] Wandschicht ließ sich nicht vernetzen (meist Kollision an der Hinterkante) – neuer Versuch mit {thicknessScale * 100f:0} % der Schichtdicke.");
             }
 
             RemoveMarker(outputMeshPath, FluidMarkerName);
 
-            Console.WriteLine($"       -> [OK] 2D-Flächennetz generiert ");
+            SimulationLog.Detail("[OK] 2D-Flächennetz generiert");
             return outputMeshPath;
         }
 
