@@ -68,7 +68,7 @@ namespace AutomatisierungCleanVersion.Tests
             Assert.Equal(defaults.TunnelCenterY, loaded.TunnelCenterY);
             Assert.Equal(defaults.TunnelCenterZ, loaded.TunnelCenterZ);
             Assert.Equal(defaults.TunnelDiameter, loaded.TunnelDiameter);
-            Assert.Equal(defaults.TunnelLength, loaded.TunnelLength);
+            Assert.Equal(600.0f, loaded.TunnelLength); // nur bei "Cylinder" wirksam, MantaAuv rechnet "Box"
             Assert.Equal(defaults.TunnelSegments, loaded.TunnelSegments);
             Assert.Equal(defaults.BoundaryLayerSizeMin, loaded.BoundaryLayerSizeMin);
             Assert.Equal(defaults.BoundaryLayerSizeMax, loaded.BoundaryLayerSizeMax);
@@ -129,14 +129,25 @@ namespace AutomatisierungCleanVersion.Tests
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Ohne <c>FreestreamVelocity</c> rechnet jedes Projekt exakt wie vor TODO-38:
+        /// Standard seit 08.11.2026: 2,0 m/s (passend zum Standardfluid Meerwasser), nicht mehr der Mach-Weg.
+        /// </summary>
+        [Fact]
+        public void The_Default_Velocity_Is_Two_Metres_Per_Second()
+        {
+            float velocity = Su2ConfigGenerator.ResolveVelocity(SimulationConfig.CreateDefault(), new Su2SolverOptions(), out _);
+
+            Assert.Equal(2.0f, velocity);
+        }
+
+        /// <summary>
+        /// Mit <c>FreestreamVelocity = 0</c> rechnet ein Projekt exakt wie vor TODO-38:
         /// Geschwindigkeit = MachNumber × SpeedOfSound.
         /// </summary>
         [Fact]
         public void Without_A_Velocity_The_Old_Mach_Path_Still_Applies()
         {
             var config = SimulationConfig.CreateDefault();
-            var options = new Su2SolverOptions();
+            var options = new Su2SolverOptions { FreestreamVelocity = 0.0f };
 
             float velocity = Su2ConfigGenerator.ResolveVelocity(config, options, out string source);
 

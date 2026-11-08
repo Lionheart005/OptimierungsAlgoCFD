@@ -27,6 +27,10 @@
   "ConvergenceField": "DRAG",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
+  // Bisheriger Stand festgehalten (Code-Standard seit 08.11.2026: true / "TailMean").
+  "TreatUnconvergedAsFailed": false,
+  "ResultAveraging": "Last",
+
   // --- CFL-Steuerung ---
   "CflNumber": 5.0,
   "CflAdapt": true,

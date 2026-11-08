@@ -22,7 +22,7 @@
 
   // --- CFD & SU2 ---
   // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
-  // den Netzfaktor am Anfang selbst (Entscheidung 06.11.2026, TODO-W8).
+  // den Netzfaktor am Anfang selbst.
   //
   // Normale Varianten: moderate Konvergenz. Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck) rechnen mit
   // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, iterativer Fehler <= 1/10).
@@ -63,7 +63,7 @@
   // bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt (kombinierte Toleranz mit Mindestbetrag).
   "MeshCalibration": {
     "Mode": "Auto",
-    "Tolerance": 0.10
+    "Tolerance": 0.05
   },
 
   // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
@@ -71,7 +71,7 @@
     "Mode": "FinalTopN",
     "TopN": 3,
     "RefinementSteps": 1,
-    "Tolerance": 0.10
+    "Tolerance": 0.05
   },
 
   // --- Validierung des Champions (Bouncer) ---

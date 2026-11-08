@@ -27,12 +27,12 @@
   "TurbulenceModel": "SA",      // SA oder SST
   "SpeedOfSound": 343.2,        // m/s, rechnet MachNumber in m/s um (nur wenn FreestreamVelocity 0 ist)
 
-  // Anstroemgeschwindigkeit in m/s. 0 = nicht gesetzt: dann gilt
-  // MachNumber (aus ../simulation.json) x SpeedOfSound. EMPFOHLEN ist, hier
-  // direkt die Geschwindigkeit einzutragen -- der Loeser ist inkompressibel,
-  // eine Mach-Zahl hat fuer ihn keine Bedeutung. Achtung: SpeedOfSound ist der
-  // Wert fuer LUFT; in Wasser ergaebe Mach 0.1 unrealistische 34.3 m/s.
-  "FreestreamVelocity": 0.0,    // m/s
+  // Anstroemgeschwindigkeit in m/s. Standard 2.0 m/s (~4 kn, uebliche AUV-Reisegeschwindigkeit,
+  // passend zum Standardfluid Meerwasser; Re bei 50 mm Koerperlaenge ~1e5). Der Loeser ist
+  // inkompressibel, eine Mach-Zahl hat fuer ihn keine Bedeutung.
+  // 0 = alter Weg: MachNumber (aus ../simulation.json) x SpeedOfSound. Achtung: SpeedOfSound ist
+  // der Wert fuer LUFT; in Wasser ergaebe Mach 0.1 unrealistische 34.3 m/s.
+  "FreestreamVelocity": 2.0,    // m/s
 
   // --- Dimension & Anstellwinkel (TODO-46) ---
   "Dimensions": 3,
@@ -86,16 +86,18 @@
 
   // --- Auswertung & Konvergenzbewertung (TODO-35) ---
   // Schwelle fuer Schwingungswarnung (relativer Hub ueber das Cauchy-Fenster: (max-min)/|mean|).
-  // 0.02 = 2 %. Schwingt ein Beiwert staerker, warnt der Solver vor instationaerer Stroemung.
-  "OscillationWarnLimit": 0.02,
+  // 0.05 = 5 %. Schwingt ein Beiwert staerker, warnt der Solver vor instationaerer Stroemung (nur Warnung).
+  "OscillationWarnLimit": 0.05,
 
-  // true = Rechnungen, die bei ITER abbrechen ohne Konvergenzkriterium zu erfuellen,
-  // gelten als fehlgeschlagen (SimulationFailed = true). Standard false = weiterrechnen.
-  "TreatUnconvergedAsFailed": false,
+  // true (Standard) = Rechnungen, deren Kennwerte im Endfenster noch gesichert weiterwandern (echte Drift),
+  // gelten als fehlgeschlagen (SimulationFailed = true) und gehen nicht in die Optimierung ein.
+  // Rechnungen, die nur schwingen (Wirbelabloesung), sind gueltig: "instationaer, aber stabil", Su2_Unsteady = 1.
+  "TreatUnconvergedAsFailed": true,
 
-  // "Last" (Standard) = Endwert der letzten Iteration uebernehmen.
-  // "CauchyWindowMean" = Mittelwert ueber die letzten CauchyElements Zeilen (fuer schwingende Faelle).
-  "ResultAveraging": "Last",
+  // "TailMean" (Standard) = Mittel des Endfensters ohne Anlaufphase.
+  // "Last" = Endwert der letzten Iteration (frueheres Verhalten).
+  // "CauchyWindowMean" = Mittelwert ueber die letzten CauchyElements Zeilen.
+  "ResultAveraging": "TailMean",
 
   // --- CFL-Steuerung ---
   // Groesser = schnellere, aber unruhigere Konvergenz. Divergiert SU2, ist
@@ -112,8 +114,8 @@
   "TargetYPlus": 1.0,
 
   // Warnfaktor fuer y+: Ueberschreitet das 95 %-Quantil (P95) das Produkt
-  // aus YPlusWarnFactor und TargetYPlus, warnt der Solver (Standard 2.0).
-  "YPlusWarnFactor": 2.0,
+  // aus YPlusWarnFactor und TargetYPlus, warnt der Solver (Standard 3.0, also ab y+ 3).
+  "YPlusWarnFactor": 3.0,
 
   // --- Zeitgenauer Modus / URANS (TODO-37) ---
   // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).

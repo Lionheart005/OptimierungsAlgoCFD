@@ -30,11 +30,11 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         /// <summary>
-        /// Der Standardfall muss der bisherige Quader bleiben: 600 × 300 × 300 mm,
-        /// im Ursprung zentriert, 12 Dreiecke. Sonst ändert sich die Simulationsdomäne.
+        /// Standardfall seit 08.11.2026: Quader 1000 × 300 × 300 mm, Mitte 200 mm stromab
+        /// (6 L davor, 14 L Nachlauf bei 50 mm Modell), 12 Dreiecke.
         /// </summary>
         [Fact]
-        public void Default_Options_Write_The_Previous_600x300x300_Box()
+        public void Default_Options_Write_The_1000x300x300_Box_Shifted_Downstream()
         {
             string path = new GmshCfdMesher().EnsureTunnel(_workingDirectory);
 
@@ -45,8 +45,27 @@ namespace AutomatisierungCleanVersion.Tests
 
             (Vector3 min, Vector3 max) = BoundingBox(triangles);
             Assert.Equal(new Vector3(-300f, -150f, -150f), min);
+            Assert.Equal(new Vector3(700f, 150f, 150f), max);
+        }
+
+        /// <summary>Der frühere Quader (600 × 300 × 300, zentriert) bleibt über die Optionen erreichbar.</summary>
+        [Fact]
+        public void The_Previous_Centred_600_Box_Is_Still_Available()
+        {
+            var mesher = new GmshCfdMesher(new GmshMesherOptions { TunnelSizeX = 600f, TunnelCenterX = 0f });
+
+            (Vector3 min, Vector3 max) = BoundingBox(StlWriterTests.ReadBinaryStl(mesher.EnsureTunnel(_workingDirectory)));
+            Assert.Equal(new Vector3(-300f, -150f, -150f), min);
             Assert.Equal(new Vector3(300f, 150f, 150f), max);
         }
+
+        /// <summary>Optionen, mit denen das .geo dem Stand vor dem 08.11.2026 entspricht (Regressions-Basis).</summary>
+        private static GmshMesherOptions PreviousDefaults() => new GmshMesherOptions
+        {
+            BoundaryLayerMode = "Threshold",
+            WakeRefinement = false,
+            DetailBox = false
+        };
 
         [Fact]
         public void Cylinder_Shape_Is_Written_When_Selected()
@@ -54,6 +73,7 @@ namespace AutomatisierungCleanVersion.Tests
             GmshCfdMesher mesher = new GmshCfdMesher(new GmshMesherOptions
             {
                 TunnelShape = "cylinder",
+                TunnelCenterX = 0f,
                 TunnelDiameter = 200f,
                 TunnelLength = 800f,
                 TunnelSegments = 16
@@ -106,13 +126,14 @@ namespace AutomatisierungCleanVersion.Tests
 
         /// <summary>
         /// TODO-39: Mit Faktor 1,0 und ausgeschalteten neuen Optionen ist das .geo byteweise
-        /// identisch zur vorherigen Version (Regression).
+        /// identisch zur vorherigen Version (Regression). Seit 08.11.2026 sind Prism, Nachlauf- und
+        /// Detailbox Standard; die Basis wird deshalb mit den früheren Werten explizit erzeugt.
         /// </summary>
         [Fact]
-        public void WriteGeoScript_Default_Options_And_Factor_1_Produces_Exact_Regression_Lines()
+        public void WriteGeoScript_Previous_Options_And_Factor_1_Produces_Exact_Regression_Lines()
         {
             string path = Path.Combine(_workingDirectory, "regression.geo");
-            var mesher = new GmshCfdMesher();
+            var mesher = new GmshCfdMesher(PreviousDefaults());
             var config = SimulationConfig.CreateDefault();
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
 
@@ -193,6 +214,8 @@ namespace AutomatisierungCleanVersion.Tests
             string path = Path.Combine(_workingDirectory, "wake.geo");
             var options = new GmshMesherOptions
             {
+                BoundaryLayerMode = "Threshold",
+                DetailBox = false,
                 WakeRefinement = true,
                 WakeLengthFactor = 3.5f,
                 WakeWidthFactor = 0.75f,
@@ -222,10 +245,8 @@ namespace AutomatisierungCleanVersion.Tests
         public void WriteGeoScript_MeshSizeFromCurvature_Adds_Curvature_Option()
         {
             string path = Path.Combine(_workingDirectory, "curvature.geo");
-            var options = new GmshMesherOptions
-            {
-                MeshSizeFromCurvature = true
-            };
+            var options = PreviousDefaults();
+            options.MeshSizeFromCurvature = true;
             var mesher = new GmshCfdMesher(options);
             var config = SimulationConfig.CreateDefault();
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);

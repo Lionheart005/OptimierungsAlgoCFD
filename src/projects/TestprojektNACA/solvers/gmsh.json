@@ -31,6 +31,10 @@
   "BoundaryLayerDistMin": 3.0,
   "BoundaryLayerDistMax": 40.0,
 
+  // Bisheriger Stand festgehalten (Code-Standard seit 08.11.2026: "Prism" und Nachlaufbox an).
+  "BoundaryLayerMode": "Threshold",
+  "WakeRefinement": false,
+
   // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
   "DetailBox": false,
   "DetailBoxLengthFactor": 1.0,

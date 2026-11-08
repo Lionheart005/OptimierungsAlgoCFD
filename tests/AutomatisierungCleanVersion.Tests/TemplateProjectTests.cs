@@ -237,6 +237,30 @@ namespace AutomatisierungCleanVersion.Tests
             "Bayes"
         };
 
+        /// <summary>
+        /// Steht bewusst nicht in den Vorlagen (Entscheidung 08.11.2026): im Auto-Modus der Netzkalibrierung
+        /// (Standard) bricht ein eingetragener <c>MeshRefinementFactor</c> den Start ab
+        /// (<c>MeshCalibration.ValidateConfig</c>). Die Vorlage erklärt ihn im Kommentar.
+        /// </summary>
+        internal const string AutoCalibratedKey = nameof(SimulationConfig.MeshRefinementFactor);
+
+        [Fact]
+        public void The_Templates_Calibrate_The_Mesh_Automatically_And_Leave_Out_The_Factor()
+        {
+            foreach (string folder in new[] { "_Vorlage", "_Vorlage2D" })
+            {
+                string? root = ProjectPaths.ResolveProjectsRoot();
+                string file = System.IO.Path.Combine(root!, folder, "simulation.json");
+                var loaded = JsonConfigLoader.Load(SimulationConfig.CreateDefault(), file);
+
+                Assert.Equal("Auto", loaded.MeshCalibration.Mode);
+
+                JsonNode? node = JsonNode.Parse(System.IO.File.ReadAllText(file),
+                    documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                Assert.DoesNotContain(AutoCalibratedKey, ((JsonObject)node!).Select(entry => entry.Key));
+            }
+        }
+
         [Fact]
         public void The_Template_Comment_Points_To_The_Optional_Algorithm_Settings()
         {
@@ -259,6 +283,7 @@ namespace AutomatisierungCleanVersion.Tests
                 .Select(property => property.Name)
                 .Where(name => !name.Equals("MachNumber", StringComparison.OrdinalIgnoreCase))
                 .Where(name => !OptionalAlgorithmKeys.Contains(name))
+                .Where(name => name != AutoCalibratedKey)
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
@@ -610,6 +635,7 @@ namespace AutomatisierungCleanVersion.Tests
                 .Select(property => property.Name)
                 .Where(name => !omittedIn2D.Contains(name))
                 .Where(name => !OptionalAlgorithmKeys.Contains(name))
+                .Where(name => name != AutoCalibratedKey)
                 .Where(name => !keys.Contains(name, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 

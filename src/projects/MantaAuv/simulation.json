@@ -105,7 +105,10 @@
     "Su2MaxIterations": 8000,
     "CauchyElements": 500
   },
+  // Mode "Manual" bewusst festgehalten (Standard ist seit 08.11.2026 "Auto"): eine 3D-Kalibrierung kostet hier
+  // ~4 h je Laufstart (Servertest 06.11.2026). Kalibrieren per `sim.ps1 calibrate`, Faktor dann eintragen.
   "MeshCalibration": {
+    "Mode": "Manual",
     "Tolerance": 0.02,
     "MaxCells3D": 3000000
   },

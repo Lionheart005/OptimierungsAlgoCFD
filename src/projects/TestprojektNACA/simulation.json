@@ -61,6 +61,16 @@
   //   "InitialSamples": 0          // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
   // },
 
+  // --- Netz und Feinpruefung: bisheriger Stand festgehalten ---
+  // Die Code-Standards sind seit 08.11.2026 "Auto" / 0.05 / "FinalTopN". Dieses Testprojekt rechnet weiter wie vorher.
+  "MeshCalibration": {
+    "Mode": "Manual",
+    "Tolerance": 0.02
+  },
+  "ChampionVerification": {
+    "Mode": "Final"
+  },
+
   // --- Validierung des Champions (Bouncer) ---
   "BouncerTolerance": 0.2,
   "BouncerJitter": 0.01

@@ -9,7 +9,10 @@
   // (Core/Models/SimulationConfig.cs). Reine 3D-Voxel- und Voxel-Glaettungsparameter
   // (BaseVoxelResolution, TargetPicoGkSize, VoxelSmoothingIterations, VoxelSmoothingPremeltingSteps,
   // UseRubberBandScaler, UseStlSmoothing) sind in 2D funktionslos und hier bewusst ausgelassen.
-  // Zwei Ausnahmen -- MaxIterations und VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt.
+  // Die Standards sind auf genaue Rechnungen ausgelegt (Netz automatisch kalibriert, strenge Konvergenz,
+  // Feinpruefung der besten Varianten); ohne Aenderung ist ein Lauf physikalisch belastbar.
+  // Ausnahmen: MaxIterations und VariantsPerIteration sind fuer einen kurzen ersten Lauf heruntergesetzt,
+  // und MeshRefinementFactor fehlt (Auto-Modus der Netzkalibrierung).
 
   // --- Pfade zu externer Software ---
   "MpiRunPath": "mpirun",
@@ -25,10 +28,15 @@
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  "MeshRefinementFactor": 1.0,
-  "Su2MaxIterations": 500,
-  "CauchyElements": 150,
-  "CauchyTolerance": "1e-4",
+  // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
+  // den Netzfaktor am Anfang selbst (in 2D Sekunden bis wenige Minuten). Nur bei "Mode": "Manual" eintragen.
+  //
+  // Normale Varianten: bis 3000 Iterationen, Cauchy-Fenster 300 bei 1e-5. Kontrollrechnungen (Kalibrierung,
+  // Feinpruefung, Recheck) rechnen mit dem strengen Profil "ControlRuns" weiter unten. Ob eine Rechnung
+  // konvergiert ist, entscheidet die Drift der Kennwerte im Endfenster (TODO-W3).
+  "Su2MaxIterations": 3000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
@@ -70,19 +78,22 @@
     "IterativeToleranceFraction": 0.1
   },
 
-  // --- Netzkalibrierung (TODO-42) ---
+  // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---
+  // Auto: die Kalibrierung rechnet Stufen 2.0 ... 0.5 und verfeinert bei Bedarf weiter (0.35, 0.25, ...),
+  // bis eine groebere Stufe die Toleranz (5 %) gegenueber der feinsten haelt. MaxCells2D deckelt die feinste Stufe.
   "MeshCalibration": {
-    "Mode": "Manual",
-    "Tolerance": 0.02,
+    "Mode": "Auto",
+    "Tolerance": 0.05,
     "Use2DPrecalibration": false,
     "AbsoluteTolerances": {},
     "MaxCells2D": 2000000,
-    "MaxCells3D": 50000000
+    "MaxCells3D": 3000000
   },
 
-  // --- Verifikation des Champions (TODO-43) ---
+  // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
+  // "FinalTopN": die TopN besten am Ende auf einem feineren Netz nachrechnen; warnt bei Abweichung > Tolerance.
   "ChampionVerification": {
-    "Mode": "Final",
+    "Mode": "FinalTopN",
     "TopN": 3,
     "RefinementSteps": 1,
     "Tolerance": 0.05

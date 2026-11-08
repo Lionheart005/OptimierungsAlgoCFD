@@ -99,3 +99,15 @@ mit 25 Punkten schon erstaunlich gut ist. Ob das Modell seinen Vorteil ausspielt
   eines Laufs auswertet, sollte nur Dateien nehmen, die zu `Simulation_Results.csv` passen.
 * `sim.ps1 run` meldet nach dem Start eine `tmux`-Bibliothekswarnung als `FEHLER:`, obwohl der Lauf startet. Das ist ein
   Anzeigeproblem der Meldung, kein Fehler des Laufs.
+
+## Folgelauf 10 × 10 (gestartet 08.11.2026, 18:23) — Auswertung offen
+
+* **Läuft auf BIC_12** über `~/driver10.sh` (nohup, unabhängig von sim.ps1): Rsm, Evolution, Bayes mit je
+  3 Seeds (20261108, 424242, 777), 10 × 10 Varianten, Netzfaktor fest 2.0, Feinprüfung `FinalTopN` (3),
+  Code-Stand `1f580d3` (mit Erfolgsmodell und instationär-stabilen Rechnungen). Geschätzt 3 bis 4 Stunden.
+* **Fortschritt:** `ssh BIC_12 "cat ~/vergleich10/driver.log"`, je Lauf ein Ordner `~/vergleich10/<Verfahren>_<Seed>/`
+  (CSV, `run-info.json`, `effective-config.json`, `Verifikation.csv`, `Bayes_Verlauf.csv`, Log).
+  Holen: `scp -r BIC_12:vergleich10 Serverergebnisse/Vergleich10x10`.
+* **Achtung:** Der Treiber ändert die `src/projects/Naca2D/simulation.json` **auf dem Server** (Seed, Netzfaktor,
+  `Mode: Manual`). Bis `ALLES FERTIG` im Log steht: **nicht deployen** (stoppt den laufenden Lauf). Ein späteres
+  `deploy` stellt die Datei aus dem Repo wieder her.

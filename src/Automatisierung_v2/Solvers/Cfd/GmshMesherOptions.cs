@@ -1,4 +1,4 @@
-using MyPicoGkProject.Core;
+﻿using MyPicoGkProject.Core;
 
 namespace MyPicoGkProject.Solvers.Cfd
 {
@@ -6,7 +6,8 @@ namespace MyPicoGkProject.Solvers.Cfd
     /// Vorgabedaten für den Gmsh-CFD-Vernetzer: Abmessungen des Windkanals und
     /// Grenzschicht-Feld. Werden aus <c>src/projects/&lt;Name&gt;/solvers/gmsh.json</c> geladen und per
     /// Konstruktor injiziert. Die Standardwerte entsprechen exakt dem, was vorher in
-    /// <see cref="GmshCfdMesher"/> hardcodiert stand (600 × 300 × 300 mm, zentriert).
+    /// <see cref="GmshCfdMesher"/> hardcodiert stand; seit 08.11.2026 auf genaue Rechnungen ausgelegt
+    /// (Kanal 1000 × 300 × 300 mm mit 14 L Nachlauf, Prismen-Wandschicht, Nachlauf- und Detailbox).
     /// </summary>
     public class GmshMesherOptions
     {
@@ -20,18 +21,19 @@ namespace MyPicoGkProject.Solvers.Cfd
         public string TunnelShape { get; set; } = "Box";
 
         /// <summary>Kantenlängen des Quaders (nur bei <see cref="TunnelShape"/> = "Box").</summary>
-        public float TunnelSizeX { get; set; } = 600.0f;
+        public float TunnelSizeX { get; set; } = 1000.0f;
         public float TunnelSizeY { get; set; } = 300.0f;
         public float TunnelSizeZ { get; set; } = 300.0f;
 
         /// <summary>
-        /// Mittelpunkt des Windkanals; das Modell sitzt im Ursprung.
+        /// Mittelpunkt des Windkanals; das Modell sitzt im Ursprung. Standard X = 200 mm: bei einem 50-mm-Modell
+        /// im 1000 mm langen Kanal 300 mm = 6 L stromauf und 700 mm = 14 L stromab.
         /// Empfehlung für Nachlauf-Erfassung: Den Tunnelmittelpunkt stromabwärts verschieben (positives X),
         /// sodass hinter dem Modell mindestens 10 Körperlängen (>= 10 L) Platz bleiben (z. B. bei einem 50 mm
         /// Modell im 600 mm Tunnel: TunnelCenterX = 100 mm ergibt 200 mm = 4 L stromauf und 400 mm = 8 L stromab,
         /// oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L stromab).
         /// </summary>
-        public float TunnelCenterX { get; set; } = 0.0f;
+        public float TunnelCenterX { get; set; } = 200.0f;
         public float TunnelCenterY { get; set; } = 0.0f;
         public float TunnelCenterZ { get; set; } = 0.0f;
 
@@ -41,7 +43,7 @@ namespace MyPicoGkProject.Solvers.Cfd
         public float TunnelDiameter { get; set; } = 300.0f;
 
         /// <summary>Länge entlang X (= Strömungsrichtung).</summary>
-        public float TunnelLength { get; set; } = 600.0f;
+        public float TunnelLength { get; set; } = 1000.0f;
 
         /// <summary>Segmente über den Umfang — bestimmt die Feinheit des Mantels.</summary>
         public int TunnelSegments { get; set; } = 64;
@@ -58,9 +60,9 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         // --- Nachlauf-Verfeinerung (Wake Box) ---
         /// <summary>
-        /// Nachlauf-Verfeinerung an/aus. Standard false, damit das .geo standardmäßig byteweise identisch bleibt.
+        /// Nachlauf-Verfeinerung an/aus (Standard an seit 08.11.2026: der Nachlauf bestimmt den Druckwiderstand mit).
         /// </summary>
-        public bool WakeRefinement { get; set; } = false;
+        public bool WakeRefinement { get; set; } = true;
 
         /// <summary>Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge lenX.</summary>
         public float WakeLengthFactor { get; set; } = 2.0f;
@@ -75,11 +77,11 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         // --- Detailbox um und hinter dem Modell (TODO-W6) ---
         /// <summary>
-        /// Feine Box um und hinter dem Modell (Nachlauf und Wirbel in Modellnähe). Standard aus: in 3D
-        /// kostet sie viele Zellen (Manta: einige hunderttausend). Bei Bedarf einschalten; die
+        /// Feine Box um und hinter dem Modell (Nachlauf und Wirbel in Modellnähe). Standard an (seit 08.11.2026);
+        /// in 3D kostet sie viele Zellen (Manta: einige hunderttausend), MantaAuv schaltet sie deshalb aus. Die
         /// Zellgröße skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit.
         /// </summary>
-        public bool DetailBox { get; set; } = false;
+        public bool DetailBox { get; set; } = true;
 
         /// <summary>Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge lenX (Standard 1.0).</summary>
         public float DetailBoxLengthFactor { get; set; } = 1.0f;
@@ -100,12 +102,12 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// <summary>
         /// Modus der Grenzschicht-Vernetzung:
         /// <list type="bullet">
-        ///   <item><c>"Threshold"</c> (Standard): Unstrukturiertes Tetraeder-Netz mit Gmsh-Threshold-Abstandsfeld.</item>
+        ///   <item><c>"Prism"</c> (Standard seit 08.11.2026): Strukturierte Prismen-Grenzschicht an der Wand, extrudiert aus Dreieckselementen (y+ ≈ 1, am Manta gemessen).</item>
+        ///   <item><c>"Threshold"</c>: Unstrukturiertes Tetraeder-Netz mit Gmsh-Threshold-Abstandsfeld (y+ ≈ 30–70, für das SA-Modell zu grob).</item>
         ///   <item><c>"Hexa"</c>: Strukturierte Quader-Grenzschicht (Hexaeder) an der Wand, extrudiert aus Viereckselementen.</item>
-        ///   <item><c>"Prism"</c>: Strukturierte Prismen-Grenzschicht an der Wand, extrudiert aus Dreieckselementen.</item>
         /// </list>
         /// </summary>
-        public string BoundaryLayerMode { get; set; } = "Threshold";
+        public string BoundaryLayerMode { get; set; } = "Prism";
 
         /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.0).</summary>
         public float TargetYPlus { get; set; } = 1.0f;

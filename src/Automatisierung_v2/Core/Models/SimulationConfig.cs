@@ -58,9 +58,14 @@ namespace MyPicoGkProject.Core
         /// </summary>
         public float MeshRefinementFactor { get; set; } = 1.0f;
 
-        public int Su2MaxIterations { get; set; } = 500;
-        public int CauchyElements { get; set; } = 150;
-        public string CauchyTolerance { get; set; } = "1e-4";
+        /// <summary>
+        /// Obergrenze der SU2-Iterationen je normaler Variante. 3000 reicht für RANS mit y+ ≈ 1 in 2D
+        /// und 3D; eine ruhige Rechnung hört über das Cauchy-Kriterium früher auf (Vorgabe seit 08.11.2026,
+        /// vorher 500/150/1e-4: viele Rechnungen endeten unkonvergiert).
+        /// </summary>
+        public int Su2MaxIterations { get; set; } = 3000;
+        public int CauchyElements { get; set; } = 300;
+        public string CauchyTolerance { get; set; } = "1e-5";
 
         /// <summary>
         /// Wie weit der <b>iterative</b> Fehler einer normalen Variante unter der Netz-Toleranz
@@ -202,11 +207,11 @@ namespace MyPicoGkProject.Core
     /// </summary>
     public class MeshCalibrationConfig
     {
-        /// <summary>"Manual" (Standard) oder "Auto".</summary>
-        public string Mode { get; set; } = "Manual";
+        /// <summary>"Auto" (Standard seit 08.11.2026: Netzfaktor am Laufanfang kalibrieren) oder "Manual" (MeshRefinementFactor gilt).</summary>
+        public string Mode { get; set; } = "Auto";
 
-        /// <summary>Erlaubte relative Abweichung aller Ergebnisgrößen gegenüber der feinsten Referenzstufe (0.02 = 2 %).</summary>
-        public float Tolerance { get; set; } = 0.02f;
+        /// <summary>Erlaubte relative Abweichung aller Ergebnisgrößen gegenüber der feinsten Referenzstufe (0.05 = 5 %).</summary>
+        public float Tolerance { get; set; } = 0.05f;
 
         /// <summary>2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48).</summary>
         public bool Use2DPrecalibration { get; set; } = false;
@@ -223,8 +228,11 @@ namespace MyPicoGkProject.Core
         /// <summary>Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D (TODO-W5).</summary>
         public long MaxCells2D { get; set; } = 2_000_000;
 
-        /// <summary>Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 3D (TODO-W5).</summary>
-        public long MaxCells3D { get; set; } = 50_000_000;
+        /// <summary>
+        /// Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 3D (TODO-W5). 3 Mio. wie bei MantaAuv
+        /// (Servertest 06.11.2026: 1,3 Mio. Zellen stabil, ~4 h Kalibrierung); mehr kostet schnell Tage.
+        /// </summary>
+        public long MaxCells3D { get; set; } = 3_000_000;
     }
 
     /// <summary>
@@ -232,8 +240,8 @@ namespace MyPicoGkProject.Core
     /// </summary>
     public class ChampionVerificationConfig
     {
-        /// <summary>"Off", "Final" (Standard), "FinalTopN" oder "EachIteration".</summary>
-        public string Mode { get; set; } = "Final";
+        /// <summary>"Off", "Final", "FinalTopN" (Standard: die besten TopN fein nachrechnen) oder "EachIteration".</summary>
+        public string Mode { get; set; } = "FinalTopN";
 
         /// <summary>Anzahl der besten Varianten am Ende bei Mode = "FinalTopN".</summary>
         public int TopN { get; set; } = 3;

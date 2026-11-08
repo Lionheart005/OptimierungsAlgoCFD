@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using Xunit;
@@ -98,12 +98,12 @@ namespace AutomatisierungCleanVersion.Tests
                     "MATH_PROBLEM= DIRECT",
                     "INC_DENSITY_MODEL= CONSTANT",
                     "INC_ENERGY_EQUATION= NO",
-                    "FREESTREAM_VELOCITY= ( 34.320004, 0.0, 0.0 )",
+                    "FREESTREAM_VELOCITY= ( 2, 0.0, 0.0 )",
                     "FREESTREAM_DENSITY= 1025",
                     "VISCOSITY_MODEL= CONSTANT_VISCOSITY",
                     "MU_CONSTANT= 0.001001",
                     "INC_DENSITY_INIT= 1025",
-                    "INC_VELOCITY_INIT= ( 34.320004, 0.0, 0.0 )",
+                    "INC_VELOCITY_INIT= ( 2, 0.0, 0.0 )",
                     "REF_AREA= 0.001",
                     "REF_LENGTH= 0.01",
                     "REF_ORIGIN_MOMENT_X = 0.00",
@@ -122,10 +122,10 @@ namespace AutomatisierungCleanVersion.Tests
                     "CFL_ADAPT= YES",
                     "CFL_ADAPT_PARAM= ( 0.5, 1.2, 1, 50 )",
                     "CONV_NUM_METHOD_TURB= SCALAR_UPWIND",
-                    "ITER= 500",
+                    "ITER= 3000",
                     "CONV_FIELD= DRAG",
-                    "CONV_CAUCHY_ELEMS= 150",
-                    "CONV_CAUCHY_EPS= 1e-4",
+                    "CONV_CAUCHY_ELEMS= 300",
+                    "CONV_CAUCHY_EPS= 1e-5",
                     "CONV_STARTITER= 100",
                     "CONV_RESIDUAL_MINVAL= -8",
                     "HISTORY_OUTPUT= (ITER, RMS_RES, AERO_COEFF)",

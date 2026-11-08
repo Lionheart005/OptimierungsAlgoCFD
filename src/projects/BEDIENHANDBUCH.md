@@ -183,10 +183,10 @@ bestraft. Höhere Fitness = besser.
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
 | `MachNumber` | **Veralteter/optionaler Rückfallwert** zur Geschwindigkeit: Geschwindigkeit = `MachNumber` × `SpeedOfSound` (aus `su2.json`). Wirkt **nur**, wenn in `su2.json` `FreestreamVelocity` 0 ist. In Standardprojekten zugunsten von `FreestreamVelocity` aus `simulation.json` entfernt. | `0.1` | 🎯 | 🟡 |
-| `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. | `1.0` | ⏱🎯 | 🟡 |
-| `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. | `500` | ⏱🎯 | 🟡 |
-| `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `150` | ⏱🎯 | 🔴 |
-| `CauchyTolerance` | Wie wenig er sich dabei noch ändern darf. **In Anführungszeichen**, z. B. `"1e-4"`. Kleiner = genauer, länger. | `"1e-4"` | ⏱🎯 | 🟡 |
+| `MeshRefinementFactor` | Globaler Faktor für alle Zellgrößen im Netz. `1.0` = Standardgrößen; kleiner als 1,0 verfeinert das Netz (z. B. `0.5` halbiert die Zellkanten), größer als 1,0 vergröbert es für schnelle Vorabläufe. **Nur bei `MeshCalibration.Mode = "Manual"` eintragen;** im Auto-Modus (Standard) bricht ein eingetragener Faktor den Start ab, die Vorlagen lassen ihn deshalb weg. | `1.0` | ⏱🎯 | 🟡 |
+| `Su2MaxIterations` | Höchstzahl der SU2-Rechenschritte je Variante. Ist sie erreicht, hört SU2 auf, auch wenn die Lösung noch nicht ruhig ist. 3000 reicht für RANS mit y+ ≈ 1 in 2D und 3D; eine ruhige Rechnung hört über das Cauchy-Kriterium früher auf. | `3000` | ⏱🎯 | 🟡 |
+| `CauchyElements` | Über so viele Schritte prüft SU2, ob sich der Widerstand noch ändert (Abbruchkriterium). | `300` | ⏱🎯 | 🔴 |
+| `CauchyTolerance` | Wie wenig er sich dabei noch ändern darf. **In Anführungszeichen**, z. B. `"1e-5"`. Kleiner = genauer, länger. | `"1e-5"` | ⏱🎯 | 🟡 |
 | `MpiCores` | Rechenkerne für SU2. | `12` | ⏱ | 🟡 |
 | `GmshCores` | Rechenkerne für die Netzerzeugung. | `12` | ⏱ | 🟡 |
 
@@ -319,12 +319,12 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `MeshCalibration` | Abschnitt für die automatisierte Netzkalibrierung. | `{}` | 🟡 |
-| `Mode` | Modus der Kalibrierung: `"Manual"` (Standard, `MeshRefinementFactor` gilt) oder `"Auto"` (Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein). | `"Manual"` | 🟡 |
-| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.02` = 2 %). | `0.02` | 🟡 |
+| `Mode` | Modus der Kalibrierung: `"Auto"` (Standard: Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein) oder `"Manual"` (`MeshRefinementFactor` gilt). In 2D dauert die Kalibrierung Sekunden bis Minuten, in 3D Stunden (MantaAuv ~4 h, steht deshalb auf `"Manual"`). | `"Auto"` | 🟡 |
+| `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). | `0.05` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
 | `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
 | `MaxCells2D` | Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). | `2000000` | 🔴 |
-| `MaxCells3D` | Dasselbe für 3D. | `50000000` | 🔴 |
+| `MaxCells3D` | Dasselbe für 3D. 3 Mio. wie bei MantaAuv; mehr kostet schnell Tage. | `3000000` | 🔴 |
 
 **Gewinner fein nachrechnen (`ChampionVerification`, TODO-43)**
 
@@ -333,7 +333,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `ChampionVerification` | Abschnitt für die Verifikation der Gewinner auf feinem Netz. | `{}` | 🟡 |
-| `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (Standard, prüft den Gesamtsieger am Ende), `"FinalTopN"` (prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"Final"` | 🟡 |
+| `Mode` | Verifikationsmodus: `"Off"` (aus), `"Final"` (prüft den Gesamtsieger am Ende), `"FinalTopN"` (Standard, prüft die Top-N am Ende) oder `"EachIteration"` (prüft den Sieger jeder Runde). | `"FinalTopN"` | 🟡 |
 | `TopN` | Anzahl der besten Varianten am Ende bei `Mode` = `"FinalTopN"`. | `3` | 🟡 |
 | `RefinementSteps` | Anzahl der Verfeinerungsstufen gegenüber dem wirksamen Faktor (÷ √2 je Stufe). | `1` | 🟡 |
 | `Tolerance` | Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (`0.05` = 5 %). | `0.05` | 🟡 |
@@ -342,7 +342,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
-| `FreestreamVelocity` | **Anströmgeschwindigkeit in m/s.** Ist sie größer als 0, gilt sie; dann spielt `MachNumber` keine Rolle. `0` = alter Weg über `MachNumber` × `SpeedOfSound`. MantaAuv: `2.0`. | `0.0` | 🎯 | 🟢 |
+| `FreestreamVelocity` | **Anströmgeschwindigkeit in m/s.** Ist sie größer als 0, gilt sie; dann spielt `MachNumber` keine Rolle. `0` = alter Weg über `MachNumber` × `SpeedOfSound` (in Wasser unrealistisch). Standard `2.0` passt zum Standardfluid Meerwasser (übliche AUV-Geschwindigkeit). | `2.0` | 🎯 | 🟢 |
 | `Density` | Dichte des Fluids in kg/m³. Meerwasser `1025`, Süßwasser ~`998`, Luft `1.225`. | `1025` | 🎯 | 🟢 |
 | `DynamicViscosity` | Zähigkeit des Fluids in Pa·s. Meerwasser `0.001001`, Luft `1.81e-5`. | `0.001001` | 🎯 | 🟢 |
 | `TurbulenceModel` | Rechenmodell für Turbulenz: `"SA"` (Spalart-Allmaras) oder `"SST"`. | `"SA"` | 🎯 | 🟡 |
@@ -352,9 +352,9 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `ResultMetrics` | Welche SU2-Kennwerte unter welchem Namen ankommen. Links der Name für die Bewertung, rechts die SU2-Spalte: `CD` Widerstand, `CL` Auftrieb, `CSF` Seitenkraft, `CMx`/`CMy`/`CMz` Momente. **Eintragen ergänzt nur**: `Drag` bleibt immer dabei. Fehlt eine eingetragene Spalte, gilt die Variante als fehlgeschlagen. | `{ "Drag": "CD" }` | 🎯 | 🟡 |
 | `ConvergenceField` | An welchem Kennwert SU2 entscheidet, ob die Rechnung fertig ist: `"DRAG"` oder bei Auftriebsprojekten `"LIFT"`. | `"DRAG"` | 🎯⏱ | 🟡 |
 | `HistoryOutput` | Welche Spaltengruppen SU2 mitschreibt. `AERO_COEFF` liefert alle Beiwerte; ohne sie findet `ResultMetrics` nichts. | `["ITER","RMS_RES","AERO_COEFF"]` | ⚙ | 🔴 |
-| `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.02` = 2 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). | `0.02` | 🎯 | 🟡 |
-| `TreatUnconvergedAsFailed` | Ob Rechnungen, deren Kennwerte im Endfenster noch **gesichert weiterwandern** (echte Drift), als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `false`: Wert wird trotzdem übernommen. **Eine Rechnung, die nur schwingt (Wirbelablösung), ist davon nicht betroffen:** Sie gilt als „instationär, aber stabil" (`Su2_Unsteady = 1`), es zählt der Mittelwert des Endfensters, und sie ist kein Fehlschlag. | `false` | 🎯 | 🟡 |
-| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (Standard); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase). **Kontrollrechnungen und instationär-stabile Rechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"Last"` | 🎯 | 🟡 |
+| `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.05` = 5 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). Nur eine Warnung. | `0.05` | 🎯 | 🟡 |
+| `TreatUnconvergedAsFailed` | Ob Rechnungen, deren Kennwerte im Endfenster noch **gesichert weiterwandern** (echte Drift), als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `true`: driftende Rechnungen gehen nicht in die Optimierung ein (`false` = Wert wird trotzdem übernommen). **Eine Rechnung, die nur schwingt (Wirbelablösung), ist davon nicht betroffen:** Sie gilt als „instationär, aber stabil" (`Su2_Unsteady = 1`), es zählt der Mittelwert des Endfensters, und sie ist kein Fehlschlag. | `true` | 🎯 | 🟡 |
+| `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (früheres Verhalten); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase; Standard). **Kontrollrechnungen und instationär-stabile Rechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"TailMean"` | 🎯 | 🟡 |
 | `CflNumber` | Schrittweite des SU2-Verfahrens beim Start. Größer = schneller, aber Gefahr, dass die Rechnung „explodiert". | `5.0` | ⏱ | 🔴 |
 | `CflAdapt` | Ob SU2 die Schrittweite selbst anpasst. | `true` | ⏱ | 🔴 |
 | `CflAdaptFactorDown` | Wie stark verkleinert wird, wenn es unruhig wird. | `0.5` | ⏱ | 🔴 |
@@ -362,7 +362,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `CflAdaptMin` | Kleinste erlaubte Schrittweite. | `1.0` | ⏱ | 🔴 |
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
 | `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
-| `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `2.0` | 🎯 | 🟡 |
+| `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `3.0` | 🎯 | 🟡 |
 | `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). Kann auch als aktiver Optimierungsparameter in `project.json` definiert werden. | `0.0` | 🎯 | 🟢 |
 | `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
 | `TimeDomain` | Block für zeitgenaue CFD-Rechnungen (URANS, Dual-Time-Stepping, TODO-37). Details siehe unten. | `{}` | 🎯⏱ | 🟡 |
@@ -391,29 +391,29 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | Einstellung | Bedeutung | Standard | Wirkung | Wann |
 | --- | --- | --- | --- | --- |
 | `TunnelShape` | Form des Windkanals: `"Box"` (Quader) oder `"Cylinder"` (Zylinder entlang x). Unbekannter Name → Warnung und `"Box"`. | `"Box"` | 🎯 | 🟡 |
-| `TunnelSizeX` | Länge des Quaders in Strömungsrichtung (mm). | `600` | 🎯⏱ | 🟡 |
+| `TunnelSizeX` | Länge des Quaders in Strömungsrichtung (mm). Die Vorgabe passt zu einem Modell von etwa 50 mm (6 L davor, 14 L dahinter); ein größeres Modell braucht einen proportional größeren Kanal. | `1000` | 🎯⏱ | 🟡 |
 | `TunnelSizeY` | Breite des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
 | `TunnelSizeZ` | Höhe des Quaders (mm). | `300` | 🎯⏱ | 🟡 |
-| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf (Empfehlung: ≥ 10 Modelllängen hinter dem Modell). | `0` | 🎯 | 🟡 |
+| `TunnelCenterX` | Mittelpunkt des Kanals, x (mm). Das Modell sitzt im Nullpunkt; ein positiver Wert schiebt den Kanal nach hinten → mehr Platz für den Nachlauf (Empfehlung: ≥ 10 Modelllängen hinter dem Modell). | `200` | 🎯 | 🟡 |
 | `TunnelCenterY` | Mittelpunkt, y (mm). | `0` | 🎯 | 🔴 |
 | `TunnelCenterZ` | Mittelpunkt, z (mm). | `0` | 🎯 | 🔴 |
 | `TunnelDiameter` | Durchmesser des Zylinders (mm), nur bei `"Cylinder"`. | `300` | 🎯⏱ | 🟡 |
-| `TunnelLength` | Länge des Zylinders (mm), nur bei `"Cylinder"`. | `600` | 🎯⏱ | 🟡 |
+| `TunnelLength` | Länge des Zylinders (mm), nur bei `"Cylinder"`. | `1000` | 🎯⏱ | 🟡 |
 | `TunnelSegments` | Wie rund der Zylinder ist (Anzahl Kanten am Umfang). | `64` | ⚙ | 🔴 |
 | `BoundaryLayerSizeMin` | Kleinste Zellgröße nahe am Modell (mm). Kleiner = genauer, aber viel mehr Zellen. | `1.2` | 🎯⏱ | 🟡 |
 | `BoundaryLayerSizeMax` | Größte Zellgröße weit weg vom Modell (mm). | `120` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMin` | Bis zu diesem Abstand vom Modell gilt die kleinste Zellgröße (mm). | `3.0` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMax` | Ab diesem Abstand gilt die größte Zellgröße; dazwischen wird übergeblendet (mm). | `40` | 🎯⏱ | 🟡 |
-| `WakeRefinement` | Nachlauf-Verfeinerung an/aus. Bei `true` wird eine dynamische Nachlauf-Box hinter dem Modell eingefügt. | `false` | 🎯⏱ | 🟡 |
+| `WakeRefinement` | Nachlauf-Verfeinerung an/aus. Bei `true` wird eine dynamische Nachlauf-Box hinter dem Modell eingefügt. | `true` | 🎯⏱ | 🟡 |
 | `WakeLengthFactor` | Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge `lenX`. | `2.0` | 🎯⏱ | 🟡 |
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
-| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. In 3D standardmäßig **aus**, weil sie viele Zellen kostet (Manta: einige hunderttausend). | `false` | 🎯⏱ | 🟡 |
+| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard **an**; sie kostet in 3D viele Zellen (Manta: einige hunderttausend, dort deshalb aus), `MaxCells3D` deckelt die Kalibrierung. | `true` | 🎯⏱ | 🟡 |
 | `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.0` | 🎯⏱ | 🟡 |
 | `DetailBoxWidthFactor` | Überstand der Detailbox in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
 | `DetailBoxCellSize` | Zellgröße in der Detailbox in mm auf Stufe 1.0; `0.0` = automatisch 2,5 × Oberflächen-Zellgröße. | `0.0` | 🎯⏱ | 🟡 |
 | `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
-| `BoundaryLayerMode` | Modus der Grenzschicht: `"Threshold"` (Vorgabe, unstrukturiert wie bisher, **y+ ≈ 30–70**), `"Prism"` (flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Threshold"` | 🎯⏱ | 🟢 |
+| `BoundaryLayerMode` | Modus der Grenzschicht: `"Prism"` (Vorgabe: flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**), `"Threshold"` (unstrukturiert, **y+ ≈ 30–70**, für das SA-Modell zu grob, nur für schnelle Vorabläufe) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Prism"` | 🎯⏱ | 🟢 |
 | `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand. Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.0` | 🎯 | 🟡 |
 | `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
 | `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |

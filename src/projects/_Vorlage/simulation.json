@@ -6,9 +6,12 @@
   //
   // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt JEDEN Schluessel, den das
   // Framework kennt, mit dem Wert aus dem Code-Standard
-  // (Core/Models/SimulationConfig.cs). Zwei Ausnahmen -- MaxIterations und
-  // VariantsPerIteration -- sind fuer einen kurzen ersten Lauf heruntergesetzt,
-  // siehe unten. Ein Test haelt beides fest (TemplateProjectTests).
+  // (Core/Models/SimulationConfig.cs). Die Standards sind auf genaue Rechnungen
+  // ausgelegt (Netz automatisch kalibriert, strenge Konvergenz, Feinpruefung der
+  // besten Varianten); ohne Aenderung ist ein Lauf physikalisch belastbar.
+  // Ausnahmen: MaxIterations und VariantsPerIteration sind fuer einen kurzen
+  // ersten Lauf heruntergesetzt, und MeshRefinementFactor fehlt (Auto-Modus).
+  // Ein Test haelt das fest (TemplateProjectTests).
   //
   // IN EINEM ECHTEN PROJEKT STEHT HIER NUR NOCH, WAS ABWEICHT. Alles andere
   // darfst und sollst du loeschen: ein Schluessel mit dem Standardwert ist
@@ -48,7 +51,8 @@
   // ABWEICHUNG VOM CODE-STANDARD (dort 10 x 10 = 100): die Vorlage steht auf
   // 1 x 2 = 2 Varianten, damit der erste Lauf eines neuen Projekts ein
   // RAUCHTEST ist und keine Nachtschicht. Er beantwortet die Frage "laeuft die
-  // Kette ueberhaupt durch" in Minuten. Sitzt Geometrie und Fitness, dann hier
+  // Kette ueberhaupt durch" (plus Netzkalibrierung am Anfang, siehe MeshCalibration
+  // unten). Sitzt Geometrie und Fitness, dann hier
   // hochsetzen und neu deployen -- es gibt kein verstecktes zweites Stellrad.
   "MaxIterations": 1,
   "VariantsPerIteration": 2,
@@ -72,14 +76,17 @@
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  // Globaler Faktor fuer alle Zellgroessen im Netz (1.0 = Basisgroessen aus gmsh.json,
-  // < 1.0 = feiner, z. B. 0.5 halbiert alle Zellkanten, > 1.0 = groeber fuer schnelle Vorablaeufe).
-  "MeshRefinementFactor": 1.0,
-  // Obergrenze der SU2-Iterationen je Variante; CauchyElements/CauchyTolerance
-  // brechen frueher ab, sobald die Zielgroesse ruhig liegt.
-  "Su2MaxIterations": 500,
-  "CauchyElements": 150,
-  "CauchyTolerance": "1e-4",
+  // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert
+  // der Lauf den Netzfaktor am Anfang selbst, und ein eingetragener Faktor bricht den Start ab.
+  // Nur bei "Mode": "Manual" eintragen: 1.0 = Basisgroessen aus gmsh.json, < 1.0 = feiner
+  // (0.5 halbiert alle Zellkanten), > 1.0 = groeber fuer schnelle Vorablaeufe.
+  //
+  // Obergrenze der SU2-Iterationen je Variante; CauchyElements/CauchyTolerance brechen frueher ab,
+  // sobald die Zielgroesse ruhig liegt. Ob eine Rechnung wirklich konvergiert ist, entscheidet danach
+  // die Drift der Kennwerte im Endfenster (TODO-W3). 3000 reicht fuer RANS mit y+ ~ 1.
+  "Su2MaxIterations": 3000,
+  "CauchyElements": 300,
+  "CauchyTolerance": "1e-5",
   // Kerne fuer mpirun bzw. Gmsh. Mehr als der Rechner hat, macht es langsamer.
   "MpiCores": 12,
   "GmshCores": 12,
@@ -99,7 +106,7 @@
 
   // --- RSM / Antwortflaechen-Verfahren (wirkt nur bei "Rsm") ---
   // Virtuelle Stichproben auf der Ersatzfunktion -- kostet keine Rechenzeit im
-  // Solver, nur Sekundenbruchteile im Speicher.
+  // Solver, nur Sekundenbruchteile im Speicher. Am besten einfach so lassen:
   "RsmVirtualSimulations": 50000,
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
@@ -134,27 +141,32 @@
     "IterativeToleranceFraction": 0.1
   },
 
-  // --- Netzkalibrierung (TODO-42) ---
-  // Mode: "Manual" (Standard, MeshRefinementFactor oben gilt) oder "Auto" (Faktor wird am
-  //   Laufanfang kalibriert; dann darf MeshRefinementFactor nicht gesetzt sein).
-  // Tolerance: erlaubte relative Abweichung aller Ergebnisgroessen gegenueber der feinsten Referenzstufe.
-  // Use2DPrecalibration: 2D-Vorkalibrierung vor 3D-Bestaetigung nutzen (TODO-48).
+  // --- Netzkalibrierung (TODO-42, TODO-W5) ---
+  // Mode: "Auto" (Standard: der Lauf rechnet am Anfang Netzstufen 2.0 ... 0.5 und verfeinert bei Bedarf
+  //   weiter, bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt; diesen Faktor nimmt er)
+  //   oder "Manual" (dann MeshRefinementFactor oben eintragen).
+  //   Achtung 3D: die Kalibrierung dauert dort Stunden (MantaAuv ~4 h). Wer nur pruefen will, ob die Kette
+  //   durchlaeuft, stellt fuer den ersten Rauchtest "Manual" ein.
+  // Tolerance: erlaubte relative Abweichung aller Ergebnisgroessen gegenueber der feinsten Referenzstufe (5 %).
+  // Use2DPrecalibration: 2D-Vorkalibrierung vor 3D-Bestaetigung (TODO-48); nur fuer Koerper mit einheitlichem
+  //   Profil (IHasRepresentativeSection), sonst bricht der Start ab.
+  // MaxCells2D/MaxCells3D: hier hoert die Kalibrierung auf zu verfeinern (Rechenzeit-Deckel).
   "MeshCalibration": {
-    "Mode": "Manual",
-    "Tolerance": 0.02,
+    "Mode": "Auto",
+    "Tolerance": 0.05,
     "Use2DPrecalibration": false,
     "AbsoluteTolerances": {},
     "MaxCells2D": 2000000,
-    "MaxCells3D": 50000000
+    "MaxCells3D": 3000000
   },
 
   // --- Verifikation des Champions (TODO-43) ---
-  // Mode: "Off" | "Final" (Standard, Re-Simulation des Champions) | "FinalTopN" | "EachIteration"
+  // Mode: "Off" | "Final" (nur der Champion) | "FinalTopN" (Standard: die TopN besten) | "EachIteration"
   // TopN: Anzahl der besten Varianten bei "FinalTopN".
   // RefinementSteps: Verfeinerungsstufen gegenueber dem wirksamen Faktor (÷ √2 je Stufe).
   // Tolerance: relative Abweichung, ab der laut vor Netzabhaengigkeit gewarnt wird (0.05 = 5 %).
   "ChampionVerification": {
-    "Mode": "Final",
+    "Mode": "FinalTopN",
     "TopN": 3,
     "RefinementSteps": 1,
     "Tolerance": 0.05

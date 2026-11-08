@@ -16,7 +16,10 @@
   "TurbulenceModel": "SA",      // SA oder SST
   "SpeedOfSound": 343.2,        // m/s
 
-  "FreestreamVelocity": 0.0,    // m/s (0 = MachNumber x SpeedOfSound)
+  // Anstroemgeschwindigkeit; 2.0 m/s passt zum Standardfluid Meerwasser (Re ~1e5 bei 50 mm Sehne).
+  // Fuer Luft Density/DynamicViscosity oben auf 1.225 / 1.81e-5 setzen und die Geschwindigkeit anpassen
+  // (Beispiel Naca2D: Luft, 51.48 m/s). 0 = alter Weg MachNumber x SpeedOfSound (in Wasser unrealistisch).
+  "FreestreamVelocity": 2.0,    // m/s
 
   // --- Dimension & Anstellwinkel (TODO-46) ---
   // In Cfd2DProjectDefinition wird Dimensions zur Laufzeit automatisch auf 2 gefuehrt.
@@ -35,10 +38,12 @@
   "ConvergenceField": "DRAG",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- Auswertung & Konvergenzbewertung (TODO-35) ---
-  "OscillationWarnLimit": 0.02,
-  "TreatUnconvergedAsFailed": false,
-  "ResultAveraging": "Last",
+  // --- Auswertung & Konvergenzbewertung (TODO-35, TODO-W3) ---
+  // Driftende Rechnungen gelten als fehlgeschlagen und gehen nicht in die Optimierung ein; nur schwingende
+  // (Wirbelabloesung) bleiben gueltig. Ergebnis ist das Mittel des Endfensters, nicht der letzte Schritt.
+  "OscillationWarnLimit": 0.05,
+  "TreatUnconvergedAsFailed": true,
+  "ResultAveraging": "TailMean",
 
   // --- CFL-Steuerung ---
   "CflNumber": 5.0,
@@ -50,7 +55,7 @@
 
   // --- y+-Ziel und Grenzschichtpruefung (TODO-41) ---
   "TargetYPlus": 1.0,
-  "YPlusWarnFactor": 2.0,
+  "YPlusWarnFactor": 3.0,
 
   // --- Zeitgenauer Modus / URANS (TODO-37) ---
   // Zeitgenaue Rechnung ueber Dual-Time-Stepping (fuer instationaere Stroemungen).

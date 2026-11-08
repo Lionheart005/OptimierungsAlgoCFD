@@ -433,7 +433,8 @@ NPOIN= 5
         [Fact]
         public void GenerateMesh_On_Gmsh_Failure_Copies_Geo_To_FehlerLogs()
         {
-            var options = new GmshMesherOptions();
+            // Threshold: ein einziges .geo. Bei "Prism" (Standard) scheitert zuerst das Wandflächen-Skript.
+            var options = new GmshMesherOptions { BoundaryLayerMode = "Threshold" };
             var mesher = new GmshCfdMesher(options);
             var config = SimulationConfig.CreateDefault();
             config.GmshPath = "non_existent_gmsh_binary_12345";

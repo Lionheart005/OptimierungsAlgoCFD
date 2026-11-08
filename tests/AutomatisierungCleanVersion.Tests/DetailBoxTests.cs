@@ -156,16 +156,19 @@ namespace AutomatisierungCleanVersion.Tests
         // ------------------------------------------------------------------ 3D
 
         [Fact]
-        public void Three_Dimensional_Detail_Box_Is_Off_By_Default_And_Wired_When_On()
+        public void Three_Dimensional_Detail_Box_Is_On_By_Default_And_Absent_When_Off()
         {
             string path = Path.Combine(_dir, "m.geo");
             var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
             var config = SimulationConfig.CreateDefault();
 
-            new GmshCfdMesher(new GmshMesherOptions(), flow).WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
+            Assert.True(new GmshMesherOptions().DetailBox); // Standard seit 08.11.2026
+
+            var off = new GmshMesherOptions { DetailBox = false, BoundaryLayerMode = "Threshold" };
+            new GmshCfdMesher(off, flow).WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
             Assert.DoesNotContain(File.ReadAllLines(path), l => l.StartsWith("Field[5] = Box;"));
 
-            var on = new GmshMesherOptions { DetailBox = true, DetailBoxCellSize = 2.0f, WakeRefinement = true };
+            var on = new GmshMesherOptions { DetailBox = true, DetailBoxCellSize = 2.0f, WakeRefinement = true, BoundaryLayerMode = "Threshold" };
             new GmshCfdMesher(on, flow).WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 0.5f);
             var lines = File.ReadAllLines(path);
 

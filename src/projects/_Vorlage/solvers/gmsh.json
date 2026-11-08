@@ -28,23 +28,21 @@
   //
   // WICHTIG: Der Kanal muss deutlich groesser sein als das Modell -- sonst
   // stroemt die Loesung an den Waenden auf und der Widerstand kommt zu hoch
-  // heraus. Die Vorgabe (600 x 300 x 300) passt zu einem Modell von etwa 50 mm
-  // Laenge. Wird dein Modell groesser, waechst der Kanal mit.
-  // Empfehlung fuer Nachlauf-Erfassung: Den Tunnelmittelpunkt stromabwaerts verschieben
-  // (positives TunnelCenterX), sodass hinter dem Modell mindestens 10 Koerperlaengen (>= 10 L)
-  // Platz bleiben (z. B. bei 50 mm Modell: TunnelCenterX = 100 mm im 600 mm Tunnel ergibt
-  // 4 L vorn und 8 L hinten, oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L hinten).
+  // heraus. Die Vorgabe (1000 x 300 x 300, Mitte 200 mm stromab) passt zu einem
+  // Modell von etwa 50 mm Laenge: 300 mm = 6 L davor, 700 mm = 14 L dahinter fuer
+  // den Nachlauf (Faustregel >= 10 L), 6 L zu jeder Seite. Wird dein Modell
+  // groesser, waechst der Kanal im selben Verhaeltnis mit (MantaAuv, ~100 mm: 1200 lang, Mitte 300).
   "TunnelShape": "Box",
-  "TunnelSizeX": 600.0,
+  "TunnelSizeX": 1000.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
-  "TunnelCenterX": 0.0,
+  "TunnelCenterX": 200.0,
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
 
   // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
   "TunnelDiameter": 300.0,
-  "TunnelLength": 600.0,
+  "TunnelLength": 1000.0,
   "TunnelSegments": 64,
 
   // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
@@ -57,17 +55,19 @@
   "BoundaryLayerDistMax": 40.0,
 
   // --- Nachlauf-Verfeinerung (Wake Box) ---
-  // Fuegt eine dynamische Nachlauf-Box stromabwaerts des Modells ein.
-  "WakeRefinement": false,
+  // Fuegt eine dynamische Nachlauf-Box stromabwaerts des Modells ein (Standard an: der Nachlauf
+  // bestimmt den Druckwiderstand mit).
+  "WakeRefinement": true,
   "WakeLengthFactor": 2.0,
   "WakeWidthFactor": 0.5,
   "WakeCellSize": 0.0,
 
   // --- Detailbox um und hinter dem Modell (TODO-W6) ---
   // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
-  // Feine Box fuer Nachlauf und Wirbel in Modellnaehe. In 3D standardmaessig aus (viele Zellen).
+  // Feine Box fuer Nachlauf und Wirbel in Modellnaehe. Kostet in 3D viele Zellen; die Netzkalibrierung
+  // prueft sie mit, MaxCells3D in simulation.json deckelt die Zellzahl.
   // DetailBoxCellSize: mm auf Stufe 1.0; 0 = automatisch 2,5 x Oberflaechen-Zellgroesse.
-  "DetailBox": false,
+  "DetailBox": true,
   "DetailBoxLengthFactor": 1.0,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxCellSize": 0.0,
@@ -77,12 +77,14 @@
   "MeshSizeFromCurvature": false,
 
   // --- Strukturierte Grenzschicht (TODO-40) ---
-  // "Threshold" = Unstrukturiertes Tetraeder-Netz mit Threshold-Feld (Standard wie bisher)
-  // "Hexa"      = Strukturierte Quader-Grenzschicht (Hexaeder) an der Wand
-  // "Prism"     = Strukturierte Prismen-Grenzschicht an der Wand (Rueckfallebene)
-  "BoundaryLayerMode": "Threshold",
+  // "Prism"     = Prismen-Schichten an der Wand, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper,
+  //               am Manta gemessen: SU2 konvergiert, siehe Handbuch 4.4)
+  // "Threshold" = Unstrukturiertes Tetraeder-Netz mit Threshold-Feld, y+ ~ 30-70: fuer das SA-Modell
+  //               ohne Wandfunktion zu grob, der Widerstand wird ungenau. Nur fuer schnelle Vorablaeufe.
+  // "Hexa"      = Quader-Schichten an der Wand; nur fuer glatte Koerper ohne scharfe Kanten
+  "BoundaryLayerMode": "Prism",
 
-  // Ziel-y+ fuer die erste Zellhoehe an der Wand.
+  // Ziel-y+ fuer die erste Zellhoehe an der Wand (gleicher Wert wie TargetYPlus in su2.json).
   "TargetYPlus": 1.0,
 
   // Mindestanzahl an Schichten in der Grenzschicht.

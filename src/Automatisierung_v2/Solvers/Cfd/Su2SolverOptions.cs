@@ -27,17 +27,17 @@ namespace MyPicoGkProject.Solvers.Cfd
         /// Anströmgeschwindigkeit in m/s (TODO-38). Der Löser ist inkompressibel — eine Mach-Zahl
         /// hat für ihn keine physikalische Bedeutung, sie war nur ein Umweg zur Geschwindigkeit.
         /// <para>
-        /// <c>0</c> (Standard) = nicht gesetzt: dann gilt weiter
-        /// <c>MachNumber × SpeedOfSound</c> aus dem alten Weg, damit bestehende Projekte
-        /// unverändert rechnen. Größer 0: dieser Wert gilt, <c>MachNumber</c> und
-        /// <c>SpeedOfSound</c> werden für die Anströmung nicht mehr verwendet.
+        /// Standard seit 08.11.2026: <c>2.0</c> m/s, passend zum Standardfluid Meerwasser (übliche
+        /// AUV-Reisegeschwindigkeit). Größer 0: dieser Wert gilt, <c>MachNumber</c> und
+        /// <c>SpeedOfSound</c> werden für die Anströmung nicht verwendet.
+        /// <c>0</c> = alter Weg <c>MachNumber × SpeedOfSound</c>.
         /// </para>
         /// <para>
         /// Vorsicht beim alten Weg in Wasser: <c>SpeedOfSound</c> steht auf der Schallgeschwindigkeit
         /// von <b>Luft</b>; Mach 0.1 ergibt damit 34,3 m/s — für ein Unterwasserfahrzeug unrealistisch.
         /// </para>
         /// </summary>
-        public float FreestreamVelocity { get; set; } = 0.0f;
+        public float FreestreamVelocity { get; set; } = 2.0f;
 
         // --- Dimension & Anstellwinkel (TODO-46) ---
         /// <summary>
@@ -110,28 +110,29 @@ namespace MyPicoGkProject.Solvers.Cfd
 
         /// <summary>
         /// Schwelle für die relative Schwingung einer Ergebnisgröße über das Cauchy-Fenster
-        /// (Standard: 0.02 = 2 %). Überschreitet die Schwingung (max - min) / |mean| diesen Wert,
-        /// warnt der Solver vor möglicher instationärer Strömung (TODO-35).
+        /// (Standard: 0.05 = 5 %). Überschreitet die Schwingung (max - min) / |mean| diesen Wert,
+        /// warnt der Solver vor möglicher instationärer Strömung (TODO-35). Nur eine Warnung.
         /// </summary>
-        public float OscillationWarnLimit { get; set; } = 0.02f;
+        public float OscillationWarnLimit { get; set; } = 0.05f;
 
         /// <summary>
-        /// Wenn <c>true</c>, wird eine Rechnung, die bei <c>ITER</c> abbricht, ohne dass das
-        /// Konvergenzkriterium erfüllt war, als fehlgeschlagen markiert (<see cref="ModelRecord.SimulationFailed"/> = true).
-        /// Standard ist <c>false</c>, damit bestehende Optimierungsläufe unverändert weiterlaufen (TODO-35).
+        /// Wenn <c>true</c> (Standard seit 08.11.2026), wird eine Rechnung, deren Kennwerte im Endfenster
+        /// noch gesichert weiterwandern (echte Drift), als fehlgeschlagen markiert
+        /// (<see cref="ModelRecord.SimulationFailed"/> = true). Rechnungen, die nur schwingen
+        /// (instationär, aber stabil), sind davon nicht betroffen (TODO-35).
         /// </summary>
-        public bool TreatUnconvergedAsFailed { get; set; } = false;
+        public bool TreatUnconvergedAsFailed { get; set; } = true;
 
         /// <summary>
-        /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35):
+        /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35, TODO-W3):
         /// <list type="bullet">
-        ///   <item><c>"Last"</c> (Standard): der Wert der letzten Zeile (bisheriges Verhalten).</item>
-        ///   <item><c>"CauchyWindowMean"</c>: der Mittelwert über die letzten <c>CauchyElements</c> Zeilen
-        ///   (gedämpfter Wert bei schwingenden Rechnungen).</item>
+        ///   <item><c>"TailMean"</c> (Standard): Mittel des Endfensters ohne Anlaufphase.</item>
+        ///   <item><c>"Last"</c>: der Wert der letzten Zeile (früheres Verhalten).</item>
+        ///   <item><c>"CauchyWindowMean"</c>: der Mittelwert über die letzten <c>CauchyElements</c> Zeilen.</item>
         /// </list>
         /// Ein unbekannter Wert führt zu einer Warnung und dem Rückfall auf <c>"Last"</c>.
         /// </summary>
-        public string ResultAveraging { get; set; } = "Last";
+        public string ResultAveraging { get; set; } = "TailMean";
 
         // --- CFL-Steuerung ---
         public float CflNumber { get; set; } = 5.0f;
@@ -152,10 +153,10 @@ namespace MyPicoGkProject.Solvers.Cfd
         public float TargetYPlus { get; set; } = 1.0f;
 
         /// <summary>
-        /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 2.0).
+        /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 3.0).
         /// Liegt das 95 %-Quantil (P95) über TargetYPlus * YPlusWarnFactor, warnt der Solver (TODO-41).
         /// </summary>
-        public float YPlusWarnFactor { get; set; } = 2.0f;
+        public float YPlusWarnFactor { get; set; } = 3.0f;
 
         // --- Zeitgenauer Modus / URANS (TODO-37) ---
         /// <summary>
