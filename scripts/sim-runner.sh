@@ -446,6 +446,7 @@ cmd_start() {
     fi
     : >"$LOG_FILE"
     rm -f "$EXIT_FILE"
+    echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
 
     # SIM_PROJECT ausdruecklich davorgesetzt und nicht der Vererbung ueberlassen: die
     # Kommandozeile startet der tmux-SERVER, und dessen Umgebung stammt von dem Aufruf,
@@ -716,7 +717,11 @@ cmd_status() {
 }
 
 colorize_log() {
-    awk '
+    local awk_opts=()
+    if awk -W version 2>&1 | grep -qi "mawk"; then
+        awk_opts=(-W interactive)
+    fi
+    awk "${awk_opts[@]}" '
     BEGIN {
         ESC = sprintf("%c", 27)
         RESET = ESC "[0m"

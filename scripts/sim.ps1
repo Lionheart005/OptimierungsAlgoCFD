@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Steuert den Optimierungslauf auf dem Linux-Rechner der Hochschule von Windows aus.
 
@@ -114,6 +114,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# UTF-8 fuer Konsole und PowerShell-Pipelines erzwingen, damit Unicode-Boxen (╔═╗, │, ★)
+# und Umlaute von ssh/Linux im VS-Code-Terminal nicht als Codepage-850-Zeichensalat erscheinen.
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding           = [System.Text.Encoding]::UTF8
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $RunnerCall = "bash scripts/sim-runner.sh"
