@@ -199,9 +199,9 @@ Write-Host @"
 
     4. Aufraeumen  simulation.json und solvers/*.json nennen JEDEN Schluessel mit dem
                    Code-Standard. Das ist als Nachschlagewerk gedacht: loesche alles,
-                   was du nicht aenderst. Nur MaxIterations=1 und
-                   VariantsPerIteration=2 sind bewusst klein -- der erste Lauf soll ein
-                   Rauchtest sein und keine Nachtschicht.
+                   was du nicht aenderst. Nur MaxIterations=5 und
+                   VariantsPerIteration=5 sind bewusst klein (Standard 10 x 10), und
+                   MeshRefinementFactor fehlt: die Netzkalibrierung steht auf Auto.
 
     Ohne Server pruefen, ob die Konfigurationskette steht:
 

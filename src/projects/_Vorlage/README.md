@@ -16,5 +16,5 @@ nach `src/projects/MeinBauteil/` kopiert, wobei der Platzhalter `MeinProjekt` in
 
 - **Vom Hauptprogramm-Build ausgeschlossen, vom Testprojekt compiliert:**  
   `src/projects/_Vorlage/` wird in `src/Automatisierung_v2/Automatisierung_v2.csproj` vom Build ausgeschlossen, damit keine Projektdefinition mit dem Platzhalternamen `MeinProjekt` ohne passenden Ordner entsteht (sie erscheint daher auch nicht unter `--list-projects`). Compiliert und geprüft wird der Ordner stattdessen durch `tests/AutomatisierungCleanVersion.Tests/`, sodass Schnittstellenänderungen sofort bei `dotnet test` auffallen.
-- **Erster Lauf als Rauchtest:**  
-  In `simulation.json` stehen `MaxIterations = 1` und `VariantsPerIteration = 2`, damit der erste Lauf schnell prüft, ob die Kette PicoGK → STL → Gmsh → SU2 → Fitness durchläuft. Alle übrigen JSON-Einträge zeigen die dokumentierten Code-Standardwerte als Nachschlagewerk.
+- **Kleiner erster Lauf:**  
+  In `simulation.json` stehen `MaxIterations = 5` und `VariantsPerIteration = 5` (Standard 10 × 10). Die Netzkalibrierung steht auf `"Auto"` (in 3D Stunden); für einen schnellen Rauchtest der Kette PicoGK → STL → Gmsh → SU2 → Fitness `"Manual"` mit eingetragenem `MeshRefinementFactor` verwenden. Alle übrigen JSON-Einträge zeigen die dokumentierten Code-Standardwerte als Nachschlagewerk.

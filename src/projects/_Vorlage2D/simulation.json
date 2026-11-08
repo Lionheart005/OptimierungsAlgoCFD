@@ -1,39 +1,26 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
-  // ===================================================================
-  //  MeinProjekt2D -- Framework-Einstellungen dieses Projekts
-  // ===================================================================
+  // MeinProjekt2D -- Framework-Einstellungen. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
   //
-  // DIESE DATEI IST EIN NACHSCHLAGEWERK: sie nennt alle fuer 2D relevanten
-  // Schluessel des Frameworks mit dem Wert aus dem Code-Standard
-  // (Core/Models/SimulationConfig.cs). Reine 3D-Voxel- und Voxel-Glaettungsparameter
-  // (BaseVoxelResolution, TargetPicoGkSize, VoxelSmoothingIterations, VoxelSmoothingPremeltingSteps,
-  // UseRubberBandScaler, UseStlSmoothing) sind in 2D funktionslos und hier bewusst ausgelassen.
-  // Die Standards sind auf genaue Rechnungen ausgelegt (Netz automatisch kalibriert, strenge Konvergenz,
-  // Feinpruefung der besten Varianten); ohne Aenderung ist ein Lauf physikalisch belastbar.
-  // Ausnahmen: MaxIterations und VariantsPerIteration sind fuer einen kurzen ersten Lauf heruntergesetzt,
-  // und MeshRefinementFactor fehlt (Auto-Modus der Netzkalibrierung).
+  // Diese Datei nennt alle fuer 2D relevanten Schluessel mit ihrem Code-Standard
+  // (Core/Models/SimulationConfig.cs); die reinen 3D-Voxel-Schluessel fehlen bewusst.
+  // Die Standards sind auf genaue Rechnungen ausgelegt. Abweichungen: MaxIterations und
+  // VariantsPerIteration (kleiner Testlauf) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
+  // In einem echten Projekt bleibt nur stehen, was abweicht -- den Rest loeschen.
 
-  // --- Pfade zu externer Software ---
+  // --- Programme (PATH-relativ) ---
   "MpiRunPath": "mpirun",
   "Su2Path": "SU2_CFD",
   "GmshPath": "gmsh",
 
-  // --- Zeit & Umfang ---
-  // Vorlage steht auf 1 x 2 = 2 Varianten fuer den ersten Rauchtest:
-  "MaxIterations": 1,
-  "VariantsPerIteration": 2,
+  // --- Umfang: MaxIterations x VariantsPerIteration = Zahl der Rechnungen (Code-Standard 10 x 10) ---
+  "MaxIterations": 5,
+  "VariantsPerIteration": 5,
 
-  // --- Abschaltbare Framework-Bausteine ---
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
-  // den Netzfaktor am Anfang selbst (in 2D Sekunden bis wenige Minuten). Nur bei "Mode": "Manual" eintragen.
-  //
-  // Normale Varianten: bis 3000 Iterationen, Cauchy-Fenster 300 bei 1e-5. Kontrollrechnungen (Kalibrierung,
-  // Feinpruefung, Recheck) rechnen mit dem strengen Profil "ControlRuns" weiter unten. Ob eine Rechnung
-  // konvergiert ist, entscheidet die Drift der Kennwerte im Endfenster (TODO-W3).
+  // MeshRefinementFactor steht bewusst nicht hier: bei MeshCalibration "Auto" kalibriert der Lauf ihn
+  // selbst, und ein eingetragener Wert bricht den Start ab. Nur bei "Manual" eintragen.
   "Su2MaxIterations": 3000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",
@@ -42,34 +29,27 @@
 
   // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
   "OptimizationAlgorithm": "Rsm",
-
-  // --- Startwert des Zufalls: 0 = bei jedem Lauf neu ziehen (siehe run-info.json) ---
+  // 0 = bei jedem Lauf neu ziehen (steht in run-info.json); fester Wert = exakt wiederholbar.
   "RandomSeed": 0,
 
-  // --- RSM / Antwortflaechen-Verfahren ---
+  // --- Rsm (am besten so lassen) ---
   "RsmVirtualSimulations": 50000,
   "RsmIdwPower": 3.0,
   "RsmExploitationRatio": 0.7,
   "RsmExploitationSigma": 0.1,
 
-  // --- Evolution und Bayes: Einstellungen stehen bewusst nicht in der Vorlage ---
-  // Wer "OptimizationAlgorithm": "Evolution" nutzt und ihn einstellen will, traegt die Schluessel
+  // Evolution und Bayes stehen bewusst nicht in der Vorlage. Wer "Evolution" einstellen will, traegt
   // MinimalDeviationExploration, MinimalDeviationExploitation, RoleFineTuner, RoleCautious und
-  // RoleNormal aus dem Handbuch hier ein (ohne Eintrag gelten die dort genannten Vorgaben).
-  // "Bayes" braucht keine Einstellung. Optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }.
-  // Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // RoleNormal aus dem Handbuch (Abschnitt 4.2) hier ein; "Bayes" braucht keine Einstellung
+  // (optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }).
 
-  // --- Validierung des Champions (Bouncer) ---
+  // --- Tuersteher (Bouncer): Champion wird mit leicht verstelltem Parameter nachgerechnet ---
   "BouncerTolerance": 0.2,
   "BouncerJitter": 0.01,
 
-  // --- Genauigkeit der Konvergenz (TODO-W3, TODO-W4) ---
-  // IterativeToleranceFraction: wie weit der ITERATIVE Fehler einer normalen Variante unter der
-  //   Netz-Toleranz liegen muss (0.25 = ein Viertel). Gemessen wird die Drift der Kennwerte im
-  //   Endfenster, nicht das Residuum.
-  // ControlRuns: strenges Profil NUR fuer Kontrollrechnungen (Netzkalibrierung, Feinpruefung, Recheck):
-  //   Su2MaxIterations, CauchyElements, CauchyTolerance und IterativeToleranceFraction (0.1 = ein Zehntel,
-  //   Celik et al. 2008). Es gilt nie weniger als bei normalen Varianten.
+  // --- Konvergenz ---
+  // Normale Varianten: erlaubte Drift im Endfenster als Bruchteil der Netz-Toleranz.
+  // ControlRuns: strengeres Profil nur fuer Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck).
   "IterativeToleranceFraction": 0.25,
   "ControlRuns": {
     "Su2MaxIterations": 20000,
@@ -78,9 +58,7 @@
     "IterativeToleranceFraction": 0.1
   },
 
-  // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---
-  // Auto: die Kalibrierung rechnet Stufen 2.0 ... 0.5 und verfeinert bei Bedarf weiter (0.35, 0.25, ...),
-  // bis eine groebere Stufe die Toleranz (5 %) gegenueber der feinsten haelt. MaxCells2D deckelt die feinste Stufe.
+  // --- Netzkalibrierung ("Auto": der Lauf bestimmt den Netzfaktor am Anfang selbst; in 2D wenige Minuten) ---
   "MeshCalibration": {
     "Mode": "Auto",
     "Tolerance": 0.05,
@@ -90,8 +68,8 @@
     "MaxCells3D": 3000000
   },
 
-  // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
-  // "FinalTopN": die TopN besten am Ende auf einem feineren Netz nachrechnen; warnt bei Abweichung > Tolerance.
+  // --- Feinpruefung: die TopN besten Varianten am Ende auf feinerem Netz nachrechnen ---
+  // Mode: "Off" | "Final" | "FinalTopN" | "EachIteration"
   "ChampionVerification": {
     "Mode": "FinalTopN",
     "TopN": 3,

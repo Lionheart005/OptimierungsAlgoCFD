@@ -299,18 +299,18 @@ namespace AutomatisierungCleanVersion.Tests
         ///
         /// <para>
         /// <b>Zwei bewusste Ausnahmen:</b> <c>MaxIterations</c> und <c>VariantsPerIteration</c>
-        /// stehen auf 1 und 2 statt auf 10 und 10. Der erste Lauf eines neuen Projekts soll ein
-        /// Rauchtest sein („läuft die Kette durch?“) und keine Nachtschicht mit 100 Varianten.
+        /// stehen auf 5 und 5 statt auf 10 und 10. Der erste Lauf eines neuen Projekts soll
+        /// überschaubar bleiben (25 statt 100 Varianten).
         /// </para>
         /// </summary>
         [Fact]
-        public void The_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Smoke_Test_Size()
+        public void The_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Short_Test_Size()
         {
             var defaults = SimulationConfig.CreateDefault();
             var loaded = TemplateProjectFiles.Load(SimulationConfig.CreateDefault(), "simulation.json");
 
-            Assert.Equal(1, loaded.MaxIterations);
-            Assert.Equal(2, loaded.VariantsPerIteration);
+            Assert.Equal(5, loaded.MaxIterations);
+            Assert.Equal(5, loaded.VariantsPerIteration);
 
             var deviations = new[]
             {
@@ -645,13 +645,13 @@ namespace AutomatisierungCleanVersion.Tests
         }
 
         [Fact]
-        public void The_2D_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Smoke_Test_Size()
+        public void The_2D_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Short_Test_Size()
         {
             var defaults = SimulationConfig.CreateDefault();
             var loaded = Template2DProjectFiles.Load(SimulationConfig.CreateDefault(), "simulation.json");
 
-            Assert.Equal(1, loaded.MaxIterations);
-            Assert.Equal(2, loaded.VariantsPerIteration);
+            Assert.Equal(5, loaded.MaxIterations);
+            Assert.Equal(5, loaded.VariantsPerIteration);
 
             var deviations = new[]
             {

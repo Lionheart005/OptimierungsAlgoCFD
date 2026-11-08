@@ -173,10 +173,11 @@ dem Code-Standard als Wert. Das ist als Nachschlagewerk gedacht, nicht als
 Konfiguration: **lösche alles, was du nicht änderst.** Ein Schlüssel mit dem
 Standardwert ist Rauschen, das beim nächsten Framework-Update veraltet.
 
-Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 1` und
-`VariantsPerIteration = 2`. Der erste Lauf soll ein **Rauchtest** sein — läuft die
-Kette PicoGK → STL → Gmsh → SU2 → Fitness überhaupt durch? Sitzt das, werden beide
-Zahlen hochgesetzt.
+Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 5` und
+`VariantsPerIteration = 5` (statt 10 × 10), damit der erste Lauf überschaubar bleibt.
+Außerdem fehlt `MeshRefinementFactor`: Die Netzkalibrierung steht auf `"Auto"` und
+bestimmt ihn selbst. In 3D dauert sie Stunden; für einen schnellen Rauchtest („läuft die
+Kette PicoGK → STL → Gmsh → SU2 → Fitness durch?“) auf `"Manual"` stellen und den Faktor eintragen.
 
 Was welcher Schlüssel im Einzelnen bedeutet, steht im
 [**Bedienhandbuch** (`BEDIENHANDBUCH.md`, Abschnitt 4)](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).

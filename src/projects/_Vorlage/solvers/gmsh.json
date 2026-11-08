@@ -1,37 +1,15 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
-  // ===================================================================
-  //  MeinProjekt -- Gmsh-Vernetzer
-  // ===================================================================
+  // MeinProjekt -- Gmsh-Vernetzer. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
   //
-  // Auch diese Datei nennt JEDEN Schluessel mit dem Code-Standard aus
-  // Solvers/Cfd/GmshMesherOptions.cs -- als Nachschlagewerk. In einem echten
-  // Projekt bleibt nur stehen, was abweicht.
-  //
-  // Ein unbekannter Schluessel bricht den Start ab (TODO-22).
-  //
-  // Nicht hier, sondern in ../simulation.json: GmshCores und GmshPath.
-  //
-  // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
-  // daneben (gitignored). Sollstand ist, dass es keine gibt.
-  //
-  // Randbedingungen: Die SU2-Markernamen ("Farfield" fuer den Kanal, "Wall" fuer
-  // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
+  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Solvers/Cfd/GmshMesherOptions.cs).
+  // In einem echten Projekt bleibt nur stehen, was abweicht. Ein unbekannter Schluessel bricht den
+  // Start ab. Nicht hier, sondern in ../simulation.json: GmshCores, GmshPath.
+  // Rechnerspezifisches gehoert in gmsh.local.json.
 
-  // --- Windkanal (Simulationsdomaene) in mm ---
-  //
-  // "Box"      = Quader aus TunnelSize* (bisheriges Verhalten)
-  // "Cylinder" = Zylinder mit Achse entlang X aus TunnelDiameter/TunnelLength/
-  //              TunnelSegments
-  // Beide sitzen auf TunnelCenter*; ein unbekannter Name warnt und faellt auf
-  // "Box" zurueck.
-  //
-  // WICHTIG: Der Kanal muss deutlich groesser sein als das Modell -- sonst
-  // stroemt die Loesung an den Waenden auf und der Widerstand kommt zu hoch
-  // heraus. Die Vorgabe (1000 x 300 x 300, Mitte 200 mm stromab) passt zu einem
-  // Modell von etwa 50 mm Laenge: 300 mm = 6 L davor, 700 mm = 14 L dahinter fuer
-  // den Nachlauf (Faustregel >= 10 L), 6 L zu jeder Seite. Wird dein Modell
-  // groesser, waechst der Kanal im selben Verhaeltnis mit (MantaAuv, ~100 mm: 1200 lang, Mitte 300).
+  // --- Windkanal in mm ("Box" aus TunnelSize*, "Cylinder" aus TunnelDiameter/-Length/-Segments) ---
+  // Der Kanal muss deutlich groesser sein als das Modell, sonst wird der Widerstand zu hoch. Die Vorgabe
+  // passt zu etwa 50 mm Modelllaenge: 6 L davor, 14 L dahinter (Faustregel >= 10 L Nachlauf).
+  // Bei groesseren Modellen proportional mitwachsen lassen (MantaAuv, ~100 mm: 1200 lang, Mitte 300).
   "TunnelShape": "Box",
   "TunnelSizeX": 1000.0,
   "TunnelSizeY": 300.0,
@@ -39,69 +17,41 @@
   "TunnelCenterX": 200.0,
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
-
-  // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
   "TunnelDiameter": 300.0,
   "TunnelLength": 1000.0,
   "TunnelSegments": 64,
 
-  // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
-  // Zellgroesse in mm: SizeMin gilt bis DistMin Abstand von der Modellwand,
-  // SizeMax ab DistMax; dazwischen wird interpoliert. Kleinere SizeMin =
-  // feinere Grenzschicht = deutlich mehr Zellen und deutlich mehr Rechenzeit.
+  // --- Zellgroessen im Abstandsfeld (mm): SizeMin bis DistMin Abstand von der Wand, SizeMax ab DistMax ---
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
   "BoundaryLayerDistMax": 40.0,
 
-  // --- Nachlauf-Verfeinerung (Wake Box) ---
-  // Fuegt eine dynamische Nachlauf-Box stromabwaerts des Modells ein (Standard an: der Nachlauf
-  // bestimmt den Druckwiderstand mit).
+  // --- Feine Boxen hinter dem Modell (Nachlauf bestimmt den Druckwiderstand mit) ---
+  // WakeCellSize / DetailBoxCellSize in mm auf Stufe 1.0; 0 = automatisch. Die Detailbox kostet in 3D
+  // viele Zellen; die Netzkalibrierung prueft sie mit, MaxCells3D deckelt die Zellzahl.
   "WakeRefinement": true,
   "WakeLengthFactor": 2.0,
   "WakeWidthFactor": 0.5,
   "WakeCellSize": 0.0,
-
-  // --- Detailbox um und hinter dem Modell (TODO-W6) ---
-  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
-  // Feine Box fuer Nachlauf und Wirbel in Modellnaehe. Kostet in 3D viele Zellen; die Netzkalibrierung
-  // prueft sie mit, MaxCells3D in simulation.json deckelt die Zellzahl.
-  // DetailBoxCellSize: mm auf Stufe 1.0; 0 = automatisch 2,5 x Oberflaechen-Zellgroesse.
   "DetailBox": true,
   "DetailBoxLengthFactor": 1.0,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxCellSize": 0.0,
 
-  // --- Kruemmungsabhaengige Netzverfeinerung ---
-  // Aktiviert Mesh.MeshSizeFromCurvature (wirkt bei Neuvernetzung der Oberflaeche).
-  "MeshSizeFromCurvature": false,
-
-  // --- Strukturierte Grenzschicht (TODO-40) ---
-  // "Prism"     = Prismen-Schichten an der Wand, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper,
-  //               am Manta gemessen: SU2 konvergiert, siehe Handbuch 4.4)
-  // "Threshold" = Unstrukturiertes Tetraeder-Netz mit Threshold-Feld, y+ ~ 30-70: fuer das SA-Modell
-  //               ohne Wandfunktion zu grob, der Widerstand wird ungenau. Nur fuer schnelle Vorablaeufe.
-  // "Hexa"      = Quader-Schichten an der Wand; nur fuer glatte Koerper ohne scharfe Kanten
+  // --- Wandschicht ---
+  // "Prism": Prismenschichten, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
+  // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe. "Hexa": nur glatte Koerper ohne scharfe Kanten.
+  // TargetYPlus gleich wie in su2.json. Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
   "BoundaryLayerMode": "Prism",
-
-  // Ziel-y+ fuer die erste Zellhoehe an der Wand (gleicher Wert wie TargetYPlus in su2.json).
   "TargetYPlus": 1.0,
-
-  // Mindestanzahl an Schichten in der Grenzschicht.
   "BoundaryLayerMinLayers": 4,
-
-  // Wachstumsrate der Schichten (Faktor von Schicht zu Schicht).
   "BoundaryLayerGrowthRate": 1.2,
-
-  // Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.
   "BoundaryLayerLayers": 0,
-
-  // Zellgroesse auf der Bauteiloberflaeche in mm; 0 = nutzt BoundaryLayerSizeMin.
   "SurfaceCellSize": 0.0,
 
-  // Elemente pro 2*Pi bei kruemmungsabhaengiger Netzverfeinerung.
+  // --- Neuvernetzung der Oberflaeche ---
+  "MeshSizeFromCurvature": false,
   "CurvatureElements": 20,
-
-  // Winkelgrenze in Grad fuer ClassifySurfaces bei Neuvernetzung der Oberflaeche.
   "ClassifyAngleDeg": 40.0
 }
