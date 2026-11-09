@@ -119,7 +119,7 @@
   "MeshCalibration": {
     "Mode": "Auto",
     "Use2DPrecalibration": false,
-    "Tolerance": 0.05
+    "Tolerance": 0.1
   },
   "ChampionVerification": {
     "Mode": "FinalTopN",
