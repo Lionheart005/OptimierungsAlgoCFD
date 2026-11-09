@@ -106,6 +106,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | --- | --- | --- | --- |
 | … einen **kurzen Testlauf** | `simulation.json` | `MaxIterations`, `VariantsPerIteration` | `1` und `2` ergibt 2 Varianten plus eine Nachprüfung. Danach wieder zurückstellen! |
 | … **mehr Varianten** rechnen (gründlicher) | `simulation.json` | `MaxIterations`, `VariantsPerIteration` | 10 × 10 = 100 Varianten, bei ~3 min je Variante etwa 5–6 h |
+| … dass der Lauf **von selbst aufhört**, wenn kaum noch etwas besser wird | `simulation.json` | `AutoStop` | `"Mode": "On"`; `MaxIterations` × `VariantsPerIteration` bleibt die Obergrenze (siehe Abschnitt 4.2) |
 | … dass SU2 **länger/genauer** rechnet | `simulation.json` | `Su2MaxIterations`, `CauchyTolerance` | mehr Iterationen bzw. kleinere Toleranz (`"1e-5"`) |
 | … **schneller** rechnen | `simulation.json` | `MpiCores`, `GmshCores` | höchstens so viele, wie der Server Kerne hat; dazu ggf. `Su2MaxIterations` senken |
 | … ein **feineres Netz** an der Oberfläche | `solvers/gmsh.json` | `BoundaryLayerSizeMin` | kleiner = feiner = langsamer. Die Oberfläche selbst ist heute so fein wie die Voxel (`BaseVoxelResolution`) |
@@ -170,6 +171,9 @@ bestraft. Höhere Fitness = besser.
 | --- | --- | --- | --- | --- |
 | `MaxIterations` | Anzahl der Runden. | `10` | ⏱ | 🟢 |
 | `VariantsPerIteration` | Varianten je Runde. Gesamt = `MaxIterations` × `VariantsPerIteration` (plus je Runde mind. eine Nachprüfung). | `10` | ⏱ | 🟢 |
+| `AutoStop.Mode` | Automatisches Ende: `"On"` oder `"Off"`. Bei `"On"` prüft das Programm nach jeder Runde, ob sich der beste Wert in den letzten `WindowVariants` Varianten noch um mindestens `MinImprovement` verbessert hat; sonst endet die Optimierung (die Feinprüfung am Ende läuft wie gewohnt). `MaxIterations` × `VariantsPerIteration` bleibt die **Obergrenze**, die Restzeit im Log ist deshalb ein Höchstwert. Neue Projekte aus den Vorlagen haben `"On"` mit Fenster `10` (2 Runden zu 5 Varianten); wer `VariantsPerIteration` erhöht, zieht das Fenster mit. | `"Off"` | ⏱ | 🟢 |
+| `AutoStop.MinImprovement` | Mindestverbesserung des Bestwerts, relativ zum Bestwert vor dem Messfenster: `0.01` = 1 %. Nicht kleiner wählen als die Genauigkeit einer Einzelrechnung, sonst entscheidet das Rechenrauschen. | `0.01` | ⏱🎯 | 🟢 |
+| `AutoStop.WindowVariants` | Über so viele zuletzt gerechnete Varianten wird die Verbesserung gemessen. Frühestens nach `WindowVariants` + 1 Varianten kann der Lauf enden. Mindestens so groß wählen wie der Versuchsplan am Anfang (bei Bayes `max(VariantsPerIteration, 2 × freie Parameter + 2)`), bewährt sind 2 Runden. Fehlgeschlagene Varianten zählen mit. | `20` | ⏱🎯 | 🟢 |
 | `BaseVoxelResolution` | Kantenlänge eines Voxels (Bausteins) der Geometrie in mm. Kleiner = feinere, glattere Form, aber deutlich langsamer und speicherhungriger. Dünne Stellen unter ~1,2 Voxeln können abreißen. | `0.5` | 🎯⏱ | 🟡 |
 | `TargetPicoGkSize` | Auf diese Größe (mm, größte Länge) wird das Modell für PicoGK skaliert, wenn der Gummiband-Skalierer an ist. Zusammen mit `BaseVoxelResolution` bestimmt das, wie viele Voxel ein Modell hat. | `50.0` | 🎯⏱ | 🔴 |
 | `UseRubberBandScaler` | Gummiband-Skalierer an/aus. **Aus**, wenn das Projekt keine Längen-Parameter hat (z. B. nur Prozentwerte wie bei NACA), sonst wird falsch skaliert. | `true` | 🎯 | 🔴 |

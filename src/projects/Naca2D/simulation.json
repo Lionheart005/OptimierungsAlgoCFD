@@ -20,6 +20,12 @@
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
 
+  // --- Automatisches Ende: aus (Standard). Zum Einschalten die letzte Zeile einkommentieren ---
+  // Der Lauf endet frueher, wenn sich der Bestwert in den letzten WindowVariants Varianten um weniger
+  // als MinImprovement (0.01 = 1 %) verbessert hat; MaxIterations x VariantsPerIteration bleibt die
+  // Obergrenze. Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
+
   // --- CFD & SU2 ---
   // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
   // den Netzfaktor am Anfang selbst.

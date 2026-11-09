@@ -298,11 +298,21 @@ namespace OptimierungsAlgoCFD.Tests
         /// Zahl, die irgendwann einmal aktuell war.
         ///
         /// <para>
-        /// <b>Zwei bewusste Ausnahmen:</b> <c>MaxIterations</c> und <c>VariantsPerIteration</c>
+        /// <b>Bewusste Ausnahmen:</b> <c>MaxIterations</c> und <c>VariantsPerIteration</c>
         /// stehen auf 5 und 5 statt auf 10 und 10. Der erste Lauf eines neuen Projekts soll
-        /// überschaubar bleiben (25 statt 100 Varianten).
+        /// überschaubar bleiben (25 statt 100 Varianten). Und <c>AutoStop</c> ist in neuen
+        /// Projekten an (09.11.2026), mit einem Fenster von zwei Runden zu 5 Varianten.
         /// </para>
         /// </summary>
+        /// <summary>AutoStop in beiden Vorlagen: an, 1 %, Fenster 10 (= 2 Runden zu 5 Varianten).</summary>
+        internal static void AssertTemplateAutoStop(AutoStopConfig autoStop)
+        {
+            Assert.Equal("On", autoStop.Mode);
+            Assert.Equal(0.01f, autoStop.MinImprovement);
+            Assert.Equal(10, autoStop.WindowVariants);
+            Assert.True(AutoStop.IsEnabled(autoStop));
+        }
+
         [Fact]
         public void The_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Short_Test_Size()
         {
@@ -311,11 +321,13 @@ namespace OptimierungsAlgoCFD.Tests
 
             Assert.Equal(5, loaded.MaxIterations);
             Assert.Equal(5, loaded.VariantsPerIteration);
+            AssertTemplateAutoStop(loaded.AutoStop);
 
             var deviations = new[]
             {
                 nameof(SimulationConfig.MaxIterations),
-                nameof(SimulationConfig.VariantsPerIteration)
+                nameof(SimulationConfig.VariantsPerIteration),
+                nameof(SimulationConfig.AutoStop)
             };
 
             foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig)))
@@ -652,11 +664,13 @@ namespace OptimierungsAlgoCFD.Tests
 
             Assert.Equal(5, loaded.MaxIterations);
             Assert.Equal(5, loaded.VariantsPerIteration);
+            AssertTemplateAutoStop(loaded.AutoStop);
 
             var deviations = new[]
             {
                 nameof(SimulationConfig.MaxIterations),
-                nameof(SimulationConfig.VariantsPerIteration)
+                nameof(SimulationConfig.VariantsPerIteration),
+                nameof(SimulationConfig.AutoStop)
             };
 
             foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig)))

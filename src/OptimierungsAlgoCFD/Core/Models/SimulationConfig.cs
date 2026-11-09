@@ -26,6 +26,13 @@ namespace OptimierungsAlgoCFD.Core
         // 1. Zeit & Umfang
         public int MaxIterations { get; set; } = 10;
         public int VariantsPerIteration { get; set; } = 10;
+
+        /// <summary>
+        /// Automatisches Ende (09.11.2026): beendet den Lauf früher, wenn sich der Bestwert kaum noch
+        /// verbessert. <see cref="MaxIterations"/> × <see cref="VariantsPerIteration"/> bleibt die Obergrenze.
+        /// </summary>
+        public AutoStopConfig AutoStop { get; set; } = new();
+
         public float BaseVoxelResolution { get; set; } = 0.5f;
         public float TargetPicoGkSize { get; set; } = 50.0f;
         public int VoxelSmoothingIterations { get; set; } = 40;
@@ -145,6 +152,23 @@ namespace OptimierungsAlgoCFD.Core
             clone.IterativeToleranceFraction = ControlRuns.IterativeToleranceFraction;
             return clone;
         }
+    }
+
+    /// <summary>
+    /// Automatisches Ende der Optimierung (siehe <see cref="AutoStop"/>). Nach jeder Iteration gilt:
+    /// Hat sich der beste Fitnesswert innerhalb der letzten <see cref="WindowVariants"/> Varianten um
+    /// weniger als <see cref="MinImprovement"/> (relativ) verbessert, endet der Lauf.
+    /// </summary>
+    public class AutoStopConfig
+    {
+        /// <summary>"On" oder "Off" (Standard: Off = Laufdauer nur über MaxIterations × VariantsPerIteration).</summary>
+        public string Mode { get; set; } = "Off";
+
+        /// <summary>Mindestverbesserung des Bestwerts, relativ zum Bestwert vor dem Fenster (0.01 = 1 %).</summary>
+        public float MinImprovement { get; set; } = 0.01f;
+
+        /// <summary>Über so viele zuletzt gerechnete Varianten wird die Verbesserung gemessen.</summary>
+        public int WindowVariants { get; set; } = 20;
     }
 
     /// <summary>

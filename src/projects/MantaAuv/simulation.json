@@ -52,6 +52,12 @@
   // kein verstecktes zweites Stellrad mehr.
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
+
+  // --- Automatisches Ende: aus (Standard). Zum Einschalten die letzte Zeile einkommentieren ---
+  // Der Lauf endet frueher, wenn sich der Bestwert in den letzten WindowVariants Varianten um weniger
+  // als MinImprovement (0.01 = 1 %) verbessert hat; MaxIterations x VariantsPerIteration bleibt die
+  // Obergrenze. Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
   "BaseVoxelResolution": 0.5,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,

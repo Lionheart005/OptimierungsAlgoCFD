@@ -70,6 +70,15 @@ namespace OptimierungsAlgoCFD.Core
             Console.WriteLine($"[SYSTEM] Projekt: {_context.Project.ProjectName}");
             Console.WriteLine($"[SYSTEM] Solver: {string.Join(", ", _stages.Select(s => s.Solver.Name))}");
 
+            // Automatisches Ende (09.11.2026). Falsche Werte brechen hier ab, vor der ersten Rechnung.
+            AutoStopConfig autoStop = _context.Config.AutoStop ?? new AutoStopConfig();
+            bool autoStopEnabled = AutoStop.IsEnabled(autoStop);
+            if (autoStopEnabled)
+                Console.WriteLine(
+                    $"[SYSTEM] Automatisches Ende: an (Mindestverbesserung {autoStop.MinImprovement * 100:0.##} % "
+                    + $"über die letzten {autoStop.WindowVariants} Varianten; höchstens "
+                    + $"{_context.Config.MaxIterations} × {_context.Config.VariantsPerIteration} Varianten)");
+
             int totalVariants = _context.Config.MaxIterations * _context.Config.VariantsPerIteration;
             int completedVariants = 0;
             double totalSecondsPassed = 0;
@@ -159,6 +168,21 @@ namespace OptimierungsAlgoCFD.Core
                 _context.ExportToCsv(); 
                 
                 SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, currentIterationRecords, trueWinner);
+
+                // Automatisches Ende: nur zwischen zwei Iterationen, nie mitten in einer Generation.
+                if (autoStopEnabled && iter < _context.Config.MaxIterations)
+                {
+                    AutoStopDecision decision = AutoStop.Evaluate(_context.History, autoStop);
+                    if (decision.Stop)
+                    {
+                        SimulationLog.PrintBanner(
+                            $"AUTOMATISCHES ENDE NACH ITERATION {iter} VON {_context.Config.MaxIterations}",
+                            "Der Bestwert verbessert sich kaum noch (AutoStop).");
+                        Console.WriteLine($"[AUTO-ENDE] {decision.Message}");
+                        break;
+                    }
+                    Console.WriteLine($"[AUTO-ENDE] {decision.Message}");
+                }
 
                 if (iter < _context.Config.MaxIterations)
                 {

@@ -3,7 +3,7 @@
   //
   // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Core/Models/SimulationConfig.cs).
   // Die Standards sind auf genaue Rechnungen ausgelegt. Abweichungen: MaxIterations und
-  // VariantsPerIteration (kleiner Testlauf) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
+  // VariantsPerIteration (kleiner Testlauf), AutoStop (an) sowie MeshRefinementFactor (fehlt, siehe MeshCalibration).
   // In einem echten Projekt bleibt nur stehen, was abweicht -- den Rest loeschen.
   // Ein unbekannter Schluessel bricht den Start ab. Rechnerspezifisches gehoert in simulation.local.json.
 
@@ -19,6 +19,17 @@
   // --- Umfang: MaxIterations x VariantsPerIteration = Zahl der Rechnungen (Code-Standard 10 x 10) ---
   "MaxIterations": 5,
   "VariantsPerIteration": 5,
+
+  // --- Automatisches Ende (siehe BEDIENHANDBUCH.md, Abschnitt 4.2; Code-Standard: "Off", Fenster 20) ---
+  // Der Lauf endet frueher, wenn sich der Bestwert in den letzten WindowVariants Varianten um weniger als
+  // MinImprovement (0.01 = 1 %) verbessert hat. MaxIterations x VariantsPerIteration bleibt die Obergrenze.
+  // Fenster 10 = zwei Runden zu 5 Varianten: deckt den Bayes-Versuchsplan am Anfang ab; fruehestes Ende nach Runde 3.
+  // Bei mehr Varianten je Runde das Fenster mitziehen (bewaehrt: 2 x VariantsPerIteration).
+  "AutoStop": {
+    "Mode": "On",
+    "MinImprovement": 0.01,
+    "WindowVariants": 10
+  },
 
   // --- Geometrie (PicoGK) ---
   "BaseVoxelResolution": 0.5,

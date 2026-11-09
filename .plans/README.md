@@ -1,7 +1,7 @@
 # Projektpläne & Roadmap (Übersicht für KI-Sessions)
 
 > **Stand: 08.11.2026 (abends)** — Meilenstein 1 abgeschlossen und archiviert, **Meilenstein 2 (KI-Integration) auf Branch `KI_Integration` umgesetzt und ausgewertet**; Aufräum-Durchgang erledigt.  
-> **Test- & Buildstatus:** 662/662 Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler. Vergleichsläufe auf BIC_12 (5×5 und 10×10) ausgewertet; der Server-Deploy mit dem neuen Ordnernamen steht noch aus.  
+> **Test- & Buildstatus (09.11.2026):** 683/683 Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler. Vergleichsläufe auf BIC_12 (5×5 und 10×10) ausgewertet; der Server-Deploy mit dem neuen Ordnernamen steht noch aus.  
 > **Namen:** Framework `src/OptimierungsAlgoCFD/` (Namespace `OptimierungsAlgoCFD`, wie das GitHub-Repository), Tests `tests/OptimierungsAlgoCFD.Tests/`, Vorlagen `_Vorlage3D` und `_Vorlage2D`. Frühere Pläne in `.old/` nennen noch die alten Namen (`Automatisierung_v2`, `MyPicoGkProject`, `_Vorlage`, `TestprojektNACA`).
 
 ---
@@ -15,10 +15,7 @@ Neue Sessions und KI-Modelle sollen sich primär an diesen aktiven Dokumenten or
    - **Meilenstein 3:** Große LaTeX-Gesamtdokumentation & Showcase (3D MantaAuv & 2D NACA, ParaView-Renderings, GCI-Gitterkonvergenz).
    - **Meilenstein 4:** FEM-Integration & Fluid-Struktur-Kopplung (CalculiX `ccx` als zweite `SolverStage`).
 
-2. **[`ki_optimierung.md`](ki_optimierung.md) — KI-Architektur & TODOs (TODO-53 bis 60 umgesetzt):**
-   - Am Ende: „Umsetzungsstand KI-Teil" mit allen Abweichungen vom Plan.
-
-2a. **[`vergleich_optimierer.md`](vergleich_optimierer.md) — Server-Vergleichsläufe Rsm vs. Evolution vs. Bayes** (`Naca2D`, 5×5 und 10×10 mit drei Seeds): Bayes ist bei 100 Rechnungen klar am besten; Auswertung, gefundener Fehler der späten Phase und Empfehlung.
+2. **[`automatisches_ende.md`](automatisches_ende.md) — AutoStop (09.11.2026, umgesetzt):** Lauf endet früher, wenn sich der Bestwert über die letzten N Varianten um weniger als X % verbessert; `MaxIterations` × `VariantsPerIteration` bleibt die Obergrenze. Offen: ein Serverlauf mit `"Mode": "On"`.
 
 2b. **[`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md) — AP 2.8:** Architektur-Bewertung für LLM-gestützte Geometriegenerierung (reine Bewertung, kein Umsetzungsauftrag).
 
@@ -40,6 +37,8 @@ Neue Sessions und KI-Modelle sollen sich primär an diesen aktiven Dokumenten or
 * [`.plans/.old/architektur_kritikpunkte_naca.md`](.old/architektur_kritikpunkte_naca.md) — KP-1 bis KP-7 vollständig behoben (RubberBandScaler, ChampionValidator, AoA-Optimierung, Resolver).
 * [`.plans/.old/physik_feinschliff.md`](.old/physik_feinschliff.md) — Block W (TODO-W1 bis W10: adaptive Kalibrierung, Detailbox, Knickschutz B14, URANS-Restart) vollständig abgeschlossen.
 * [`.plans/.old/ms1_auswertung_und_logdesign.md`](.old/ms1_auswertung_und_logdesign.md) — Meilenstein 1 (Python-Auswerteskripte, Log-Redesign, 10×10-Referenzlauf `Naca2D`) vollständig abgeschlossen.
+* [`.plans/.old/ki_optimierung.md`](.old/ki_optimierung.md) — KI-Architektur, TODO-53 bis 60 (Bayes, Gauß-Prozess, TuRBO, Metrics-Modus) umgesetzt; am Ende der Umsetzungsstand mit allen Abweichungen.
+* [`.plans/.old/vergleich_optimierer.md`](.old/vergleich_optimierer.md) — Vergleichsläufe Rsm vs. Evolution vs. Bayes (`Naca2D`, 5×5 und 10×10, drei Seeds): Bayes klar am besten, seitdem Standard.
 * [`.plans/.old/servertest_2026-11-06.md`](.old/servertest_2026-11-06.md) — Servertest Ketten 1–3 auf BIC_12 ausgewertet; Folgefehler B1–B17 vollständig behoben.
 
 ---
