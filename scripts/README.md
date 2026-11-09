@@ -77,6 +77,8 @@ Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
 
 ## Alltag
 
+Manchmal funktioniert der Befehl beim ersten mal nicht, dann einfach nochmal probieren. 
+
 ```powershell
 .\scripts\sim.ps1 projects  # Welche Projekte kennt der Server, wo liegen Ergebnisse?
 .\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so

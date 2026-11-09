@@ -110,16 +110,18 @@
 
   // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
   // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 10000 Iterationen begrenzt
-  // (Vorgabe 20000). Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026) und hoert
-  // beim Code-Standard MaxCells3D = 3 Mio. Zellen der feinsten Stufe auf zu verfeinern.
+  // (Vorgabe 20000). Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026).
+  // MaxCells3D 4 Mio. statt Code-Standard 3 Mio.: mit Detailbox rechnete die Kalibrierung fuer die feinste Stufe
+  // ~3,05 Mio. Zellen hoch und brach ab (09.11.2026).
   "ControlRuns": {
-    "Su2MaxIterations": 10000,
+    "Su2MaxIterations": 20000,
     "CauchyElements": 500
   },
   "MeshCalibration": {
     "Mode": "Auto",
     "Use2DPrecalibration": false,
-    "Tolerance": 0.1
+    "Tolerance": 0.15,
+    "MaxCells3D": 4000000
   },
   "ChampionVerification": {
     "Mode": "FinalTopN",
