@@ -17,6 +17,8 @@ Neue Sessions und KI-Modelle sollen sich primär an diesen aktiven Dokumenten or
 
 2. **[`automatisches_ende.md`](automatisches_ende.md) — AutoStop (09.11.2026, umgesetzt):** Lauf endet früher, wenn sich der Bestwert über die letzten N Varianten um weniger als X % verbessert; `MaxIterations` × `VariantsPerIteration` bleibt die Obergrenze. Offen: ein Serverlauf mit `"Mode": "On"`.
 
+2a. **[`wandschicht_zellzahl.md`](wandschicht_zellzahl.md) — Wandschicht, formunabhängige Vernetzung, Zellgrenze (09.11.2026, PLAN, vom Nutzer freigegeben, noch nicht umgesetzt):** Gmsh-Ursache der 21→16-Schichten-Ausdünnung gefunden (Kehlen an Sensorkugel/Flügel, Radius 2,4 mm ≈ Schichtdicke 2,22 mm). Lösung getestet: geglättete Extrusionsrichtungen über `Using View` (21, 29 Schichten und 1,3 δ gehen bis zum feinsten Netz, ohne Ausdünnung); Rückfall-Leiter ohne Schichtverlust, Ersatznetz statt Ausfall; Mesh-Fehler nicht mehr im Bayes-Erfolgsmodell. Dazu: echte Zellzahl (`MaxCells3D` 5 Mio.), Schichtkennwerte in der CSV. Der MantaAuv-Lauf vom 09.11.2026 ist dadurch nicht berichtstauglich.
+
 2b. **[`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md) — AP 2.8:** Architektur-Bewertung für LLM-gestützte Geometriegenerierung (reine Bewertung, kein Umsetzungsauftrag).
 
 3. **[`fem_ausblick.md`](fem_ausblick.md) — Merkzettel & Schnittstellendesign für FEM:**
