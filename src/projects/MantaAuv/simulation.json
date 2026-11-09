@@ -130,8 +130,8 @@
   },
 
   // --- Validierung des Champions (Bouncer) ---
-  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation. 10 % statt Code-Standard 20 %:
+  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation. Sollte in etwa der Toleranz der Kalibrierung liegen, nicth kleiner.
   // der Widerstand geht hoch 3 in die Fitness ein (1 % Drag ~ 3 % Fitness), 5 % waere zu knapp.
-  "BouncerTolerance": 0.10,
+  "BouncerTolerance": 0.15,
   "BouncerJitter": 0.01
 }
