@@ -71,13 +71,6 @@
   // jeder Zuordnung in ResultMetrics die Grundlage.
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- Auswertung: bisheriger Stand festgehalten ---
-  // Der Code-Standard ist seit 08.11.2026 "TreatUnconvergedAsFailed": true und "ResultAveraging": "TailMean"
-  // (genauer: driftende Rechnungen fliegen raus, es zaehlt das Mittel des Endfensters). MantaAuv rechnet bis zur
-  // naechsten bewussten Entscheidung weiter wie vorher; zum Umstellen die beiden Zeilen loeschen.
-  "TreatUnconvergedAsFailed": false,
-  "ResultAveraging": "Last",
-
   // --- CFL-Steuerung ---
   "CflNumber": 5.0,
   "CflAdapt": true,

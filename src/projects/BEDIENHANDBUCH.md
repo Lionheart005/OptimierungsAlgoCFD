@@ -229,7 +229,7 @@ Naca2D die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doc
 > anderen. Bei einem **sehr kleinen Budget** (bis etwa 25 Rechnungen) ist `"Rsm"` gleichwertig und
 > einfacher, es braucht keine Parametergrenzen. Für einen **Vergleich oder eine Gegenprobe**: `"Rsm"`
 > oder `"Evolution"`. Alle drei verwenden dieselbe Bewertungsformel und denselben Türsteher. MantaAuv
-> bleibt vorerst bei `"Rsm"`, bis Bayes im 3D-Fall auf dem Server gemessen ist.
+> rechnet seit 09.11.2026 ebenfalls mit `"Bayes"`.
 >
 > **Zwei Regeln für `"Bayes"`:** (1) Für **jeden** Parameter müssen Grenzen in `ParameterBounds`
 > stehen (`project.json`); fehlt eine, bricht der Lauf **vor der ersten Rechnung** ab und nennt den
@@ -329,7 +329,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
 | `MeshCalibration` | Abschnitt für die automatisierte Netzkalibrierung. | `{}` | 🟡 |
-| `Mode` | Modus der Kalibrierung: `"Auto"` (Standard: Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein) oder `"Manual"` (`MeshRefinementFactor` gilt). In 2D dauert die Kalibrierung Sekunden bis Minuten, in 3D Stunden (MantaAuv ~4 h, steht deshalb auf `"Manual"`). | `"Auto"` | 🟡 |
+| `Mode` | Modus der Kalibrierung: `"Auto"` (Standard: Faktor wird am Laufanfang kalibriert; `MeshRefinementFactor` darf dann nicht gesetzt sein) oder `"Manual"` (`MeshRefinementFactor` gilt). In 2D dauert die Kalibrierung Sekunden bis Minuten, in 3D Stunden (MantaAuv ~4 h je Laufstart). | `"Auto"` | 🟡 |
 | `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). Bei schwankenden Rechnungen (Wirbelablösung) gilt mindestens die doppelte Schwankung beider Stufen (`Uncertainty_<Kennwert>`), sonst entschiede Rauschen über die Netzfeinheit. | `0.05` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
 | `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
@@ -418,7 +418,7 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `WakeLengthFactor` | Länge der Nachlauf-Box stromabwärts als Vielfaches der Modelllänge `lenX`. | `2.0` | 🎯⏱ | 🟡 |
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
-| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard **an**; sie kostet in 3D viele Zellen (Manta: einige hunderttausend, dort deshalb aus), `MaxCells3D` deckelt die Kalibrierung. | `true` | 🎯⏱ | 🟡 |
+| `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard **an**; sie kostet in 3D viele Zellen (Manta: einige hunderttausend), `MaxCells3D` deckelt die Kalibrierung. | `true` | 🎯⏱ | 🟡 |
 | `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.0` | 🎯⏱ | 🟡 |
 | `DetailBoxWidthFactor` | Überstand der Detailbox in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
 | `DetailBoxCellSize` | Zellgröße in der Detailbox in mm auf Stufe 1.0; `0.0` = automatisch 2,5 × Oberflächen-Zellgröße. | `0.0` | 🎯⏱ | 🟡 |

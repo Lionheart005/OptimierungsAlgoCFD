@@ -58,13 +58,13 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// MantaAuv wählt "Rsm" ausdrücklich: Bayes ist im 3D-Fall (Modus "Metrics") noch nicht auf dem Server
-        /// gemessen. Wird das nachgeholt, diesen Test bewusst ändern und den Eintrag in der simulation.json löschen.
+        /// MantaAuv trägt "Bayes" ausdrücklich ein (Bericht-Lauf, 09.11.2026), damit eine spätere Änderung des
+        /// Code-Standards den Lauf nicht still umstellt.
         /// </summary>
         [Fact]
-        public void Repository_Simulation_Json_Selects_Rsm()
+        public void Repository_Simulation_Json_Selects_Bayes()
         {
-            Assert.Equal("Rsm", MantaProjectFiles.Simulation().OptimizationAlgorithm);
+            Assert.Equal("Bayes", MantaProjectFiles.Simulation().OptimizationAlgorithm);
         }
     }
 }

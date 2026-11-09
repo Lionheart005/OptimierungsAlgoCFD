@@ -51,7 +51,7 @@
   "WakeRefinement": true,
 
   // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
-  "DetailBox": false,
+  "DetailBox": true,
   "DetailBoxLengthFactor": 1.0,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxCellSize": 0.0

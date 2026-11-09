@@ -92,10 +92,9 @@ namespace OptimierungsAlgoCFD.Tests
             // Die Programmpfade sind bewusst NICHT dabei: MantaAuv weicht dort vom
             // Code-Standard ab, weil der Hochschulserver sie nicht über den PATH findet.
             // Geprüft wird das in ProjectLayoutTests.
-            Assert.Equal(defaults.BouncerTolerance, fromFile.BouncerTolerance, 5);
             Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
-            // Das Optimierungsverfahren ist ebenfalls bewusst nicht dabei: MantaAuv bleibt bei "Rsm", bis Bayes im 3D-Fall
-            // gemessen ist (OptimizationAlgorithmFactoryTests.Repository_Simulation_Json_Selects_Rsm).
+            // BouncerTolerance ist bewusst nicht dabei: MantaAuv nimmt 0.10 statt 0.2 (Drag geht hoch 3 in die Fitness ein).
+            Assert.Equal(0.10f, fromFile.BouncerTolerance, 5);
         }
 
         [Fact]

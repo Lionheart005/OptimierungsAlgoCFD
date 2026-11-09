@@ -68,24 +68,23 @@
   // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell.
   "UseRubberBandScaler": true,
   "UseStlSmoothing": true,
+  "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
   // Seit 06.11.2026 (TODO-W8) rechnet MantaAuv mit Prismen-Wandschicht (y+ ~ 1) und grossem Kanal:
   // Ergebnisse davor (y+ 40-70, Kanal 6 L) und danach sind NICHT vergleichbar.
-  // Netzfaktor 0.71: so lief der validierte Servertest (4 x 4, Feinpruefung der Top 3 mit 0.50; 06.11.2026). Der Widerstand
-  // ist auf diesem Netz noch nicht netzunabhaengig (CD 0.171 grob gegen 0.146 fein), die Rangfolge der Varianten haelt
-  // aber zu 100 %. Absolute Werte daher nur mit Vorsicht lesen; fuer genaue Werte `sim.ps1 calibrate` und den Faktor ersetzen.
-  "MeshRefinementFactor": 0.71,
-  "Su2MaxIterations": 2000,
+  // Kein MeshRefinementFactor: der Netzfaktor wird am Laufanfang kalibriert (MeshCalibration unten, Mode "Auto");
+  // ein eingetragener Faktor wuerde den Start im Auto-Modus abbrechen.
+  "Su2MaxIterations": 5000,
   "CauchyElements": 300,
-  "CauchyTolerance": "1e-5",
-  "MpiCores": 16,
-  "GmshCores": 16,
+  "CauchyTolerance": "1e-6",
+  "MpiCores": 12,
+  "GmshCores": 12,
 
   // --- Optimierungsverfahren: "Rsm", "Evolution" oder "Bayes" ---
-  // Der Code-Standard ist seit 08.11.2026 "Bayes". MantaAuv bleibt ausdruecklich bei "Rsm", bis Bayes im 3D-Fall (Modus
-  // "Metrics") auf dem Server gemessen ist; dann diese Zeile loeschen. Ein unbekannter Name warnt und faellt auf den Standard zurueck.
-  "OptimizationAlgorithm": "Rsm",
+  // Der Code-Standard ist seit 08.11.2026 "Bayes". MantaAuv traegt es trotzdem ausdruecklich ein (Bericht-Lauf, 09.11.2026),
+  // damit eine spaetere Aenderung des Standards diesen Lauf nicht still umstellt. Ein unbekannter Name warnt und faellt auf den Standard zurueck.
+  "OptimizationAlgorithm": "Bayes",
 
   // --- Evolutionärer Algorithmus ---
   "MinimalDeviationExploration": 1.0,
@@ -110,18 +109,17 @@
   // },
 
   // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
-  // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 8000 Iterationen begrenzt
-  // (Vorgabe 20000), die Kalibrierung hoert bei ~3 Mio. Zellen der feinsten Stufe auf zu verfeinern.
+  // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 10000 Iterationen begrenzt
+  // (Vorgabe 20000). Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026) und hoert
+  // beim Code-Standard MaxCells3D = 3 Mio. Zellen der feinsten Stufe auf zu verfeinern.
   "ControlRuns": {
-    "Su2MaxIterations": 8000,
+    "Su2MaxIterations": 10000,
     "CauchyElements": 500
   },
-  // Mode "Manual" bewusst festgehalten (Standard ist seit 08.11.2026 "Auto"): eine 3D-Kalibrierung kostet hier
-  // ~4 h je Laufstart (Servertest 06.11.2026). Kalibrieren per `sim.ps1 calibrate`, Faktor dann eintragen.
   "MeshCalibration": {
-    "Mode": "Manual",
-    "Tolerance": 0.02,
-    "MaxCells3D": 3000000
+    "Mode": "Auto",
+    "Use2DPrecalibration": false,
+    "Tolerance": 0.05
   },
   "ChampionVerification": {
     "Mode": "FinalTopN",
@@ -130,9 +128,8 @@
   },
 
   // --- Validierung des Champions (Bouncer) ---
-  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation.
-  // Achtung: prüfte früher den Drag; die Fitness reagiert empfindlicher,
-  // der Wert muss beim ersten echten Lauf nachjustiert werden.
-  "BouncerTolerance": 0.2,
+  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation. 10 % statt Code-Standard 20 %:
+  // der Widerstand geht hoch 3 in die Fitness ein (1 % Drag ~ 3 % Fitness), 5 % waere zu knapp.
+  "BouncerTolerance": 0.10,
   "BouncerJitter": 0.01
 }
