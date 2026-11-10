@@ -77,25 +77,14 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// Rauchtest für die mitgelieferte src/projects/MantaAuv/simulation.json: sie muss
-        /// gefunden werden (Suche nach oben, weil die Tests aus bin/Debug/net9.0 laufen),
-        /// gültiges JSON sein und dieselben Werte liefern wie die einkompilierten Standardwerte.
+        /// Rauchtest für die mitgelieferte src/projects/MantaAuv/simulation.json: sie muss gefunden werden
+        /// (Suche nach oben, weil die Tests aus bin/Debug/net9.0 laufen) und sich laden lassen (gültiges JSON,
+        /// nur bekannte Schlüssel). Die WERTE darin sind Einstellungen zum Ausprobieren und werden nicht geprüft.
         /// </summary>
         [Fact]
-        public void Repository_Config_File_Is_Found_And_Matches_Defaults()
+        public void Repository_Config_File_Is_Found_And_Loads()
         {
-            var fromFile = MantaProjectFiles.Simulation();
-            var defaults = SimulationConfig.CreateDefault();
-
-            Assert.Equal(defaults.MaxIterations, fromFile.MaxIterations);
-            Assert.Equal(defaults.VariantsPerIteration, fromFile.VariantsPerIteration);
-            // Die Programmpfade sind bewusst NICHT dabei: MantaAuv weicht dort vom
-            // Code-Standard ab, weil der Hochschulserver sie nicht über den PATH findet.
-            // Geprüft wird das in ProjectLayoutTests.
-            Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
-            // BouncerTolerance ist bewusst nicht dabei: MantaAuv nimmt 0.15 statt 0.2 (Drag geht hoch 3 in die Fitness ein;
-            // gleich der Kalibriertoleranz 0.15, siehe Kommentar in MantaAuv/simulation.json).
-            Assert.Equal(0.15f, fromFile.BouncerTolerance, 5);
+            Assert.NotNull(MantaProjectFiles.Simulation());
         }
 
         [Fact]

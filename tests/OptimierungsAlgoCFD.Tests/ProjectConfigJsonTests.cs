@@ -9,26 +9,6 @@ namespace OptimierungsAlgoCFD.Tests
 {
     public class ProjectConfigJsonTests
     {
-        /// <summary>
-        /// Die mitgelieferte src/projects/MantaAuv/project.json muss dieselben Zahlen enthalten
-        /// wie die Code-Vorgabe. Weicht eine ab, rechnet die Pipeline anders als vor dem
-        /// Umzug nach JSON — genau das soll dieser Test verhindern.
-        /// </summary>
-        [Fact]
-        public void MantaAuv_Json_Matches_Code_Defaults()
-        {
-            var expected = MantaProjectConfig.Create();
-            var actual = MantaProjectFiles.Project(expected);
-
-            // Der Name steht nicht mehr in der Datei, sondern kommt vom Ordner (Entscheidung 1).
-            Assert.Equal(expected.ProjectName, actual.ProjectName);
-            Assert.Equal(expected.BaseParameters, actual.BaseParameters);
-            Assert.Equal(expected.MaxDeviations, actual.MaxDeviations);
-            Assert.Equal(expected.OptimizationTargets, actual.OptimizationTargets);
-            Assert.Equal(expected.DimensionalParameters, actual.DimensionalParameters);
-            Assert.Equal(expected.ParameterBounds, actual.ParameterBounds);
-        }
-
         [Fact]
         public void Dto_Roundtrip_Preserves_ParameterBounds()
         {

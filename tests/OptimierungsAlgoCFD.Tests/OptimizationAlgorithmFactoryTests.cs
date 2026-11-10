@@ -57,14 +57,5 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.Equal("Bayes", SimulationConfig.CreateDefault().OptimizationAlgorithm);
         }
 
-        /// <summary>
-        /// MantaAuv trägt "Bayes" ausdrücklich ein (Bericht-Lauf, 09.11.2026), damit eine spätere Änderung des
-        /// Code-Standards den Lauf nicht still umstellt.
-        /// </summary>
-        [Fact]
-        public void Repository_Simulation_Json_Selects_Bayes()
-        {
-            Assert.Equal("Bayes", MantaProjectFiles.Simulation().OptimizationAlgorithm);
-        }
     }
 }

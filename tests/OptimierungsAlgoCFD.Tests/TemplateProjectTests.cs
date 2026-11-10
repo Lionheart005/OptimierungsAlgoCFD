@@ -251,10 +251,8 @@ namespace OptimierungsAlgoCFD.Tests
             {
                 string? root = ProjectPaths.ResolveProjectsRoot();
                 string file = System.IO.Path.Combine(root!, folder, "simulation.json");
-                var loaded = JsonConfigLoader.Load(SimulationConfig.CreateDefault(), file);
-
-                Assert.Equal("Auto", loaded.MeshCalibration.Mode);
-
+                // Der Modus selbst ist eine Einstellung zum Ausprobieren; geprüft wird nur die Regel, dass kein
+                // MeshRefinementFactor eingetragen ist (im Auto-Modus bräche er den Start ab).
                 JsonNode? node = JsonNode.Parse(System.IO.File.ReadAllText(file),
                     documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
                 Assert.DoesNotContain(AutoCalibratedKey, ((JsonObject)node!).Select(entry => entry.Key));
@@ -294,98 +292,20 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// Und die Werte müssen die Code-Standards sein — sonst erbt jedes neue Projekt eine
-        /// Zahl, die irgendwann einmal aktuell war.
-        ///
-        /// <para>
-        /// <b>Bewusste Ausnahmen:</b> <c>MaxIterations</c> und <c>VariantsPerIteration</c>
-        /// stehen auf 5 und 5 statt auf 10 und 10. Der erste Lauf eines neuen Projekts soll
-        /// überschaubar bleiben (25 statt 100 Varianten). Und <c>AutoStop</c> ist in neuen
-        /// Projekten an (09.11.2026), mit einem Fenster von zwei Runden zu 5 Varianten.
-        /// </para>
-        /// </summary>
-        /// <summary>AutoStop in beiden Vorlagen: an, 1 %, Fenster 10 (= 2 Runden zu 5 Varianten).</summary>
-        internal static void AssertTemplateAutoStop(AutoStopConfig autoStop)
-        {
-            Assert.Equal("On", autoStop.Mode);
-            Assert.Equal(0.01f, autoStop.MinImprovement);
-            Assert.Equal(10, autoStop.WindowVariants);
-            Assert.True(AutoStop.IsEnabled(autoStop));
-        }
-
-        [Fact]
-        public void The_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Short_Test_Size()
-        {
-            var defaults = SimulationConfig.CreateDefault();
-            var loaded = TemplateProjectFiles.Load(SimulationConfig.CreateDefault(), "simulation.json");
-
-            Assert.Equal(5, loaded.MaxIterations);
-            Assert.Equal(5, loaded.VariantsPerIteration);
-            AssertTemplateAutoStop(loaded.AutoStop);
-
-            var deviations = new[]
-            {
-                nameof(SimulationConfig.MaxIterations),
-                nameof(SimulationConfig.VariantsPerIteration),
-                nameof(SimulationConfig.AutoStop)
-            };
-
-            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig)))
-            {
-                if (deviations.Contains(property.Name)) continue;
-
-                Assert.Equal(
-                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
-                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
-            }
-        }
-
-        /// <summary>
-        /// Dasselbe für die Solver-Dateien: jeder Schlüssel genannt, jeder Wert der
-        /// Code-Standard. Hier ohne Ausnahme — eine Fluideigenschaft hat keinen Grund,
-        /// in der Vorlage anders zu stehen als im Code.
+        /// Jeder Schlüssel der Solver-Dateien steht in der Vorlage, damit ihn ein neuer Nutzer findet. Die WERTE sind
+        /// Einstellungen zum Ausprobieren und werden hier bewusst nicht geprüft.
         /// </summary>
         [Fact]
-        public void The_Template_Su2_Json_Mirrors_The_Code_Defaults()
+        public void The_Template_Su2_Json_Names_Every_Key()
         {
-            AssertMirrorsDefaults<Su2SolverOptions>("solvers/su2.json");
+            AssertNamesEveryKey<Su2SolverOptions>("solvers/su2.json");
         }
 
-        /// <inheritdoc cref="The_Template_Su2_Json_Mirrors_The_Code_Defaults"/>
+        /// <inheritdoc cref="The_Template_Su2_Json_Names_Every_Key"/>
         [Fact]
-        public void The_Template_Gmsh_Json_Mirrors_The_Code_Defaults()
+        public void The_Template_Gmsh_Json_Names_Every_Key()
         {
-            AssertMirrorsDefaults<GmshMesherOptions>("solvers/gmsh.json");
-        }
-
-        /// <summary>
-        /// Die <c>project.json</c> und <c>CreateDefaults()</c> führen dieselben Zahlen — das sagt
-        /// die Vorlage in ihren Kommentaren zu, und ein neues Projekt erbt diese Zusage. Läufen
-        /// sie auseinander, rechnet ein Projekt ohne <c>project.json</c> anders als eines mit.
-        /// </summary>
-        [Fact]
-        public void The_Template_Manifest_Matches_Its_Code_Defaults()
-        {
-            ProjectConfig code = new MeinProjektProject().CreateDefaults();
-
-            ProjectConfig file = TemplateProjectFiles
-                .Load(ProjectConfigDto.FromProjectConfig(new MeinProjektProject().CreateDefaults()), "project.json")
-                .ToProjectConfig();
-
-            Assert.Equal(TemplateProjectFiles.Describe(code.BaseParameters), TemplateProjectFiles.Describe(file.BaseParameters));
-            Assert.Equal(TemplateProjectFiles.Describe(code.MaxDeviations), TemplateProjectFiles.Describe(file.MaxDeviations));
-            Assert.Equal(TemplateProjectFiles.Describe(code.OptimizationTargets), TemplateProjectFiles.Describe(file.OptimizationTargets));
-
-            Assert.Equal(code.ParameterBounds.Count, file.ParameterBounds.Count);
-            foreach (var bound in code.ParameterBounds)
-            {
-                Assert.True(file.ParameterBounds.ContainsKey(bound.Key), $"ParameterBounds: '{bound.Key}' fehlt in project.json.");
-                Assert.Equal(bound.Value, file.ParameterBounds[bound.Key]);
-            }
-
-            Assert.Equal(
-                code.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal),
-                file.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal));
+            AssertNamesEveryKey<GmshMesherOptions>("solvers/gmsh.json");
         }
 
         /// <summary>
@@ -656,68 +576,18 @@ namespace OptimierungsAlgoCFD.Tests
                 + string.Join(", ", missing));
         }
 
+        /// <summary>Jeder Schlüssel der 2D-Solver-Dateien steht in der Vorlage; die Werte sind Einstellungen und werden nicht geprüft.</summary>
         [Fact]
-        public void The_2D_Template_Simulation_Json_Holds_The_Code_Defaults_Except_The_Short_Test_Size()
+        public void The_2D_Template_Su2_Json_Names_Every_Key()
         {
-            var defaults = SimulationConfig.CreateDefault();
-            var loaded = Template2DProjectFiles.Load(SimulationConfig.CreateDefault(), "simulation.json");
-
-            Assert.Equal(5, loaded.MaxIterations);
-            Assert.Equal(5, loaded.VariantsPerIteration);
-            AssertTemplateAutoStop(loaded.AutoStop);
-
-            var deviations = new[]
-            {
-                nameof(SimulationConfig.MaxIterations),
-                nameof(SimulationConfig.VariantsPerIteration),
-                nameof(SimulationConfig.AutoStop)
-            };
-
-            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(SimulationConfig)))
-            {
-                if (deviations.Contains(property.Name)) continue;
-
-                Assert.Equal(
-                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
-                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
-            }
+            AssertNamesEvery2DKey<Su2SolverOptions>("solvers/su2.json");
         }
 
+        /// <inheritdoc cref="The_2D_Template_Su2_Json_Names_Every_Key"/>
         [Fact]
-        public void The_2D_Template_Su2_Json_Mirrors_The_Code_Defaults()
+        public void The_2D_Template_Gmsh_Json_Names_Every_Key()
         {
-            AssertMirrors2DDefaults<Su2SolverOptions>("solvers/su2.json");
-        }
-
-        [Fact]
-        public void The_2D_Template_Gmsh_Json_Mirrors_The_Gmsh2D_Code_Defaults()
-        {
-            AssertMirrors2DDefaults<Gmsh2DMesherOptions>("solvers/gmsh.json");
-        }
-
-        [Fact]
-        public void The_2D_Template_Manifest_Matches_Its_Code_Defaults()
-        {
-            ProjectConfig code = new MeinProjekt2DProject().CreateDefaults();
-
-            ProjectConfig file = Template2DProjectFiles
-                .Load(ProjectConfigDto.FromProjectConfig(new MeinProjekt2DProject().CreateDefaults()), "project.json")
-                .ToProjectConfig();
-
-            Assert.Equal(TemplateProjectFiles.Describe(code.BaseParameters), TemplateProjectFiles.Describe(file.BaseParameters));
-            Assert.Equal(TemplateProjectFiles.Describe(code.MaxDeviations), TemplateProjectFiles.Describe(file.MaxDeviations));
-            Assert.Equal(TemplateProjectFiles.Describe(code.OptimizationTargets), TemplateProjectFiles.Describe(file.OptimizationTargets));
-
-            Assert.Equal(code.ParameterBounds.Count, file.ParameterBounds.Count);
-            foreach (var bound in code.ParameterBounds)
-            {
-                Assert.True(file.ParameterBounds.ContainsKey(bound.Key), $"ParameterBounds: '{bound.Key}' fehlt in project.json.");
-                Assert.Equal(bound.Value, file.ParameterBounds[bound.Key]);
-            }
-
-            Assert.Equal(
-                code.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal),
-                file.DimensionalParameters.OrderBy(name => name, StringComparer.Ordinal));
+            AssertNamesEvery2DKey<Gmsh2DMesherOptions>("solvers/gmsh.json");
         }
 
         [Fact]
@@ -745,9 +615,8 @@ namespace OptimierungsAlgoCFD.Tests
                 StringComparer.OrdinalIgnoreCase);
         }
 
-        private static void AssertMirrors2DDefaults<T>(string relativeName) where T : class, new()
+        private static void AssertNamesEvery2DKey<T>(string relativeName) where T : class, new()
         {
-            var defaults = new T();
             var keys = Template2DProjectFiles.TopLevelKeys(relativeName);
 
             var missing = TemplateProjectFiles.PropertiesOf(typeof(T))
@@ -758,21 +627,10 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.True(missing.Count == 0,
                 $"In src/projects/_Vorlage2D/{relativeName} fehlt/fehlen: " + string.Join(", ", missing)
                 + ". Die Vorlage soll jeden Schlüssel zeigen, den es gibt.");
-
-            T loaded = Template2DProjectFiles.Load(new T(), relativeName);
-
-            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(T)))
-            {
-                Assert.Equal(
-                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
-                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
-            }
         }
 
-        private static void AssertMirrorsDefaults<T>(string relativeName) where T : class, new()
+        private static void AssertNamesEveryKey<T>(string relativeName) where T : class, new()
         {
-            var defaults = new T();
-
             var keys = TemplateProjectFiles.TopLevelKeys(relativeName);
 
             var missing = TemplateProjectFiles.PropertiesOf(typeof(T))
@@ -783,15 +641,6 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.True(missing.Count == 0,
                 $"In src/projects/_Vorlage3D/{relativeName} fehlt/fehlen: " + string.Join(", ", missing)
                 + ". Die Vorlage soll jeden Schlüssel zeigen, den es gibt.");
-
-            T loaded = TemplateProjectFiles.Load(new T(), relativeName);
-
-            foreach (PropertyInfo property in TemplateProjectFiles.PropertiesOf(typeof(T)))
-            {
-                Assert.Equal(
-                    TemplateProjectFiles.Describe(property.GetValue(defaults)),
-                    TemplateProjectFiles.Describe(property.GetValue(loaded)));
-            }
         }
     }
 }

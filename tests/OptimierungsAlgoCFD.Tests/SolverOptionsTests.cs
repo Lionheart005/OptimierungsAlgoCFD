@@ -11,85 +11,6 @@ namespace OptimierungsAlgoCFD.Tests
     public class SolverOptionsTests
     {
         /// <summary>
-        /// src/projects/MantaAuv/solvers/su2.json muss dieselben Werte enthalten wie die
-        /// Code-Standards — sonst rechnet SU2 mit anderen Fluideigenschaften als vor dem
-        /// Umzug nach JSON. Einzige bewusste Ausnahme: <c>FreestreamVelocity</c>, siehe
-        /// <see cref="MantaAuv_Sets_A_Realistic_Velocity_In_Water"/>.
-        /// </summary>
-        [Fact]
-        public void Su2_Json_Matches_Code_Defaults()
-        {
-            var defaults = new Su2SolverOptions();
-            var loaded = MantaProjectFiles.Load(new Su2SolverOptions(), "solvers/su2.json");
-
-            Assert.Equal(defaults.Density, loaded.Density);
-            Assert.Equal(defaults.DynamicViscosity, loaded.DynamicViscosity);
-            Assert.Equal(defaults.TurbulenceModel, loaded.TurbulenceModel);
-            Assert.Equal(defaults.SpeedOfSound, loaded.SpeedOfSound);
-            Assert.Equal(defaults.ReferenceLength, loaded.ReferenceLength);
-            Assert.Equal(defaults.ReferenceAreaMetric, loaded.ReferenceAreaMetric);
-            // TODO-26: die Zuordnung der Ergebnisgrößen muss in der Datei stehen, damit sie
-            // ein neuer Nutzer überhaupt findet — der Code-Standard allein ist unsichtbar.
-            Assert.Equal(defaults.ResultMetrics, loaded.ResultMetrics);
-            Assert.Equal(defaults.ConvergenceField, loaded.ConvergenceField);
-            Assert.Equal(defaults.HistoryOutput, loaded.HistoryOutput);
-            Assert.Equal(defaults.CflNumber, loaded.CflNumber);
-            Assert.Equal(defaults.CflAdapt, loaded.CflAdapt);
-            Assert.Equal(defaults.CflAdaptFactorDown, loaded.CflAdaptFactorDown);
-            Assert.Equal(defaults.CflAdaptFactorUp, loaded.CflAdaptFactorUp);
-            Assert.Equal(defaults.CflAdaptMin, loaded.CflAdaptMin);
-            Assert.Equal(defaults.CflAdaptMax, loaded.CflAdaptMax);
-            Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
-            Assert.Equal(defaults.YPlusWarnFactor, loaded.YPlusWarnFactor);
-            Assert.Equal(defaults.AngleOfAttackDeg, loaded.AngleOfAttackDeg);
-            Assert.Equal(defaults.Dimensions, loaded.Dimensions);
-            Assert.Equal(defaults.TimeDomain.Enabled, loaded.TimeDomain.Enabled);
-            Assert.Equal(defaults.TimeDomain.TimeStep, loaded.TimeDomain.TimeStep);
-            Assert.Equal(defaults.TimeDomain.StepsPerPeriod, loaded.TimeDomain.StepsPerPeriod);
-            Assert.Equal(defaults.TimeDomain.StrouhalEstimate, loaded.TimeDomain.StrouhalEstimate);
-            Assert.Equal(defaults.TimeDomain.TimeIterations, loaded.TimeDomain.TimeIterations);
-            Assert.Equal(defaults.TimeDomain.InnerIterations, loaded.TimeDomain.InnerIterations);
-            Assert.Equal(defaults.TimeDomain.AveragingStartFraction, loaded.TimeDomain.AveragingStartFraction);
-        }
-
-        [Fact]
-        public void Gmsh_Json_Matches_Code_Defaults()
-        {
-            var defaults = new GmshMesherOptions();
-            var loaded = MantaProjectFiles.Load(new GmshMesherOptions(), "solvers/gmsh.json");
-
-            Assert.Equal(defaults.TunnelShape, loaded.TunnelShape);
-            // MantaAuv weicht seit 06.11.2026 (TODO-W8) bewusst von den Code-Vorgaben ab: Kanal 1200 mm mit Modell
-            // 300 mm hinter der Mitte (~18 L Nachlauf), Prismen-Wandschicht (y+ ~ 1) und Nachlauf-Box.
-            Assert.Equal(1200.0f, loaded.TunnelSizeX);
-            Assert.Equal(defaults.TunnelSizeY, loaded.TunnelSizeY);
-            Assert.Equal(defaults.TunnelSizeZ, loaded.TunnelSizeZ);
-            Assert.Equal(300.0f, loaded.TunnelCenterX);
-            Assert.Equal(defaults.TunnelCenterY, loaded.TunnelCenterY);
-            Assert.Equal(defaults.TunnelCenterZ, loaded.TunnelCenterZ);
-            Assert.Equal(defaults.TunnelDiameter, loaded.TunnelDiameter);
-            Assert.Equal(600.0f, loaded.TunnelLength); // nur bei "Cylinder" wirksam, MantaAuv rechnet "Box"
-            Assert.Equal(defaults.TunnelSegments, loaded.TunnelSegments);
-            Assert.Equal(defaults.BoundaryLayerSizeMin, loaded.BoundaryLayerSizeMin);
-            Assert.Equal(defaults.BoundaryLayerSizeMax, loaded.BoundaryLayerSizeMax);
-            Assert.Equal(defaults.BoundaryLayerDistMin, loaded.BoundaryLayerDistMin);
-            Assert.Equal(defaults.BoundaryLayerDistMax, loaded.BoundaryLayerDistMax);
-            Assert.True(loaded.WakeRefinement);
-            Assert.Equal(defaults.WakeLengthFactor, loaded.WakeLengthFactor);
-            Assert.Equal(defaults.WakeWidthFactor, loaded.WakeWidthFactor);
-            Assert.Equal(defaults.WakeCellSize, loaded.WakeCellSize);
-            Assert.Equal(defaults.MeshSizeFromCurvature, loaded.MeshSizeFromCurvature);
-            Assert.Equal("Prism", loaded.BoundaryLayerMode);
-            Assert.Equal(defaults.TargetYPlus, loaded.TargetYPlus);
-            Assert.Equal(defaults.BoundaryLayerMinLayers, loaded.BoundaryLayerMinLayers);
-            Assert.Equal(defaults.BoundaryLayerGrowthRate, loaded.BoundaryLayerGrowthRate);
-            Assert.Equal(defaults.BoundaryLayerLayers, loaded.BoundaryLayerLayers);
-            Assert.Equal(defaults.SurfaceCellSize, loaded.SurfaceCellSize);
-            Assert.Equal(defaults.CurvatureElements, loaded.CurvatureElements);
-            Assert.Equal(defaults.ClassifyAngleDeg, loaded.ClassifyAngleDeg);
-        }
-
-        /// <summary>
         /// Die SU2-Konfigurationsdatei muss mit den Standard-Optionen physikalisch dasselbe
         /// beschreiben wie die frühere hardcodierte Fassung.
         /// </summary>
@@ -185,21 +106,6 @@ namespace OptimierungsAlgoCFD.Tests
             {
                 if (File.Exists(path)) File.Delete(path);
             }
-        }
-
-        /// <summary>
-        /// MantaAuv weicht hier bewusst vom Code-Standard ab: 2 m/s statt der 34,3 m/s, die
-        /// Mach 0.1 mit der Schallgeschwindigkeit von Luft ergab (Entscheidung E4,
-        /// <c>.plans/anmerkungen_umsetzung.md</c>). Ändert jemand den Wert, soll das bewusst
-        /// passieren — die Ergebnisse alter und neuer Läufe sind dann nicht vergleichbar.
-        /// </summary>
-        [Fact]
-        public void MantaAuv_Sets_A_Realistic_Velocity_In_Water()
-        {
-            var loaded = MantaProjectFiles.Load(new Su2SolverOptions(), "solvers/su2.json");
-
-            Assert.Equal(2.0f, loaded.FreestreamVelocity);
-            Assert.Equal(2.0f, Su2ConfigGenerator.ResolveVelocity(MantaProjectFiles.Simulation(), loaded, out _));
         }
 
         [Fact]

@@ -114,26 +114,6 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// MantaAuv nennt alle drei Pfade ausdrücklich. Stünde nur einer davon in der Datei,
-        /// wäre für die anderen beiden stillschweigend die PATH-Suche zuständig — und genau
-        /// die schlägt auf dem Hochschulserver fehl.
-        /// </summary>
-        [Fact]
-        public void MantaAuv_Names_All_Three_Program_Paths_Explicitly()
-        {
-            var loaded = MantaProjectFiles.Simulation();
-            var defaults = SimulationConfig.CreateDefault();
-
-            Assert.NotEqual(defaults.MpiRunPath, loaded.MpiRunPath);
-            Assert.NotEqual(defaults.Su2Path, loaded.Su2Path);
-            Assert.NotEqual(defaults.GmshPath, loaded.GmshPath);
-
-            Assert.StartsWith("/", loaded.MpiRunPath);
-            Assert.StartsWith("/", loaded.Su2Path);
-            Assert.StartsWith("/", loaded.GmshPath);
-        }
-
-        /// <summary>
         /// Die globale Basis-Schicht ist ersatzlos entfallen (Entscheidung 3). Läge in config/
         /// wieder eine eingecheckte JSON, hätte sie keinerlei Wirkung — sie wird gar nicht mehr
         /// gelesen — und wäre damit die schlimmste Sorte Konfiguration: eine, die aussieht,
