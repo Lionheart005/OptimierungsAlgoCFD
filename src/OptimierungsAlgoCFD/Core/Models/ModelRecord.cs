@@ -7,6 +7,28 @@ namespace OptimierungsAlgoCFD.Core
     /// </summary>
     public class ModelRecord
     {
+        /// <summary>
+        /// Schlüssel in <see cref="PassiveParameters"/>: 1, wenn die Vernetzung scheiterte (<see cref="MeshGenerationException"/>).
+        /// Ein Vernetzungsfehler ist kein Strömungsabsturz; das Bayes-Erfolgsmodell lernt daraus nicht.
+        /// </summary>
+        public const string MeshFailedKey = "MeshFailed";
+
+        /// <summary>Schlüssel in <see cref="PassiveParameters"/>: 1, wenn das Netz über der Zellgrenze lag und SU2 nicht lief.</summary>
+        public const string CellLimitExceededKey = "CellLimitExceeded";
+
+        /// <summary>Schlüssel in <see cref="PassiveParameters"/>: 1 bei Ersatznetz (Wandschicht überall verdünnt, Stufe C der Rückfall-Leiter).</summary>
+        public const string MeshFallbackKey = "MeshFallback";
+
+        /// <summary>
+        /// Netz-Metadaten in <see cref="PassiveParameters"/> (Wandschicht-Kennwerte, Ersatznetz, Vernetzungsfehler, Zellgrenze):
+        /// keine Kennwerte der Geometrie und deshalb aus Kennwert-Vergleichen und Log-Auswahl ausgenommen.
+        /// </summary>
+        public static bool IsMeshMetadataKey(string key)
+            => key.StartsWith("BoundaryLayer", System.StringComparison.OrdinalIgnoreCase)
+               || key.Equals(MeshFailedKey, System.StringComparison.OrdinalIgnoreCase)
+               || key.Equals(MeshFallbackKey, System.StringComparison.OrdinalIgnoreCase)
+               || key.Equals(CellLimitExceededKey, System.StringComparison.OrdinalIgnoreCase);
+
         public int Iteration { get; set; }
         public int Variant { get; set; }
         

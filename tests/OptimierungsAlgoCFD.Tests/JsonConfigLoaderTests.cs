@@ -93,8 +93,9 @@ namespace OptimierungsAlgoCFD.Tests
             // Code-Standard ab, weil der Hochschulserver sie nicht über den PATH findet.
             // Geprüft wird das in ProjectLayoutTests.
             Assert.Equal(defaults.RsmVirtualSimulations, fromFile.RsmVirtualSimulations);
-            // BouncerTolerance ist bewusst nicht dabei: MantaAuv nimmt 0.10 statt 0.2 (Drag geht hoch 3 in die Fitness ein).
-            Assert.Equal(0.10f, fromFile.BouncerTolerance, 5);
+            // BouncerTolerance ist bewusst nicht dabei: MantaAuv nimmt 0.15 statt 0.2 (Drag geht hoch 3 in die Fitness ein;
+            // gleich der Kalibriertoleranz 0.15, siehe Kommentar in MantaAuv/simulation.json).
+            Assert.Equal(0.15f, fromFile.BouncerTolerance, 5);
         }
 
         [Fact]

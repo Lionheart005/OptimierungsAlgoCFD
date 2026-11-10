@@ -382,6 +382,23 @@ namespace OptimierungsAlgoCFD.Core
                         {
                             record.PassiveParameters["MeshCells"] = cellCount;
                         }
+
+                        // Kennwerte des Netzes (Schichtzahl, Dicke, Stufe der Rückfall-Leiter …) in die CSV
+                        if (stage.Mesher is IMeshMetricsSource metricsSource)
+                        {
+                            foreach (var kvp in metricsSource.LastMeshMetrics)
+                                record.PassiveParameters[kvp.Key] = kvp.Value;
+                        }
+
+                        // Zellgrenze (Kalibrierstufen): an der GEMESSENEN Zellzahl prüfen, bevor SU2 Stunden rechnet.
+                        if (_context.CellLimit > 0 && cellCount > _context.CellLimit)
+                        {
+                            record.PassiveParameters[ModelRecord.CellLimitExceededKey] = 1f;
+                            record.SimulationFailed = true;
+                            SimulationLog.Error(
+                                $"Zellgrenze überschritten: {cellCount:N0} Zellen gemessen, Grenze {_context.CellLimit:N0}. Die Strömungsrechnung entfällt.");
+                            break;
+                        }
                     }
 
                     stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
@@ -393,6 +410,10 @@ namespace OptimierungsAlgoCFD.Core
                 // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
                 // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
                 record.SimulationFailed = true;
+
+                // Ein Vernetzungsfehler ist kein Strömungsabsturz: Bayes soll deswegen nicht die ganze
+                // Formzone meiden (Plan wandschicht_zellzahl.md, FZ7).
+                if (ex is MeshGenerationException) record.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
             }
 
             return record;
@@ -458,6 +479,11 @@ namespace OptimierungsAlgoCFD.Core
             else
             {
                 SimulationLog.PrintBanner("OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
+            }
+
+            foreach (string line in MeshRobustnessReport.Lines(_context.History))
+            {
+                Console.WriteLine(line);
             }
 
             if (!anySucceeded)

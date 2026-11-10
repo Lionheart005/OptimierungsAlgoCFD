@@ -46,6 +46,9 @@
 
   // --- Wandschicht und Nachlauf (TODO-40, TODO-W6) ---
   // "Prism": flache Prismenschichten an der Wand (y+ ~ 1, am Manta gemessen: SU2 konvergiert).
+  // Schichtzahl und erste Zellhoehe folgen fuer alle Varianten derselben Regel (Regel aus Re_L und Grenzschichtdicke, ca. 21-24 Schichten).
+  // Die Kehle zwischen Sensorkugel und Fluegel (Radius ~2,4 mm) faltete frueher die 2,2-mm-Schicht; seit 10.11.2026 glaettet das
+  // Programm die Wachstumsrichtungen, statt Schichten wegzulassen (Handbuch 4.4). BoundaryLayerCoverage 1.0 = Schicht deckt delta ab.
   // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
   "BoundaryLayerMode": "Prism",
   "WakeRefinement": true,

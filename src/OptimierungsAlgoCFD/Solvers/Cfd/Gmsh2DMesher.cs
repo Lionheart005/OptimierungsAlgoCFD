@@ -64,7 +64,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 if (thicknessScale <= MinThicknessScale)
                 {
                     CopyGeoToFehlerLogs(request.WorkingDirectory, geoScriptPath);
-                    throw new Exception($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {exitCode}, auch mit {thicknessScale * 100f:0} % Wandschichtdicke). .geo-Skript nach FehlerLogs kopiert.");
+                    throw new MeshGenerationException($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {exitCode}, auch mit {thicknessScale * 100f:0} % Wandschichtdicke). .geo-Skript nach FehlerLogs kopiert.");
                 }
 
                 thicknessScale *= 0.5f;

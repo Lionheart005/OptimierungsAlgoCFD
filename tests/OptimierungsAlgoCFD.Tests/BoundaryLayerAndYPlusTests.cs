@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Xunit;
 using OptimierungsAlgoCFD.Core;
@@ -174,28 +175,97 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         [Fact]
-        public void WriteGeoScript_LayerOverride_Drops_Outer_Layers()
+        public void WriteGeoScript_WallField_Is_Merged_First_And_Used_By_The_Extrusion()
         {
+            // Wandfeld (Richtung x Dicke je Knoten): muss als ERSTE Ansicht (View[0]) eingelesen werden,
+            // die Extrusion nutzt es, die Schichtzahl bleibt wie sie ist (kein Schichtverlust mehr).
             string path = Path.Combine(_workingDirectory, "Meshing_Gen1_Var1.geo");
+            string field = GmshCfdMesher.WallFieldPath(path);
             var options = new GmshMesherOptions { BoundaryLayerMode = "Prism", TargetYPlus = 1.0f };
             var mesher = new GmshCfdMesher(options, new FlowConditions(2.0f, 1025f, 0.001001f, "test"));
             var config = SimulationConfig.CreateDefault();
 
-            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 1.0f, layerCountOverride: 5);
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 1.0f, field);
+            string[] lines = File.ReadAllLines(path);
+            string extrude = lines.Single(l => l.StartsWith("Extrude {"));
 
-            string extrude = File.ReadAllLines(path).Single(l => l.StartsWith("Extrude {"));
-            Assert.Contains("Layers{ {1, 1, 1, 1, 1}, {", extrude);
+            Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.pos"), field);
+            int mergeField = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_Gen1_Var1.pos"));
+            int mergeWall = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_Gen1_Var1.mesh"));
+            Assert.True(mergeField >= 0 && mergeField < mergeWall, "Das Wandfeld muss VOR der Wand eingelesen werden (View[0]).");
+            Assert.Contains("Using View[0]; Recombine;", extrude);
+
+            // ohne Wandfeld extrudiert Gmsh entlang der rohen Normalen (wie bisher)
+            mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 1.0f);
+            string plain = File.ReadAllLines(path).Single(l => l.StartsWith("Extrude {"));
+            Assert.DoesNotContain("Using View", plain);
+            Assert.Equal(extrude.Replace("Using View[0]; ", ""), plain);
+
             Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.geo"), GmshCfdMesher.WallScriptPath(path));
             Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.mesh"), GmshCfdMesher.WallMeshPath(path));
         }
 
         [Fact]
-        public void NextLayerCount_Drops_A_Quarter_Each_Time()
+        public void WriteGeoScript_Layer_Count_Does_Not_Depend_On_The_Wall_Field()
         {
-            // Manta (Servertest 06.11.2026): 21 und 16 Schichten durchdringen sich, 12 gehen.
-            var seq = new List<int> { 21 };
-            while (seq[^1] > 4) seq.Add(GmshCfdMesher.NextLayerCount(seq[^1]));
-            Assert.Equal(new[] { 21, 16, 12, 9, 7, 6, 5, 4 }, seq);
+            // Plan wandschicht_zellzahl.md EZ1: gleiche Schichtzahl und gleiche Höhen für alle Varianten und Stufen.
+            string pathA = Path.Combine(_workingDirectory, "Meshing_A.geo");
+            string pathB = Path.Combine(_workingDirectory, "Meshing_B.geo");
+            var mesher = new GmshCfdMesher(new GmshMesherOptions { BoundaryLayerMode = "Prism" },
+                new FlowConditions(2.0f, 1025f, 0.001001f, "test"));
+            var config = SimulationConfig.CreateDefault();
+
+            mesher.WriteGeoScript(pathA, "model.stl", "tunnel.stl", config, 1.0f, 1.0f);
+            mesher.WriteGeoScript(pathB, "model.stl", "tunnel.stl", config, 1.0f, 1.0f, GmshCfdMesher.WallFieldPath(pathB));
+
+            string a = File.ReadAllLines(pathA).Single(l => l.StartsWith("Extrude {"));
+            string b = File.ReadAllLines(pathB).Single(l => l.StartsWith("Extrude {"));
+            Assert.Equal(a.Replace("Using View[0]; ", ""), b.Replace("Using View[0]; ", ""));
+        }
+
+        [Fact]
+        public void ExtractGmshError_Picks_The_Cause_And_Skips_The_Summary()
+        {
+            // Zeilen aus der Nachstellung vom 09.11.2026 (MantaAuv, Kal4, 21 Schichten)
+            var lines = new[]
+            {
+                "Error   : PLC Error:  A segment and a facet intersect at point",
+                "Error   : Invalid boundary mesh (segment-facet intersection) on surface 3, intersection (20.4584,17.4484,-2.67117)",
+                "Error   : ------------------------------",
+                "Error   : Mesh generation error summary",
+                "Error   :     1 warning",
+                "Error   :     2 errors",
+                "Error   : Check the full log for details",
+                "Error   : ------------------------------",
+            };
+
+            string? text = GmshCfdMesher.ExtractGmshError(lines);
+
+            Assert.NotNull(text);
+            Assert.StartsWith("PLC Error:", text);
+            Assert.Contains("Invalid boundary mesh (segment-facet intersection)", text);
+            Assert.DoesNotContain("summary", text);
+            Assert.Null(GmshCfdMesher.ExtractGmshError(new[] { "Warning : 21 ill-shaped tets", "Info    : fertig" }));
+
+            // Gmsh färbt Fehlerzeilen ein (ESC[1m ESC[31m ... ESC[0m), auch wenn die Ausgabe in eine Pipe geht
+            string esc = ((char)27).ToString();
+            string colored = esc + "[1m" + esc + "[31mError   : Invalid boundary mesh (segment-facet intersection)" + esc + "[0m";
+            Assert.Equal("Invalid boundary mesh (segment-facet intersection)", GmshCfdMesher.ExtractGmshError(new[] { colored }));
+            Assert.Null(GmshCfdMesher.ExtractGmshError(Array.Empty<string>()));
+        }
+
+        [Fact]
+        public void Coverage_Makes_The_Layer_Reach_Beyond_The_Boundary_Layer()
+        {
+            var one = BoundaryLayerCalculator.Calculate(1025f, 2f, 0.001001f, 58f, 1f, 1.2f, 4, 0, 1.0f);
+            var wide = BoundaryLayerCalculator.Calculate(1025f, 2f, 0.001001f, 58f, 1f, 1.2f, 4, 0, 1.5f);
+
+            Assert.True(one.TotalThicknessMm >= one.BoundaryLayerThicknessMm);
+            Assert.True(wide.TotalThicknessMm >= 1.5f * wide.BoundaryLayerThicknessMm);
+            Assert.True(wide.LayerCount > one.LayerCount);
+            Assert.Equal(one.FirstLayerHeightMm, wide.FirstLayerHeightMm, 6);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                BoundaryLayerCalculator.Calculate(1025f, 2f, 0.001001f, 58f, 1f, 1.2f, 4, 0, 0f));
         }
 
         [Fact]

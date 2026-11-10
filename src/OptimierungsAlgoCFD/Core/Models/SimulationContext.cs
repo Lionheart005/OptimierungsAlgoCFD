@@ -61,6 +61,12 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public string CurrentRunTag { get; set; } = "";
 
+        /// <summary>
+        /// Obergrenze der GEMESSENEN Zellzahl für die laufende Rechnung (0 = keine). Die Kalibrierung setzt sie für ihre Stufen:
+        /// liegt das Netz darüber, rechnet SU2 nicht (Plan wandschicht_zellzahl.md, FZ5).
+        /// </summary>
+        public long CellLimit { get; set; }
+
         /// <param name="workingDirectory">
         /// Ohne Angabe <c>Ergebnisse/&lt;Projektname&gt;/</c> im Arbeitsverzeichnis.
         /// </param>
@@ -106,6 +112,7 @@ namespace OptimierungsAlgoCFD.Core
             MeshRefinementSource = "MANUELL aus simulation.json";
             CalibrationReportPath = null;
             CurrentRunTag = "";
+            CellLimit = 0;
         }
 
         /// <summary>

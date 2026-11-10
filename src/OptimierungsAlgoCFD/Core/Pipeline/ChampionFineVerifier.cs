@@ -51,6 +51,7 @@ namespace OptimierungsAlgoCFD.Core
                 // Rechnungs-Metadaten, keine Kennwerte der Geometrie.
                 metricsToCheck.AddRange(normalRecord.PassiveParameters.Keys.Where(k =>
                     !excluded.Contains(k)
+                    && !ModelRecord.IsMeshMetadataKey(k)
                     && !k.StartsWith("Su2_", StringComparison.OrdinalIgnoreCase)
                     && !k.StartsWith("YPlus_", StringComparison.OrdinalIgnoreCase)));
             }

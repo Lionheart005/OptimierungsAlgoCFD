@@ -13,11 +13,19 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// CFD-Mesher basierend auf Gmsh. Erzeugt ein Volumen-Mesh für CFD-Simulationen.
     /// Der Windkanal (Tunnel) wird hier erzeugt, da er zur Simulationsdomäne gehört.
     /// </summary>
-    public class GmshCfdMesher : IMeshGenerator
+    public class GmshCfdMesher : IMeshGenerator, IMeshMetricsSource
     {
         private readonly GmshMesherOptions _options;
         private readonly FlowConditions? _flow;
         private string? _cachedTunnelPath;
+        private Dictionary<string, float> _lastMetrics = new();
+
+        /// <summary>
+        /// Kennwerte des letzten Netzes: Schichtzahl, Dicke, erste Zellhöhe, Stufe der Rückfall-Leiter
+        /// (1 = A, 2 = B, 3 = Ersatznetz), Kippung, kleinster Dickenfaktor, gedünnter Flächenanteil, Ersatznetz-Kennzeichen.
+        /// Leer im Modus "Threshold" (keine Wandschicht).
+        /// </summary>
+        public IReadOnlyDictionary<string, float> LastMeshMetrics => _lastMetrics;
 
         /// <param name="options">Vorgabedaten aus solvers/gmsh.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
         /// <param name="flow">Physikalische Strömungsbedingungen (TODO-38); bereitgestellt für Grenzschichtnetz-Berechnungen (TODO-40).</param>
@@ -81,6 +89,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         public string GenerateMesh(MeshRequest request)
         {
+            _lastMetrics = new Dictionary<string, float>();
             string tunnelStlPath = EnsureTunnel(request.WorkingDirectory);
 
             string suffix = request.BaseSuffix;
@@ -101,12 +110,12 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
             if (!isHexa && !isPrism)
             {
-                int rc = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"",
+                GmshRun thresholdRun = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 2 -o \"{outputMeshPath}\"",
                     request.WorkingDirectory, geoScriptPath);
-                if (rc != 0 || !File.Exists(outputMeshPath))
+                if (thresholdRun.ExitCode != 0 || !File.Exists(outputMeshPath))
                 {
                     CopyGeoToFehlerLogs(request.WorkingDirectory, geoScriptPath);
-                    throw new Exception($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {rc}). .geo-Skript nach FehlerLogs kopiert.");
+                    throw new MeshGenerationException($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {thresholdRun.ExitCode}{thresholdRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
                 }
 
                 Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
@@ -118,59 +127,103 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             string wallScript = WallScriptPath(geoScriptPath);
             string wallMesh = WallMeshPath(geoScriptPath);
             if (File.Exists(wallMesh)) File.Delete(wallMesh);
-            int wallRc = RunGmsh(request.Config, $"\"{wallScript}\" -2 -nt {request.Config.GmshCores} -format mesh -v 0 -o \"{wallMesh}\"",
+            GmshRun wallRun = RunGmsh(request.Config, $"\"{wallScript}\" -2 -nt {request.Config.GmshCores} -format mesh -v 2 -o \"{wallMesh}\"",
                 request.WorkingDirectory, wallScript);
-            if (wallRc != 0 || !File.Exists(wallMesh))
+            if (wallRun.ExitCode != 0 || !File.Exists(wallMesh))
             {
                 CopyGeoToFehlerLogs(request.WorkingDirectory, wallScript);
-                throw new Exception($"Gmsh konnte die Wandoberfläche {Path.GetFileName(wallMesh)} nicht erstellen (ExitCode {wallRc}). .geo-Skript nach FehlerLogs kopiert.");
+                throw new MeshGenerationException($"Gmsh konnte die Wandoberfläche {Path.GetFileName(wallMesh)} nicht erstellen (ExitCode {wallRun.ExitCode}{wallRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
             }
 
-            // Schritt 2: Wandschicht extrudieren, Kern mit Tetraedern füllen. Schneidet sich die
-            // Wandschicht an engen/scharfen Stellen selbst, bricht Gmsh ab ("segment-facet
-            // intersection"). Dann werden die äußeren Schichten weggelassen: y1 und damit y+ bleiben,
-            // nur der strukturierte Bereich wird dünner (Manta: 21 Schichten scheitern, 12 gehen).
+            // Schritt 2: Wandschicht extrudieren, Kern mit Tetraedern füllen.
+            //
+            // Schichtzahl, Wachstumsrate und erste Zellhöhe stehen fest (Regel aus Re und Grenzschichtdicke) und ändern sich
+            // NIE: Varianten und Kalibrierstufen sollen mit demselben Wandnetz rechnen, sonst sind sie nicht vergleichbar
+            // (Bericht-Lauf 09.11.2026: der frühere Rückfall 21 → 16 Schichten verfälschte die Netzstudie). Scheitert Gmsh,
+            // ändert sich nur das Feld aus Extrusionsrichtung und Dicke (BoundaryLayerWallField.Ladder):
+            // A geglättete Richtungen, B örtlich gedünnte Kehlen und Engstellen, C Ersatznetz mit global dünnerer Schicht.
             BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(request.Config, request.GeometryPath, request.ScaleFactor);
-            int minLayers = Math.Max(1, _options.BoundaryLayerMinLayers);
             int layers = spec.LayerCount;
-            while (true)
+            float thicknessMm = LayerThicknessMm(spec, layers);
+            double thicknessGeo = thicknessMm * (double)request.ScaleFactor;
+
+            WallSurface wall;
+            try
             {
-                if (layers != spec.LayerCount)
-                {
-                    WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config,
-                        request.ScaleFactor, request.RefinementFactor, layers);
-                }
+                wall = WallSurface.ReadMedit(wallMesh);
+            }
+            catch (Exception ex) when (ex is InvalidDataException || ex is IOException || ex is FormatException)
+            {
+                CopyGeoToFehlerLogs(request.WorkingDirectory, wallScript);
+                throw new MeshGenerationException($"Die Wandoberfläche {Path.GetFileName(wallMesh)} ist nicht lesbar: {ex.Message}", ex);
+            }
+
+            string fieldPath = WallFieldPath(geoScriptPath);
+            WallFieldResult? field = null;
+            string lastError = string.Empty;
+            var ladder = BoundaryLayerWallField.Ladder;
+            for (int attempt = 0; attempt < ladder.Count; attempt++)
+            {
+                WallFieldResult candidate = BoundaryLayerWallField.Build(wall, thicknessGeo, ladder[attempt]);
+                BoundaryLayerWallField.WritePos(fieldPath, wall, candidate);
+                WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config,
+                    request.ScaleFactor, request.RefinementFactor, fieldPath);
 
                 if (File.Exists(outputMeshPath)) File.Delete(outputMeshPath);
-                int rc = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 0 -o \"{outputMeshPath}\"",
+                GmshRun run = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 2 -o \"{outputMeshPath}\"",
                     request.WorkingDirectory, geoScriptPath);
-                if (rc == 0 && File.Exists(outputMeshPath)) break;
-
-                int next = NextLayerCount(layers);
-                if (next < minLayers)
+                if (run.ExitCode == 0 && File.Exists(outputMeshPath))
                 {
-                    CopyGeoToFehlerLogs(request.WorkingDirectory, wallScript);
-                    CopyGeoToFehlerLogs(request.WorkingDirectory, geoScriptPath);
-                    throw new Exception($"Gmsh konnte {Path.GetFileName(outputMeshPath)} auch mit {layers} Wandschichten nicht erstellen (ExitCode {rc}). .geo-Skripte nach FehlerLogs kopiert.");
+                    field = candidate;
+                    break;
                 }
 
-                Console.WriteLine($"       -> [WARNUNG] Wandschicht mit {layers} Schichten ({FormatMm(LayerThicknessMm(spec, layers))} mm) "
-                    + $"ließ sich nicht vernetzen (meist Selbstdurchdringung an engen Stellen) – neuer Versuch mit {next} Schichten.");
-                layers = next;
+                lastError = run.ErrorSuffix;
+                if (attempt + 1 < ladder.Count)
+                {
+                    Console.WriteLine($"       -> [WARNUNG] Wandschicht ({ladder[attempt].Label}) ließ sich nicht vernetzen{run.ErrorSuffix} – nächster Versuch: {ladder[attempt + 1].Label}.");
+                }
             }
+
+            if (field == null)
+            {
+                CopyGeoToFehlerLogs(request.WorkingDirectory, wallScript);
+                CopyGeoToFehlerLogs(request.WorkingDirectory, geoScriptPath);
+                CopyGeoToFehlerLogs(request.WorkingDirectory, fieldPath);
+                throw new MeshGenerationException(
+                    $"Gmsh konnte {Path.GetFileName(outputMeshPath)} auch mit dem Ersatznetz nicht erstellen{lastError}. Wand-, Meshing-Skript und Wandfeld nach FehlerLogs kopiert.");
+            }
+
+            try { File.Delete(fieldPath); } catch { /* aufräumen ist nur Kosmetik */ }
 
             // Gmsh schreibt die Physical Volume "Fluid" als Rand-Marker mit (wie in 2D), SU2 kennt ihn nicht.
             Gmsh2DMesher.RemoveMarker(outputMeshPath, Gmsh2DMesher.FluidMarkerName);
 
+            WallFieldSettings used = field.Settings;
+            _lastMetrics["BoundaryLayerLayers"] = layers;
+            _lastMetrics["BoundaryLayerThicknessMm"] = thicknessMm;
+            _lastMetrics["BoundaryLayerFirstCellMm"] = spec.FirstLayerHeightMm;
+            _lastMetrics["BoundaryLayerStage"] = used.Stage;
+            _lastMetrics["BoundaryLayerMaxTiltDeg"] = (float)field.MaxTiltDeg;
+            _lastMetrics["BoundaryLayerMinScale"] = (float)field.MinScale;
+            _lastMetrics["BoundaryLayerThinnedShare"] = (float)field.ThinnedShare;
+            _lastMetrics["MeshFallback"] = used.Stage >= 3 ? 1f : 0f;
+
             float hexShare = ReadSu2BoundaryLayerHexShare(outputMeshPath);
             string hexPart = float.IsFinite(hexShare) ? $", {hexShare * 100f:0} % Quader" : string.Empty;
-            string layerPart = layers == spec.LayerCount
-                ? $"{layers} Schichten"
-                : $"{layers} von {spec.LayerCount} Schichten";
-            Console.WriteLine($"       -> Grenzschicht: {mode}, y1 = {spec.FirstLayerHeightMm.ToString("0.0000", CultureInfo.InvariantCulture)} mm (y+ {spec.TargetYPlus.ToString("0.#", CultureInfo.InvariantCulture)} bei Re {spec.ReynoldsNumber.ToString("0.0e0", CultureInfo.InvariantCulture)}), {layerPart}, Dicke {FormatMm(LayerThicknessMm(spec, layers))} mm{hexPart}");
+            string stagePart = used.Stage switch
+            {
+                1 => $", Richtungen geglättet (max. {field.MaxTiltDeg:0}°)",
+                2 => $", örtlich gedünnt auf {field.ThinnedShare * 100:0.0} % der Fläche (kleinster Faktor {field.MinScale:0.00})",
+                _ => $", [ERSATZNETZ] Dicke überall verringert (kleinster Faktor {field.MinScale:0.00}), Variante nur eingeschränkt vergleichbar",
+            };
+            Console.WriteLine($"       -> Grenzschicht: {mode}, y1 = {spec.FirstLayerHeightMm.ToString("0.0000", CultureInfo.InvariantCulture)} mm (y+ {spec.TargetYPlus.ToString("0.#", CultureInfo.InvariantCulture)} bei Re {spec.ReynoldsNumber.ToString("0.0e0", CultureInfo.InvariantCulture)}), {layers} Schichten, Dicke {FormatMm(thicknessMm)} mm{hexPart}{stagePart}");
             Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
             return outputMeshPath;
         }
+
+        /// <summary>Wandfeld (Schritt 2) zu einem Meshing-Skript: <c>Meshing_X.geo</c> → <c>Wall_X.pos</c>.</summary>
+        public static string WallFieldPath(string geoScriptPath) => Path.ChangeExtension(WallScriptPath(geoScriptPath), ".pos");
 
         /// <summary>Schritt-1-Skript (Wandoberfläche) zu einem Meshing-Skript: <c>Meshing_X.geo</c> → <c>Wall_X.geo</c>.</summary>
         public static string WallScriptPath(string geoScriptPath)
@@ -182,12 +235,6 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         /// <summary>Ergebnis von Schritt 1: die neu vernetzte Wand als eine Fläche (Medit-Format).</summary>
         public static string WallMeshPath(string geoScriptPath) => Path.ChangeExtension(WallScriptPath(geoScriptPath), ".mesh");
-
-        /// <summary>
-        /// Nächster Versuch, wenn sich die Wandschicht nicht vernetzen ließ: ein Viertel der
-        /// Schichten (mindestens eine) fällt weg, außen. 21 → 16 → 12 → 9 → 7 → 6 → 5 → 4 …
-        /// </summary>
-        public static int NextLayerCount(int current) => current - Math.Max(1, current / 4);
 
         private static float LayerThicknessMm(BoundaryLayerSpec spec, int layers)
         {
@@ -215,29 +262,89 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             return BoundaryLayerCalculator.Calculate(
                 flow.Density, flow.Velocity, flow.DynamicViscosity, lengthMm,
                 _options.TargetYPlus, _options.BoundaryLayerGrowthRate,
-                _options.BoundaryLayerMinLayers, _options.BoundaryLayerLayers);
+                _options.BoundaryLayerMinLayers, _options.BoundaryLayerLayers, _options.BoundaryLayerCoverage);
         }
 
-        /// <summary>Startet Gmsh und liefert den Exit-Code.</summary>
-        private static int RunGmsh(SimulationConfig config, string arguments, string workingDirectory, string scriptForErrorLog)
+        /// <summary>Ergebnis eines Gmsh-Aufrufs: Exit-Code und die Fehlerzeile(n) aus der Ausgabe (leer, wenn keine).</summary>
+        private sealed record GmshRun(int ExitCode, string? FirstError)
+        {
+            /// <summary>Für Meldungen: " (Gmsh: …)" oder leer.</summary>
+            public string ErrorSuffix => string.IsNullOrEmpty(FirstError) ? string.Empty : $" (Gmsh: {FirstError})";
+        }
+
+        /// <summary>
+        /// Startet Gmsh und liest die Ausgabe mit (Aufruf mit <c>-v 2</c>), damit der Grund eines Abbruchs im Log steht
+        /// und das Programm nicht bei jedem Fehler blind weiter verdünnt.
+        /// </summary>
+        private static GmshRun RunGmsh(SimulationConfig config, string arguments, string workingDirectory, string scriptForErrorLog)
         {
             using Process mesher = new Process();
             mesher.StartInfo.FileName = ExecutableResolver.Resolve(config.GmshPath, "gmsh");
             mesher.StartInfo.Arguments = arguments;
             mesher.StartInfo.UseShellExecute = false;
             mesher.StartInfo.CreateNoWindow = true;
+            mesher.StartInfo.RedirectStandardOutput = true;
+            mesher.StartInfo.RedirectStandardError = true;
+
+            var errorLines = new List<string>();
+            DataReceivedEventHandler collect = (_, e) =>
+            {
+                if (e.Data == null) return;
+                string clean = StripAnsi(e.Data);
+                if (clean.StartsWith("Error", StringComparison.Ordinal))
+                {
+                    lock (errorLines) errorLines.Add(clean);
+                }
+            };
+            mesher.OutputDataReceived += collect;
+            mesher.ErrorDataReceived += collect;
 
             try
             {
                 mesher.Start();
+                mesher.BeginOutputReadLine();
+                mesher.BeginErrorReadLine();
                 mesher.WaitForExit();
-                return mesher.ExitCode;
+                string[] lines;
+                lock (errorLines) lines = errorLines.ToArray();
+                return new GmshRun(mesher.ExitCode, ExtractGmshError(lines));
             }
             catch (Exception ex)
             {
                 CopyGeoToFehlerLogs(workingDirectory, scriptForErrorLog);
                 throw new Exception($"Gmsh konnte nicht gestartet werden: {ex.Message}. .geo-Skript nach FehlerLogs kopiert.", ex);
             }
+        }
+
+        /// <summary>Entfernt ANSI-Farbcodes (<c>ESC[1m</c>, <c>ESC[31m</c> …): Gmsh färbt Fehlerzeilen ein, auch in einer Pipe.</summary>
+        internal static string StripAnsi(string text)
+            => System.Text.RegularExpressions.Regex.Replace(text, "\u001B\\[[0-9;]*m", string.Empty);
+
+        /// <summary>
+        /// Die aussagekräftigen Fehlerzeilen aus der Gmsh-Ausgabe (höchstens zwei, ohne die Schlusszusammenfassung
+        /// "Mesh generation error summary", Trennlinien und Zähler). <c>null</c>, wenn keine vorkommt.
+        /// </summary>
+        public static string? ExtractGmshError(IEnumerable<string> lines)
+        {
+            var picked = new List<string>();
+            foreach (string withCodes in lines)
+            {
+                string raw = StripAnsi(withCodes);
+                if (!raw.StartsWith("Error", StringComparison.Ordinal)) continue;
+                int colon = raw.IndexOf(':');
+                string text = (colon >= 0 ? raw.Substring(colon + 1) : raw).Trim();
+                if (text.Length == 0 || text.StartsWith("-", StringComparison.Ordinal)) continue;
+                if (text.Contains("error summary", StringComparison.OrdinalIgnoreCase)) continue;
+                if (text.Contains("Check the full log", StringComparison.OrdinalIgnoreCase)) continue;
+                if (System.Text.RegularExpressions.Regex.IsMatch(text, @"^\d+\s+(warning|error)s?$")) continue;
+
+                picked.Add(text);
+                if (picked.Count == 2) break;
+            }
+
+            if (picked.Count == 0) return null;
+            string joined = string.Join(" | ", picked);
+            return joined.Length > 300 ? joined.Substring(0, 300) + "…" : joined;
         }
 
         public string GenerateMesh(
@@ -280,7 +387,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// <summary>
         /// Wie oben; bei "Hexa"/"Prism" schreibt es ZWEI Skripte: <see cref="WallScriptPath"/>
         /// (Schritt 1, Wandoberfläche) und <paramref name="geoScriptPath"/> (Schritt 2, Volumen).
-        /// <paramref name="layerCountOverride"/> lässt äußere Wandschichten weg (Wiederholungsversuch).
+        /// <paramref name="wallFieldPath"/> ist das Wandfeld (<see cref="BoundaryLayerWallField"/>, Richtung × Dicke je Knoten);
+        /// ohne Angabe extrudiert Gmsh entlang der rohen Knotennormalen.
         /// </summary>
         public void WriteGeoScript(
             string geoScriptPath,
@@ -289,7 +397,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             SimulationConfig config,
             float scaleFactor,
             float refinementFactor,
-            int? layerCountOverride)
+            string? wallFieldPath)
         {
             string mode = (_options.BoundaryLayerMode ?? "Threshold").Trim();
             bool isThreshold = mode.Equals("Threshold", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(mode);
@@ -435,7 +543,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 // scharfen Kanten kippen ~5 % der Übergangspyramiden, und SU2 divergierte (Manta).
                 // ===================================================================
                 BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(config, modelStlPath, scaleFactor);
-                int layerCount = Math.Max(1, layerCountOverride ?? spec.LayerCount);
+                int layerCount = Math.Max(1, spec.LayerCount);
 
                 float y1Geo = spec.FirstLayerHeightMm * scaleFactor;
                 var layerHeights = new List<float>(layerCount);
@@ -447,6 +555,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 }
 
                 string subDivs = string.Join(", ", Enumerable.Repeat("1", layerCount));
+                string usingView = wallFieldPath != null ? "Using View[0]; " : string.Empty;
                 string heights = string.Join(", ", layerHeights.Select(h => Format(h)));
 
                 float surfaceSize = (_options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin) * factor;
@@ -489,7 +598,14 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 string safeWallMesh = WallMeshPath(geoScriptPath).Replace("\\", "/");
                 string cellWord = isHexa ? "Quader (Hexaeder)" : "Prismen";
 
-                var geoLines = new List<string>
+                var geoLines = new List<string>();
+                if (wallFieldPath != null)
+                {
+                    geoLines.Add("// Wandfeld: Extrusionsrichtung x Dickenfaktor je Knoten. Muss als ERSTE Ansicht (View[0]) eingelesen werden.");
+                    geoLines.Add($"Merge \"{wallFieldPath.Replace("\\", "/")}\";");
+                }
+
+                geoLines.AddRange(new[]
                 {
                     "// Schritt 2 von 2: Wandschicht extrudieren, Kern mit Tetraedern fuellen.",
                     "Mesh.Optimize = 1;",
@@ -501,7 +617,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
                     $"// B) Strukturierte Wandschicht: {layerCount} Schichten {cellWord}, erste Zelle y1 = {Format(y1Geo)}",
                     "Geometry.ExtrudeReturnLateralEntities = 0;",
-                    $"Extrude {{ Surface{{wall[]}}; Layers{{ {{{subDivs}}}, {{{heights}}} }}; Recombine; }}",
+                    $"Extrude {{ Surface{{wall[]}}; Layers{{ {{{subDivs}}}, {{{heights}}} }}; {usingView}Recombine; }}",
                     "tops[] = Surface{:};",
                     "tops[] -= wall[];",
                     "bl_vols[] = Volume{:};",
@@ -536,7 +652,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     $"Field[2].SizeMax = {Format(sizeMax)};",
                     $"Field[2].DistMin = {Format(_options.BoundaryLayerDistMin)};",
                     $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};",
-                };
+                });
 
                 if (_options.WakeRefinement)
                 {

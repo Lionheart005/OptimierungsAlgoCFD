@@ -1,7 +1,7 @@
 # Wandschicht ohne Ausdünnung, formunabhängige Vernetzung, echte Zellzahl
 
-> **Stand: 09.11.2026 — PLAN, vom Nutzer freigegeben, noch nicht umgesetzt.**
-> Umsetzung, sobald die Kalibrierung des laufenden MantaAuv-Laufs fertig ist (Abschnitt 8).
+> **Stand: 10.11.2026 — UMGESETZT (lokal, 727 Tests grün), noch NICHT auf dem Server deployt. Offen: Servertest WZ9 (Abschnitt 10.5).**
+> Umsetzungsstand und Befunde aus dem Lauf vom 09./10.11.2026: **Abschnitt 10**. Abweichungen vom Plan stehen dort in 10.4.
 > Auslöser: Bericht-Lauf MantaAuv (Start 09.11.2026 12:54, Bayes, Auto-Kalibrierung, Toleranz 15 %).
 >
 > **Ziele:**
@@ -213,12 +213,12 @@ Scheitern Stufe A und B, wird die Variante trotzdem gerechnet, aber erkennbar an
 
 Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 7).
 
-### TODO-WZ1 – Gmsh-Fehler sichtbar machen (klein)
+### TODO-WZ1 – Gmsh-Fehler sichtbar machen (klein) — [x] umgesetzt
 * `GmshCfdMesher.RunGmsh` (und `Gmsh2DMesher`): stdout/stderr umleiten, mit `-v 2` (Fehler und Warnungen) aufrufen.
   Die erste `Error`-Zeile kommt in die Ausnahme bzw. ins Log, „ill-shaped tets“ nur als Detail.
 * Tests: Parser für die Fehlerzeile (Beispiel aus Abschnitt 1.3).
 
-### TODO-WZ2 – Wandfeld: Richtungen, Falt- und Engstellenprüfung (mittel bis groß)
+### TODO-WZ2 – Wandfeld: Richtungen, Falt- und Engstellenprüfung (mittel bis groß) — [x] umgesetzt
 * Neue Klasse `Solvers/Cfd/BoundaryLayerWallField.cs`:
   * Medit-Leser für `Wall_*.mesh` (Vertices, Triangles; Format siehe Schritt 1 in `GmshCfdMesher`).
   * Rohe Knotennormalen = Mittel der Einheits-Flächennormalen.
@@ -234,7 +234,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
   roh t_krit ≈ R, geglättet t_krit > R; zwei parallele Platten im Abstand g → Faktor ≤ g / (2,2 T);
   Kippung nie über 30°; Format der `.pos`-Datei.
 
-### TODO-WZ3 – Einbau in den 3D-Mesher (mittel)
+### TODO-WZ3 – Einbau in den 3D-Mesher (mittel) — [x] umgesetzt (ohne eingefrorene Schichtzahl, siehe 10.4)
 * `GmshCfdMesher`, Schritt 2: nach Schritt 1 das Wandfeld berechnen, `Merge "Wall_<V>.pos";` **vor** dem Wand-Merge
   (View-Index 0) und `Using View[0];` in der Extrude-Zeile. **Immer**, auch ohne Faltung, damit alle Varianten dieselben
   Regeln durchlaufen.
@@ -247,7 +247,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
   mit Löchern oder sehr feinen Stegen), einmal mit anderem `ClassifyAngleDeg` wiederholen und den Fehler mit Ursache melden.
 * Tests: `.geo` enthält `Merge` des Felds und `Using View[0]`; Rückfall-Leiter ändert nie Schichtzahl oder y1.
 
-### TODO-WZ4 – Fehlerursache und Ersatznetz in der Optimierung (mittel)
+### TODO-WZ4 – Fehlerursache und Ersatznetz in der Optimierung (mittel) — [x] umgesetzt (vereinfacht, siehe 10.4)
 * `ModelRecord.FailureKind` (None, Geometry, Mesh, Solver) und `MeshFallback` (bool). Gesetzt in `WorkflowController`
   bzw. im Mesher (eigene Ausnahme `MeshGenerationException`).
 * `SurrogateTrainingSet` (Zeile 60–65): `FailedPoints` (Erfolgsmodell) nur noch für `FailureKind = Solver`.
@@ -257,7 +257,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
 * Laufende: Liste „Formen mit Ersatznetz“ und Robustheitszeile (Abschnitt 4).
 * Tests: Mesh-Fehler geht nicht ins Erfolgsmodell; Ersatznetz nicht im Training; Liste am Laufende.
 
-### TODO-WZ5 – Netzkennwerte in die CSV (klein)
+### TODO-WZ5 – Netzkennwerte in die CSV (klein) — [x] umgesetzt (3D; 2D bewusst nicht)
 * Neue PassiveParameters je Rechnung: `BoundaryLayerLayers`, `BoundaryLayerThicknessMm` (Solldicke),
   `BoundaryLayerFirstCellMm` (y1), `BoundaryLayerStage` (1 = A, 2 = B, 3 = Ersatznetz), `BoundaryLayerMaxTiltDeg`,
   `BoundaryLayerMinScale` (1 = keine Ausdünnung), `BoundaryLayerThinnedShare` (Flächenanteil mit Faktor < 0,9), `MeshFallback`.
@@ -271,7 +271,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
   Naca2D-Logs entschieden (eigener Punkt, die Naca2D-Läufe für den Bericht sind betroffen).
 * Tests: Spalten in der CSV; Ausschlusslisten; Kalibrierbericht warnt bei gemischten Schichtzahlen.
 
-### TODO-WZ6 – Zellgrenze mit gemessenen Zellen (mittel)
+### TODO-WZ6 – Zellgrenze mit gemessenen Zellen (mittel) — [x] umgesetzt
 * **Prüfung vor SU2:** `MeshCalibration` setzt für Kalibrierstufen eine Grenze im `SimulationContext`. `WorkflowController`
   vergleicht `MeshCells` direkt nach dem Vernetzen und bricht die Stufe vor `Solve` ab (Kennzeichen
   `CellLimitExceeded = 1`). `RefineAdaptively` beendet dann mit „Stufe X hätte N Zellen (gemessen), Grenze M“.
@@ -284,11 +284,11 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
 * Tests: Exponent aus synthetischer Folge (Werte aus Abschnitt 1.5); Stufe über der Grenze ruft den Solver nicht auf;
   Stufe 1 bricht nicht mehr ab.
 
-### TODO-WZ7 – Fingerabdruck der Kalibrierung (klein)
+### TODO-WZ7 – Fingerabdruck der Kalibrierung (klein) — [x] umgesetzt
 * `MeshCalibration.ComputeFingerprint` nimmt eine Versionskonstante des Mesher-Aufbaus auf (z. B.
   `GmshCfdMesher.WallLayerScheme = "smoothed-view-1"`). So meldet der manuelle Modus alte Kalibrierungen als veraltet.
 
-### TODO-WZ8 – Dokumentation (klein)
+### TODO-WZ8 – Dokumentation (klein) — [x] umgesetzt (Plan nach `.old/` verschieben erst nach WZ9)
 * `BEDIENHANDBUCH.md` 4.4: Absatz „Wenn sich die Schichten nicht vernetzen lassen“ neu schreiben (Kehlenradius gegen
   Dicke, geglättete Richtungen, Rückfall-Leiter, Ersatznetz, keine Schichten mehr weglassen). Zeile `MaxCells3D`
   (gemessene Zellen). Neue CSV-Spalten. Abschnitt zu `FailureKind`.
@@ -297,7 +297,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
 * MantaAuv `gmsh.json`: Kommentar zur Wandschicht.
 * Nach Abschluss diesen Plan nach `.old/` verschieben und `README.md` hier aktualisieren.
 
-### TODO-WZ9 – Servertest (erst wenn kein Lauf mehr läuft, denn Deploy stoppt laufende Läufe)
+### TODO-WZ9 – Servertest (erst wenn kein Lauf mehr läuft, denn Deploy stoppt laufende Läufe) — [ ] offen
 1. Nur vernetzen: MantaAuv Gen1_Var1 bei 2,0 / 1,0 / 0,71 / 0,5 / 0,35 mit 21 Schichten. Erwartet: alle Stufe A,
    kein Gmsh-Fehler, Log-Zeile und CSV-Spalten stimmen. Dazu 10–20 Zufallsvarianten aus dem ganzen Parameterraum
    (auch Ecken: MainRadius 4/15, WingRadius 2/10, TailTaper 0,1/1,5), damit die **Formunabhängigkeit** gemessen ist
@@ -307,7 +307,7 @@ Alle Pakete in reinem C#. Python wurde nur für die Diagnose benutzt (Abschnitt 
 3. Wie 2., aber mit Wachstum 1,15 bzw. 1,12 (25 bzw. 29 Schichten). Daraus wird O2 entschieden.
 4. Neue Auto-Kalibrierung, dann der Bericht-Lauf.
 
-### TODO-WZ10 – Dauer der Kalibrierstufen im Log (klein, Nutzerwunsch 09.11.2026)
+### TODO-WZ10 – Dauer der Kalibrierstufen im Log (klein, Nutzerwunsch 09.11.2026) — [x] umgesetzt
 * Die Dauer je Stufe wird schon gemessen und steht in `calibration.csv` (`Dauer_s`) und `calibration.json`
   (`DurationSeconds`, `MeshCalibration.cs` Zeile 640–683). **Im Log fehlt sie:** Die Zeile „⏱ Dauer“ druckt nur die
   normale Variantenschleife (`WorkflowController.cs` Zeile 444), nicht die Kalibrierstufen.
@@ -360,3 +360,103 @@ Aufwand grob 2–3 Arbeitstage Code und Tests, dazu die Serverläufe (Schritt 1 
 * Für den Bericht nicht verwenden (FZ8). Nach dem Ende der Kalibrierung **zuerst `sim.ps1 fetch`** (Kalibrierbericht und
   Log sichern, Datenpunkt 0,35), dann stoppen. **Deployen erst danach**, denn ein Deploy stoppt laufende Läufe.
 * Nachträglich prüfbar: Im Log nach „von 21 Schichten“ suchen (welche Varianten wurden ausgedünnt).
+
+---
+
+## 10. Umsetzung und Befunde (10.11.2026)
+
+### 10.1 Was umgesetzt wurde
+
+| Baustein | Datei |
+|---|---|
+| Wandfeld: geglättete Richtungen, exakte Faltprüfung, Engstellen, Rückfall-Leiter A/B/C, `.pos`-Ausgabe | `Solvers/Cfd/BoundaryLayerWallField.cs` (neu) |
+| Mesher: Wandfeld über `Using View[0]`, Leiter statt Schichtverlust, Gmsh-Fehlerzeile im Log, Netzkennwerte, `BoundaryLayerCoverage` | `Solvers/Cfd/GmshCfdMesher.cs`, `GmshMesherOptions.cs`, `BoundaryLayerCalculator.cs` |
+| `MeshGenerationException`, `IMeshMetricsSource`, `MeshFailed`/`MeshFallback`/`CellLimitExceeded` | `Core/Models/`, `Core/Interfaces/` |
+| Pipeline: Netzkennwerte in den Record, Zellgrenze an gemessener Zahl vor SU2 | `Core/Pipeline/WorkflowController.cs`, `SimulationContext.CellLimit` |
+| Bayes: Vernetzungsfehler und Ersatznetz nicht im Erfolgsmodell | `Core/Surrogates/SurrogateTrainingSet.cs` |
+| Kalibrierung: gemessener Exponent, Zellgrenze, Dauer je Stufe und gesamt, Schichtspalten, Warnung bei gemischten Schichtzahlen, Fingerabdruck | `Core/Pipeline/MeshCalibration.cs`, `CalibrationEvaluator.cs` |
+| Bericht am Laufende (Netz-Robustheit, Formen mit Ersatznetz) | `Core/Pipeline/MeshRobustnessReport.cs` (neu) |
+| MantaAuv: `MaxCells3D` 5 Mio.; Vorlage und Kommentare; Handbuch und README | `src/projects/...`, `BEDIENHANDBUCH.md` |
+| Tests | 44 neue Tests (`BoundaryLayerWallFieldTests`, `MeshRobustnessTests`, Anpassungen); gesamt 727 grün |
+
+### 10.2 Messung mit dem echten Mesher (lokal, Gmsh 4.15.2, Daten vom Server)
+
+`GmshCfdMesher` auf den STL-Dateien des Laufs vom 09.11.2026 (Var1–Var4), Faktoren wie im Lauf:
+
+| Fall | Zellen | Schichten | Dicke | Stufe | Kippung max | Dünnung | Zeit |
+|---|---|---|---|---|---|---|---|
+| Var1, 0,71 (scheiterte bisher mit 21 Schichten) | 348 109 | 21 | 2,20 mm | **A** | 19° | – | 7 s |
+| Var1, 0,50 (scheiterte bisher) | 726 437 | 21 | 2,20 mm | **A** | 21° | – | 12 s |
+| Var1, 0,35 (scheiterte bisher) | 1 602 430 | 21 | 2,20 mm | **B** | 23° | 0,1 % der Fläche auf 70 % | 42 s |
+| Var2, 0,50 (Länge 119 mm) | 1 001 168 | 24 | 4,03 mm | A | 14° | – | 17 s |
+| Var3, 0,50 | 1 134 549 | 22 | 2,70 mm | A | 12° | – | 22 s |
+| Var4, 0,50 | 1 148 692 | 22 | 2,67 mm | A | 14° | – | 22 s |
+
+* **Alle Fälle** laufen mit der vollen Schichtzahl. Nur Var1 (MainRadius = 4, die Untergrenze, engste Kehlen) brauchte bei 0,35 die Stufe B.
+* Die Zellzahlen liegen 4–10 % über denen mit 16 Schichten (Kal4: 321 952 → 348 109; Kal5: 696 802 → 726 437).
+* **Die Fehlerzeile von Gmsh fehlte zunächst im Log**: Gmsh färbt `Error` mit ANSI-Codes ein, auch in einer Pipe. Behoben (`StripAnsi`), mit Test.
+
+### 10.3 Befunde aus den Daten des Laufs (Server, geholt am 10.11.2026)
+
+**Kalibrierung** (alle 6 Stufen, 16 Schichten ab Stufe 4):
+
+| Stufe | Faktor | Zellen | Dauer | CD | Abweichung zur Referenz 0,35 |
+|---|---|---|---|---|---|
+| 1 | 2,00 | 47 611 | 15 min | 1,4437 | 213,6 % |
+| 2 | 1,41 | 85 565 | 26 min | 1,0969 | 138,2 % |
+| 3 | 1,00 | 159 713 | 49 min | 0,8511 | 84,9 % |
+| 4 | 0,71 | 321 952 | 1 h 33 min | 0,6197 | 34,6 % |
+| 5 | 0,50 | 696 802 | 3 h 10 min | 0,5340 | **15,97 %** (normiert 1,06) |
+| 6 | 0,35 | 1 695 747 | 7 h 23 min | 0,4604 | Referenz |
+
+* **Die Kalibrierung dauerte 13,6 h.** Die Toleranz von 15 % wurde um 0,97 Prozentpunkte verfehlt; Rückfall auf 0,50.
+* CD fällt **bei jedem Schritt um etwa 16 %** (×1,16 bei 0,71 → 0,50 und 0,50 → 0,35), beobachtete Ordnung p = 0,50, GCI 102 %. Die Lösung ist bei 0,35 **nicht netzunabhängig**; die Reihe ist zusätzlich durch den Schichtwechsel (21 → 16) gestört. Erst die Wiederholung mit 21 Schichten (WZ9) zeigt den reinen Netzeinfluss.
+* 0,25 läge nach der Vorschau mit gemessenem Exponenten (≈ 2,5) bei etwa **3,9 Mio. Zellen** (nicht 4,65 Mio. wie kubisch), also unter der neuen Grenze von 5 Mio. Rechenzeit für diese Stufe grob 15 h und mehr.
+
+**Optimierung bei Faktor 0,50** (erste 4 Varianten):
+
+| Variante | Länge | Zellen | Schichten | Dicke | Dauer (5000 Iterationen) |
+|---|---|---|---|---|---|
+| 1 | 58 mm | 696 802 | 16 von 21 | 0,86 mm | 48 min |
+| 2 | 119 mm | 1 010 863 | 24 | 4,08 mm | 78 min |
+| 3 | 78 mm | 1 176 698 | 22 | 2,73 mm | 88 min |
+| 4 | 65 mm | 1 109 805 | 22 | 2,70 mm | 83 min |
+
+* **Die Varianten 2–4 hatten nie Probleme mit 22+ Schichten**; nur die Startvariante mit dem kleinsten `MainRadius` (engste Kehlen) scheiterte. Sie lief mit 16 Schichten, die anderen mit 22–24. **Im Lauf vom 09.11.2026 sind die Varianten damit untereinander nicht vergleichbar.**
+* **Kosten:** rund 1,4 h je Variante (Mittel aus 2–4) × 100 Varianten ≈ **5–6 Tage** reine Optimierung, dazu Feinprüfung. Die Kalibrierung (13,6 h) ist davon nur etwa 10 %, also kein Missverhältnis. Das eigentliche Kostenproblem ist der Netzfaktor 0,50 mit Detailbox (≈ 1 Mio. Zellen je Variante). Denkbar für den Bericht-Lauf: ein gröberes Netz für die Suche (z. B. 0,71 mit ≈ 0,35 Mio. Zellen, grob 25 min je Variante) und Feinprüfung der besten Varianten bei 0,50 oder 0,35. Diese Entscheidung ist nicht getroffen; sie gehört zum Servertest (WZ9).
+
+### 10.4 Abweichungen vom Plan
+
+* **Schichtzahl wird NICHT eingefroren (O1 korrigiert).** Der Plan wollte N für den Lauf einfrieren, aber bei festem Wachstum und fester erster Zellhöhe ist die Dicke dann ebenfalls fest, sie könnte nicht mit δ skalieren. Die Daten zeigen es: Re_L und Länge ändern N (22–24 bei längeren Varianten, jeweils die Dicke, die δ abdeckt). Umgesetzt ist **dieselbe Regel für alle** (N aus δ, y1, r; `BoundaryLayerCoverage`). N und Dicke ändern sich nur mit der Variante, nie durch einen Gmsh-Fehler. Das stellt den Grundsatz EZ1 her.
+* **Ersatznetz (Stufe C) und Champion:** Es gibt keine eigene Sperre für den Champion. Varianten mit Ersatznetz werden gekennzeichnet (`MeshFallback`), sind kein Bayes-Training und stehen am Laufende in einer Liste; die Feinprüfung vernetzt die Champions neu. Eine zusätzliche Champion-Sperre wäre ein eigenes Paket.
+* **`FailureKind` als Eigenschaft** entfällt: `MeshFailed` in den `PassiveParameters` genügt, überlebt das Journal und steht in der CSV.
+* **Vorschau nach Stufe 1** (kubisch) bricht nicht mehr ab, sie gibt nur noch einen Hinweis. Eine Stufe, die laut Vorschau mehr als das 1,5-Fache der Grenze erwarten lässt, wird nicht vernetzt; sonst entscheidet die gemessene Zellzahl vor SU2.
+* **Nachprüfung im Wandfeld (neu):** Die Dicke nach Stufe B wird mit dem gedünnten Feld selbst nachgeprüft und nachgezogen, bis die Schicht rechnerisch faltfrei ist.
+* Das Glätten hilft bei **örtlich konzentrierten** Kehlen (wie Sensorkugel auf dem Flügel), nicht bei gleichmäßiger Krümmung: dort bleibt ein linearer Neigungsverlauf beim Glätten linear. Das ist der Grund für die Stufe B.
+* Der schon vorher fehlschlagende Test `Repository_Config_File_Is_Found_And_Matches_Defaults` wurde auf den aktuellen Wert `BouncerTolerance` 0,15 nachgezogen.
+
+### 10.5 Offen für WZ9 (Servertest, erst nach dem laufenden Lauf)
+
+1. Nur vernetzen auf dem Server (Gmsh 4.11.1, wie die lokale Messung) für Var1 bei 2,0 / 1,0 / 0,71 / 0,5 / 0,35 und einige Formen aus den Parameter-Ecken. Lokal bereits gemessen (10.2 und 10.6).
+2. SU2 bei 0,5 mit 21 Schichten (Kontrollprofil, ca. 3–4 h): **CD gegen 0,5340 (16 Schichten)**.
+3. Dasselbe mit `BoundaryLayerGrowthRate` 1,15 bzw. `BoundaryLayerCoverage` 1,3 (Zellen +10 bis +25 %): Empfindlichkeit von CD auf die Schichtzahl, daraus O2.
+4. Neue Auto-Kalibrierung, dann Entscheidung über den Netzfaktor der Suche (10.3) und der Bericht-Lauf.
+
+### 10.6 Formtest: Ecken des Parameterraums (lokal, echter Geometrie-Generator + Mesher, Gmsh 4.15.2)
+
+Acht Formen aus den Ecken und der Mitte des MantaAuv-Parameterraums, je bei Faktor 0,71 und 0,50 (16 Netze). Geometrie über PicoGK mit dem Gummiband-Skalierer wie im Lauf.
+
+| Form (Länge / Breite / MainRadius / WingRadius / TailTaper) | Faktor 0,71 | Faktor 0,50 |
+|---|---|---|
+| minMR_minWR (50 / 40 / 4 / 2 / 1,0) | A, 307 k Zellen | A, 691 k |
+| minMR_maxWR (50 / 40 / 4 / 10 / 1,0) | **B** (2,9 % auf min. 0,58), 387 k | **B** (2,3 % auf 0,57), 852 k |
+| maxMR_minWR (50 / 40 / 15 / 2 / 1,0) | A, 984 k | A, **2,1 Mio.** |
+| maxMR_maxWR (50 / 40 / 15 / 10 / 1,0) | A, 1,06 Mio. | A, **2,2 Mio.** |
+| lang_schmal (100 / 20 / 4 / 2 / 0,1) | **B** (1,3 % auf 0,30), 132 k | **B** (1,0 % auf 0,30), 270 k |
+| kurz_breit (30 / 80 / 15 / 10 / 1,5) | A, 580 k | A, 1,36 Mio. |
+| spitz_heck (70 / 60 / 6 / 3 / 0,1) | **B** (0,1 % auf 0,30), 328 k | **B** (0,2 % auf 0,30), 719 k |
+| dick_heck (40 / 50 / 10 / 6 / 1,5) | A, 822 k | A, 1,78 Mio. |
+
+* **Kein einziges Netz ist gescheitert, keines brauchte das Ersatznetz (Stufe C), alle 16 hatten die volle Schichtzahl (21–23).** Stufe A reichte für 10 von 16, Stufe B für die übrigen sechs (die Formen mit kleinem `MainRadius` und großem Flügel bzw. sehr schlanker oder spitzer Form). Das heißt: Die Standardregel wirkt formunabhängig, und die Ausdünnung bleibt auf 0,1–2,9 % der Wandfläche beschränkt.
+* Die dünnen Formen (`lang_schmal`, `spitz_heck`) erreichen die Untergrenze des Dickenfaktors (0,30) und die Kippgrenze (30°): dort ist das Verfahren am Rand seiner Reichweite, aber es trägt noch.
+* **Kosten:** Dicke Formen mit großem `MainRadius` haben bei 0,50 über 2 Mio. Zellen (gegen 0,7 Mio. bei der Startform). Die Rechenzeit je Variante streut damit um mehr als das Doppelte, und die Zellgrenze der Kalibrierung (an der Startform gemessen) sagt nichts über die teuersten Varianten der Suche.

@@ -333,8 +333,8 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `Tolerance` | Erlaubte relative Abweichung aller Ergebnisgrößen (`ResultMetrics`) gegenüber der feinsten Referenzstufe (`0.05` = 5 %). Bei schwankenden Rechnungen (Wirbelablösung) gilt mindestens die doppelte Schwankung beider Stufen (`Uncertainty_<Kennwert>`), sonst entschiede Rauschen über die Netzfeinheit. | `0.05` | 🟡 |
 | `Use2DPrecalibration` | Schnelle 2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48). | `false` | 🔴 |
 | `AbsoluteTolerances` | **Fester Mindestbetrag** der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist `|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag`. Bei großen Werten entscheidet also die relative Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der Mindestbetrag. Leer = Vorgaben: `Drag` 0,0001, `Lift` 0,005, `CSF` 0,005, `CMx`/`CMy`/`CMz` 0,001; unbekannte Kennwerte 0 (rein relativ). Einträge ergänzen/überschreiben je Name, z. B. `{ "Lift": 0.01 }`. Berichte zeigen zusätzlich die **normierte Abweichung** `|Δ| / (Tolerance·|Referenz| + Mindestbetrag)`: **höchstens 1 = in Ordnung**. | `{}` | 🔴 |
-| `MaxCells2D` | Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). | `2000000` | 🔴 |
-| `MaxCells3D` | Dasselbe für 3D. 3 Mio. wie bei MantaAuv; mehr kostet schnell Tage. | `3000000` | 🔴 |
+| `MaxCells2D` | Obergrenze der **gemessenen** Zellzahl einer Kalibrierstufe in 2D. Die Kalibrierung verfeinert weiter, bis die Toleranz hält oder diese Grenze erreicht ist (TODO-W5). Geprüft wird nach dem Vernetzen, bevor SU2 rechnet; eine Stufe darüber wird nicht gerechnet. Die Vorschau für die nächste Stufe nutzt den Zellzahl-Zuwachs der beiden letzten Stufen und lässt eine Stufe aus, die mehr als das 1,5-Fache der Grenze erwarten lässt. | `2000000` | 🔴 |
+| `MaxCells3D` | Dasselbe für 3D (gemessene Zellzahl, geprüft vor SU2). Standard 3 Mio.; MantaAuv trägt 5 Mio. ein. Eine Stufe mit rund 1,7 Mio. Zellen rechnete im Servertest über 7 Stunden, mit 4 Mio. sind es grob 10 Stunden und mehr. Dazu zählt auch: der gewählte Faktor gilt danach für alle Varianten der Optimierung. | `3000000` | 🔴 |
 
 **Gewinner fein nachrechnen (`ChampionVerification`, TODO-43)**
 
@@ -428,6 +428,7 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
 | `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
 | `BoundaryLayerLayers` | Feste Schichtanzahl; `0` = automatisch aus der Grenzschichtdicke delta berechnen. | `0` | 🎯 | 🟡 |
+| `BoundaryLayerCoverage` | Faktor auf die abzudeckende Grenzschichtdicke: die Wandschicht wird so dick wie `Faktor × δ` (nur bei `BoundaryLayerLayers` = `0`). Die Literatur empfiehlt oft 1,2–1,5, damit die Grenzschicht ganz in der strukturierten Zone liegt. Mit 1.0 deckt die Schicht δ gerade ab; mehr Schichten kosten Zellen (Kal6: 29 statt 21 Schichten rund +23 % Zellen). | `1.0` | 🎯⏱ | 🟡 |
 | `SurfaceCellSize` | Zellgröße auf der Bauteiloberfläche in mm auf Stufe 1.0; `0.0` = nutzt `BoundaryLayerSizeMin`. | `0.0` | 🎯⏱ | 🟡 |
 | `CurvatureElements` | Anzahl Elemente pro 2π bei krümmungsabhängiger Netzverfeinerung (`Mesh.MeshSizeFromCurvature`). | `20` | 🎯⏱ | 🟡 |
 | `ClassifyAngleDeg` | Winkelgrenze in Grad für Gmsh `ClassifySurfaces` bei der Neuvernetzung der Oberfläche. | `40.0` | ⚙ | 🔴 |
@@ -452,9 +453,30 @@ Oberfläche neu, `Meshing_<Variante>.geo` baut darauf die Schichten und das Volu
 Für die Wandauflösung (y+) sind beide gleich gut, denn sie hängt an der Höhe der ersten Zelle,
 nicht an ihrer Grundfläche. Quader haben auf glatten Flächen etwas weniger numerische Diffusion.
 
-**Wenn sich die Schichten nicht vernetzen lassen** (an engen oder scharfen Stellen durchdringen
-sich die Schichten), wiederholt das Programm automatisch mit weniger äußeren Schichten
-(21 → 16 → 12 → …) und meldet das im Log. y1 und damit y+ bleiben dabei gleich.
+**Wenn Gmsh die Wandschicht nicht vernetzen kann** (seit 10.11.2026): Die Schichtzahl, das Wachstum und die erste
+Zellhöhe stehen fest und ändern sich nie. Früher ließ das Programm äußere Schichten weg (21 → 16 → 12 …) und verfälschte damit
+die Netzstudie, weil Varianten und Kalibrierstufen mit verschiedenen Wandnetzen rechneten. Heute ändert sich bei einem Fehler
+nur die **Extrusionsrichtung und Dicke** der Schicht, in Stufen:
+
+| Stufe | Was geschieht | Wirkung auf den Vergleich |
+| --- | --- | --- |
+| A (Standard) | Die Richtungen, in die die Prismen wachsen, werden über die Nachbarknoten geglättet (höchstens 30° von der Flächennormalen). Volle Dicke überall. | keine |
+| B | Zusätzlich wird die Dicke nur dort verringert, wo sich die Schicht faltet (Kehlen) oder zu wenig Platz ist (Spalt zwischen zwei Körperteilen). Meist unter 2 % der Wandfläche. | gering |
+| C (Ersatznetz) | Letzter Ausweg: die Schicht wird überall halbiert bzw. geviertelt. Die Variante wird trotzdem gerechnet, aber gekennzeichnet (`MeshFallback` = `1`) und am Laufende aufgelistet („Formen mit Ersatznetz“). Für die Optimierung (Bayes) zählt sie nicht als Lerndaten. | deutlich: nur eingeschränkt vergleichbar |
+
+Ursache des früheren Problems (MantaAuv, 09.11.2026): In Kehlen mit Radius R laufen die Normalen zusammen, und die Schicht faltet sich ab einer Dicke von etwa R. Die Sensorkugel am Flügel hat dort einen Verrundungsradius von rund 2,4 mm, die Wandschicht war 2,2 mm dick. Feine Oberflächennetze bilden die Kehle schärfer ab, deshalb scheiterte es erst ab Netzfaktor 0,71 und feiner.
+
+Scheitert auch das Ersatznetz, gilt die Variante als „nicht vernetzbar“ (`MeshFailed` = `1`). Das ist ein **Vernetzungsfehler und kein Strömungsabsturz**: Der Bayes-Optimierer schreckt davon nur die enge Umgebung ab, nicht die ganze Formzone. Die erste Gmsh-Fehlerzeile steht im Log.
+
+Je Rechnung stehen die Netzkennwerte in der Ergebnis-CSV (`Simulation_Results.csv`):
+`BoundaryLayerLayers` (Schichtzahl), `BoundaryLayerThicknessMm` (Solldicke), `BoundaryLayerFirstCellMm` (erste Zellhöhe),
+`BoundaryLayerStage` (1 = A, 2 = B, 3 = Ersatznetz), `BoundaryLayerMaxTiltDeg` (größte Kippung der Richtung),
+`BoundaryLayerMinScale` (kleinster Dickenfaktor, 1 = nirgends verringert), `BoundaryLayerThinnedShare` (Flächenanteil unter 90 % der Dicke),
+`MeshFallback`, `MeshFailed` und `CellLimitExceeded`. Der Kalibrierbericht (`calibration.csv`) hat dazu die Spalten `Schichten`, `SchichtDicke_mm` und `Wandstufe`
+und warnt, wenn die Stufen unterschiedliche Schichtzahlen haben.
+
+**Zeit der Kalibrierung:** Das Log nennt nach jeder Stufe deren Dauer („⏱ Dauer Stufe 5 (Faktor 0.50): 3 h 10 min“) und am Ende die Gesamtdauer der Kalibrierung.
+Dauert sie im Verhältnis zur Optimierung zu lange, lohnt sich eine gröbere `Tolerance` oder eine kleinere `MaxCells3D`.
 
 `"Threshold"` behält das rein unstrukturierte Netz früherer Versionen bei.
 

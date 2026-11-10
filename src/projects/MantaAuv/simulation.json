@@ -111,8 +111,10 @@
   // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
   // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 10000 Iterationen begrenzt
   // (Vorgabe 20000). Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026).
-  // MaxCells3D 4 Mio. statt Code-Standard 3 Mio.: mit Detailbox rechnete die Kalibrierung fuer die feinste Stufe
-  // ~3,05 Mio. Zellen hoch und brach ab (09.11.2026).
+  // MaxCells3D 5 Mio. statt Code-Standard 3 Mio.: Die Grenze gilt fuer die GEMESSENE Zellzahl einer Kalibrierstufe und wird nach dem
+  // Vernetzen geprueft, bevor SU2 rechnet (frueher eine kubische Hochrechnung, die am 09.11.2026 4,4-fach zu hoch lag).
+  // Gemessen: Faktor 0,50 = 0,70 Mio., 0,35 = 1,70 Mio. Zellen (Kalibrierstufe 0,35 rechnete 7,4 h, die ganze Kalibrierung 13,6 h);
+  // Faktor 0,25 wuerde rund 4 Mio. Zellen haben und grob 10 h und mehr kosten.
   "ControlRuns": {
     "Su2MaxIterations": 20000,
     "CauchyElements": 500
@@ -121,7 +123,7 @@
     "Mode": "Auto",
     "Use2DPrecalibration": false,
     "Tolerance": 0.15,
-    "MaxCells3D": 4000000
+    "MaxCells3D": 5000000
   },
   "ChampionVerification": {
     "Mode": "FinalTopN",

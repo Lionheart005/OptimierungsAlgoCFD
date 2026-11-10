@@ -208,7 +208,7 @@ namespace OptimierungsAlgoCFD.Core
             if (foundMetrics.Count == 0)
             {
                 var others = record.PassiveParameters
-                    .Where(p => !p.Key.StartsWith("Su2_") && !p.Key.StartsWith("YPlus_") &&
+                    .Where(p => !p.Key.StartsWith("Su2_") && !p.Key.StartsWith("YPlus_") && !ModelRecord.IsMeshMetadataKey(p.Key) &&
                                 p.Key != "ScaleFactor" && p.Key != "MeshCells" &&
                                 p.Key != "MeshRefinementFactor" && p.Key != "FineVerified" &&
                                 p.Key != "FineDeviation" && p.Key != "ReynoldsNumber")
@@ -298,7 +298,7 @@ namespace OptimierungsAlgoCFD.Core
             {
                 activeMetrics = records
                     .SelectMany(r => r.PassiveParameters.Keys)
-                    .Where(k => !k.StartsWith("Su2_") && !k.StartsWith("YPlus_") &&
+                    .Where(k => !k.StartsWith("Su2_") && !k.StartsWith("YPlus_") && !ModelRecord.IsMeshMetadataKey(k) &&
                                 k != "ScaleFactor" && k != "MeshCells" &&
                                 k != "MeshRefinementFactor" && k != "FineVerified" &&
                                 k != "FineDeviation" && k != "ReynoldsNumber")

@@ -17,7 +17,11 @@ namespace OptimierungsAlgoCFD.Core
         bool Converged,
         float YPlusP95,
         bool YPlusOk,
-        IReadOnlyDictionary<string, float>? Uncertainty = null);
+        IReadOnlyDictionary<string, float>? Uncertainty = null,
+        bool CellLimitExceeded = false,
+        int BoundaryLayerLayers = 0,
+        float BoundaryLayerThicknessMm = 0f,
+        int BoundaryLayerStage = 0);
 
     /// <summary>
     /// Ergebnis der Grid Convergence Index (GCI) Berechnung nach Celik et al. (2008).

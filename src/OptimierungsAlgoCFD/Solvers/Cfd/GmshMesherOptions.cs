@@ -121,6 +121,13 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// <summary>Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.</summary>
         public int BoundaryLayerLayers { get; set; } = 0;
 
+        /// <summary>
+        /// Faktor auf die abzudeckende Grenzschichtdicke: die Wandschicht wird so dick wie <c>Faktor × δ</c> (Standard 1.0).
+        /// Die Literatur empfiehlt oft 1.2–1.5, damit die Grenzschicht ganz in der strukturierten Zone liegt.
+        /// Wirkt nur bei <see cref="BoundaryLayerLayers"/> = 0 (automatische Schichtzahl).
+        /// </summary>
+        public float BoundaryLayerCoverage { get; set; } = 1.0f;
+
         /// <summary>Oberflächen-Zellgröße in mm auf Stufe 1.0; 0 = nutzt BoundaryLayerSizeMin.</summary>
         public float SurfaceCellSize { get; set; } = 0.0f;
 

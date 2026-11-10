@@ -57,11 +57,19 @@ namespace OptimierungsAlgoCFD.Core
                 if (record.Variant == ControlRunVariant) continue;
                 if (!SameMeshLevel(record, context.EffectiveMeshRefinementFactor)) continue;
 
-                if (record.SimulationFailed || record.Disqualified)
+                // Ersatznetz (Wandschicht überall verdünnt) rechnet mit einem anderen Wandnetz als die übrigen Varianten:
+                // nicht als Lerndaten verwenden, aber auch nicht als Absturz werten.
+                bool meshFallback = record.PassiveParameters.TryGetValue(ModelRecord.MeshFallbackKey, out float fb) && fb > 0.5f;
+
+                if (record.SimulationFailed || record.Disqualified || meshFallback)
                 {
                     double[] point = space.ToUnit(record.ActiveParameters);
                     excluded.Add(point);
-                    if (record.SimulationFailed) failed.Add(point);
+
+                    // Ein Vernetzungsfehler ist kein Strömungsabsturz (Plan wandschicht_zellzahl.md, FZ7): er stößt die Suche
+                    // nur in der engen Umgebung ab, schreckt aber nicht die ganze Formzone ab (Erfolgsmodell).
+                    bool meshFailed = record.PassiveParameters.TryGetValue(ModelRecord.MeshFailedKey, out float mf) && mf > 0.5f;
+                    if (record.SimulationFailed && !meshFailed) failed.Add(point);
                     continue;
                 }
 

@@ -21,6 +21,12 @@ namespace OptimierungsAlgoCFD.Core
         public const string LatestCalibrationCsv = "latest_calibration.csv";
 
         /// <summary>
+        /// Version des Wandschicht-Verfahrens im Mesher. Geht in den Fingerabdruck ein: ändert sich das Verfahren
+        /// (hier: geglättete Extrusionsrichtungen statt Schichtverlust, 09.11.2026), ist eine ältere Kalibrierung veraltet.
+        /// </summary>
+        public const string MesherSchemeVersion = "wall-smoothed-view-1";
+
+        /// <summary>
         /// Regel 1 (Nachvollziehbarkeit): Validiert die Konfiguration vor dem Lauf.
         /// </summary>
         public static void ValidateConfig(SimulationConfig config, ConfigLoadReport? simulationReport, string projectName)
@@ -66,6 +72,7 @@ namespace OptimierungsAlgoCFD.Core
         public static string ComputeFingerprint(ProjectContext context)
         {
             var sb = new StringBuilder();
+            sb.Append("mesher:").Append(MesherSchemeVersion).Append(';');
 
             // 1. Sortierte BaseParameters
             foreach (var kvp in context.Project.BaseParameters.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -175,28 +182,39 @@ namespace OptimierungsAlgoCFD.Core
             var cal = context.Simulation.MeshCalibration;
             long maxCells = dimensions == 2 ? cal.MaxCells2D : Math.Min(maxEstimatedFineCells, cal.MaxCells3D);
 
+            // Die Zellgrenze gilt für die GEMESSENE Zellzahl und wird nach dem Vernetzen geprüft, bevor SU2 rechnet.
+            simulationContext.CellLimit = maxCells;
+            try
+            {
             // Stufe 1: Grob (2.0f, Tag: "Kal1")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
             var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, 3.5f); // bei grobem Netz y+ oft höher
             stages.Add(stage1);
 
-            // Sicherheitsprüfung: Zellzahl der feinsten Stufe hochrechnen (Faktor (2.0 / 0.5)^Dimension)
+            // Vorschau: Zellzahl der feinsten Stufe grob hochrechnen. Mit nur einer Messung ist das ungenau
+            // (Wandschicht und Oberfläche wachsen nicht kubisch; MantaAuv 09.11.2026: 4,4-fach zu hoch geschätzt),
+            // deshalb nur ein Hinweis. Entscheidend ist die gemessene Zellzahl der Stufe 5.
             if (stage1.MeshCells > 0)
             {
                 long estimatedFineCells = EstimateCells(stage1.MeshCells, 2.0f, 0.5f, dimensions);
-                Console.WriteLine($"       -> Zellen grob: {stage1.MeshCells:N0} | Hochgerechnet für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
+                Console.WriteLine($"       -> Zellen grob: {stage1.MeshCells:N0} | grobe Vorschau für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
 
                 if (estimatedFineCells > maxCells)
                 {
-                    throw new InvalidOperationException(
-                        $"[KALIBRIERUNG] Hochgerechnete Zellzahl für die feinste Stufe ({estimatedFineCells:N0} Zellen) "
-                        + $"überschreitet das Limit von {maxCells:N0}. Kalibrierung abgebrochen.");
+                    Console.WriteLine($"       -> [HINWEIS] Die grobe Vorschau liegt über der Grenze von {maxCells:N0} Zellen. Entscheidend ist die gemessene Zellzahl nach dem Vernetzen der Stufe 5.");
                 }
             }
 
             // Stufe 5: Sehr feine Referenz (0.50f, Tag: "Kal5")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
-            stages.Add(RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 3.0f));
+            var stage5 = RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 3.0f);
+            if (stage5.CellLimitExceeded)
+            {
+                throw new InvalidOperationException(
+                    $"[KALIBRIERUNG] Das Referenznetz (Faktor 0.50) hat gemessen {stage5.MeshCells:N0} Zellen und "
+                    + $"überschreitet das Limit von {maxCells:N0}. Kalibrierung abgebrochen (MeshCalibration.MaxCells erhöhen).");
+            }
+            stages.Add(stage5);
 
             // Zwischenstufen von grob nach fein: 1.41 (Kal2), 1.0 (Kal3), 0.71 (Kal4)
             var intermediateConfigs = new[]
@@ -225,6 +243,11 @@ namespace OptimierungsAlgoCFD.Core
 
             // Hält die Toleranz bei Faktor 0.5 noch nicht, entscheidet die Kalibrierung selbst, wie fein es sein muss (TODO-W5).
             RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells);
+            }
+            finally
+            {
+                simulationContext.CellLimit = 0;
+            }
 
             // Vollständige Auswertung
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
@@ -324,11 +347,33 @@ namespace OptimierungsAlgoCFD.Core
 
             var stages3D = new List<CalibrationStageData>();
 
+            // Zellgrenze an der GEMESSENEN Zellzahl, vor SU2 (wie in Run).
+            ModelRecord RunLimited3D(float factor, string tag)
+            {
+                simulationContext.CellLimit = maxEstimatedFineCells;
+                try
+                {
+                    ModelRecord r = runStage3D(factor, tag);
+                    if (r.PassiveParameters.ContainsKey(ModelRecord.CellLimitExceededKey))
+                    {
+                        r.PassiveParameters.TryGetValue("MeshCells", out float cells);
+                        throw new InvalidOperationException(
+                            $"[KALIBRIERUNG 3D] Stufe {tag} (Faktor {factor:0.00}) hat gemessen {cells:N0} Zellen und überschreitet das Limit von {maxEstimatedFineCells:N0}.");
+                    }
+                    return r;
+                }
+                finally
+                {
+                    simulationContext.CellLimit = 0;
+                }
+            }
+
             // 3D Stufe 1: Grob (f2D * √2, Tag: Kal3D_1)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 1/3: Grobes 3D-Netz (Faktor {fCoarse:0.00})...");
             timer.Restart();
-            ModelRecord rec3D_1 = runStage3D(fCoarse, "Kal3D_1");
+            ModelRecord rec3D_1 = RunLimited3D(fCoarse, "Kal3D_1");
             timer.Stop();
+            PrintStageDuration(1, fCoarse, timer.Elapsed.TotalSeconds);
 
             int c3Cells = (int)(rec3D_1.PassiveParameters.TryGetValue("MeshCells", out float c3c) ? c3c : 0);
             float c3P95 = rec3D_1.PassiveParameters.TryGetValue("YPlus_P95", out float c3p) ? c3p : 0f;
@@ -349,18 +394,19 @@ namespace OptimierungsAlgoCFD.Core
             if (c3Cells > 0)
             {
                 long estimatedFine = (long)(c3Cells * Math.Pow(fCoarse / Math.Max(fFine, 0.1f), 3));
+                // Nur ein Hinweis: die grobe Hochrechnung ist ungenau, entscheidend ist die gemessene Zellzahl je Stufe.
                 if (estimatedFine > maxEstimatedFineCells)
                 {
-                    throw new InvalidOperationException(
-                        $"[KALIBRIERUNG 3D] Hochgerechnete Zellzahl ({estimatedFine:N0}) überschreitet Limit ({maxEstimatedFineCells:N0}).");
+                    Console.WriteLine($"       -> [HINWEIS] Die grobe Vorschau ({estimatedFine:N0} Zellen) liegt über dem Limit von {maxEstimatedFineCells:N0}. Gemessen wird nach dem Vernetzen.");
                 }
             }
 
             // 3D Stufe 3: Feine 3D-Referenz (f2D / √2, Tag: Kal3D_3)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 3/3: Feine 3D-Referenz (Faktor {fFine:0.00})...");
             timer.Restart();
-            ModelRecord rec3D_3 = runStage3D(fFine, "Kal3D_3");
+            ModelRecord rec3D_3 = RunLimited3D(fFine, "Kal3D_3");
             timer.Stop();
+            PrintStageDuration(3, fFine, timer.Elapsed.TotalSeconds);
 
             int f3Cells = (int)(rec3D_3.PassiveParameters.TryGetValue("MeshCells", out float f3c) ? f3c : 0);
             float f3P95 = rec3D_3.PassiveParameters.TryGetValue("YPlus_P95", out float f3p) ? f3p : 0f;
@@ -381,8 +427,9 @@ namespace OptimierungsAlgoCFD.Core
             // 3D Stufe 2: Mittlere Stufe (f2D, Tag: Kal3D_2)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 2/3: 2D-Faktor in 3D (Faktor {fMed:0.00})...");
             timer.Restart();
-            ModelRecord rec3D_2 = runStage3D(fMed, "Kal3D_2");
+            ModelRecord rec3D_2 = RunLimited3D(fMed, "Kal3D_2");
             timer.Stop();
+            PrintStageDuration(2, fMed, timer.Elapsed.TotalSeconds);
 
             int m3Cells = (int)(rec3D_2.PassiveParameters.TryGetValue("MeshCells", out float m3c) ? m3c : 0);
             float m3P95 = rec3D_2.PassiveParameters.TryGetValue("YPlus_P95", out float m3p) ? m3p : 0f;
@@ -411,8 +458,9 @@ namespace OptimierungsAlgoCFD.Core
                 {
                     Console.WriteLine($"\n[3D-BESTÄTIGUNG] Keine Bestätigung. Zusätzliche 3D-Verfeinerungsstufe (Faktor {fRefined:0.00}, Kal3D_4)...");
                     timer.Restart();
-                    ModelRecord recRefined = runStage3D(fRefined, "Kal3D_4");
+                    ModelRecord recRefined = RunLimited3D(fRefined, "Kal3D_4");
                     timer.Stop();
+                    PrintStageDuration(4, fRefined, timer.Elapsed.TotalSeconds);
 
                     int rCells = (int)(recRefined.PassiveParameters.TryGetValue("MeshCells", out float rc) ? rc : 0);
                     float rP95 = recRefined.PassiveParameters.TryGetValue("YPlus_P95", out float rp) ? rp : 0f;
@@ -487,6 +535,41 @@ namespace OptimierungsAlgoCFD.Core
         public static long EstimateCells(int cells, float fromFactor, float toFactor, int dimensions)
             => (long)(cells * Math.Pow(fromFactor / Math.Max(toFactor, 1e-3f), dimensions));
 
+        /// <summary>
+        /// Vorschau der Zellzahl für <paramref name="nextFactor"/> mit dem GEMESSENEN Exponenten der beiden feinsten
+        /// bisherigen Stufen: <c>p = ln(N_fein / N_grob) / ln(f_grob / f_fein)</c>, begrenzt auf [dimensions/2, dimensions].
+        /// Die kubische Annahme überschätzte am MantaAuv (09.11.2026) die Zellzahl um das 4,4-Fache, weil Wandschicht und
+        /// Oberfläche nur quadratisch wachsen. Mit weniger als zwei Messpunkten gilt der Exponent <paramref name="dimensions"/>.
+        /// </summary>
+        public static long EstimateNextCells(IReadOnlyList<CalibrationStageData> stages, float nextFactor, int dimensions)
+        {
+            var valid = stages.Where(s => s.MeshCells > 0).OrderBy(s => s.Factor).ToList();
+            if (valid.Count == 0) return 0;
+
+            var fine = valid[0];
+            double exponent = dimensions;
+            if (valid.Count >= 2 && valid[1].Factor > fine.Factor + 1e-6f)
+            {
+                var coarse = valid[1];
+                double measured = Math.Log((double)fine.MeshCells / coarse.MeshCells) / Math.Log((double)coarse.Factor / fine.Factor);
+                if (double.IsFinite(measured)) exponent = Math.Clamp(measured, dimensions / 2.0, (double)dimensions);
+            }
+
+            return (long)(fine.MeshCells * Math.Pow(fine.Factor / Math.Max(nextFactor, 1e-3f), exponent));
+        }
+
+        /// <summary>Dauer als "3 h 12 min", "45 min" oder "30 s" (für das Log).</summary>
+        public static string FormatDuration(double seconds)
+        {
+            if (seconds < 90) return $"{seconds:0} s";
+            double minutes = seconds / 60.0;
+            if (minutes < 90) return $"{minutes:0} min";
+            int hours = (int)(seconds / 3600.0);
+            int restMinutes = (int)Math.Round((seconds - hours * 3600.0) / 60.0);
+            if (restMinutes == 60) { hours++; restMinutes = 0; }
+            return $"{hours} h {restMinutes:00} min";
+        }
+
         /// <summary>Nächstfeinerer Faktor: ÷ √2, auf zwei Stellen gerundet (0.50 → 0.35 → 0.25 → 0.18 → 0.13).</summary>
         public static float NextFinerFactor(float factor)
             => (float)Math.Round(factor / Math.Sqrt(2.0), 2);
@@ -503,8 +586,10 @@ namespace OptimierungsAlgoCFD.Core
             var timer = Stopwatch.StartNew();
             ModelRecord rec = runStage(factor, tag);
             timer.Stop();
+            PrintStageDuration(level, factor, timer.Elapsed.TotalSeconds);
 
             int cells = (int)(rec.PassiveParameters.TryGetValue("MeshCells", out float c) ? c : 0);
+            bool cellLimitExceeded = rec.PassiveParameters.ContainsKey(ModelRecord.CellLimitExceededKey);
             float p95 = rec.PassiveParameters.TryGetValue("YPlus_P95", out float y) ? y : 0f;
             // "Instationär, aber stabil" (Wirbelablösung) zählt als brauchbar: das Mittel des Endfensters ist gültig,
             // seine Schwankung geht über Uncertainty in den Vergleich ein.
@@ -529,7 +614,17 @@ namespace OptimierungsAlgoCFD.Core
                 Converged: converged,
                 YPlusP95: p95,
                 YPlusOk: yPlusOk,
-                Uncertainty: uncertainty.Count > 0 ? uncertainty : null);
+                Uncertainty: uncertainty.Count > 0 ? uncertainty : null,
+                CellLimitExceeded: cellLimitExceeded,
+                BoundaryLayerLayers: (int)(rec.PassiveParameters.TryGetValue("BoundaryLayerLayers", out float bl) ? bl : 0f),
+                BoundaryLayerThicknessMm: rec.PassiveParameters.TryGetValue("BoundaryLayerThicknessMm", out float bt) ? bt : 0f,
+                BoundaryLayerStage: (int)(rec.PassiveParameters.TryGetValue("BoundaryLayerStage", out float bs) ? bs : 0f));
+        }
+
+        /// <summary>Dauer einer Kalibrierstufe ins Log (Plan wandschicht_zellzahl.md, WZ10).</summary>
+        private static void PrintStageDuration(int level, float factor, double seconds)
+        {
+            Console.WriteLine($"       ⏱ Dauer Stufe {level} (Faktor {factor.ToString("0.00", CultureInfo.InvariantCulture)}): {FormatDuration(seconds)}");
         }
 
         /// <summary>
@@ -569,16 +664,23 @@ namespace OptimierungsAlgoCFD.Core
                 float next = NextFinerFactor(refStage.Factor);
                 if (next < MinRefinementFactor) return;
 
-                long estimated = EstimateCells(refStage.MeshCells, refStage.Factor, next, dimensions);
-                if (refStage.MeshCells > 0 && estimated > maxCells)
+                // Vorschau mit dem gemessenen Exponenten. Deutlich über der Grenze (> 1,5-fach) lohnt sich nicht einmal das
+                // Vernetzen; knapp darüber oder darunter entscheidet die gemessene Zellzahl nach dem Vernetzen (vor SU2).
+                long estimated = EstimateNextCells(stages, next, dimensions);
+                if (refStage.MeshCells > 0 && estimated > maxCells * 1.5)
                 {
-                    Console.WriteLine($"       -> [{label}] Nächste Stufe (Faktor {next:0.00}) hätte ~{estimated:N0} Zellen und überschreitet die Grenze von {maxCells:N0} – Verfeinerung endet.");
+                    Console.WriteLine($"       -> [{label}] Nächste Stufe (Faktor {next:0.00}) hätte ~{estimated:N0} Zellen und überschreitet die Grenze von {maxCells:N0} deutlich – Verfeinerung endet.");
                     return;
                 }
 
                 int level = stages.Max(s => s.LevelIndex) + 1;
-                Console.WriteLine($"\n[{label}] Toleranz von {cal.Tolerance * 100:0.0} % noch nicht erreicht – zusätzliche Stufe {level} (Faktor {next:0.00}, ~{estimated:N0} Zellen)...");
+                Console.WriteLine($"\n[{label}] Toleranz von {cal.Tolerance * 100:0.0} % noch nicht erreicht – zusätzliche Stufe {level} (Faktor {next:0.00}, Vorschau ~{estimated:N0} Zellen, Grenze {maxCells:N0} gemessen)...");
                 var extraStage = RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, 3.0f);
+                if (extraStage.CellLimitExceeded)
+                {
+                    Console.WriteLine($"       -> [{label}] Stufe {level} (Faktor {next:0.00}) hat gemessen {extraStage.MeshCells:N0} Zellen und überschreitet die Grenze von {maxCells:N0} – sie wird nicht gerechnet, Verfeinerung endet.");
+                    return;
+                }
                 if (!extraStage.Converged || !extraStage.YPlusOk || extraStage.MeshCells <= 0)
                 {
                     Console.WriteLine($"       -> [{label}] Zusätzliche Stufe {level} (Faktor {next:0.00}) war nicht gültig (Konvergiert={extraStage.Converged}, y+Ok={extraStage.YPlusOk}, Zellen={extraStage.MeshCells}) – behalte Stufe {refStage.LevelIndex} (Faktor {refStage.Factor:0.00}) als Referenz und beende Verfeinerung.");
@@ -639,7 +741,7 @@ namespace OptimierungsAlgoCFD.Core
             var csv = new StringBuilder();
             csv.Append("Stufe;Faktor;MeshCells;Dauer_s;");
             foreach (var m in metrics) csv.Append($"{m};");
-            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok;NormiertRef");
+            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok;NormiertRef;Schichten;SchichtDicke_mm;Wandstufe");
 
             foreach (var s in decision.AllStages.OrderBy(st => st.LevelIndex))
             {
@@ -664,7 +766,7 @@ namespace OptimierungsAlgoCFD.Core
                     maxNorm = norms.Values.Max();
                 }
 
-                csv.AppendLine($"{maxDev.ToString("P2", CultureInfo.InvariantCulture)};{(s.Converged ? 1 : 0)};{s.YPlusP95.ToString("F2", CultureInfo.InvariantCulture)};{(s.YPlusOk ? 1 : 0)};{maxNorm.ToString("F2", CultureInfo.InvariantCulture)}");
+                csv.AppendLine($"{maxDev.ToString("P2", CultureInfo.InvariantCulture)};{(s.Converged ? 1 : 0)};{s.YPlusP95.ToString("F2", CultureInfo.InvariantCulture)};{(s.YPlusOk ? 1 : 0)};{maxNorm.ToString("F2", CultureInfo.InvariantCulture)};{s.BoundaryLayerLayers};{s.BoundaryLayerThicknessMm.ToString("F2", CultureInfo.InvariantCulture)};{s.BoundaryLayerStage}");
             }
 
             File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
@@ -683,7 +785,10 @@ namespace OptimierungsAlgoCFD.Core
                     ["DurationSeconds"] = s.DurationSeconds,
                     ["Converged"] = s.Converged,
                     ["YPlusP95"] = s.YPlusP95,
-                    ["YPlusOk"] = s.YPlusOk
+                    ["YPlusOk"] = s.YPlusOk,
+                    ["BoundaryLayerLayers"] = s.BoundaryLayerLayers,
+                    ["BoundaryLayerThicknessMm"] = s.BoundaryLayerThicknessMm,
+                    ["BoundaryLayerStage"] = s.BoundaryLayerStage
                 };
                 var mObj = new JsonObject();
                 foreach (var kvp in s.Metrics) mObj[kvp.Key] = kvp.Value;
@@ -790,12 +895,48 @@ namespace OptimierungsAlgoCFD.Core
             File.Copy(csvPath, latestCsv, overwrite: true);
         }
 
+        /// <summary>
+        /// Warnt, wenn die Stufen mit unterschiedlicher Wandschicht (Schichtzahl, Dicke oder Ersatznetz) gerechnet wurden:
+        /// dann misst die Reihe nicht nur den Netzeinfluss (Bericht-Lauf 09.11.2026: 21 → 16 Schichten).
+        /// <c>null</c>, wenn alles gleich ist oder keine Wandschicht-Angaben vorliegen.
+        /// </summary>
+        public static string? DescribeLayerMismatch(IReadOnlyList<CalibrationStageData> stages)
+        {
+            var withLayers = stages.Where(st => st.BoundaryLayerLayers > 0).OrderBy(st => st.LevelIndex).ToList();
+            if (withLayers.Count == 0) return null;
+
+            var counts = withLayers.Select(st => st.BoundaryLayerLayers).Distinct().ToList();
+            if (counts.Count > 1)
+            {
+                string list = string.Join(", ", withLayers.Select(st => $"Stufe {st.LevelIndex}: {st.BoundaryLayerLayers}"));
+                return $"Die Stufen haben unterschiedliche Schichtzahlen ({list}). Die Netzstudie ist dadurch nicht vergleichbar.";
+            }
+
+            var fallback = withLayers.Where(st => st.BoundaryLayerStage >= 3).Select(st => st.LevelIndex).ToList();
+            if (fallback.Count > 0)
+            {
+                return $"Stufe(n) {string.Join(", ", fallback)} wurden mit Ersatznetz (überall verdünnte Wandschicht) gerechnet und sind nur eingeschränkt vergleichbar.";
+            }
+
+            return null;
+        }
+
         private static void PrintSummary(CalibrationDecision decision)
         {
             Console.WriteLine("\n==================================================");
             Console.WriteLine(" KALIBRIERUNGSERGEBNIS");
             Console.WriteLine("==================================================");
             Console.WriteLine(decision.SummaryMessage);
+
+            double totalSeconds = decision.AllStages.Sum(st => st.DurationSeconds);
+            Console.WriteLine($"   Dauer der Kalibrierung gesamt: {FormatDuration(totalSeconds)} ({decision.AllStages.Count} Stufen)");
+            foreach (var st in decision.AllStages.OrderBy(st => st.LevelIndex))
+            {
+                Console.WriteLine($"     Stufe {st.LevelIndex} (Faktor {st.Factor.ToString("0.00", CultureInfo.InvariantCulture)}): {FormatDuration(st.DurationSeconds)}, {st.MeshCells:N0} Zellen");
+            }
+
+            string? layerWarning = DescribeLayerMismatch(decision.AllStages);
+            if (layerWarning != null) Console.WriteLine($"   [WARNUNG] {layerWarning}");
 
             if (decision.Gci != null)
             {

@@ -45,6 +45,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// <param name="growthRate">Wachstumsfaktor von Schicht zu Schicht (> 1.0, Vorgabe 1.2).</param>
         /// <param name="minLayers">Mindestanzahl an Schichten (>= 1, Vorgabe 4).</param>
         /// <param name="fixedLayers">Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.</param>
+        /// <param name="coverage">Faktor auf die abzudeckende Grenzschichtdicke (Vorgabe 1.0 = genau δ, Literatur oft 1.2–1.5).</param>
         /// <exception cref="ArgumentOutOfRangeException">Wird geworfen bei physikalisch unsinnigen Eingaben.</exception>
         public static BoundaryLayerSpec Calculate(
             float density,
@@ -54,7 +55,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             float targetYPlus = 1.0f,
             float growthRate = 1.2f,
             int minLayers = 4,
-            int fixedLayers = 0)
+            int fixedLayers = 0,
+            float coverage = 1.0f)
         {
             if (density <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(density), "Dichte muss positiv sein (> 0).");
@@ -72,6 +74,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 throw new ArgumentOutOfRangeException(nameof(minLayers), "Mindestanzahl an Schichten muss mindestens 1 sein.");
             if (fixedLayers < 0)
                 throw new ArgumentOutOfRangeException(nameof(fixedLayers), "fixedLayers darf nicht negativ sein.");
+            if (coverage <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(coverage), "coverage muss positiv sein (> 0).");
 
             double rho = density;
             double u = velocity;
@@ -105,10 +109,10 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             }
             else
             {
-                // Schichtzahl N, sodass y1 * (r^N - 1)/(r - 1) >= delta
-                // r^N >= 1 + (delta / y1) * (r - 1)
-                // N = ceil( ln(1 + (delta / y1) * (r - 1)) / ln(r) )
-                double term = 1.0 + (deltaM / y1M) * (r - 1.0);
+                // Schichtzahl N, sodass y1 * (r^N - 1)/(r - 1) >= coverage * delta
+                // r^N >= 1 + (coverage * delta / y1) * (r - 1)
+                // N = ceil( ln(1 + (coverage * delta / y1) * (r - 1)) / ln(r) )
+                double term = 1.0 + (coverage * deltaM / y1M) * (r - 1.0);
                 double nCalc = Math.Log(term) / Math.Log(r);
                 int nInt = (int)Math.Ceiling(nCalc);
                 n = Math.Max(minLayers, nInt);

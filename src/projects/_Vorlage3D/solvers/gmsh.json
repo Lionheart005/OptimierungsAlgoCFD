@@ -43,11 +43,15 @@
   // "Prism": Prismenschichten, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
   // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe. "Hexa": nur glatte Koerper ohne scharfe Kanten.
   // TargetYPlus gleich wie in su2.json. Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
+  // Die Schichtzahl und die erste Zellhoehe stehen fuer alle Varianten und Kalibrierstufen fest. Scheitert Gmsh an einer
+  // Kehle, aendert das Programm nur Richtung und Dicke der Schicht (nie die Schichtzahl, Handbuch 4.4).
+  // BoundaryLayerCoverage: Wandschicht = Faktor x Grenzschichtdicke (1.0 genau; Literatur oft 1.2-1.5, kostet Zellen).
   "BoundaryLayerMode": "Prism",
   "TargetYPlus": 1.0,
   "BoundaryLayerMinLayers": 4,
   "BoundaryLayerGrowthRate": 1.2,
   "BoundaryLayerLayers": 0,
+  "BoundaryLayerCoverage": 1.0,
   "SurfaceCellSize": 0.0,
 
   // --- Neuvernetzung der Oberflaeche ---
