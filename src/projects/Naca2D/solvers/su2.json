@@ -33,8 +33,11 @@
   "ConvergenceField": "DRAG",
 
   // Nicht auskonvergierte Rechnungen (Drift im Endfenster zu gross) duerfen nicht in die Optimierung (TODO-W3).
+  // AutoRestartOnDrift setzt bei fruehem Cauchy-Stopp mit Rest-Drift automatisch per RESTART_SOL fort.
   // Ergebnis ist das Mittel des Endfensters, nicht der letzte Iterationsschritt.
   "TreatUnconvergedAsFailed": true,
+  "AutoRestartOnDrift": true,
+  "MaxConvergenceRestarts": 3,
   "ResultAveraging": "TailMean",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 

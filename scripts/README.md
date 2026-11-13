@@ -14,7 +14,9 @@ Hochschulrechner starten und beobachten.
 | `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
 | `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage3D`) |
-| `plot_history.py` | Windows / Linux | Konvergenzverläufe (history.csv) prüfen, auswerten und plotten |
+| `plot_history.py` | Windows / Linux | Konvergenzverläufe (`history.csv`) prüfen, auswerten und plotten |
+| `plot_calibration.py` | Windows / Linux | Netzkalibrierung (`calibration.csv`) auswerten und GCI-/Zellklassen-Plots erzeugen |
+| `plot_optimization.py` | Windows / Linux | Optimierungsverlauf (`Simulation_Results.csv`) auswerten und plotten |
 
 `new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
 Werkzeugkästchen ist. Was danach zu tun ist, steht in
@@ -122,7 +124,7 @@ eine Zeile je fertiger Rechnung, sofort auf die Platte gebracht.
 ```
 
 `resume` startet das Programm mit `--resume`. Es läuft mit demselben Zufalls-Seed von
-vorn, nimmt die gesicherten Ergebnisse aber aus dem Journal, statt sie neu zu rechnen
+vorn, nimmt die gesicherten Ergebnisse samt ursprünglicher `DurationSeconds` aber aus dem Journal, statt sie neu zu rechnen
 (Log: `[WIEDERAUFNAHME] … übernommen`). Das dauert Sekunden; danach wird normal
 weitergerechnet. Verloren geht höchstens die Variante, die beim Abbruch gerade lief.
 
@@ -222,7 +224,8 @@ Alles unterhalb von `Ergebnisse/<Projekt>/`:
 
 | Datei | Bedeutung |
 |---|---|
-| `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken |
+| `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken (inkl. Zellklassen `MeshCells_*`, Kanalmaße/`TunnelBlockagePercent`, `Su2_CD_p`/`Su2_CD_v`) |
+| `Kalibrierung/calibration.csv` | Netzstudie & GCI-Bericht je Stufe (inkl. `Tri;Quad;Prism;Hexa;Tet;Pyramiden`, `Blockage_%`, `CD_p`, `CD_v`) |
 | `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
 | `run-info.json` | Fahrtenschreiber: Code-Stand (Commit, Branch, Deploy-Hash), Programmversionen, Zufalls-Seed, Rechner, Status, Wiederaufnahmen |
 | `Quellstand/` | Kopie von `src/projects/<Projekt>/` (`*.cs`, `*.json`) zum Start des Laufs |

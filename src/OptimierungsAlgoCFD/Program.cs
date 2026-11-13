@@ -342,7 +342,10 @@ namespace OptimierungsAlgoCFD
                 fitness.RequiredMetrics,
                 journal);
 
-            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            float effectiveVoxelResolution = VoxelResolutionAdvisor.Resolve(
+                context.Simulation, context.Project, stages);
+
+            kernel.RunHosted(effectiveVoxelResolution, () =>
             {
                 try
                 {
@@ -452,7 +455,10 @@ namespace OptimierungsAlgoCFD
                 simulationContext,
                 fitness.RequiredMetrics);
 
-            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            float effectiveVoxelResolution = VoxelResolutionAdvisor.Resolve(
+                context.Simulation, context.Project, stages);
+
+            kernel.RunHosted(effectiveVoxelResolution, () =>
             {
                 var (decision, reportRelPath) = ExecuteCalibration(
                     definition, context, simulationContext, controller, fitness, validator, optimizer);
@@ -524,12 +530,19 @@ namespace OptimierungsAlgoCFD
                         fitness.CalculateFitness(record, context.Simulation);
                         return record;
                     },
-                    runStage3D);
+                    runStage3D,
+                    durationProvider2D: () => controller2D.LastCallDurationSeconds,
+                    durationProvider3D: () => controller3D.LastCallDurationSeconds);
             }
 
             // Dimension aus der su2.json des Projekts: 2D-Projekte (Naca2D) rechnen Zellzahlen mit Faktor^2.
             int dimensions = context.LoadSolverOptions<Su2SolverOptions>("su2").Dimensions == 2 ? 2 : 3;
-            return MeshCalibration.Run(context, simulationContext, runStage3D, dimensions: dimensions);
+            return MeshCalibration.Run(
+                context,
+                simulationContext,
+                runStage3D,
+                dimensions: dimensions,
+                durationProvider: () => controller3D.LastCallDurationSeconds);
         }
 
         /// <summary>
@@ -657,7 +670,10 @@ namespace OptimierungsAlgoCFD
 
             Console.WriteLine($"[RECHECK] Gefundene Variante Gen{targetIter}_Var{targetVar}: Original-Fitness={originalFitness:F4}, Recheck-Netzfaktor={fineFactor:0.00}");
 
-            kernel.RunHosted(context.Simulation.BaseVoxelResolution, () =>
+            float effectiveVoxelResolution = VoxelResolutionAdvisor.Resolve(
+                context.Simulation, context.Project, stages);
+
+            kernel.RunHosted(effectiveVoxelResolution, () =>
             {
                 var record = controller.RunPipeline(
                     activeParams,
@@ -743,26 +759,42 @@ namespace OptimierungsAlgoCFD
         }
 
         /// <summary>
-        /// Legt aus der stationären Lösung (<c>restart.dat</c>) die zwei Zeitstände <c>restart_00000.dat</c> und
-        /// <c>restart_00001.dat</c> an, aus denen SU2 die zeitgenaue Rechnung 2. Ordnung neu startet (TODO-W7).
+        /// Legt aus der stationären Lösung (<c>restart.dat</c> oder <c>restart_flow.dat</c>) die zwei
+        /// Zeitstände <c>restart_00000.dat</c> und <c>restart_00001.dat</c> an, aus denen SU2 die
+        /// zeitgenaue Rechnung 2. Ordnung neu startet (TODO-W7).
         /// </summary>
         internal static void PrepareUnsteadyRestart(string workingDirectory)
         {
             string steady = Path.Combine(workingDirectory, "restart.dat");
             if (!File.Exists(steady))
+            {
+                string flowRestart = Path.Combine(workingDirectory, "restart_flow.dat");
+                if (File.Exists(flowRestart))
+                    steady = flowRestart;
+            }
+
+            if (!File.Exists(steady))
                 throw new FileNotFoundException(
-                    "[RECHECK] Die stationäre Stufe hat keine restart.dat hinterlassen; ohne sie kann die zeitgenaue Rechnung nicht daraus starten.", steady);
+                    "[RECHECK] Die stationäre Stufe hat weder restart.dat noch restart_flow.dat hinterlassen; ohne sie kann die zeitgenaue Rechnung nicht daraus starten.", steady);
 
             CleanUnsteadyRestartFiles(workingDirectory);
             File.Copy(steady, Path.Combine(workingDirectory, "restart_00000.dat"), overwrite: true);
             File.Copy(steady, Path.Combine(workingDirectory, "restart_00001.dat"), overwrite: true);
         }
 
-        /// <summary>Entfernt die nummerierten Zeitstände (<c>restart_00000.dat</c> …), <c>restart.dat</c> bleibt.</summary>
+        /// <summary>Entfernt die nummerierten Zeitstände (<c>restart_00000.dat</c> …), <c>restart.dat</c> und <c>restart_flow.dat</c> bleiben.</summary>
         internal static void CleanUnsteadyRestartFiles(string workingDirectory)
         {
             foreach (string file in Directory.GetFiles(workingDirectory, "restart_*.dat"))
             {
+                string fileName = Path.GetFileName(file);
+                if (!System.Text.RegularExpressions.Regex.IsMatch(
+                        fileName,
+                        @"^restart_\d+\.dat$",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                {
+                    continue;
+                }
                 try { File.Delete(file); } catch (IOException) { }
             }
         }

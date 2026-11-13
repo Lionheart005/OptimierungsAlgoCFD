@@ -21,6 +21,13 @@
   "TunnelLength": 1000.0,
   "TunnelSegments": 64,
 
+  // --- Physikalische Domaenengarantien (automatische Aufweitung nach aussen, entkoppelt von scaleFactor) ---
+  // Mindestens 5 L stromaufwaerts, 15 L stromabwaerts, 5 B/H seitlich und max. 0.3 % Versperrungsgrad (<= 0 deaktiviert Blockage-Aufweitung).
+  "TunnelMinUpstreamFactor": 5.0,
+  "TunnelMinDownstreamFactor": 15.0,
+  "TunnelMinLateralFactor": 5.0,
+  "TunnelMaxBlockagePercent": 0.3,
+
   // --- Zellgroessen im Abstandsfeld (mm): SizeMin bis DistMin Abstand von der Wand, SizeMax ab DistMax ---
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
@@ -35,27 +42,29 @@
   "WakeWidthFactor": 0.5,
   "WakeCellSize": 0.0,
   "DetailBox": true,
-  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxLengthFactor": 1.5,
   "DetailBoxWidthFactor": 0.25,
+  "DetailBoxMinHeightLengthFactor": 0.15,
   "DetailBoxCellSize": 0.0,
 
   // --- Wandschicht ---
-  // "Prism": Prismenschichten, y+ ~ 1 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
+  // "Prism": Prismenschichten, y+ ~ 1.5 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
   // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe. "Hexa": nur glatte Koerper ohne scharfe Kanten.
   // TargetYPlus gleich wie in su2.json. Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
   // Die Schichtzahl und die erste Zellhoehe stehen fuer alle Varianten und Kalibrierstufen fest. Scheitert Gmsh an einer
   // Kehle, aendert das Programm nur Richtung und Dicke der Schicht (nie die Schichtzahl, Handbuch 4.4).
   // BoundaryLayerCoverage: Wandschicht = Faktor x Grenzschichtdicke (1.0 genau; Literatur oft 1.2-1.5, kostet Zellen).
   "BoundaryLayerMode": "Prism",
-  "TargetYPlus": 1.0,
+  "TargetYPlus": 1.5,
   "BoundaryLayerMinLayers": 4,
-  "BoundaryLayerGrowthRate": 1.2,
+  "BoundaryLayerGrowthRate": 1.28,
   "BoundaryLayerLayers": 0,
   "BoundaryLayerCoverage": 1.0,
   "SurfaceCellSize": 0.0,
 
   // --- Neuvernetzung der Oberflaeche ---
-  "MeshSizeFromCurvature": false,
+  "MeshSizeFromCurvature": true,
   "CurvatureElements": 20,
+  "CurvatureMinSizeFactor": 0.5,
   "ClassifyAngleDeg": 40.0
 }

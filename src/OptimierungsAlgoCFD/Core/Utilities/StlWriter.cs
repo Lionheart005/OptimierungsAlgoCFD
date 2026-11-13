@@ -91,6 +91,39 @@ namespace OptimierungsAlgoCFD.Core
             return new MeshBounds(min, max);
         }
 
+        /// <summary>
+        /// Liest alle Dreiecke aus einem binären STL.
+        /// Ist die Datei leer, beschädigt oder enthält keine Dreiecke, wird eine leere Liste geliefert.
+        /// </summary>
+        public static IReadOnlyList<StlTriangle> ReadTriangles(string stlPath)
+        {
+            if (string.IsNullOrEmpty(stlPath)) throw new ArgumentException("Pfad darf nicht leer sein.", nameof(stlPath));
+            if (!File.Exists(stlPath)) throw new FileNotFoundException("STL-Datei wurde nicht gefunden.", stlPath);
+
+            using BinaryReader br = new BinaryReader(File.OpenRead(stlPath));
+            if (br.BaseStream.Length < 84) return Array.Empty<StlTriangle>();
+
+            br.BaseStream.Seek(80, SeekOrigin.Begin);
+            uint triCount = br.ReadUInt32();
+            if (triCount == 0) return Array.Empty<StlTriangle>();
+
+            if (br.BaseStream.Length < 84 + (long)triCount * 50) return Array.Empty<StlTriangle>();
+            if (triCount > int.MaxValue) return Array.Empty<StlTriangle>();
+
+            var triangles = new StlTriangle[triCount];
+            for (int i = 0; i < triangles.Length; i++)
+            {
+                br.BaseStream.Seek(12, SeekOrigin.Current); // Normale überspringen
+                Vector3 a = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                Vector3 b = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                Vector3 c = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                br.BaseStream.Seek(2, SeekOrigin.Current); // 2 Attribut-Bytes überspringen
+                triangles[i] = new StlTriangle(a, b, c);
+            }
+
+            return triangles;
+        }
+
         /// <summary>Schreibt <paramref name="triangles"/> als binäres STL nach <paramref name="path"/>.</summary>
         public static void WriteBinary(string path, IReadOnlyList<StlTriangle> triangles, string header = DefaultHeader)
         {

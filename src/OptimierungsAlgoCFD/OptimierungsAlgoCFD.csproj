@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OptimierungsAlgoCFD.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Clipper2" Version="2.0.0" />
     <PackageReference Include="PicoGK" Version="2.3.0" />
   </ItemGroup>

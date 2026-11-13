@@ -49,7 +49,7 @@ Die detaillierte Dokumentation ist thematisch aufgeteilt, sodass jedes Thema gen
 - **[Lokale Ausnahmekonfiguration (`config/README.md`)](config/README.md)**  
   Funktionsweise des Notausgangs über gitignorierte `*.local.json`-Dateien für maschinenspezifische Programmpfade.
 - **[Entwicklungs-Roadmap & Projektpläne (`.plans/README.md`)](.plans/README.md)**  
-  Übersicht über die nächsten Ausbaustufen ([`ROADMAP.md`](.plans/ROADMAP.md)), KI-/Bayes-Optimierung ([`ki_optimierung.md`](.plans/ki_optimierung.md)) und geplante FEM-Strukturkopplung ([`fem_ausblick.md`](.plans/fem_ausblick.md)).
+  Übersicht über die nächsten Ausbaustufen ([`ROADMAP.md`](.plans/ROADMAP.md)), Netzstrategie & SU2-Konvergenz ([`netzstrategie_und_su2_abbruch.md`](.plans/netzstrategie_und_su2_abbruch.md)), KI-/Bayes-Optimierung ([`.old/ki_optimierung.md`](.plans/.old/ki_optimierung.md)) und geplante FEM-Strukturkopplung ([`fem_ausblick.md`](.plans/fem_ausblick.md)).
 
 ---
 

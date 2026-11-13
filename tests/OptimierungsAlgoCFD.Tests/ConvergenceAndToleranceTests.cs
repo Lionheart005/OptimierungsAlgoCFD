@@ -294,7 +294,7 @@ namespace OptimierungsAlgoCFD.Tests
 
             Assert.Equal(20000, control.Su2MaxIterations);
             Assert.Equal(500, control.CauchyElements);
-            Assert.Equal("1e-6", control.CauchyTolerance);
+            Assert.Equal("1e-5", control.CauchyTolerance);
             Assert.Equal(0.1f, control.IterativeToleranceFraction);
             // Das Original bleibt unverändert.
             Assert.Equal(3000, normal.Su2MaxIterations);

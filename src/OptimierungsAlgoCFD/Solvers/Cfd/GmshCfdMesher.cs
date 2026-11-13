@@ -4,11 +4,43 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
+using System.Security.Cryptography;
+using System.Text;
 
 using OptimierungsAlgoCFD.Core;
 
 namespace OptimierungsAlgoCFD.Solvers.Cfd
 {
+    /// <summary>
+    /// Effektive physikalische Windkanal-Abmessungen in realen Millimetern (AP-3),
+    /// entkoppelt vom PicoGK-Skalierungsfaktor.
+    /// </summary>
+    public readonly record struct TunnelSpec(
+        bool IsCylinder,
+        float CenterX,
+        float CenterY,
+        float CenterZ,
+        float SizeX,
+        float SizeY,
+        float SizeZ,
+        float Diameter,
+        float Length,
+        int Segments,
+        float ConfiguredLengthMm,
+        float ConfiguredWidthMm,
+        float ConfiguredHeightMm,
+        float FrontalAreaMm2,
+        float BlockagePercent,
+        float UpstreamL,
+        float DownstreamL,
+        bool WasExpandedForClearance,
+        bool WasExpandedForBlockage)
+    {
+        public bool WasExpanded => WasExpandedForClearance || WasExpandedForBlockage;
+        public float EffectiveLengthMm => IsCylinder ? Length : SizeX;
+        public float EffectiveWidthMm => IsCylinder ? Diameter : SizeY;
+        public float EffectiveHeightMm => IsCylinder ? Diameter : SizeZ;
+    }
     /// <summary>
     /// CFD-Mesher basierend auf Gmsh. Erzeugt ein Volumen-Mesh für CFD-Simulationen.
     /// Der Windkanal (Tunnel) wird hier erzeugt, da er zur Simulationsdomäne gehört.
@@ -59,6 +91,368 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         }
 
         /// <summary>
+        /// Erzeugt den physikalischen Windkanal im PicoGK-Arbeitsraum (skaliert mit <paramref name="scaleFactor"/>),
+        /// garantiert Mindestabstände (<see cref="GmshMesherOptions.TunnelMinUpstreamFactor"/> /
+        /// <see cref="GmshMesherOptions.TunnelMinDownstreamFactor"/> / <see cref="GmshMesherOptions.TunnelMinLateralFactor"/>)
+        /// sowie den maximalen Versperrungsgrad (<see cref="GmshMesherOptions.TunnelMaxBlockagePercent"/>)
+        /// und entkoppelt die reale Domain vollständig vom RubberBandScaler.
+        /// </summary>
+        public string EnsureTunnel(
+            string workingDirectory,
+            MeshBounds? modelBoundsPicoGk,
+            float scaleFactor,
+            float? realFrontalAreaMm2 = null)
+        {
+            float safeScale = SanitizeScaleFactor(scaleFactor);
+            TunnelSpec spec = ResolveEffectiveTunnel(modelBoundsPicoGk, safeScale, realFrontalAreaMm2);
+
+            bool isDefaultPlainFile = !spec.WasExpanded && MathF.Abs(safeScale - 1.0f) < 1e-6f;
+            string tunnelPath;
+            string header;
+            if (isDefaultPlainFile)
+            {
+                tunnelPath = Path.Combine(workingDirectory, "Static_Windtunnel.stl");
+                header = StlWriter.DefaultHeader;
+            }
+            else
+            {
+                string hash = ComputeTunnelHash(spec, safeScale);
+                tunnelPath = Path.Combine(workingDirectory, $"Static_Windtunnel_{hash}.stl");
+                header = $"Automatisierung STL mm {hash}";
+            }
+
+            int expectedTriCount = spec.IsCylinder ? 4 * spec.Segments : 12;
+            long expectedFileLength = 84L + 50L * expectedTriCount;
+
+            if (!IsTunnelCacheValid(tunnelPath, expectedFileLength, header, spec, safeScale, checkBounds: isDefaultPlainFile))
+            {
+                IReadOnlyList<StlTriangle> tunnel = BuildTunnel(spec, safeScale);
+                StlWriter.WriteBinary(tunnelPath, tunnel, header);
+            }
+
+            _lastMetrics["TunnelBlockagePercent"] = spec.BlockagePercent;
+            _lastMetrics["TunnelLengthMm"] = spec.EffectiveLengthMm;
+            _lastMetrics["TunnelWidthMm"] = spec.EffectiveWidthMm;
+            _lastMetrics["TunnelHeightMm"] = spec.EffectiveHeightMm;
+            _lastMetrics["TunnelUpstreamL"] = spec.UpstreamL;
+            _lastMetrics["TunnelDownstreamL"] = spec.DownstreamL;
+
+            LogTunnelSummary(spec, safeScale);
+
+            return tunnelPath;
+        }
+
+        /// <summary>
+        /// Berechnet die effektiven physikalischen Tunnelabmessungen in realen Millimetern.
+        /// Der konfigurierte Windkanal wird bei Bedarf nach außen aufgeweitet, niemals verkleinert.
+        /// </summary>
+        public TunnelSpec ResolveEffectiveTunnel(
+            MeshBounds? modelBoundsPicoGk,
+            float scaleFactor,
+            float? realFrontalAreaMm2 = null)
+        {
+            float safeScale = SanitizeScaleFactor(scaleFactor);
+            string shape = (_options.TunnelShape ?? string.Empty).Replace(" ", string.Empty).Trim();
+            bool isCylinder = shape.Equals("Cylinder", StringComparison.OrdinalIgnoreCase);
+
+            if (!isCylinder && shape.Length > 0 && !shape.Equals("Box", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"[WARNUNG] Unbekannte Windkanal-Form '{_options.TunnelShape}' — nutze 'Box'.");
+            }
+
+            float cfgCenterX = _options.TunnelCenterX;
+            float cfgCenterY = _options.TunnelCenterY;
+            float cfgCenterZ = _options.TunnelCenterZ;
+
+            float cfgLenX = isCylinder ? _options.TunnelLength : _options.TunnelSizeX;
+            float cfgWidthY = isCylinder ? _options.TunnelDiameter : _options.TunnelSizeY;
+            float cfgHeightZ = isCylinder ? _options.TunnelDiameter : _options.TunnelSizeZ;
+            float cfgRadius = _options.TunnelDiameter * 0.5f;
+
+            float cfgMinX = cfgCenterX - cfgLenX * 0.5f;
+            float cfgMaxX = cfgCenterX + cfgLenX * 0.5f;
+            float cfgMinY = cfgCenterY - cfgWidthY * 0.5f;
+            float cfgMaxY = cfgCenterY + cfgWidthY * 0.5f;
+            float cfgMinZ = cfgCenterZ - cfgHeightZ * 0.5f;
+            float cfgMaxZ = cfgCenterZ + cfgHeightZ * 0.5f;
+
+            float effMinX = cfgMinX;
+            float effMaxX = cfgMaxX;
+            float effMinY = cfgMinY;
+            float effMaxY = cfgMaxY;
+            float effMinZ = cfgMinZ;
+            float effMaxZ = cfgMaxZ;
+            float effRadius = cfgRadius;
+
+            float frontalAreaMm2 = (realFrontalAreaMm2.HasValue && realFrontalAreaMm2.Value > 0f && float.IsFinite(realFrontalAreaMm2.Value))
+                ? realFrontalAreaMm2.Value
+                : 0f;
+
+            bool wasExpandedForClearance = false;
+            bool wasExpandedForBlockage = false;
+            float upstreamL = 0f;
+            float downstreamL = 0f;
+
+            if (modelBoundsPicoGk is { IsEmpty: false } bounds)
+            {
+                Vector3 realMin = bounds.Min / safeScale;
+                Vector3 realMax = bounds.Max / safeScale;
+                Vector3 realSize = realMax - realMin;
+                float modelL = Math.Max(0f, realSize.X);
+                float modelB = Math.Max(0f, realSize.Y);
+                float modelH = Math.Max(0f, realSize.Z);
+
+                if (frontalAreaMm2 <= 0f && modelB > 0f && modelH > 0f)
+                {
+                    frontalAreaMm2 = modelB * modelH;
+                }
+
+                float upFactor = Math.Max(0f, _options.TunnelMinUpstreamFactor);
+                float downFactor = Math.Max(0f, _options.TunnelMinDownstreamFactor);
+                float latFactor = Math.Max(0f, _options.TunnelMinLateralFactor);
+
+                float reqMinX = realMin.X - upFactor * modelL;
+                float reqMaxX = realMax.X + downFactor * modelL;
+                float reqMinY = realMin.Y - latFactor * modelB;
+                float reqMaxY = realMax.Y + latFactor * modelB;
+                float reqMinZ = realMin.Z - latFactor * modelH;
+                float reqMaxZ = realMax.Z + latFactor * modelH;
+
+                effMinX = Math.Min(cfgMinX, reqMinX);
+                effMaxX = Math.Max(cfgMaxX, reqMaxX);
+
+                if (isCylinder)
+                {
+                    float dy = Math.Max(Math.Abs(reqMinY - cfgCenterY), Math.Abs(reqMaxY - cfgCenterY));
+                    float dz = Math.Max(Math.Abs(reqMinZ - cfgCenterZ), Math.Abs(reqMaxZ - cfgCenterZ));
+                    float reqCornerRadius = MathF.Sqrt(dy * dy + dz * dz);
+                    effRadius = Math.Max(cfgRadius, reqCornerRadius);
+
+                    wasExpandedForClearance =
+                        effMinX < cfgMinX - 1e-4f ||
+                        effMaxX > cfgMaxX + 1e-4f ||
+                        effRadius > cfgRadius + 1e-4f;
+
+                    if (_options.TunnelMaxBlockagePercent > 0f && frontalAreaMm2 > 0f && effRadius > 0f)
+                    {
+                        double areaAfterClearance = Math.PI * effRadius * effRadius;
+                        double currentBlockagePct = (frontalAreaMm2 / areaAfterClearance) * 100.0;
+                        if (currentBlockagePct > _options.TunnelMaxBlockagePercent)
+                        {
+                            double reqArea = (double)frontalAreaMm2 / (_options.TunnelMaxBlockagePercent / 100.0);
+                            float reqBlockageRadius = (float)Math.Sqrt((reqArea * (1.0 + 1e-5)) / Math.PI);
+                            if (reqBlockageRadius > effRadius)
+                            {
+                                effRadius = reqBlockageRadius;
+                                wasExpandedForBlockage = true;
+                            }
+                        }
+                    }
+
+                    effMinY = cfgCenterY - effRadius;
+                    effMaxY = cfgCenterY + effRadius;
+                    effMinZ = cfgCenterZ - effRadius;
+                    effMaxZ = cfgCenterZ + effRadius;
+                }
+                else
+                {
+                    effMinY = Math.Min(cfgMinY, reqMinY);
+                    effMaxY = Math.Max(cfgMaxY, reqMaxY);
+                    effMinZ = Math.Min(cfgMinZ, reqMinZ);
+                    effMaxZ = Math.Max(cfgMaxZ, reqMaxZ);
+
+                    wasExpandedForClearance =
+                        effMinX < cfgMinX - 1e-4f ||
+                        effMaxX > cfgMaxX + 1e-4f ||
+                        effMinY < cfgMinY - 1e-4f ||
+                        effMaxY > cfgMaxY + 1e-4f ||
+                        effMinZ < cfgMinZ - 1e-4f ||
+                        effMaxZ > cfgMaxZ + 1e-4f;
+
+                    float sizeYAfterClearance = effMaxY - effMinY;
+                    float sizeZAfterClearance = effMaxZ - effMinZ;
+                    double areaAfterClearance = (double)sizeYAfterClearance * sizeZAfterClearance;
+
+                    if (_options.TunnelMaxBlockagePercent > 0f && frontalAreaMm2 > 0f && areaAfterClearance > 0.0)
+                    {
+                        double currentBlockagePct = (frontalAreaMm2 / areaAfterClearance) * 100.0;
+                        if (currentBlockagePct > _options.TunnelMaxBlockagePercent)
+                        {
+                            double reqArea = (double)frontalAreaMm2 / (_options.TunnelMaxBlockagePercent / 100.0);
+                            double scaleYZ = Math.Sqrt((reqArea * (1.0 + 1e-5)) / areaAfterClearance);
+                            float cy = 0.5f * (effMinY + effMaxY);
+                            float cz = 0.5f * (effMinZ + effMaxZ);
+                            float halfY = 0.5f * (float)(sizeYAfterClearance * scaleYZ);
+                            float halfZ = 0.5f * (float)(sizeZAfterClearance * scaleYZ);
+                            effMinY = cy - halfY;
+                            effMaxY = cy + halfY;
+                            effMinZ = cz - halfZ;
+                            effMaxZ = cz + halfZ;
+                            wasExpandedForBlockage = true;
+                        }
+                    }
+                }
+
+                if (modelL > 0f)
+                {
+                    upstreamL = (realMin.X - effMinX) / modelL;
+                    downstreamL = (effMaxX - realMax.X) / modelL;
+                }
+            }
+
+            float effCenterX = 0.5f * (effMinX + effMaxX);
+            float effCenterY = isCylinder ? cfgCenterY : 0.5f * (effMinY + effMaxY);
+            float effCenterZ = isCylinder ? cfgCenterZ : 0.5f * (effMinZ + effMaxZ);
+            float effSizeX = effMaxX - effMinX;
+            float effSizeY = isCylinder ? effRadius * 2.0f : effMaxY - effMinY;
+            float effSizeZ = isCylinder ? effRadius * 2.0f : effMaxZ - effMinZ;
+            float effDiameter = effRadius * 2.0f;
+            float effLength = effSizeX;
+
+            double effCrossArea = isCylinder
+                ? Math.PI * effRadius * effRadius
+                : (double)effSizeY * effSizeZ;
+            float blockagePercent = effCrossArea > 0.0 && frontalAreaMm2 > 0f
+                ? (float)((frontalAreaMm2 / effCrossArea) * 100.0)
+                : 0f;
+
+            return new TunnelSpec(
+                IsCylinder: isCylinder,
+                CenterX: effCenterX,
+                CenterY: effCenterY,
+                CenterZ: effCenterZ,
+                SizeX: effSizeX,
+                SizeY: effSizeY,
+                SizeZ: effSizeZ,
+                Diameter: effDiameter,
+                Length: effLength,
+                Segments: _options.TunnelSegments,
+                ConfiguredLengthMm: cfgLenX,
+                ConfiguredWidthMm: cfgWidthY,
+                ConfiguredHeightMm: cfgHeightZ,
+                FrontalAreaMm2: frontalAreaMm2,
+                BlockagePercent: blockagePercent,
+                UpstreamL: upstreamL,
+                DownstreamL: downstreamL,
+                WasExpandedForClearance: wasExpandedForClearance,
+                WasExpandedForBlockage: wasExpandedForBlockage);
+        }
+
+        private static IReadOnlyList<StlTriangle> BuildTunnel(TunnelSpec spec, float safeScale)
+        {
+            Vector3 centerPico = new Vector3(spec.CenterX, spec.CenterY, spec.CenterZ) * safeScale;
+            if (spec.IsCylinder)
+            {
+                return TunnelGeometry.CreateCylinder(
+                    spec.Diameter * safeScale,
+                    spec.Length * safeScale,
+                    centerPico,
+                    spec.Segments);
+            }
+
+            return TunnelGeometry.CreateBox(
+                new Vector3(spec.SizeX, spec.SizeY, spec.SizeZ) * safeScale,
+                centerPico);
+        }
+
+        private static string ComputeTunnelHash(TunnelSpec spec, float safeScale)
+        {
+            string canonical = string.Create(CultureInfo.InvariantCulture,
+                $"{(spec.IsCylinder ? "C" : "B")}|{spec.CenterX:G9}|{spec.CenterY:G9}|{spec.CenterZ:G9}|{spec.SizeX:G9}|{spec.SizeY:G9}|{spec.SizeZ:G9}|{spec.Diameter:G9}|{spec.Length:G9}|{spec.Segments}|{safeScale:G9}");
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
+            return Convert.ToHexString(hash, 0, 6).ToLowerInvariant();
+        }
+
+        private static bool IsTunnelCacheValid(
+            string tunnelPath,
+            long expectedFileLength,
+            string expectedHeader,
+            TunnelSpec spec,
+            float safeScale,
+            bool checkBounds)
+        {
+            try
+            {
+                if (!File.Exists(tunnelPath))
+                    return false;
+
+                var info = new FileInfo(tunnelPath);
+                if (info.Length != expectedFileLength)
+                    return false;
+
+                byte[] expectedHeaderBytes = new byte[80];
+                for (int i = 0; i < 80; i++) expectedHeaderBytes[i] = 0x20;
+                byte[] text = Encoding.ASCII.GetBytes(expectedHeader);
+                Array.Copy(text, expectedHeaderBytes, Math.Min(text.Length, 80));
+
+                byte[] actualHeader = new byte[80];
+                using (FileStream fs = File.OpenRead(tunnelPath))
+                {
+                    if (fs.Read(actualHeader, 0, 80) != 80)
+                        return false;
+                }
+
+                if (!actualHeader.AsSpan().SequenceEqual(expectedHeaderBytes))
+                    return false;
+
+                if (checkBounds)
+                {
+                    MeshBounds bounds = StlWriter.ReadBounds(tunnelPath);
+                    if (bounds.IsEmpty)
+                        return false;
+
+                    float halfX = (spec.IsCylinder ? spec.Length : spec.SizeX) * 0.5f * safeScale;
+                    float halfY = (spec.IsCylinder ? spec.Diameter : spec.SizeY) * 0.5f * safeScale;
+                    float halfZ = (spec.IsCylinder ? spec.Diameter : spec.SizeZ) * 0.5f * safeScale;
+                    Vector3 expMin = new Vector3(spec.CenterX * safeScale - halfX, spec.CenterY * safeScale - halfY, spec.CenterZ * safeScale - halfZ);
+                    Vector3 expMax = new Vector3(spec.CenterX * safeScale + halfX, spec.CenterY * safeScale + halfY, spec.CenterZ * safeScale + halfZ);
+                    float tol = spec.IsCylinder ? MathF.Max(1e-2f, halfY * 0.02f) : 1e-3f;
+
+                    if (MathF.Abs(bounds.Min.X - expMin.X) > tol || MathF.Abs(bounds.Max.X - expMax.X) > tol ||
+                        MathF.Abs(bounds.Min.Y - expMin.Y) > tol || MathF.Abs(bounds.Max.Y - expMax.Y) > tol ||
+                        MathF.Abs(bounds.Min.Z - expMin.Z) > tol || MathF.Abs(bounds.Max.Z - expMax.Z) > tol)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void LogTunnelSummary(TunnelSpec spec, float safeScale)
+        {
+            string shapeLabel = spec.IsCylinder ? "Zylinder" : "Box";
+            string cfgDims = spec.IsCylinder
+                ? $"D={FormatMm(spec.ConfiguredWidthMm)} x L={FormatMm(spec.ConfiguredLengthMm)} mm"
+                : $"{FormatMm(spec.ConfiguredLengthMm)} x {FormatMm(spec.ConfiguredWidthMm)} x {FormatMm(spec.ConfiguredHeightMm)} mm";
+            string effDims = spec.IsCylinder
+                ? $"D={FormatMm(spec.EffectiveWidthMm)} x L={FormatMm(spec.EffectiveLengthMm)} mm"
+                : $"{FormatMm(spec.EffectiveLengthMm)} x {FormatMm(spec.EffectiveWidthMm)} x {FormatMm(spec.EffectiveHeightMm)} mm";
+
+            string expandNote = string.Empty;
+            if (spec.WasExpanded)
+            {
+                string reasons = spec.WasExpandedForClearance && spec.WasExpandedForBlockage
+                    ? "Mindestabstand + Blockage"
+                    : (spec.WasExpandedForClearance ? "Mindestabstand" : "Blockage");
+                expandNote = $" [AUTO-ERWEITERT: {reasons}]";
+            }
+
+            SimulationLog.Detail(
+                $"Windkanal ({shapeLabel}, scale={Format(safeScale)}): Konfig {cfgDims} -> Effektiv {effDims}{expandNote} | " +
+                $"Abstand {spec.UpstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L vor / {spec.DownstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L nach | " +
+                $"A_frontal={spec.FrontalAreaMm2.ToString("0.0", CultureInfo.InvariantCulture)} mm², Blockage={spec.BlockagePercent.ToString("0.000", CultureInfo.InvariantCulture)} %");
+        }
+
+        private static float SanitizeScaleFactor(float scaleFactor)
+            => scaleFactor > 0f && float.IsFinite(scaleFactor) ? scaleFactor : 1.0f;
+
+        /// <summary>
         /// Baut die Tunnelhülle nach <see cref="GmshMesherOptions.TunnelShape"/>.
         /// Unbekannter Name → Warnung und Rückfall auf den Quader, wie bei der
         /// Algorithmuswahl: ein Tippfehler in der JSON soll den Lauf nicht abbrechen.
@@ -90,7 +484,9 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         public string GenerateMesh(MeshRequest request)
         {
             _lastMetrics = new Dictionary<string, float>();
-            string tunnelStlPath = EnsureTunnel(request.WorkingDirectory);
+            float safeScale = SanitizeScaleFactor(request.ScaleFactor);
+            (MeshBounds? modelBoundsPicoGk, float? realFrontalAreaMm2) = ReadModelMetricsForTunnel(request.GeometryPath, safeScale);
+            string tunnelStlPath = EnsureTunnel(request.WorkingDirectory, modelBoundsPicoGk, safeScale, realFrontalAreaMm2);
 
             string suffix = request.BaseSuffix;
             string outputMeshPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}.su2");
@@ -105,7 +501,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 request.GeometryPath,
                 tunnelStlPath,
                 request.Config,
-                request.ScaleFactor,
+                safeScale,
                 request.RefinementFactor);
 
             if (!isHexa && !isPrism)
@@ -142,10 +538,10 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             // (Bericht-Lauf 09.11.2026: der frühere Rückfall 21 → 16 Schichten verfälschte die Netzstudie). Scheitert Gmsh,
             // ändert sich nur das Feld aus Extrusionsrichtung und Dicke (BoundaryLayerWallField.Ladder):
             // A geglättete Richtungen, B örtlich gedünnte Kehlen und Engstellen, C Ersatznetz mit global dünnerer Schicht.
-            BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(request.Config, request.GeometryPath, request.ScaleFactor);
+            BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(request.Config, request.GeometryPath, safeScale);
             int layers = spec.LayerCount;
             float thicknessMm = LayerThicknessMm(spec, layers);
-            double thicknessGeo = thicknessMm * (double)request.ScaleFactor;
+            double thicknessGeo = thicknessMm * (double)safeScale;
 
             WallSurface wall;
             try
@@ -167,7 +563,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 WallFieldResult candidate = BoundaryLayerWallField.Build(wall, thicknessGeo, ladder[attempt]);
                 BoundaryLayerWallField.WritePos(fieldPath, wall, candidate);
                 WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config,
-                    request.ScaleFactor, request.RefinementFactor, fieldPath);
+                    safeScale, request.RefinementFactor, fieldPath);
 
                 if (File.Exists(outputMeshPath)) File.Delete(outputMeshPath);
                 GmshRun run = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 2 -o \"{outputMeshPath}\"",
@@ -244,8 +640,44 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         private static string FormatMm(float value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
+        private static (MeshBounds? BoundsPicoGk, float? RealFrontalAreaMm2) ReadModelMetricsForTunnel(string modelStlPath, float safeScale)
+        {
+            if (string.IsNullOrWhiteSpace(modelStlPath) || !File.Exists(modelStlPath))
+                return (null, null);
+
+            try
+            {
+                IReadOnlyList<StlTriangle> triangles = StlWriter.ReadTriangles(modelStlPath);
+                if (triangles.Count > 0)
+                {
+                    MeshMeasurement measurement = MeshMetrics.Measure(triangles);
+                    MeshBounds? bounds = measurement.Bounds.IsEmpty ? null : measurement.Bounds;
+                    float? realFrontalArea = measurement.FrontalProjectedArea > 0f && float.IsFinite(measurement.FrontalProjectedArea)
+                        ? measurement.FrontalProjectedArea / (safeScale * safeScale)
+                        : null;
+                    return (bounds, realFrontalArea);
+                }
+
+                MeshBounds fallbackBounds = StlWriter.ReadBounds(modelStlPath);
+                return (fallbackBounds.IsEmpty ? null : fallbackBounds, null);
+            }
+            catch
+            {
+                try
+                {
+                    MeshBounds fallbackBounds = StlWriter.ReadBounds(modelStlPath);
+                    return (fallbackBounds.IsEmpty ? null : fallbackBounds, null);
+                }
+                catch
+                {
+                    return (null, null);
+                }
+            }
+        }
+
         private BoundaryLayerSpec ComputeBoundaryLayerSpec(SimulationConfig config, string modelStlPath, float scaleFactor)
         {
+            float safeScale = SanitizeScaleFactor(scaleFactor);
             FlowConditions flow = _flow ?? FlowConditions.From(config, new Su2SolverOptions());
             float lengthMm = 50.0f;
             if (File.Exists(modelStlPath))
@@ -254,7 +686,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 {
                     var bounds = StlWriter.ReadBounds(modelStlPath);
                     if (!bounds.IsEmpty && bounds.Size.X > 0f)
-                        lengthMm = bounds.Size.X / scaleFactor;
+                        lengthMm = bounds.Size.X / safeScale;
                 }
                 catch { }
             }
@@ -410,18 +842,22 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             }
 
             string safeModelPath = modelStlPath.Replace("\\", "/");
-            string safeTunnelPath = tunnelStlPath.Replace("\\", "/"); 
-            string scaleString = scaleFactor.ToString(CultureInfo.InvariantCulture);
+            string safeTunnelPath = tunnelStlPath.Replace("\\", "/");
+            float safeScale = SanitizeScaleFactor(scaleFactor);
+            string scaleString = safeScale.ToString(CultureInfo.InvariantCulture);
 
             float factor = refinementFactor > 0f ? refinementFactor : 1.0f;
-            float sizeMin = _options.BoundaryLayerSizeMin * factor;
-            float sizeMax = _options.BoundaryLayerSizeMax * factor;
+            float sizeMin = _options.BoundaryLayerSizeMin * factor * safeScale;
+            float sizeMax = _options.BoundaryLayerSizeMax * factor * safeScale;
+            float distMin = _options.BoundaryLayerDistMin * safeScale;
+            float distMax = _options.BoundaryLayerDistMax * safeScale;
+            float curvMinFactor = Math.Clamp(_options.CurvatureMinSizeFactor, 0.1f, 1.0f);
 
             if (isThreshold)
             {
                 var geoLines = new List<string>
                 {
-                    "// --- ALLGEMEINE NETZ-EINSTELLUNGEN ---",
+                    "// --- ALLGEMEINE NETZ-EINSTELLGEN ---".Replace("EINSTELLGEN", "EINSTELLUNGEN"),
                     "Mesh.Optimize = 1;",                 
                     "Mesh.OptimizeNetgen = 0;",         
 
@@ -457,33 +893,13 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     "Field[2].InField = 1;",
                     $"Field[2].SizeMin = {Format(sizeMin)};",
                     $"Field[2].SizeMax = {Format(sizeMax)};",
-                    $"Field[2].DistMin = {Format(_options.BoundaryLayerDistMin)};",
-                    $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};"
+                    $"Field[2].DistMin = {Format(distMin)};",
+                    $"Field[2].DistMax = {Format(distMax)};"
                 };
 
                 if (_options.WakeRefinement)
                 {
-                    geoLines.Add("// ==========================================");
-                    geoLines.Add("// F) DYNAMISCHE WAKE-BOX (NACHLAUF)");
-                    geoLines.Add("// ==========================================");
-                    geoLines.Add("bbox() = BoundingBox Surface {model_surfs[]};");
-                    geoLines.Add("minX = bbox(0); minY = bbox(1); minZ = bbox(2);");
-                    geoLines.Add("maxX = bbox(3); maxY = bbox(4); maxZ = bbox(5);");
-                    geoLines.Add("lenX = maxX - minX;");
-                    geoLines.Add("lenY = maxY - minY;");
-                    geoLines.Add("lenZ = maxZ - minZ;");
-                    geoLines.Add("Field[3] = Box;");
-                    geoLines.Add("Field[3].XMin = minX - (0.1 * lenX);");
-                    geoLines.Add($"Field[3].XMax = maxX + ({Format(_options.WakeLengthFactor)} * lenX);");
-                    geoLines.Add($"Field[3].YMin = minY - ({Format(_options.WakeWidthFactor)} * lenY);");
-                    geoLines.Add($"Field[3].YMax = maxY + ({Format(_options.WakeWidthFactor)} * lenY);");
-                    geoLines.Add($"Field[3].ZMin = minZ - ({Format(_options.WakeWidthFactor)} * lenZ);");
-                    geoLines.Add($"Field[3].ZMax = maxZ + ({Format(_options.WakeWidthFactor)} * lenZ);");
-                    string vIn = _options.WakeCellSize > 0f
-                        ? Format(_options.WakeCellSize * factor)
-                        : $"(lenX / 6.0) * {Format(factor)}";
-                    geoLines.Add($"Field[3].VIn = {vIn};");
-                    geoLines.Add($"Field[3].VOut = {Format(sizeMax)};");
+                    AddWakeBox(geoLines, "model_surfs[]", factor, safeScale, sizeMax, "// F) DYNAMISCHE WAKE-BOX (NACHLAUF)");
                     geoLines.Add("// ==========================================");
                     geoLines.Add("// G) FELDER INTELLIGENT KOMBINIEREN");
                     geoLines.Add("// ==========================================");
@@ -494,7 +910,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 if (_options.WakeRefinement) backgroundFields.Add("3");
                 if (_options.DetailBox)
                 {
-                    AddDetailBox(geoLines, "model_surfs[]", factor);
+                    AddDetailBox(geoLines, "model_surfs[]", factor, safeScale);
                     backgroundFields.Add("5");
                 }
 
@@ -514,6 +930,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 if (_options.MeshSizeFromCurvature)
                 {
                     geoLines.Add("Mesh.MeshSizeFromCurvature = 1;");
+                    geoLines.Add($"Mesh.MeshSizeMin = {Format(sizeMin * curvMinFactor)};");
+                    geoLines.Add($"Mesh.MeshSizeMax = {Format(sizeMax)};");
                 }
 
                 geoLines.Add($"General.NumThreads = {config.GmshCores};");
@@ -542,10 +960,10 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 // SU2 konvergiert, y+ Median 1,0). "Hexa" ist an glatten Körpern sauber (Kugel), an
                 // scharfen Kanten kippen ~5 % der Übergangspyramiden, und SU2 divergierte (Manta).
                 // ===================================================================
-                BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(config, modelStlPath, scaleFactor);
+                BoundaryLayerSpec spec = ComputeBoundaryLayerSpec(config, modelStlPath, safeScale);
                 int layerCount = Math.Max(1, spec.LayerCount);
 
-                float y1Geo = spec.FirstLayerHeightMm * scaleFactor;
+                float y1Geo = spec.FirstLayerHeightMm * safeScale;
                 var layerHeights = new List<float>(layerCount);
                 double r = spec.GrowthRate;
                 for (int i = 1; i <= layerCount; i++)
@@ -558,7 +976,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 string usingView = wallFieldPath != null ? "Using View[0]; " : string.Empty;
                 string heights = string.Join(", ", layerHeights.Select(h => Format(h)));
 
-                float surfaceSize = (_options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin) * factor;
+                float surfaceSize = (_options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin) * factor * safeScale;
 
                 // ---------------- Schritt 1: Wandoberfläche ----------------
                 var wallLines = new List<string>
@@ -571,7 +989,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     "wall[] = Surface{:};",
                     "// Wandzellgroesse (nur hier global, in Schritt 2 waere es das Maximum fuer den ganzen Kanal)",
                     $"Mesh.MeshSizeMax = {Format(surfaceSize)};",
-                    $"Mesh.MeshSizeMin = {Format(surfaceSize * 0.5f)};",
+                    $"Mesh.MeshSizeMin = {Format(surfaceSize * curvMinFactor)};",
                 };
 
                 if (_options.MeshSizeFromCurvature)
@@ -650,33 +1068,13 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     "Field[2].InField = 1;",
                     $"Field[2].SizeMin = {Format(surfaceSize)};",
                     $"Field[2].SizeMax = {Format(sizeMax)};",
-                    $"Field[2].DistMin = {Format(_options.BoundaryLayerDistMin)};",
-                    $"Field[2].DistMax = {Format(_options.BoundaryLayerDistMax)};",
+                    $"Field[2].DistMin = {Format(distMin)};",
+                    $"Field[2].DistMax = {Format(distMax)};",
                 });
 
                 if (_options.WakeRefinement)
                 {
-                    geoLines.Add("// ==========================================");
-                    geoLines.Add("// G) DYNAMISCHE WAKE-BOX (NACHLAUF)");
-                    geoLines.Add("// ==========================================");
-                    geoLines.Add("bbox() = BoundingBox Surface {wall[]};");
-                    geoLines.Add("minX = bbox(0); minY = bbox(1); minZ = bbox(2);");
-                    geoLines.Add("maxX = bbox(3); maxY = bbox(4); maxZ = bbox(5);");
-                    geoLines.Add("lenX = maxX - minX;");
-                    geoLines.Add("lenY = maxY - minY;");
-                    geoLines.Add("lenZ = maxZ - minZ;");
-                    geoLines.Add("Field[3] = Box;");
-                    geoLines.Add("Field[3].XMin = minX - (0.1 * lenX);");
-                    geoLines.Add($"Field[3].XMax = maxX + ({Format(_options.WakeLengthFactor)} * lenX);");
-                    geoLines.Add($"Field[3].YMin = minY - ({Format(_options.WakeWidthFactor)} * lenY);");
-                    geoLines.Add($"Field[3].YMax = maxY + ({Format(_options.WakeWidthFactor)} * lenY);");
-                    geoLines.Add($"Field[3].ZMin = minZ - ({Format(_options.WakeWidthFactor)} * lenZ);");
-                    geoLines.Add($"Field[3].ZMax = maxZ + ({Format(_options.WakeWidthFactor)} * lenZ);");
-                    string vIn = _options.WakeCellSize > 0f
-                        ? Format(_options.WakeCellSize * factor)
-                        : $"(lenX / 6.0) * {Format(factor)}";
-                    geoLines.Add($"Field[3].VIn = {vIn};");
-                    geoLines.Add($"Field[3].VOut = {Format(sizeMax)};");
+                    AddWakeBox(geoLines, "wall[]", factor, safeScale, sizeMax, "// G) DYNAMISCHE WAKE-BOX (NACHLAUF)");
                 }
 
                 // Zusammenfassen: Wandnähe (2), Nachlauf-Box (3) und Detailbox (5), jeweils falls aktiv.
@@ -684,7 +1082,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 if (_options.WakeRefinement) backgroundFields.Add("3");
                 if (_options.DetailBox)
                 {
-                    AddDetailBox(geoLines, "wall[]", factor);
+                    AddDetailBox(geoLines, "wall[]", factor, safeScale);
                     backgroundFields.Add("5");
                 }
 
@@ -709,16 +1107,43 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             }
         }
 
+        private void AddWakeBox(List<string> geoLines, string surfaces, float factor, float safeScale, float sizeMaxGeo, string headerLine)
+        {
+            geoLines.Add("// ==========================================");
+            geoLines.Add(headerLine);
+            geoLines.Add("// ==========================================");
+            geoLines.Add($"bbox() = BoundingBox Surface {{{surfaces}}};");
+            geoLines.Add("minX = bbox(0); minY = bbox(1); minZ = bbox(2);");
+            geoLines.Add("maxX = bbox(3); maxY = bbox(4); maxZ = bbox(5);");
+            geoLines.Add("lenX = maxX - minX;");
+            geoLines.Add("lenY = maxY - minY;");
+            geoLines.Add("lenZ = maxZ - minZ;");
+            geoLines.Add("Field[3] = Box;");
+            geoLines.Add("Field[3].XMin = minX - (0.1 * lenX);");
+            geoLines.Add($"Field[3].XMax = maxX + ({Format(_options.WakeLengthFactor)} * lenX);");
+            geoLines.Add($"Field[3].YMin = minY - ({Format(_options.WakeWidthFactor)} * lenY);");
+            geoLines.Add($"Field[3].YMax = maxY + ({Format(_options.WakeWidthFactor)} * lenY);");
+            geoLines.Add($"Field[3].ZMin = minZ - ({Format(_options.WakeWidthFactor)} * lenZ);");
+            geoLines.Add($"Field[3].ZMax = maxZ + ({Format(_options.WakeWidthFactor)} * lenZ);");
+            string vIn = _options.WakeCellSize > 0f
+                ? Format(_options.WakeCellSize * factor * safeScale)
+                : $"(lenX / 6.0) * {Format(factor)}";
+            geoLines.Add($"Field[3].VIn = {vIn};");
+            geoLines.Add($"Field[3].VOut = {Format(sizeMaxGeo)};");
+        }
+
         /// <summary>
         /// Detailbox um und hinter dem Modell (TODO-W6) als <c>Field[5]</c>: von 0,1 L vor dem Modell bis
         /// <see cref="GmshMesherOptions.DetailBoxLengthFactor"/> · L dahinter, quer Modellausdehnung plus
-        /// <see cref="GmshMesherOptions.DetailBoxWidthFactor"/> · Ausdehnung. Zellgröße
+        /// <see cref="GmshMesherOptions.DetailBoxWidthFactor"/> · Ausdehnung (in Z mindestens
+        /// <see cref="GmshMesherOptions.DetailBoxMinHeightLengthFactor"/> · L). Zellgröße
         /// <see cref="GmshMesherOptions.DetailBoxCellSize"/> (0 = 2,5 × Oberflächen-Zellgröße) × Netzfaktor.
         /// </summary>
-        private void AddDetailBox(List<string> geoLines, string surfaces, float factor)
+        private void AddDetailBox(List<string> geoLines, string surfaces, float factor, float safeScale)
         {
-            float baseSize = _options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin;
-            float cell = (_options.DetailBoxCellSize > 0f ? _options.DetailBoxCellSize : 2.5f * baseSize) * factor;
+            float baseSizeGeo = (_options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin) * safeScale;
+            float cell = (_options.DetailBoxCellSize > 0f ? _options.DetailBoxCellSize * safeScale : 2.5f * baseSizeGeo) * factor;
+            float minHeightLengthFactor = Math.Max(0f, _options.DetailBoxMinHeightLengthFactor);
 
             geoLines.Add("// ==========================================");
             geoLines.Add("// F2) DETAILBOX UM UND HINTER DEM MODELL (TODO-W6)");
@@ -732,11 +1157,14 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             geoLines.Add($"Field[5].XMax = dmaxX + ({Format(_options.DetailBoxLengthFactor)} * dlenX);");
             geoLines.Add($"Field[5].YMin = dminY - ({Format(_options.DetailBoxWidthFactor)} * dlenY);");
             geoLines.Add($"Field[5].YMax = dmaxY + ({Format(_options.DetailBoxWidthFactor)} * dlenY);");
-            geoLines.Add($"Field[5].ZMin = dminZ - ({Format(_options.DetailBoxWidthFactor)} * dlenZ);");
-            geoLines.Add($"Field[5].ZMax = dmaxZ + ({Format(_options.DetailBoxWidthFactor)} * dlenZ);");
+            geoLines.Add($"dz_width = {Format(_options.DetailBoxWidthFactor)} * dlenZ;");
+            geoLines.Add($"dz_min_len = {Format(minHeightLengthFactor)} * dlenX;");
+            geoLines.Add("dz_pad = (dz_width > dz_min_len) ? dz_width : dz_min_len;");
+            geoLines.Add("Field[5].ZMin = dminZ - dz_pad;");
+            geoLines.Add("Field[5].ZMax = dmaxZ + dz_pad;");
             geoLines.Add($"Field[5].VIn = {Format(cell)};");
-            geoLines.Add($"Field[5].VOut = {Format(_options.BoundaryLayerSizeMax * factor)};");
-            geoLines.Add($"Field[5].Thickness = {Format(Math.Max(cell * 5f, 1f))};");
+            geoLines.Add($"Field[5].VOut = {Format(_options.BoundaryLayerSizeMax * factor * safeScale)};");
+            geoLines.Add($"Field[5].Thickness = {Format(Math.Max(cell * 5f, 1.0f * safeScale))};");
         }
 
         /// <summary>

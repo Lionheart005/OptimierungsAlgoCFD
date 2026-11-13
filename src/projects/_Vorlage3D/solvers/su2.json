@@ -40,8 +40,11 @@
   // --- Konvergenzbewertung ---
   // Echte Drift im Endfenster = fehlgeschlagen; reines Schwingen (Wirbelabloesung) bleibt gueltig.
   // TailMean = Mittel des Endfensters statt Endwert; OscillationWarnLimit ist nur eine Warnschwelle.
+  // AutoRestartOnDrift setzt bei fruehem Cauchy-Stopp mit Rest-Drift automatisch per RESTART_SOL fort.
   "OscillationWarnLimit": 0.05,
   "TreatUnconvergedAsFailed": true,
+  "AutoRestartOnDrift": true,
+  "MaxConvergenceRestarts": 3,
   "ResultAveraging": "TailMean",
 
   // --- CFL (divergiert SU2, zuerst CflNumber halbieren) ---
@@ -53,7 +56,7 @@
   "CflAdaptMax": 50.0,
 
   // --- y+-Pruefung (Warnung, wenn das 95-%-Quantil ueber TargetYPlus x YPlusWarnFactor liegt) ---
-  "TargetYPlus": 1.0,
+  "TargetYPlus": 1.5,
   "YPlusWarnFactor": 3.0,
 
   // --- Zeitgenaue Rechnung (URANS) fuer instationaere Stroemungen; meist nur ueber `sim.ps1 recheck -Unsteady` ---

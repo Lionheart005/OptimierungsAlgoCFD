@@ -59,6 +59,8 @@
   // Obergrenze. Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
   // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
   "BaseVoxelResolution": 0.5,
+  // Automatische Verfeinerung der Start-Voxelgroesse bei groben Realraum-Voxeln (> 80 % der Oberflaechen-Zellgroesse) aus.
+  "AutoVoxelResolution": false,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
   "VoxelSmoothingPremeltingSteps": 2,
@@ -71,13 +73,15 @@
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  // Seit 06.11.2026 (TODO-W8) rechnet MantaAuv mit Prismen-Wandschicht (y+ ~ 1) und grossem Kanal:
-  // Ergebnisse davor (y+ 40-70, Kanal 6 L) und danach sind NICHT vergleichbar.
+  // Aktueller Stand (AP-1..AP-6): Prismen-Wandschicht (y+ ~ 1,5, Wachstumsrate 1,28), entkoppelter Grosskanal
+  // (>= 5 L vor, >= 15 L hinter, >= 5 B/H seitlich, <= 0,3 % Blockage), MeshSizeFromCurvature = true,
+  // CauchyTolerance = "1e-5" und AutoRestartOnDrift in su2.json.
+  // Ergebnisse vor der Umstellung (y+ 40-70, kleiner Kanal) sind NICHT vergleichbar.
   // Kein MeshRefinementFactor: der Netzfaktor wird am Laufanfang kalibriert (MeshCalibration unten, Mode "Auto");
   // ein eingetragener Faktor wuerde den Start im Auto-Modus abbrechen.
   "Su2MaxIterations": 5000,
   "CauchyElements": 300,
-  "CauchyTolerance": "1e-6",
+  "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
@@ -109,15 +113,17 @@
   // },
 
   // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
-  // 3D kostet je Iteration ein Vielfaches von 2D: das strenge Profil ist hier auf 10000 Iterationen begrenzt
-  // (Vorgabe 20000). Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026).
+  // Strenges Profil fuer Kalibrierung, Feinpruefung und Recheck: bis 20000 Iterationen, Fenster 500, CauchyTolerance "1e-5",
+  // erlaubter iterativer Fehler 0,1 x Netz-Toleranz. Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026).
   // MaxCells3D 5 Mio. statt Code-Standard 3 Mio.: Die Grenze gilt fuer die GEMESSENE Zellzahl einer Kalibrierstufe und wird nach dem
   // Vernetzen geprueft, bevor SU2 rechnet (frueher eine kubische Hochrechnung, die am 09.11.2026 4,4-fach zu hoch lag).
   // Gemessen: Faktor 0,50 = 0,70 Mio., 0,35 = 1,70 Mio. Zellen (Kalibrierstufe 0,35 rechnete 7,4 h, die ganze Kalibrierung 13,6 h);
   // Faktor 0,25 wuerde rund 4 Mio. Zellen haben und grob 10 h und mehr kosten.
   "ControlRuns": {
     "Su2MaxIterations": 20000,
-    "CauchyElements": 500
+    "CauchyElements": 500,
+    "CauchyTolerance": "1e-5",
+    "IterativeToleranceFraction": 0.1
   },
   "MeshCalibration": {
     "Mode": "Auto",

@@ -34,6 +34,12 @@ namespace OptimierungsAlgoCFD.Core
         public AutoStopConfig AutoStop { get; set; } = new();
 
         public float BaseVoxelResolution { get; set; } = 0.5f;
+        /// <summary>
+        /// Verfeinert bei 3D-<see cref="Solvers.Cfd.GmshCfdMesher"/>-Läufen die effektive PicoGK-Start-Voxelgröße
+        /// automatisch (bis zur Sicherheitsuntergrenze von 0,1 mm), falls die reale Voxelgröße größer als
+        /// 80 % der Ziel-Oberflächenzellgröße ist. Ändert nicht die gespeicherte Konfiguration/Fingerprint.
+        /// </summary>
+        public bool AutoVoxelResolution { get; set; } = false;
         public float TargetPicoGkSize { get; set; } = 50.0f;
         public int VoxelSmoothingIterations { get; set; } = 40;
         public int VoxelSmoothingPremeltingSteps { get; set; } = 2;
@@ -152,6 +158,18 @@ namespace OptimierungsAlgoCFD.Core
             clone.IterativeToleranceFraction = ControlRuns.IterativeToleranceFraction;
             return clone;
         }
+
+        /// <summary>
+        /// Erstellt eine flache Kopie für einen SU2-Fortsetzungsblock mit angepasstem
+        /// Restbudget und verschärfter Cauchy-Toleranz.
+        /// </summary>
+        internal SimulationConfig WithSu2BlockOverrides(int su2MaxIterations, string cauchyTolerance)
+        {
+            var clone = (SimulationConfig)MemberwiseClone();
+            clone.Su2MaxIterations = su2MaxIterations;
+            clone.CauchyTolerance = cauchyTolerance;
+            return clone;
+        }
     }
 
     /// <summary>
@@ -213,10 +231,12 @@ namespace OptimierungsAlgoCFD.Core
         public int CauchyElements { get; set; } = 500;
 
         /// <summary>
-        /// SU2-eigene Cauchy-Schwelle. Bewusst sehr streng: ob eine Kontrollrechnung als konvergiert
-        /// gilt, entscheidet nicht SU2, sondern die Drift-Prüfung nach dem Lauf.
+        /// SU2-eigene Cauchy-Schwelle (<c>CONV_CAUCHY_EPS</c>). Standard <c>"1e-5"</c>: strengere Werte
+        /// wie <c>1e-6</c> werden in 3D mit Venkatakrishnan-Limiter oft nicht erreicht, wodurch SU2 alle
+        /// 20 000 Iterationen durchläuft; ob eine Rechnung als konvergiert gilt, entscheidet die
+        /// Drift-Prüfung nach dem Lauf (bei Rest-Drift folgt bei Bedarf ein automatischer Restart).
         /// </summary>
-        public string CauchyTolerance { get; set; } = "1e-6";
+        public string CauchyTolerance { get; set; } = "1e-5";
 
         /// <summary>
         /// Zulässiger iterativer Fehler als Bruchteil der Netz-Toleranz (0.1 = ein Zehntel, nach

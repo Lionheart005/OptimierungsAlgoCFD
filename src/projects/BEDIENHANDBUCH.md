@@ -2,7 +2,7 @@
 
 Dieses Handbuch erklärt **ohne Programmierkenntnisse**, wo man das Programm einstellt, was jede
 Einstellung bewirkt und welche man besser in Ruhe lässt. Es beschreibt den Stand vom
-**08.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
+**13.11.2026**. Neue Einstellungen kommen hier dazu, sobald es sie gibt: Ein Test im Projekt
 schlägt Alarm, wenn eine Einstellung hier fehlt.
 
 > **Weiterführende Dokumente:**
@@ -109,7 +109,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … dass der Lauf **von selbst aufhört**, wenn kaum noch etwas besser wird | `simulation.json` | `AutoStop` | `"Mode": "On"`; `MaxIterations` × `VariantsPerIteration` bleibt die Obergrenze (siehe Abschnitt 4.2) |
 | … dass SU2 **länger/genauer** rechnet | `simulation.json` | `Su2MaxIterations`, `CauchyTolerance` | mehr Iterationen bzw. kleinere Toleranz (`"1e-5"`) |
 | … **schneller** rechnen | `simulation.json` | `MpiCores`, `GmshCores` | höchstens so viele, wie der Server Kerne hat; dazu ggf. `Su2MaxIterations` senken |
-| … ein **feineres Netz** an der Oberfläche | `solvers/gmsh.json` | `BoundaryLayerSizeMin` | kleiner = feiner = langsamer. Die Oberfläche selbst ist heute so fein wie die Voxel (`BaseVoxelResolution`) |
+| … ein **feineres Netz** an der Oberfläche | `solvers/gmsh.json` | `BoundaryLayerSizeMin` | kleiner = feiner = langsamer. Dazu verfeinert `MeshSizeFromCurvature` Krümmungen automatisch (begrenzt durch `CurvatureMinSizeFactor`); `AutoVoxelResolution` / `VoxelResolutionAdvisor` prüfen beim Start gegen zu grobe Voxel (`BaseVoxelResolution`) |
 | … eine **andere Strömungsgeschwindigkeit** | `solvers/su2.json` | `FreestreamVelocity` | in m/s, z. B. `2.0`. Ist sie 0, gilt der alte Weg über `MachNumber` |
 | … **Luft statt Wasser** | `solvers/su2.json` | `Density`, `DynamicViscosity` | Luft: `1.225` und `1.81e-5`; Meerwasser: `1025` und `0.001001` |
 | … zusätzlich den **Auftrieb** (oder andere Kennwerte) haben | `solvers/su2.json` | `ResultMetrics` | `"Lift": "CL"` dazuschreiben; in der Bewertungsformel (C#) verwenden |
@@ -138,10 +138,11 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
   wozu) · 🔴 *nur mit Grund* (Falsche Werte verfälschen Ergebnisse oder brechen den Lauf).
 - **Wirkung:** ⏱ beeinflusst vor allem die Rechenzeit · 🎯 beeinflusst vor allem die
   Genauigkeit · ⚙ technische Einstellung.
-- **Längen in Netz und Windkanal** sind in mm *in der Arbeitsgröße* von PicoGK. Ist der
-  Gummiband-Skalierer an (`UseRubberBandScaler`) und das Modell größer als `TargetPicoGkSize`,
-  wird es vorher verkleinert; Netzgrößen beziehen sich auf diese verkleinerte Form. Bei MantaAuv
-  (50 mm) ist der Faktor 1, dort sind es also echte mm.
+- **Längen in Netz und Windkanal** wirken in **echten mm**: Ist der Gummiband-Skalierer an
+  (`UseRubberBandScaler`), verkleinert er die Form nur intern für PicoGK auf `TargetPicoGkSize`;
+  `GmshCfdMesher` skaliert seit AP-2/AP-3 alle konfigurierten mm-Zellgrößen und Kanalabstände
+  einheitlich mit `scaleFactor`, sodass sie in der realen Bauteilgröße greifen. Beim Start prüft
+  `VoxelResolutionAdvisor` zudem, ob `BaseVoxelResolution` zur Oberflächen-Zellgröße passt.
 
 ### 4.1 `project.json` – was optimiert wird
 
@@ -175,6 +176,7 @@ bestraft. Höhere Fitness = besser.
 | `AutoStop.MinImprovement` | Mindestverbesserung des Bestwerts, relativ zum Bestwert vor dem Messfenster: `0.01` = 1 %. Nicht kleiner wählen als die Genauigkeit einer Einzelrechnung, sonst entscheidet das Rechenrauschen. | `0.01` | ⏱🎯 | 🟢 |
 | `AutoStop.WindowVariants` | Über so viele zuletzt gerechnete Varianten wird die Verbesserung gemessen. Frühestens nach `WindowVariants` + 1 Varianten kann der Lauf enden. Mindestens so groß wählen wie der Versuchsplan am Anfang (bei Bayes `max(VariantsPerIteration, 2 × freie Parameter + 2)`), bewährt sind 2 Runden. Fehlgeschlagene Varianten zählen mit. | `20` | ⏱🎯 | 🟢 |
 | `BaseVoxelResolution` | Kantenlänge eines Voxels (Bausteins) der Geometrie in mm. Kleiner = feinere, glattere Form, aber deutlich langsamer und speicherhungriger. Dünne Stellen unter ~1,2 Voxeln können abreißen. | `0.5` | 🎯⏱ | 🟡 |
+| `AutoVoxelResolution` | Passt bei 3D-`GmshCfdMesher`-Läufen die effektive Start-Voxelgröße beim Kern-Start automatisch nach unten an (Untergrenze `0.1` mm), wenn der Realraum-Voxel größer als 80 % der Oberflächen-Zielzellgröße (`SurfaceCellSize` / `BoundaryLayerSizeMin` × `MeshRefinementFactor`) wäre. Verändert nicht `simulation.json` oder den `--resume`-Fingerprint; bei `false` erscheint im groben Fall nur eine Warnung. | `false` | 🎯⏱ | 🟡 |
 | `TargetPicoGkSize` | Auf diese Größe (mm, größte Länge) wird das Modell für PicoGK skaliert, wenn der Gummiband-Skalierer an ist. Zusammen mit `BaseVoxelResolution` bestimmt das, wie viele Voxel ein Modell hat. | `50.0` | 🎯⏱ | 🔴 |
 | `UseRubberBandScaler` | Gummiband-Skalierer an/aus. **Aus**, wenn das Projekt keine Längen-Parameter hat (z. B. nur Prozentwerte wie bei NACA), sonst wird falsch skaliert. | `true` | 🎯 | 🔴 |
 | `UseStlSmoothing` | Glättet die Oberfläche nach dem Voxel-Bau (gegen die „Treppenstufen"). | `true` | 🎯 | 🟡 |
@@ -313,7 +315,7 @@ Innerhalb von `ControlRuns`:
 | --- | --- | --- |
 | `Su2MaxIterations` | Höchstzahl der SU2-Iterationen je Kontrollrechnung. Sie dürfen Stunden dauern, es sind wenige. | `20000` |
 | `CauchyElements` | Länge des Konvergenzfensters. | `500` |
-| `CauchyTolerance` | SU2-eigene Schwelle. Bewusst sehr streng: Ob die Rechnung als konvergiert gilt, entscheidet die Drift-Prüfung nach dem Lauf, nicht SU2. | `"1e-6"` |
+| `CauchyTolerance` | SU2-eigene Schwelle (`CONV_CAUCHY_EPS`). Standard `"1e-5"`, damit stabile Läufe sauber abbrechen; bei Rest-Drift setzt `AutoRestartOnDrift` automatisch per Restart fort, und am Ende entscheidet die Drift-Prüfung. | `"1e-5"` |
 | `IterativeToleranceFraction` | Erlaubter iterativer Fehler als Bruchteil der Netz-Toleranz (`0.1` = ein Zehntel). | `0.1` |
 
 Im Log: `Kontrollrechnung: strenges Profil …`, bei nicht auskonvergierten Rechnungen
@@ -364,6 +366,8 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `HistoryOutput` | Welche Spaltengruppen SU2 mitschreibt. `AERO_COEFF` liefert alle Beiwerte; ohne sie findet `ResultMetrics` nichts. | `["ITER","RMS_RES","AERO_COEFF"]` | ⚙ | 🔴 |
 | `OscillationWarnLimit` | Schwelle für die Schwingungswarnung: Schwingt ein Beiwert über das Cauchy-Fenster um mehr als diesen relativen Wert `(max − min) / |mean|` (z. B. `0.05` = 5 %), warnt der Solver vor instationärer Strömung (Wirbelablösung). Nur eine Warnung. | `0.05` | 🎯 | 🟡 |
 | `TreatUnconvergedAsFailed` | Ob Rechnungen, deren Kennwerte im Endfenster noch **gesichert weiterwandern** (echte Drift), als fehlgeschlagen gewertet werden (`SimulationFailed = true`). Standard `true`: driftende Rechnungen gehen nicht in die Optimierung ein (`false` = Wert wird trotzdem übernommen). **Eine Rechnung, die nur schwingt (Wirbelablösung), ist davon nicht betroffen:** Sie gilt als „instationär, aber stabil" (`Su2_Unsteady = 1`), es zählt der Mittelwert des Endfensters, und sie ist kein Fehlschlag. | `true` | 🎯 | 🟡 |
+| `AutoRestartOnDrift` | Wenn `true` (Standard), setzt ein stationärer SU2-Lauf nach frühem Cauchy-Stopp vor `Su2MaxIterations` automatisch per `RESTART_SOL= YES` und verschärftem `CONV_CAUCHY_EPS` fort, falls im Endfenster noch systematische Drift (keine stationäre Schwingung) vorliegt. | `true` | 🎯⏱ | 🟡 |
+| `MaxConvergenceRestarts` | Höchstzahl automatischer stationärer Restart-Blöcke je Variante (`0` deaktiviert die automatische Fortsetzung). | `3` | ⏱ | 🟡 |
 | `ResultAveraging` | Wie Beiwerte aus der `history.csv` übernommen werden: `"Last"` = Wert der letzten Iteration (früheres Verhalten); `"CauchyWindowMean"` = Mittelwert über das Cauchy-Fenster (`CauchyElements`), dämpft Schwingungen bei instationärer Strömung; `"TailMean"` = Mittelwert des Endfensters (die letzten `CauchyElements` Zeilen, nie mehr als die halbe Historie, also ohne Anlaufphase; Standard). **Kontrollrechnungen und instationär-stabile Rechnungen nutzen immer `"TailMean"`.** Unbekannter Wert → Warnung und `"Last"`. | `"TailMean"` | 🎯 | 🟡 |
 | `CflNumber` | Schrittweite des SU2-Verfahrens beim Start. Größer = schneller, aber Gefahr, dass die Rechnung „explodiert". | `5.0` | ⏱ | 🔴 |
 | `CflAdapt` | Ob SU2 die Schrittweite selbst anpasst. | `true` | ⏱ | 🔴 |
@@ -371,7 +375,7 @@ Ermittelt automatisch oder per Befehl den optimalen Netzverfeinerungsfaktor gege
 | `CflAdaptFactorUp` | Wie stark vergrößert wird, wenn es gut läuft. | `1.2` | ⏱ | 🔴 |
 | `CflAdaptMin` | Kleinste erlaubte Schrittweite. | `1.0` | ⏱ | 🔴 |
 | `CflAdaptMax` | Größte erlaubte Schrittweite. | `50.0` | ⏱ | 🔴 |
-| `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.0). Bestimmt die Referenzhöhe für Warnungen. | `1.0` | 🎯 | 🟡 |
+| `TargetYPlus` | Zielwert für y+ an der Wand (Standard 1.5 in 3D, 1.0 in 2D). Bestimmt die Referenzhöhe für Warnungen. | `1.5` | 🎯 | 🟡 |
 | `YPlusWarnFactor` | Warnfaktor für die y+-Prüfung: Liegt das 95 %-Quantil (`YPlus_P95`) über `TargetYPlus` × `YPlusWarnFactor`, warnt der Solver vor unzureichender Grenzschichtauflösung. | `3.0` | 🎯 | 🟡 |
 | `AngleOfAttackDeg` | Anstellwinkel in Grad (0 = symmetrische Anströmung). Kann auch als aktiver Optimierungsparameter in `project.json` definiert werden. | `0.0` | 🎯 | 🟢 |
 | `Dimensions` | Dimension der Rechnung: `2` für 2D-Rechnungen, `3` für 3D-Rechnungen (Standard). | `3` | ⚙ | 🟡 |
@@ -410,6 +414,10 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `TunnelDiameter` | Durchmesser des Zylinders (mm), nur bei `"Cylinder"`. | `300` | 🎯⏱ | 🟡 |
 | `TunnelLength` | Länge des Zylinders (mm), nur bei `"Cylinder"`. | `1000` | 🎯⏱ | 🟡 |
 | `TunnelSegments` | Wie rund der Zylinder ist (Anzahl Kanten am Umfang). | `64` | ⚙ | 🔴 |
+| `TunnelMinUpstreamFactor` | Mindestabstand stromaufwärts vor der Modellnase als Vielfaches der Modelllänge `L`. Ist der konfigurierte Kanal kürzer, wird das Einlass-Ende automatisch nach außen erweitert (nie verkleinert). | `5.0` | 🎯 | 🟡 |
+| `TunnelMinDownstreamFactor` | Mindestabstand stromabwärts hinter dem Modellheck als Vielfaches der Modelllänge `L` (Nachlauf-Auslauf). | `15.0` | 🎯 | 🟡 |
+| `TunnelMinLateralFactor` | Mindestabstand quer zur Strömung in `±Y` und `±Z` als Vielfaches der Modellbreite `B` bzw. -höhe `H`. | `5.0` | 🎯 | 🟡 |
+| `TunnelMaxBlockagePercent` | Maximal erlaubter Versperrungsgrad $A_{\text{frontal}} / A_{\text{Kanal}}$ in Prozent. Wird er überschritten, weitet sich der Querschnitt automatisch auf (`<= 0` deaktiviert). | `0.3` | 🎯 | 🟡 |
 | `BoundaryLayerSizeMin` | Kleinste Zellgröße nahe am Modell (mm). Kleiner = genauer, aber viel mehr Zellen. | `1.2` | 🎯⏱ | 🟡 |
 | `BoundaryLayerSizeMax` | Größte Zellgröße weit weg vom Modell (mm). | `120` | 🎯⏱ | 🟡 |
 | `BoundaryLayerDistMin` | Bis zu diesem Abstand vom Modell gilt die kleinste Zellgröße (mm). | `3.0` | 🎯⏱ | 🟡 |
@@ -419,24 +427,31 @@ Windkanals sind ein gemeinsamer „Fernfeld"-Rand; die Strömung läuft immer in
 | `WakeWidthFactor` | Halbe Überbreite der Nachlauf-Box in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.5` | 🎯⏱ | 🟡 |
 | `WakeCellSize` | Zellgröße in der Nachlauf-Box in mm auf Stufe 1.0; `0.0` = automatisch `lenX / 6.0`. | `0.0` | 🎯⏱ | 🟡 |
 | `DetailBox` | **Detailbox** um und hinter dem Modell: eine feine Box, damit Nachlauf und Wirbel in Modellnähe stimmen (TODO-W6). Skaliert mit dem Netzfaktor, die Kalibrierung prüft sie also mit. Standard **an**; sie kostet in 3D viele Zellen (Manta: einige hunderttausend), `MaxCells3D` deckelt die Kalibrierung. | `true` | 🎯⏱ | 🟡 |
-| `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.0` | 🎯⏱ | 🟡 |
-| `DetailBoxWidthFactor` | Überstand der Detailbox in Y und Z als Vielfaches von `lenY` bzw. `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
+| `DetailBoxLengthFactor` | Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge `lenX`. | `1.5` | 🎯⏱ | 🟡 |
+| `DetailBoxWidthFactor` | Überstand der Detailbox in Y als Vielfaches von `lenY` und Basis-Überstand in Z als Vielfaches von `lenZ`. | `0.25` | 🎯⏱ | 🟡 |
+| `DetailBoxMinHeightLengthFactor` | Mindest-Z-Puffer der Detailbox als Anteil der Modelllänge `L` (`<= 0` deaktiviert die Mindestlänge), damit flache Körper nicht an einem zu kleinen `DetailBoxWidthFactor × lenZ` verhungern. | `0.15` | 🎯⏱ | 🟡 |
 | `DetailBoxCellSize` | Zellgröße in der Detailbox in mm auf Stufe 1.0; `0.0` = automatisch 2,5 × Oberflächen-Zellgröße. | `0.0` | 🎯⏱ | 🟡 |
-| `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature = 1`). | `false` | 🎯⏱ | 🟡 |
-| `BoundaryLayerMode` | Modus der Grenzschicht: `"Prism"` (Vorgabe: flache Prismen-Schichten an der Wand, y+ ≈ 1, **Empfehlung für Voxel-Körper**), `"Threshold"` (unstrukturiert, **y+ ≈ 30–70**, für das SA-Modell zu grob, nur für schnelle Vorabläufe) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Prism"` | 🎯⏱ | 🟢 |
-| `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand. Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.0` | 🎯 | 🟡 |
+| `MeshSizeFromCurvature` | Krümmungsabhängige Verfeinerung aktivieren (`Mesh.MeshSizeFromCurvature`). | `true` | 🎯⏱ | 🟡 |
+| `BoundaryLayerMode` | Modus der Grenzschicht: `"Prism"` (Vorgabe: flache Prismen-Schichten an der Wand, y+ ≈ 1,5, **Empfehlung für Voxel-Körper**), `"Threshold"` (unstrukturiert, **y+ ≈ 30–70**, für das SA-Modell zu grob, nur für schnelle Vorabläufe) oder `"Hexa"` (flache Quader-Schichten, nur für glatte Körper ohne scharfe Kanten). Erläuterung unten. | `"Prism"` | 🎯⏱ | 🟢 |
+| `TargetYPlus` | Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.5). Daraus errechnet `BoundaryLayerCalculator` die erste Zellhöhe y1. | `1.5` | 🎯 | 🟡 |
 | `BoundaryLayerMinLayers` | Mindestanzahl an Schichten in der Grenzschicht (Standard 4). | `4` | 🎯 | 🟡 |
-| `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.2). | `1.2` | 🎯 | 🟡 |
+| `BoundaryLayerGrowthRate` | Wachstumsfaktor von Schicht zu Schicht (Standard 1.28). | `1.28` | 🎯 | 🟡 |
 | `BoundaryLayerLayers` | Feste Schichtanzahl; `0` = automatisch aus der Grenzschichtdicke delta berechnen. | `0` | 🎯 | 🟡 |
 | `BoundaryLayerCoverage` | Faktor auf die abzudeckende Grenzschichtdicke: die Wandschicht wird so dick wie `Faktor × δ` (nur bei `BoundaryLayerLayers` = `0`). Die Literatur empfiehlt oft 1,2–1,5, damit die Grenzschicht ganz in der strukturierten Zone liegt. Mit 1.0 deckt die Schicht δ gerade ab; mehr Schichten kosten Zellen (Kal6: 29 statt 21 Schichten rund +23 % Zellen). | `1.0` | 🎯⏱ | 🟡 |
 | `SurfaceCellSize` | Zellgröße auf der Bauteiloberfläche in mm auf Stufe 1.0; `0.0` = nutzt `BoundaryLayerSizeMin`. | `0.0` | 🎯⏱ | 🟡 |
 | `CurvatureElements` | Anzahl Elemente pro 2π bei krümmungsabhängiger Netzverfeinerung (`Mesh.MeshSizeFromCurvature`). | `20` | 🎯⏱ | 🟡 |
+| `CurvatureMinSizeFactor` | Untergrenze für die krümmungsabhängige Verfeinerung als Faktor auf die Oberflächen-Zellgröße (intern auf `[0.1, 1.0]` geklammert), verhindert Zell-Explosionen an feinen Voxel-Splittern. | `0.5` | 🎯⏱ | 🟡 |
 | `ClassifyAngleDeg` | Winkelgrenze in Grad für Gmsh `ClassifySurfaces` bei der Neuvernetzung der Oberfläche. | `40.0` | ⚙ | 🔴 |
 
-**Faustregeln für den Windkanal:** vor dem Modell ≥ 5 Modelllängen, dahinter ≥ 10, seitlich ≥ 3.
-Heute (600 mm bei 50 mm Modell, mittig) sind es vorn und hinten je 6 Längen.
+**Faustregeln für den Windkanal:** vor dem Modell ≥ 5 Modelllängen (`TunnelMinUpstreamFactor`),
+dahinter ≥ 15 (`TunnelMinDownstreamFactor`), seitlich ≥ 5 B/H (`TunnelMinLateralFactor`) und
+Versperrung ≤ 0,3 % (`TunnelMaxBlockagePercent`). Die Vorgabe (`TunnelSizeX = 1000`, `TunnelCenterX = 200`)
+ergibt bei 50 mm Modell 6 L vor und 14 L hinter dem Modell; reicht eine konfigurierte Box nicht aus,
+weitet `GmshCfdMesher` die Kanalgrenzen in realen mm automatisch nach außen auf (nie nach innen).
 
-**Wandschicht: "Prism" oder "Hexa"?** (auf BIC_12 am 06.11.2026 gemessen)
+**Wandschicht: "Prism" oder "Hexa"?** (historischer Vergleich auf BIC_12 vom 06.11.2026 bei `TargetYPlus = 1.0` / `GrowthRate = 1.2`;
+aktueller 3D-Standard ist `TargetYPlus = 1.5` mit `BoundaryLayerGrowthRate = 1.28`, also ca. 14–16 Schichten,
+sowie `MeshSizeFromCurvature = true`, `CurvatureElements = 20` und Untergrenze `CurvatureMinSizeFactor = 0.5`)
 
 Beide Modi legen direkt an die Wand flache, längliche Zellen in Schichten (erste Zellhöhe aus
 `TargetYPlus`, jede weitere um `BoundaryLayerGrowthRate` dicker). Weiter außen füllen Tetraeder
@@ -447,7 +462,7 @@ Oberfläche neu, `Meshing_<Variante>.geo` baut darauf die Schichten und das Volu
 | --- | --- | --- |
 | Zellform an der Wand | Prismen: Grundfläche Dreieck | Quader: Grundfläche Viereck |
 | Übergang zu den Tetraedern | direkt, ohne Zwischenzellen | über Pyramiden |
-| MantaAuv (scharfe Voxel-Kanten) | 21 Schichten, praktisch keine ungültigen Zellen, SU2 konvergiert, y+ Median 1,1 / P95 2,3 | höchstens 12 Schichten möglich, ~5 % der Pyramiden an den Flügelkanten gekippt, **SU2 divergiert** |
+| MantaAuv (scharfe Voxel-Kanten) | historisch (06.11.2026): 21 Schichten bei `y+ ~ 1,0` / `1,2` (aktuell 3D-Standard `y+ ~ 1,5` / `1,28` ≈ 14–16 Schichten), praktisch keine ungültigen Zellen, SU2 konvergiert, y+ Median 1,1 / P95 2,3 | höchstens 12 Schichten möglich, ~5 % der Pyramiden an den Flügelkanten gekippt, **SU2 divergiert** |
 | Glatter Körper (Kugel) | geht | geht, SU2 konvergiert |
 
 Für die Wandauflösung (y+) sind beide gleich gut, denn sie hängt an der Höhe der ersten Zelle,
@@ -472,7 +487,7 @@ Je Rechnung stehen die Netzkennwerte in der Ergebnis-CSV (`Simulation_Results.cs
 `BoundaryLayerLayers` (Schichtzahl), `BoundaryLayerThicknessMm` (Solldicke), `BoundaryLayerFirstCellMm` (erste Zellhöhe),
 `BoundaryLayerStage` (1 = A, 2 = B, 3 = Ersatznetz), `BoundaryLayerMaxTiltDeg` (größte Kippung der Richtung),
 `BoundaryLayerMinScale` (kleinster Dickenfaktor, 1 = nirgends verringert), `BoundaryLayerThinnedShare` (Flächenanteil unter 90 % der Dicke),
-`MeshFallback`, `MeshFailed` und `CellLimitExceeded`. Der Kalibrierbericht (`calibration.csv`) hat dazu die Spalten `Schichten`, `SchichtDicke_mm` und `Wandstufe`
+`MeshFallback`, `MeshFailed` und `CellLimitExceeded`, dazu Zellklassen (`MeshCells_Tri`, `MeshCells_Quad`, `MeshCells_Prism`, `MeshCells_Hexa`, `MeshCells_Tet`, `MeshCells_Pyramid`) sowie Kanalmaße (`TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL`). Der Kalibrierbericht (`calibration.csv`) hat dazu die Spalten `Schichten`, `SchichtDicke_mm`, `Wandstufe`, `Tri;Quad;Prism;Hexa;Tet;Pyramiden`, `Blockage_%`, `CD_p` und `CD_v`
 und warnt, wenn die Stufen unterschiedliche Schichtzahlen haben.
 
 **Zeit der Kalibrierung:** Das Log nennt nach jeder Stufe deren Dauer („⏱ Dauer Stufe 5 (Faktor 0.50): 3 h 10 min“) und am Ende die Gesamtdauer der Kalibrierung.
@@ -522,10 +537,10 @@ inzwischen geändert sind:
 | **`Ergebnisse/<Projekt>/run-info.json`** | Der **Fahrtenschreiber** des Laufs: Code-Stand (`Commit`, `Branch`, `DeployHash`, `DeployZeit`, `UncommittedChanges`), Programmversionen (SU2, Gmsh, mpirun, PicoGK), `ZufallsSeed`, Rechner, Aufruf, `Status` (`laeuft`/`abgeschlossen`/`abgebrochen`) und jede Wiederaufnahme. Steht nach einem Server-Neustart noch `laeuft` darin, wurde der Lauf hart unterbrochen. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Quellstand/`** | Kopie des Projektcodes (`*.cs` und `*.json` aus `src/projects/<Projekt>/`) zum Start des Laufs. Damit ist auch Monate später klar, mit welcher Geometrie und welcher Bewertungsformel gerechnet wurde. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Wiederaufnahme/`** | Lauf-Journal `journal.jsonl` für `resume` (eine Zeile je fertiger Rechnung). Ältere Journale heißen `journal_<Zeitstempel>.jsonl` |
-| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `Disqualified` (1 = vom Türsteher als instabil verworfen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `Su2_Unsteady` (1 = instationär, aber stabil: der Wert pendelt ohne Trend, es zählt der Mittelwert des Endfensters), `Uncertainty_<Metrik>` (relative Unsicherheit des Werts, 1σ, aus Blockmitteln des Endfensters: nahe 0 bei ruhiger Rechnung, z. B. 0,05 = ±5 % bei Wirbelablösung), `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung). Bei `"Bayes"` kommen `Bayes_PredictedFitness`, `Bayes_PredictedLow`, `Bayes_PredictedHigh` (vorhergesagte Fitness samt 95-%-Band) und `Bayes_Explorer` (1 = Erkunder) hinzu; Zeilen des Versuchsplans zeigen dort `0`, weil es für sie keine Vorhersage gibt. **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
+| **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `Disqualified` (1 = vom Türsteher als instabil verworfen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `Su2_Unsteady` (1 = instationär, aber stabil: der Wert pendelt ohne Trend, es zählt der Mittelwert des Endfensters), `Uncertainty_<Metrik>` (relative Unsicherheit des Werts, 1σ, aus Blockmitteln des Endfensters: nahe 0 bei ruhiger Rechnung, z. B. 0,05 = ±5 % bei Wirbelablösung), `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `MeshCells_Tri`/`Quad`/`Prism`/`Hexa`/`Tet`/`Pyramid` (Zellklassen), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht), `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL` (reale Kanalmaße und Blockage) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) und `Su2_CD_p`, `Su2_CD_v` (Druck- und Reibungsanteil des Widerstands). Bei `"Bayes"` kommen `Bayes_PredictedFitness`, `Bayes_PredictedLow`, `Bayes_PredictedHigh` (vorhergesagte Fitness samt 95-%-Band) und `Bayes_Explorer` (1 = Erkunder) hinzu; Zeilen des Versuchsplans zeigen dort `0`, weil es für sie keine Vorhersage gibt. **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Bayes_Verlauf.csv`** | Nur bei `"Bayes"`: eine Zeile je Runde, nach jeder Runde neu geschrieben. Spalten: `Iteration`, `Modus` (`DoE` = noch Versuchsplan, sonst `Fitness` oder `Metrics`), `Lernpunkte` (aus wie vielen Rechnungen das Modell lernte), `Vertrauensbereich_L` (Größe des Suchwürfels, leer = aus), `Abweichung_Mittel` (mittlere relative Abweichung zwischen Vorhersage und Ergebnis der Runde), `Anteil_im_Band` (Anteil der Varianten, die im 95-%-Band lagen), `BesteFitness` und `Relevanz_<Parameter>` (1 = wichtigster Parameter, nahe 0 = hat kaum Einfluss). **Lesebeispiel:** `Abweichung_Mittel` 0.06 und `Anteil_im_Band` 0.9 heißt: Das Modell lag im Mittel 6 % daneben und hat 9 von 10 Varianten richtig eingeschätzt, es taugt. Liegt `Anteil_im_Band` dauerhaft unter 0.5, ist das Modell unsicher oder die Ergebnisse rauschen stark; dann hilft ein Vergleichslauf mit `"Rsm"`. Die letzte Runde eines Laufs steht nicht darin, weil danach nichts mehr vorbereitet wird. Dieselben Angaben stehen als `[BAYES]`-Zeilen im Log. |
 | **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
-| **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` |
+| **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` (inkl. Zellklassen `Tri;Quad;Prism;Hexa;Tet;Pyramiden`, `Blockage_%`, `CD_p` und `CD_v`) |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
 | **`.\scripts\sim.ps1 doctor -Project <Name>`** | *Vor* einem Lauf: welche Programmpfade wirklich gelten und ob die Programme gefunden werden |
 
@@ -568,7 +583,7 @@ Deshalb schreibt jeder Lauf ein Journal mit: nach jeder fertigen Rechnung eine Z
    `Abgebrochener Lauf gefunden: 37 Rechnungen gesichert. Fortsetzen mit: …`.
 2. `.\scripts\sim.ps1 resume -Project <Name>` setzt den Lauf fort.
 3. Im Log stehen zuerst Zeilen wie `[WIEDERAUFNAHME] Gen3_Var4 aus dem Journal übernommen (37/52)`.
-   Das geht in Sekunden. Danach wird ganz normal weitergerechnet.
+   Das geht in Sekunden (`DurationSeconds` aus dem Originallauf bleibt dabei erhalten). Danach wird ganz normal weitergerechnet.
 
 **Was geht verloren?** Höchstens die eine Variante, die beim Abbruch gerade gerechnet wurde.
 Sie wird neu gerechnet. Am Ende sind CSV und Ergebnis genau so, als wäre der Lauf nie
@@ -621,6 +636,8 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | `[WARNUNG] Ergebnisgröße '…' <- Spalte '…'` | Ein Eintrag in `ResultMetrics` passt zu keiner SU2-Spalte. Die Variante gilt als fehlgeschlagen. | Spaltennamen korrigieren (die Meldung listet die vorhandenen). |
 | `[WARNUNG] SU2 hat ITER=… erreicht, ohne dass das Kriterium erfüllt war – … ist der Stand bei Iteration …, kein konvergierter Wert.` | Die Strömungsrechnung hat die maximale Iterationszahl erreicht, bevor der Wert stabil war. Der Wert ist eine Momentaufnahme und noch nicht verlässlich. | `Su2MaxIterations` in `simulation.json` erhöhen (z. B. 1000) oder prüfen, ob die Strömung schwingt. Soll der Lauf unvollständige Rechnungen verwerfen: `TreatUnconvergedAsFailed` in `su2.json` auf `true` setzen. |
 | `[HINWEIS] Instationär, aber statistisch stabil (kein gesicherter Trend im Endfenster): es zählt der Mittelwert des Endfensters (Drag ±… %).` | Der Wert pendelt um einen festen Mittelwert, typisch für Wirbelablösung an stumpfen Körpern. Die Rechnung ist gültig, ihr Ergebnis aber unsicherer (Spalte `Uncertainty_<Kennwert>`). | Nichts. Für genaue Werte des Champions: `recheck -Unsteady` (zeitgenaue Rechnung). Tritt es fast überall auf und soll die Strömung stationär sein: Netz und Geometrie prüfen. |
+| `[WARNUNG] Start-Voxelgröße … ist grob …` / `[INFO] AutoVoxelResolution: …` | Die Start-Voxelgröße (`BaseVoxelResolution`) ist im Realraum gröber als 80 % der Oberflächen-Zielzellgröße. Bei `AutoVoxelResolution = true` verfeinert das Programm sie beim Start automatisch (bis minimal `0.1` mm). | Bei `AutoVoxelResolution = false` entweder `BaseVoxelResolution` senken oder `AutoVoxelResolution = true` setzen, falls die feinere Voxelauflösung gewünscht ist. |
+| `[SU2] Drift nach … -> automatischer Restart …` | SU2 hat per Cauchy-Kriterium vor `Su2MaxIterations` gestoppt, aber im Endfenster lag noch systematische Drift vor. `AutoRestartOnDrift` setzt die Rechnung automatisch per `RESTART_SOL= YES` fort. | Nichts; ist die Drift nach `MaxConvergenceRestarts` behoben, zählt das Ergebnis regulär. |
 | `[WARNUNG] … schwingt um ±… % – Hinweis auf instationäre Strömung (Wirbelablösung).` | Der Beiwert schwankt im Cauchy-Fenster stärker als `OscillationWarnLimit` (z. B. ±2 %). Meist lösen sich periodisch Wirbel ab (z. B. Kármánsche Wirbelstraße bei stumpfen Körpern). | Prüfen, ob die Geometrie zu stumpf ist, oder `ResultAveraging` in `su2.json` auf `"CauchyWindowMean"` setzen, um über die Schwingung zu mitteln. Schwellenwert mit `OscillationWarnLimit` anpassen. |
 | `[WARNUNG] y+ (95 %-Quantil = …, Max = …) überschreitet das Limit … (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.` | Der dimensionslose Wandabstand y+ ist an der Bauteilwand zu groß (das 95 %-Quantil P95 übersteigt das Limit). Das Turbulenzmodell (SA/SST) löst die viskose Unterschicht nicht optimal auf, wodurch der Reibungswiderstand ungenau werden kann. | `BoundaryLayerMode` ("Prism") aktivieren, `TargetYPlus` prüfen, `BoundaryLayerSizeMin` bzw. `SurfaceCellSize` verfeinern oder `YPlusWarnFactor` erhöhen, falls ein größerer Wandabstand für die Grobauslegung ausreicht. |
 | `CFD-Simulation für … abgebrochen` | SU2 ist gescheitert. | Details in `Ergebnisse/<Projekt>/FehlerLogs/`. Häufig: Netz kaputt (dünne Stellen), Schrittweite zu groß (`CflNumber`). |

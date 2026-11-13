@@ -205,6 +205,8 @@ Die Ergebnisse liegen unter `Ergebnisse/Propeller/`. Dort landet neben der CSV a
 Schlüssel. Damit bleibt ein alter Lauf nachvollziehbar, egal was danach an den
 Dateien passiert.
 
+> **Hinweis zu 3D-Qualität & Telemetrie:** Beim Start prüft `VoxelResolutionAdvisor` die Start-Voxelgröße (`BaseVoxelResolution`) im Realraum gegen die Oberflächen-Zielzellgröße (`AutoVoxelResolution` verfeinert bei Bedarf automatisch). `GmshCfdMesher` garantiert reale Windkanal-Mindestabstände (`>= 5 L / >= 15 L / >= 5 B/H`, `<= 0,3 %` Blockage) unabhängig vom `RubberBandScaler`, und sowohl `Simulation_Results.csv` als auch `Kalibrierung/calibration.csv` protokollieren Zellklassen sowie `Su2_CD_p`/`Su2_CD_v`.
+
 ---
 
 ## Wenn etwas nicht auftaucht

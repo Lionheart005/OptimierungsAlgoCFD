@@ -31,6 +31,7 @@
     "WindowVariants": 10
   },
 
+  "AutoVoxelResolution": false,
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
@@ -71,7 +72,7 @@
   "ControlRuns": {
     "Su2MaxIterations": 20000,
     "CauchyElements": 500,
-    "CauchyTolerance": "1e-6",
+    "CauchyTolerance": "1e-5",
     "IterativeToleranceFraction": 0.1
   },
 

@@ -190,5 +190,168 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.Contains(lines, l => l.Contains("BoundingBox Surface {wall[]}") && l.StartsWith("dbbox"));
             Assert.Contains(lines, l => l.StartsWith("Field[4].FieldsList") && l.Contains("5"));
         }
+
+        [Fact]
+        public void Three_Dimensional_Mesher_Defaults_And_Scheme_Version_Match_AP5()
+        {
+            var options = new GmshMesherOptions();
+            Assert.Equal(1.5f, options.DetailBoxLengthFactor);
+            Assert.Equal(0.15f, options.DetailBoxMinHeightLengthFactor);
+            Assert.True(options.MeshSizeFromCurvature);
+            Assert.Equal(0.5f, options.CurvatureMinSizeFactor);
+            Assert.Equal(20, options.CurvatureElements);
+            Assert.Equal("tunnel-scaled-curvature-2", MeshCalibration.MesherSchemeVersion);
+        }
+
+        [Fact]
+        public void Three_Dimensional_Detail_Box_Extends_1_5L_And_Decouples_Z_Padding_With_Length_Floor()
+        {
+            string pathDefault = Path.Combine(_dir, "detail_default.geo");
+            var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
+            var config = SimulationConfig.CreateDefault();
+
+            new GmshCfdMesher(new GmshMesherOptions { BoundaryLayerMode = "Threshold" }, flow)
+                .WriteGeoScript(pathDefault, "model.stl", "tunnel.stl", config, 1.0f);
+
+            var linesDefault = File.ReadAllLines(pathDefault);
+            Assert.Contains(linesDefault, l => l.Trim() == "Field[5].XMax = dmaxX + (1.5 * dlenX);");
+            Assert.Contains(linesDefault, l => l.Trim() == "dz_width = 0.25 * dlenZ;");
+            Assert.Contains(linesDefault, l => l.Trim() == "dz_min_len = 0.15 * dlenX;");
+            Assert.Contains(linesDefault, l => l.Trim() == "dz_pad = (dz_width > dz_min_len) ? dz_width : dz_min_len;");
+            Assert.Contains(linesDefault, l => l.Trim() == "Field[5].ZMin = dminZ - dz_pad;");
+            Assert.Contains(linesDefault, l => l.Trim() == "Field[5].ZMax = dmaxZ + dz_pad;");
+
+            // Deaktivierbar über 0 (und <= 0)
+            string pathZero = Path.Combine(_dir, "detail_zero_floor.geo");
+            new GmshCfdMesher(new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Threshold",
+                DetailBoxMinHeightLengthFactor = 0f
+            }, flow).WriteGeoScript(pathZero, "model.stl", "tunnel.stl", config, 1.0f);
+
+            var linesZero = File.ReadAllLines(pathZero);
+            Assert.Contains(linesZero, l => l.Trim() == "dz_min_len = 0 * dlenX;");
+
+            string pathNegative = Path.Combine(_dir, "detail_neg_floor.geo");
+            new GmshCfdMesher(new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Threshold",
+                DetailBoxMinHeightLengthFactor = -0.2f
+            }, flow).WriteGeoScript(pathNegative, "model.stl", "tunnel.stl", config, 1.0f);
+
+            var linesNegative = File.ReadAllLines(pathNegative);
+            Assert.Contains(linesNegative, l => l.Trim() == "dz_min_len = 0 * dlenX;");
+        }
+
+        [Theory]
+        [InlineData(0.01f, 0.1f, 1.0f)]
+        [InlineData(0.35f, 0.35f, 0.5f)]
+        [InlineData(2.5f, 1.0f, 0.4f)]
+        public void CurvatureMinSizeFactor_Is_Clamped_And_Scaled_In_Prism_And_Threshold(
+            float configuredFactor, float expectedClampedFactor, float scaleFactor)
+        {
+            var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
+            var config = SimulationConfig.CreateDefault();
+            float refinementFactor = 0.5f;
+
+            // Prism: Schritt 1 (Wall_*.geo)
+            var prismOptions = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                SurfaceCellSize = 2.0f,
+                BoundaryLayerSizeMax = 100.0f,
+                MeshSizeFromCurvature = true,
+                CurvatureMinSizeFactor = configuredFactor
+            };
+            string prismGeo = Path.Combine(_dir, $"Meshing_Prism_{configuredFactor.ToString(CultureInfo.InvariantCulture)}.geo");
+            new GmshCfdMesher(prismOptions, flow).WriteGeoScript(prismGeo, "model.stl", "tunnel.stl", config, scaleFactor, refinementFactor);
+
+            string[] wallLines = File.ReadAllLines(GmshCfdMesher.WallScriptPath(prismGeo));
+            float expectedSurfaceGeo = 2.0f * refinementFactor * scaleFactor;
+            Assert.Equal(expectedSurfaceGeo, Value(wallLines, "Mesh.MeshSizeMax"), 4);
+            Assert.Equal(expectedSurfaceGeo * expectedClampedFactor, Value(wallLines, "Mesh.MeshSizeMin"), 4);
+            Assert.Contains(wallLines, l => l.Trim() == "Mesh.MeshSizeFromCurvature = 20;");
+
+            // Threshold
+            var thresholdOptions = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Threshold",
+                BoundaryLayerSizeMin = 1.6f,
+                BoundaryLayerSizeMax = 100.0f,
+                MeshSizeFromCurvature = true,
+                CurvatureMinSizeFactor = configuredFactor
+            };
+            string thresholdGeo = Path.Combine(_dir, $"Meshing_Thresh_{configuredFactor.ToString(CultureInfo.InvariantCulture)}.geo");
+            new GmshCfdMesher(thresholdOptions, flow).WriteGeoScript(thresholdGeo, "model.stl", "tunnel.stl", config, scaleFactor, refinementFactor);
+
+            string[] thresholdLines = File.ReadAllLines(thresholdGeo);
+            float expectedSizeMinGeo = 1.6f * refinementFactor * scaleFactor;
+            float expectedSizeMaxGeo = 100.0f * refinementFactor * scaleFactor;
+            Assert.Contains(thresholdLines, l => l.Trim() == "Mesh.MeshSizeFromCurvature = 1;");
+            Assert.Equal(expectedSizeMinGeo * expectedClampedFactor, Value(thresholdLines, "Mesh.MeshSizeMin"), 4);
+            Assert.Equal(expectedSizeMaxGeo, Value(thresholdLines, "Mesh.MeshSizeMax"), 3);
+        }
+
+        [Fact]
+        public void SurfaceCellSize_DetailBoxCellSize_And_BoundaryLayerSizeMax_Are_Decoupled()
+        {
+            var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
+            var config = SimulationConfig.CreateDefault();
+
+            string[] WriteAndRead(GmshMesherOptions opts, string tag, out string[] wallLines)
+            {
+                string geo = Path.Combine(_dir, $"Meshing_{tag}.geo");
+                new GmshCfdMesher(opts, flow).WriteGeoScript(geo, "model.stl", "tunnel.stl", config, 1.0f);
+                wallLines = File.ReadAllLines(GmshCfdMesher.WallScriptPath(geo));
+                return File.ReadAllLines(geo);
+            }
+
+            var baseline = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                SurfaceCellSize = 1.0f,
+                DetailBoxCellSize = 3.0f,
+                BoundaryLayerSizeMax = 120.0f
+            };
+            string[] baseGeo = WriteAndRead(baseline, "base", out string[] baseWall);
+
+            // 1. DetailBoxCellSize ändern -> Wall_*.geo bleibt exakt identisch
+            var changedDetail = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                SurfaceCellSize = 1.0f,
+                DetailBoxCellSize = 7.5f,
+                BoundaryLayerSizeMax = 120.0f
+            };
+            string[] detailGeo = WriteAndRead(changedDetail, "detail", out string[] detailWall);
+            Assert.Equal(baseWall, detailWall);
+            Assert.Equal(7.5f, Value(detailGeo, "Field[5].VIn"), 3);
+
+            // 2. BoundaryLayerSizeMax ändern -> Wall_*.geo bleibt exakt identisch; nur Schritt 2 / VOut ändert sich
+            var changedSizeMax = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                SurfaceCellSize = 1.0f,
+                DetailBoxCellSize = 3.0f,
+                BoundaryLayerSizeMax = 240.0f
+            };
+            string[] sizeMaxGeo = WriteAndRead(changedSizeMax, "sizemax", out string[] sizeMaxWall);
+            Assert.Equal(baseWall, sizeMaxWall);
+            Assert.Equal(240.0f, Value(sizeMaxGeo, "Field[5].VOut"), 3);
+            Assert.Equal(240.0f, Value(sizeMaxGeo, "Mesh.MeshSizeMax"), 3);
+            Assert.Equal(3.0f, Value(sizeMaxGeo, "Field[5].VIn"), 3);
+
+            // 3. SurfaceCellSize ändern -> Field[5].VOut bleibt unverändert
+            var changedSurface = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                SurfaceCellSize = 0.4f,
+                DetailBoxCellSize = 3.0f,
+                BoundaryLayerSizeMax = 120.0f
+            };
+            string[] surfaceGeo = WriteAndRead(changedSurface, "surface", out string[] surfaceWall);
+            Assert.Equal(0.4f, Value(surfaceWall, "Mesh.MeshSizeMax"), 3);
+            Assert.Equal(Value(baseGeo, "Field[5].VOut"), Value(surfaceGeo, "Field[5].VOut"), 3);
+        }
     }
 }

@@ -56,6 +56,12 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         public Su2SolverOptions Options => _options;
         public FlowConditions? Flow => _flow;
 
+        /// <summary>
+        /// Optionaler Test-Hook für die SU2-Prozessausführung (ermöglicht End-to-End-Tests von
+        /// <see cref="Solve"/> ohne echtes <c>SU2_CFD</c>/<c>mpirun</c>).
+        /// </summary>
+        internal Func<string, int, (int ExitCode, string StdOut, string StdErr)>? RunSu2Override { get; set; }
+
         public string Name => "SU2 CFD Solver";
 
         public void Solve(
@@ -201,11 +207,12 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             string configPath = Path.Combine(workingDirectory, "current_config.cfg");
             string historyPath = Path.Combine(workingDirectory, "history.csv");
 
-            if (File.Exists(historyPath)) File.Delete(historyPath);
-            // Alte Neustart-Historien (history_00002.csv) würden sonst fälschlich übernommen (TODO-W7).
-            foreach (string stale in Directory.GetFiles(workingDirectory, "history_*.csv"))
+            bool isUnsteady = _options.TimeDomain != null && _options.TimeDomain.Enabled;
+            CleanHistoryFiles(workingDirectory, historyPath);
+            if (!isUnsteady)
             {
-                try { File.Delete(stale); } catch (IOException) { }
+                // Verhindert, dass ein fehlender Restart-Export einer neuen Variante auf die Lösung der Vorgängervariante zurückfällt.
+                CleanSteadyRestartFiles(workingDirectory);
             }
 
             float effectiveRefLength = _options.ReferenceLength;
@@ -224,11 +231,11 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             // Kontrollrechnungen (Kalibrierstufen, Feinprüfung, Recheck) rechnen mit dem strengen
             // Profil (TODO-W4); normale Varianten und die Türsteher-Kontrolle mit den normalen Werten.
             bool isControlRun = IsControlRunTag(ExtractTag(meshPath, record));
-            SimulationConfig runConfig = isControlRun ? config.WithControlRunProfile() : config;
+            SimulationConfig originalEffectiveConfig = isControlRun ? config.WithControlRunProfile() : config;
             if (isControlRun)
             {
-                SimulationLog.Detail($"Kontrollrechnung: strenges Profil (bis {runConfig.Su2MaxIterations} Iterationen, Fenster {runConfig.CauchyElements}, "
-                    + $"iterativer Fehler höchstens {runConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
+                SimulationLog.Detail($"Kontrollrechnung: strenges Profil (bis {originalEffectiveConfig.Su2MaxIterations} Iterationen, Fenster {originalEffectiveConfig.CauchyElements}, "
+                    + $"iterativer Fehler höchstens {originalEffectiveConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
             }
 
             Su2SolverOptions runOptions = _options;
@@ -238,89 +245,126 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 runOptions.AngleOfAttackDeg = effectiveAoA;
             }
 
-            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, runConfig, runOptions, flow, effectiveRefLength);
+            Su2ConfigGenerator.Generate(configPath, meshPath, refArea, originalEffectiveConfig, runOptions, flow, effectiveRefLength);
 
             try
             {
-                Process su2Process = new Process();
-                string resolvedMpi = ExecutableResolver.Resolve(config.MpiRunPath, "mpi");
-                string resolvedSu2 = ExecutableResolver.Resolve(config.Su2Path, "su2");
-                su2Process.StartInfo.FileName = resolvedMpi;
-                su2Process.StartInfo.Arguments = $"-n {config.MpiCores} {resolvedSu2} current_config.cfg"; 
-                su2Process.StartInfo.WorkingDirectory = workingDirectory; 
-                su2Process.StartInfo.RedirectStandardOutput = true;
-                su2Process.StartInfo.RedirectStandardError = true;
-                
-                System.Text.StringBuilder su2Output = new System.Text.StringBuilder();
-                object outputLock = new object(); 
+                int restartCount = 0;
+                string currentBlockEps = originalEffectiveConfig.CauchyTolerance;
+                SimulationConfig blockConfig = originalEffectiveConfig;
+                string[]? previousCumulativeLines = null;
 
-                su2Process.OutputDataReceived += (s, e) => 
-                { 
-                    if (!string.IsNullOrEmpty(e.Data)) lock(outputLock) { su2Output.AppendLine(e.Data); }
-                };
-                su2Process.ErrorDataReceived += (s, e) => 
-                { 
-                    if (!string.IsNullOrEmpty(e.Data)) lock(outputLock) { su2Output.AppendLine(e.Data); }
-                };
-
-                su2Process.Start();
-                su2Process.BeginOutputReadLine();
-                su2Process.BeginErrorReadLine();
-                su2Process.WaitForExit();
-
-                // Version aus dem Banner der ersten Rechnung in den Fahrtenschreiber (TODO-W2).
-                if (!_versionReported)
+                while (true)
                 {
-                    string? version = TryParseVersion(su2Output.ToString());
-                    if (version != null)
+                    var (exitCode, su2Output) = ExecuteSu2Process(workingDirectory, blockConfig);
+
+                    // Version aus dem Banner der ersten Rechnung in den Fahrtenschreiber (TODO-W2).
+                    if (!_versionReported)
                     {
-                        _versionReported = true;
-                        RunInfoWriter.SetProgramVersion(workingDirectory, "SU2", version);
+                        string? version = TryParseVersion(su2Output);
+                        if (version != null)
+                        {
+                            _versionReported = true;
+                            RunInfoWriter.SetProgramVersion(workingDirectory, "SU2", version);
+                        }
                     }
-                }
 
-                // Nach einem Neustart schreibt SU2 die Historie als history_00002.csv (Neustart-Index im Namen).
-                // Die jüngste solche Datei wird zu history.csv (TODO-W7).
-                if (!File.Exists(historyPath))
-                {
-                    string? restarted = Directory.GetFiles(workingDirectory, "history_*.csv")
-                        .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
-                    if (restarted != null) File.Copy(restarted, historyPath, overwrite: true);
-                }
+                    // Nach einem Neustart schreibt SU2 die Historie als history_00002.csv (Neustart-Index im Namen).
+                    // Die jüngste solche Datei wird zu history.csv (TODO-W7).
+                    ResolveBlockHistoryFile(workingDirectory, historyPath);
 
-                bool isSu2Successful = false;
-                
-                if (File.Exists(historyPath))
-                {
-                    string[] lines = File.ReadAllLines(historyPath);
-                    if (lines.Length >= 5) 
+                    string[]? currentLines = File.Exists(historyPath)
+                        ? File.ReadAllLines(historyPath).Where(l => !string.IsNullOrWhiteSpace(l)).ToArray()
+                        : null;
+
+                    if (restartCount == 0)
                     {
-                        isSu2Successful = true;
+                        bool isSu2Successful = currentLines != null && currentLines.Length >= 5;
+                        if (!isSu2Successful)
+                        {
+                            string errorLogDirectory = Path.Combine(workingDirectory, "FehlerLogs");
+                            Directory.CreateDirectory(errorLogDirectory);
+
+                            string modelName = Path.GetFileNameWithoutExtension(meshPath);
+                            string errorLogPath = Path.Combine(errorLogDirectory, $"SU2_Error_{modelName}.txt");
+                            File.WriteAllText(errorLogPath, string.IsNullOrWhiteSpace(su2Output) ? "Kein Konsolen-Output von SU2 abgefangen." : su2Output);
+                            Console.WriteLine();
+                            SimulationLog.Warning($"CFD-Simulation für {modelName} abgebrochen.");
+                            SimulationLog.Detail($"Details exportiert nach: Ergebnisse/FehlerLogs/{Path.GetFileName(errorLogPath)}");
+                            Console.WriteLine();
+
+                            // Nur noch das generische Flag: vor TODO-26 stand hier
+                            // PassiveParameters["Drag"] = float.MaxValue und damit der letzte
+                            // projektspezifische Begriff im Solver. Der IFitnessCalculator wertet
+                            // das Flag ohnehin zuerst aus.
+                            record.SimulationFailed = true;
+                            string errorBase = ArchiveBaseNameFromMesh(meshPath, record);
+                            TryCopyArchiveFile(historyPath, Path.Combine(errorLogDirectory, $"History_{errorBase}.csv"));
+                            TryCopyArchiveFile(configPath, Path.Combine(errorLogDirectory, $"Config_{errorBase}.cfg"));
+                            return;
+                        }
                     }
-                }
+                    else
+                    {
+                        if (exitCode != 0 || currentLines == null || currentLines.Length < 2)
+                        {
+                            SimulationLog.Warning($"[SU2] Restart #{restartCount} lieferte keine verwertbaren Daten (ExitCode={exitCode}); nutze bisherigen Verlauf.");
+                            if (previousCumulativeLines != null)
+                                File.WriteAllLines(historyPath, previousCumulativeLines);
+                            break;
+                        }
 
-                if (!isSu2Successful)
-                {
-                    string errorLogDirectory = Path.Combine(workingDirectory, "FehlerLogs");
-                    Directory.CreateDirectory(errorLogDirectory);
+                        currentLines = StitchHistoryCsv(previousCumulativeLines!, currentLines);
+                        File.WriteAllLines(historyPath, currentLines);
+                    }
 
-                    string modelName = Path.GetFileNameWithoutExtension(meshPath);
-                    string errorLogPath = Path.Combine(errorLogDirectory, $"SU2_Error_{modelName}.txt");
-                    File.WriteAllText(errorLogPath, su2Output.Length == 0 ? "Kein Konsolen-Output von SU2 abgefangen." : su2Output.ToString());
-                    Console.WriteLine();
-                    SimulationLog.Warning($"CFD-Simulation für {modelName} abgebrochen.");
-                    SimulationLog.Detail($"Details exportiert nach: Ergebnisse/FehlerLogs/{Path.GetFileName(errorLogPath)}");
-                    Console.WriteLine();
-                    
-                    // Nur noch das generische Flag: vor TODO-26 stand hier
-                    // PassiveParameters["Drag"] = float.MaxValue und damit der letzte
-                    // projektspezifische Begriff im Solver. Der IFitnessCalculator wertet
-                    // das Flag ohnehin zuerst aus.
-                    record.SimulationFailed = true;
-                    string errorBase = ArchiveBaseNameFromMesh(meshPath, record);
-                    TryCopyArchiveFile(historyPath, Path.Combine(errorLogDirectory, $"History_{errorBase}.csv"));
-                    TryCopyArchiveFile(configPath, Path.Combine(errorLogDirectory, $"Config_{errorBase}.cfg"));
-                    return;
+                    if (isUnsteady || !_options.AutoRestartOnDrift || _options.MaxConvergenceRestarts <= 0 || exitCode != 0)
+                        break;
+
+                    if (restartCount >= _options.MaxConvergenceRestarts)
+                        break;
+
+                    if (!TryCheckNeedsSteadyRestart(
+                            currentLines!,
+                            originalEffectiveConfig,
+                            _options.ResultMetrics,
+                            out int totalIterations,
+                            out float worstNormalized))
+                    {
+                        break;
+                    }
+
+                    string? steadyRestartFile = FindSteadyRestartFile(workingDirectory);
+                    if (steadyRestartFile == null)
+                        break;
+
+                    int remainingBudget = originalEffectiveConfig.Su2MaxIterations - totalIterations;
+                    if (remainingBudget <= 0)
+                        break;
+
+                    restartCount++;
+                    previousCumulativeLines = currentLines;
+                    CleanHistoryFiles(workingDirectory, historyPath);
+
+                    currentBlockEps = TightenTolerance(currentBlockEps);
+                    int convStartIter = Math.Min(100, Math.Max(0, remainingBudget / 10));
+                    blockConfig = originalEffectiveConfig.WithSu2BlockOverrides(remainingBudget, currentBlockEps);
+
+                    Su2ConfigGenerator.Generate(
+                        configPath,
+                        meshPath,
+                        refArea,
+                        blockConfig,
+                        runOptions,
+                        flow,
+                        effectiveRefLength,
+                        steadyRestartFile,
+                        convStartIter);
+
+                    SimulationLog.Detail(
+                        $"[SU2] Drift nach {totalIterations} Iterationen ({worstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der Grenze) "
+                        + $"-> automatischer Restart #{restartCount}/{_options.MaxConvergenceRestarts} aus {steadyRestartFile} "
+                        + $"(Restbudget={remainingBudget}, CONV_CAUCHY_EPS={currentBlockEps}, CONV_STARTITER={convStartIter}).");
                 }
 
                 // VTU-Dateien sichern
@@ -354,10 +398,43 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             }
 
             // Setzt bei einer nicht lesbaren Größe selbst record.SimulationFailed.
-            ReadMetricsFromHistory(historyPath, record, runConfig, isControlRun);
+            ReadMetricsFromHistory(historyPath, record, originalEffectiveConfig, isControlRun);
 
             // y+-Statistik der Oberfläche auswerten (TODO-41)
             EvaluateSurfaceYPlus(Path.Combine(workingDirectory, "surface.csv"), record);
+
+            // Druck-/Reibungswiderstand über surface.vtu integrieren (AP-6)
+            int effectiveDims = is2dGeometry ? 2 : runOptions.Dimensions;
+            EvaluateSurfaceAerodynamics(workingDirectory, refArea, effectiveAoA, effectiveDims, record);
+        }
+
+        /// <summary>
+        /// Wertet optional <c>CD_p</c> und <c>CD_v</c> aus <c>surface.vtu</c> bzw. <c>surface_flow.vtu</c>
+        /// aus und trägt <c>Su2_CD_p</c> und <c>Su2_CD_v</c> in <paramref name="record"/> ein.
+        /// </summary>
+        public AerodynamicDragBreakdown? EvaluateSurfaceAerodynamics(
+            string workingDirectory,
+            float refAreaOrChordM,
+            float angleOfAttackDeg,
+            int dimensions,
+            ModelRecord record)
+        {
+            if (record == null) throw new ArgumentNullException(nameof(record));
+            if (refAreaOrChordM <= 0f || !float.IsFinite(refAreaOrChordM))
+                return null;
+
+            AerodynamicDragBreakdown? breakdown = Su2SurfaceAnalyzer.EvaluateDragBreakdownFromDirectory(
+                workingDirectory, refAreaOrChordM, angleOfAttackDeg, dimensions);
+
+            if (breakdown != null &&
+                double.IsFinite(breakdown.PressureDragCoeff) &&
+                double.IsFinite(breakdown.ViscousDragCoeff))
+            {
+                record.PassiveParameters["Su2_CD_p"] = (float)breakdown.PressureDragCoeff;
+                record.PassiveParameters["Su2_CD_v"] = (float)breakdown.ViscousDragCoeff;
+            }
+
+            return breakdown;
         }
 
         /// <summary>
@@ -576,7 +653,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                         ? dr / Math.Max(Math.Abs(tm), 1e-7f) * 100f : float.NaN;
                     SimulationLog.Detail($"[WARNUNG] SU2 nicht auskonvergiert nach {historyResult.Iterations} Iterationen: {worst} driftet im Endfenster "
                         + $"({historyResult.TailRows} Zeilen) um {driftPercent.ToString("0.00", CultureInfo.InvariantCulture)} % "
-                        + $"({verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der erlaubten Drift).");
+                        + $"({verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der erlaubten Drift).");
 
                     if (_options.TreatUnconvergedAsFailed)
                     {
@@ -588,7 +665,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     // ITER erreicht, aber die Kennwerte stehen: das Cauchy-Kriterium von SU2 ist bei
                     // schwingenden Rechnungen oft zu streng, die Rechnung ist trotzdem brauchbar.
                     SimulationLog.Detail($"SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, die Kennwerte stehen aber (iterativer Fehler "
-                        + $"{verdict.WorstNormalized.ToString("0.0", CultureInfo.InvariantCulture)}-fach der Grenze, Ergebnis = Mittel des Endfensters).");
+                        + $"{verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der Grenze, Ergebnis = Mittel des Endfensters).");
                 }
             }
             else if (!historyResult.Converged)
@@ -904,6 +981,247 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             {
                 Console.WriteLine($"[WARNUNG] Datei konnte nicht archiviert werden ({Path.GetFileName(source)} -> {destination}): {ex.Message}");
             }
+        }
+
+        private (int ExitCode, string CombinedOutput) ExecuteSu2Process(string workingDirectory, SimulationConfig config)
+        {
+            if (RunSu2Override != null)
+            {
+                var (exitCode, stdOut, stdErr) = RunSu2Override(workingDirectory, config.MpiCores);
+                string combined = string.Concat(
+                    stdOut ?? string.Empty,
+                    !string.IsNullOrEmpty(stdOut) && !string.IsNullOrEmpty(stdErr) ? Environment.NewLine : string.Empty,
+                    stdErr ?? string.Empty);
+                return (exitCode, combined);
+            }
+
+            using Process su2Process = new Process();
+            string resolvedMpi = ExecutableResolver.Resolve(config.MpiRunPath, "mpi");
+            string resolvedSu2 = ExecutableResolver.Resolve(config.Su2Path, "su2");
+            su2Process.StartInfo.FileName = resolvedMpi;
+            su2Process.StartInfo.Arguments = $"-n {config.MpiCores} {resolvedSu2} current_config.cfg";
+            su2Process.StartInfo.WorkingDirectory = workingDirectory;
+            su2Process.StartInfo.RedirectStandardOutput = true;
+            su2Process.StartInfo.RedirectStandardError = true;
+
+            var su2Output = new System.Text.StringBuilder();
+            object outputLock = new object();
+
+            su2Process.OutputDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data)) lock (outputLock) { su2Output.AppendLine(e.Data); }
+            };
+            su2Process.ErrorDataReceived += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data)) lock (outputLock) { su2Output.AppendLine(e.Data); }
+            };
+
+            su2Process.Start();
+            su2Process.BeginOutputReadLine();
+            su2Process.BeginErrorReadLine();
+            su2Process.WaitForExit();
+
+            return (su2Process.ExitCode, su2Output.ToString());
+        }
+
+        private static void CleanHistoryFiles(string workingDirectory, string historyPath)
+        {
+            if (File.Exists(historyPath)) File.Delete(historyPath);
+            // Alte Neustart-Historien (history_00002.csv) würden sonst fälschlich übernommen (TODO-W7).
+            foreach (string stale in Directory.GetFiles(workingDirectory, "history_*.csv"))
+            {
+                try { File.Delete(stale); } catch (IOException) { }
+            }
+        }
+
+        private static void CleanSteadyRestartFiles(string workingDirectory)
+        {
+            foreach (string name in new[] { "restart.dat", "restart_flow.dat" })
+            {
+                string fullPath = Path.Combine(workingDirectory, name);
+                if (File.Exists(fullPath))
+                {
+                    try { File.Delete(fullPath); } catch (IOException) { }
+                }
+            }
+        }
+
+        private static void ResolveBlockHistoryFile(string workingDirectory, string historyPath)
+        {
+            if (!File.Exists(historyPath))
+            {
+                string? restarted = Directory.GetFiles(workingDirectory, "history_*.csv")
+                    .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+                if (restarted != null) File.Copy(restarted, historyPath, overwrite: true);
+            }
+        }
+
+        private static bool TryCheckNeedsSteadyRestart(
+            string[] lines,
+            SimulationConfig originalEffectiveConfig,
+            Dictionary<string, string>? wanted,
+            out int totalIterations,
+            out float worstNormalized)
+        {
+            totalIterations = 0;
+            worstNormalized = 0f;
+
+            if (wanted == null || wanted.Count == 0)
+                return false;
+
+            var metricCols = wanted.Values.Where(v => !string.IsNullOrWhiteSpace(v)).Distinct().ToList();
+            if (metricCols.Count == 0)
+                return false;
+
+            var historyOptions = new Su2HistoryOptions(
+                originalEffectiveConfig.Su2MaxIterations,
+                originalEffectiveConfig.CauchyElements,
+                metricCols);
+            Su2HistoryResult historyResult = Su2HistoryAnalyzer.Evaluate(lines, historyOptions);
+            totalIterations = historyResult.Iterations;
+
+            if (totalIterations <= 0 || totalIterations >= originalEffectiveConfig.Su2MaxIterations)
+                return false;
+
+            Su2ConvergenceVerdict verdict = Su2ConvergenceJudge.Judge(
+                historyResult,
+                wanted,
+                originalEffectiveConfig.IterativeToleranceFraction * originalEffectiveConfig.MeshCalibration.Tolerance,
+                originalEffectiveConfig.IterativeToleranceFraction,
+                originalEffectiveConfig.MeshCalibration.AbsoluteTolerances);
+
+            if (!verdict.Assessed)
+                return false;
+
+            worstNormalized = verdict.WorstNormalized;
+            if (verdict.Converged)
+                return false;
+
+            if (IsStationary(historyResult, wanted))
+                return false;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Sucht im Arbeitsverzeichnis nach einer vorhandenen stationären Restart-Lösung
+        /// (<c>restart.dat</c> oder <c>restart_flow.dat</c>, Größe &gt; 0) und wählt bei Vorhandensein
+        /// beider die jüngste Datei aus.
+        /// </summary>
+        internal static string? FindSteadyRestartFile(string workingDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+                return null;
+
+            var candidates = new[] { "restart.dat", "restart_flow.dat" };
+            FileInfo? best = null;
+            foreach (string name in candidates)
+            {
+                string fullPath = Path.Combine(workingDirectory, name);
+                if (!File.Exists(fullPath)) continue;
+                var info = new FileInfo(fullPath);
+                if (info.Length <= 0) continue;
+                if (best == null || info.LastWriteTimeUtc > best.LastWriteTimeUtc)
+                {
+                    best = info;
+                }
+            }
+            return best?.Name;
+        }
+
+        /// <summary>
+        /// Verschärft die Cauchy-Toleranz für den nächsten Restart-Block um Faktor 10
+        /// (Untergrenze <c>1e-7</c>).
+        /// </summary>
+        internal static string TightenTolerance(string? currentTolerance)
+        {
+            const double Floor = 1e-7;
+            if (!double.TryParse(currentTolerance, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+                || !double.IsFinite(value)
+                || value <= 0.0)
+            {
+                return "1e-6";
+            }
+
+            double tightened = Math.Max(value / 10.0, Floor);
+            return tightened.ToString("0.###e-0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Fügt die CSV-Daten eines Restart-Blocks nahtlos an die bisherige kumulative Historie an
+        /// und setzt die Iterationsspalte monoton fort, falls SU2 beim Neustart wieder kleiner gezählt hat.
+        /// </summary>
+        internal static string[] StitchHistoryCsv(string[] previousLines, string[] newLines)
+        {
+            string[] prevValid = previousLines.Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+            string[] newValid = newLines.Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+
+            if (prevValid.Length < 2) return newValid;
+            if (newValid.Length < 2) return prevValid;
+
+            string[] prevHeaders = SplitCsvLine(prevValid[0]);
+            string[] newHeaders = SplitCsvLine(newValid[0]);
+
+            int prevIterCol = FindIterationColumn(prevHeaders);
+            int newIterCol = FindIterationColumn(newHeaders);
+
+            int prevLastIter = prevValid.Length - 2;
+            if (prevIterCol >= 0)
+            {
+                string[] prevLastFields = SplitCsvLine(prevValid[^1]);
+                if (prevIterCol < prevLastFields.Length &&
+                    int.TryParse(prevLastFields[prevIterCol], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLast) &&
+                    parsedLast >= 0)
+                {
+                    prevLastIter = parsedLast;
+                }
+            }
+
+            int firstNewIter = 0;
+            if (newIterCol >= 0)
+            {
+                string[] firstNewFields = SplitCsvLine(newValid[1]);
+                if (newIterCol < firstNewFields.Length &&
+                    int.TryParse(firstNewFields[newIterCol], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedFirst) &&
+                    parsedFirst >= 0)
+                {
+                    firstNewIter = parsedFirst;
+                }
+            }
+
+            int iterOffset = firstNewIter <= prevLastIter ? (prevLastIter + 1 - firstNewIter) : 0;
+
+            var combined = new List<string>(prevValid.Length + newValid.Length - 1);
+            combined.AddRange(prevValid);
+
+            for (int i = 1; i < newValid.Length; i++)
+            {
+                string row = newValid[i];
+                if (newIterCol >= 0 && iterOffset > 0)
+                {
+                    string[] rawFields = row.Split(',');
+                    if (newIterCol < rawFields.Length)
+                    {
+                        string cleaned = rawFields[newIterCol].Replace("\"", "").Trim();
+                        if (int.TryParse(cleaned, NumberStyles.Integer, CultureInfo.InvariantCulture, out int rowIter))
+                        {
+                            rawFields[newIterCol] = (rowIter + iterOffset).ToString(CultureInfo.InvariantCulture);
+                            row = string.Join(", ", rawFields.Select(f => f.Trim()));
+                        }
+                    }
+                }
+                combined.Add(row);
+            }
+
+            return combined.ToArray();
+        }
+
+        private static int FindIterationColumn(string[] headers)
+        {
+            int col = FindColumn(headers, "Inner_Iter", out _);
+            if (col < 0) col = FindColumn(headers, "ITER", out _);
+            if (col < 0) col = FindColumn(headers, "Iter", out _);
+            return col;
         }
 
         private string ResolveConvergenceColumn(Dictionary<string, string> wanted)

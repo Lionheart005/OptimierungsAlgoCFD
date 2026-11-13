@@ -31,8 +31,8 @@
   // den Netzfaktor am Anfang selbst.
   //
   // Normale Varianten: moderate Konvergenz. Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck) rechnen mit
-  // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, iterativer Fehler <= 1/10).
-  // Seit TODO-W3 entscheidet die Drift der Kennwerte im Endfenster, ob eine Rechnung konvergiert ist.
+  // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, Cauchy "1e-5", iterativer Fehler <= 1/10).
+  // Seit TODO-W3 entscheidet die Drift der Kennwerte im Endfenster, ob eine Rechnung konvergiert ist; bei Rest-Drift setzt AutoRestartOnDrift automatisch fort.
   "Su2MaxIterations": 3000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",

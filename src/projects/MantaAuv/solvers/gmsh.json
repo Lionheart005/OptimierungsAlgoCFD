@@ -38,6 +38,14 @@
   "TunnelLength": 600.0,
   "TunnelSegments": 64,
 
+  // --- Physikalische Domaenengarantien (entkoppelt vom RubberBandScaler in realen mm) ---
+  // Unterschreitet die Tunnelbox diese Mindestabstaende oder ueberschreitet die Blockage das Limit,
+  // weitet GmshCfdMesher die Kanalgrenzen automatisch nach aussen auf (nie nach innen).
+  "TunnelMinUpstreamFactor": 5.0,
+  "TunnelMinDownstreamFactor": 15.0,
+  "TunnelMinLateralFactor": 5.0,
+  "TunnelMaxBlockagePercent": 0.3,
+
   // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
@@ -45,17 +53,25 @@
   "BoundaryLayerDistMax": 40.0,
 
   // --- Wandschicht und Nachlauf (TODO-40, TODO-W6) ---
-  // "Prism": flache Prismenschichten an der Wand (y+ ~ 1, am Manta gemessen: SU2 konvergiert).
-  // Schichtzahl und erste Zellhoehe folgen fuer alle Varianten derselben Regel (Regel aus Re_L und Grenzschichtdicke, ca. 21-24 Schichten).
+  // "Prism": flache Prismenschichten an der Wand (y+ ~ 1,5, am Manta gemessen: SU2 konvergiert).
+  // Schichtzahl und erste Zellhoehe folgen fuer alle Varianten derselben Regel (Regel aus Re_L und Grenzschichtdicke, ca. 14-16 Schichten statt frueher 21-24).
   // Die Kehle zwischen Sensorkugel und Fluegel (Radius ~2,4 mm) faltete frueher die 2,2-mm-Schicht; seit 10.11.2026 glaettet das
   // Programm die Wachstumsrichtungen, statt Schichten wegzulassen (Handbuch 4.4). BoundaryLayerCoverage 1.0 = Schicht deckt delta ab.
   // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
   "BoundaryLayerMode": "Prism",
+  "TargetYPlus": 1.5,
+  "BoundaryLayerGrowthRate": 1.28,
   "WakeRefinement": true,
 
   // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
   "DetailBox": true,
-  "DetailBoxLengthFactor": 1.0,
+  "DetailBoxLengthFactor": 1.5,
   "DetailBoxWidthFactor": 0.25,
-  "DetailBoxCellSize": 0.0
+  "DetailBoxMinHeightLengthFactor": 0.15,
+  "DetailBoxCellSize": 0.0,
+
+  // --- Kruemmungsabhaengige Oberflaechenverfeinerung mit Untergrenze ---
+  "MeshSizeFromCurvature": true,
+  "CurvatureElements": 20,
+  "CurvatureMinSizeFactor": 0.5
 }

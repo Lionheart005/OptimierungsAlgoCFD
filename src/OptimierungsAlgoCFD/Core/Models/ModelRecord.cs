@@ -25,6 +25,8 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public static bool IsMeshMetadataKey(string key)
             => key.StartsWith("BoundaryLayer", System.StringComparison.OrdinalIgnoreCase)
+               || key.StartsWith("Tunnel", System.StringComparison.OrdinalIgnoreCase)
+               || key.StartsWith("MeshCells_", System.StringComparison.OrdinalIgnoreCase)
                || key.Equals(MeshFailedKey, System.StringComparison.OrdinalIgnoreCase)
                || key.Equals(MeshFallbackKey, System.StringComparison.OrdinalIgnoreCase)
                || key.Equals(CellLimitExceededKey, System.StringComparison.OrdinalIgnoreCase);

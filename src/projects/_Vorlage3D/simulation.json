@@ -33,6 +33,7 @@
 
   // --- Geometrie (PicoGK) ---
   "BaseVoxelResolution": 0.5,
+  "AutoVoxelResolution": false,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
   "VoxelSmoothingPremeltingSteps": 2,
@@ -79,7 +80,7 @@
   "ControlRuns": {
     "Su2MaxIterations": 20000,
     "CauchyElements": 500,
-    "CauchyTolerance": "1e-6",
+    "CauchyTolerance": "1e-5",
     "IterativeToleranceFraction": 0.1
   },
 

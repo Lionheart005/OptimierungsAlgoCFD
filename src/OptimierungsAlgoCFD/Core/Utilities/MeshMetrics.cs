@@ -109,6 +109,19 @@ namespace OptimierungsAlgoCFD.Core
     }
 
     /// <summary>
+    /// Aufschlüsselung einer SU2-Netzdatei nach Volumen- und Wand-Oberflächen-Zellklassen.
+    /// </summary>
+    public sealed record Su2CellBreakdown(
+        int TotalVolumeCells,
+        int Tetrahedra,
+        int Hexahedra,
+        int Prisms,
+        int Pyramids,
+        int SurfaceTriangles,
+        int SurfaceQuads,
+        int SurfaceLines);
+
+    /// <summary>
     /// Maße eines Dreiecksnetzes: Volumen, Oberfläche, Hüllquader (TODO-29).
     ///
     /// <para>
@@ -238,6 +251,160 @@ namespace OptimierungsAlgoCFD.Core
             }
 
             return 0;
+        }
+
+        /// <summary>
+        /// Parst <c>NELEM=</c> (Volumen-/2D-Elementtypen) und <c>NMARK=</c> (alle Wand-Marker außer
+        /// <c>Farfield</c> und <c>Fluid</c>, case-insensitive) aus einer ASCII-<c>.su2</c>-Datei.
+        /// </summary>
+        public static Su2CellBreakdown? ReadSu2CellBreakdown(string su2MeshPath)
+        {
+            if (string.IsNullOrWhiteSpace(su2MeshPath) || !File.Exists(su2MeshPath))
+                return null;
+
+            try
+            {
+                using var reader = new StreamReader(su2MeshPath);
+                int totalVolumeCells = 0;
+                int tetrahedra = 0;
+                int hexahedra = 0;
+                int prisms = 0;
+                int pyramids = 0;
+                int surfaceTriangles = 0;
+                int surfaceQuads = 0;
+                int surfaceLines = 0;
+                bool foundNelem = false;
+
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith('%'))
+                        continue;
+
+                    if (!foundNelem && TryParseSu2HeaderInt(trimmed, "NELEM", out int nelemCount))
+                    {
+                        foundNelem = true;
+                        totalVolumeCells = Math.Max(0, nelemCount);
+
+                        for (int i = 0; i < nelemCount; i++)
+                        {
+                            string? elemLine = ReadNextNonCommentLine(reader);
+                            if (elemLine == null) break;
+                            if (TryReadFirstIntToken(elemLine, out int vtkType))
+                            {
+                                switch (vtkType)
+                                {
+                                    case 10: tetrahedra++; break;
+                                    case 12: hexahedra++; break;
+                                    case 13: prisms++; break;
+                                    case 14: pyramids++; break;
+                                    case 5:
+                                    case 9:
+                                        // 2D-Volumenzellen (Dreiecke/Vierecke) sind in TotalVolumeCells erfasst.
+                                        break;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (TryParseSu2HeaderInt(trimmed, "NMARK", out int markerCount))
+                    {
+                        for (int m = 0; m < markerCount; m++)
+                        {
+                            string? tagLine = ReadNextNonCommentLine(reader);
+                            if (tagLine == null) break;
+
+                            string markerTag = TryParseSu2HeaderValue(tagLine, "MARKER_TAG", out string? parsedTag)
+                                ? parsedTag
+                                : string.Empty;
+
+                            string? elemsHeader = ReadNextNonCommentLine(reader);
+                            if (elemsHeader == null) break;
+
+                            if (!TryParseSu2HeaderInt(elemsHeader, "MARKER_ELEMS", out int markerElems))
+                                break;
+
+                            bool skipMarker = markerTag.Equals("Farfield", StringComparison.OrdinalIgnoreCase)
+                                              || markerTag.Equals("Fluid", StringComparison.OrdinalIgnoreCase);
+
+                            for (int e = 0; e < markerElems; e++)
+                            {
+                                string? elemLine = ReadNextNonCommentLine(reader);
+                                if (elemLine == null) break;
+                                if (skipMarker) continue;
+
+                                if (TryReadFirstIntToken(elemLine, out int vtkType))
+                                {
+                                    switch (vtkType)
+                                    {
+                                        case 5: surfaceTriangles++; break;
+                                        case 9: surfaceQuads++; break;
+                                        case 3: surfaceLines++; break;
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                return foundNelem
+                    ? new Su2CellBreakdown(
+                        totalVolumeCells,
+                        tetrahedra,
+                        hexahedra,
+                        prisms,
+                        pyramids,
+                        surfaceTriangles,
+                        surfaceQuads,
+                        surfaceLines)
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string? ReadNextNonCommentLine(StreamReader reader)
+        {
+            string? line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                string trimmed = line.Trim();
+                if (trimmed.Length > 0 && !trimmed.StartsWith('%'))
+                    return trimmed;
+            }
+            return null;
+        }
+
+        private static bool TryParseSu2HeaderValue(string trimmedLine, string key, out string value)
+        {
+            value = string.Empty;
+            int eqIdx = trimmedLine.IndexOf('=');
+            if (eqIdx <= 0) return false;
+
+            if (!trimmedLine.Substring(0, eqIdx).Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            value = trimmedLine.Substring(eqIdx + 1).Trim();
+            return true;
+        }
+
+        private static bool TryParseSu2HeaderInt(string trimmedLine, string key, out int value)
+        {
+            value = 0;
+            return TryParseSu2HeaderValue(trimmedLine, key, out string raw)
+                   && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryReadFirstIntToken(string trimmedLine, out int value)
+        {
+            int sep = trimmedLine.IndexOfAny(new[] { ' ', '\t' });
+            string token = sep > 0 ? trimmedLine.Substring(0, sep) : trimmedLine;
+            return int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
         }
 
         /// <summary>

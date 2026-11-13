@@ -39,6 +39,7 @@ namespace OptimierungsAlgoCFD.Core
         public float Factor { get; init; }
         public string Tag { get; init; } = "";
         public Dictionary<string, float> Parameters { get; init; } = new();
+        public double? DurationSeconds { get; init; }
 
         /// <summary>Der gespeicherte <see cref="ModelRecord"/> als JSON — Quelle jeder tiefen Kopie.</summary>
         internal string RecordJson { get; init; } = "";
@@ -133,6 +134,9 @@ namespace OptimierungsAlgoCFD.Core
 
         /// <summary>Es stehen noch Einträge zur Wiedergabe an.</summary>
         public bool IsReplaying => _replayEnabled && _replayPosition < _replayable;
+
+        /// <summary>Gespeicherte Laufzeit in Sekunden des zuletzt per <see cref="TryReplay"/> wiedergegebenen Eintrags.</summary>
+        public double? LastReplayedDurationSeconds { get; private set; }
 
         public static string DirectoryFor(string workingDirectory) => Path.Combine(workingDirectory, DirectoryName);
 
@@ -286,6 +290,7 @@ namespace OptimierungsAlgoCFD.Core
             Dictionary<string, float> parameters, out ModelRecord? record)
         {
             record = null;
+            LastReplayedDurationSeconds = null;
             if (!IsReplaying) return false;
 
             RunJournalEntry entry = _entries[_replayPosition];
@@ -304,6 +309,7 @@ namespace OptimierungsAlgoCFD.Core
             copy.ActiveParameters = parameters;
 
             _replayPosition++;
+            LastReplayedDurationSeconds = entry.DurationSeconds;
             record = copy;
 
             Console.WriteLine(
@@ -323,7 +329,8 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public void Append(
             int iteration, int variant, float factor, string tag,
-            Dictionary<string, float> parameters, ModelRecord record)
+            Dictionary<string, float> parameters, ModelRecord record,
+            double? durationSeconds = null)
         {
             var node = new JsonObject
             {
@@ -335,6 +342,11 @@ namespace OptimierungsAlgoCFD.Core
                 ["Parameters"] = JsonSerializer.SerializeToNode(parameters, Options),
                 ["Record"] = JsonSerializer.SerializeToNode(record, Options)
             };
+
+            if (durationSeconds.HasValue && double.IsFinite(durationSeconds.Value))
+            {
+                node["DurationSeconds"] = durationSeconds.Value;
+            }
 
             string line = node.ToJsonString(Options);
             AppendLine(line);
@@ -422,6 +434,11 @@ namespace OptimierungsAlgoCFD.Core
 
         private static RunJournalEntry ParseEntry(JsonObject node, string line)
         {
+            JsonNode? durationNode = node["DurationSeconds"];
+            double? durationSeconds = durationNode != null
+                ? durationNode.GetValue<double>()
+                : null;
+
             return new RunJournalEntry
             {
                 Index = node["Index"]!.GetValue<int>(),
@@ -430,6 +447,7 @@ namespace OptimierungsAlgoCFD.Core
                 Factor = node["Factor"].Deserialize<float>(Options),
                 Tag = node["Tag"]?.GetValue<string>() ?? "",
                 Parameters = node["Parameters"].Deserialize<Dictionary<string, float>>(Options) ?? new(),
+                DurationSeconds = durationSeconds,
                 RecordJson = node["Record"]?.ToJsonString(Options)
                              ?? throw new JsonException("Eintrag ohne Record."),
                 Line = line

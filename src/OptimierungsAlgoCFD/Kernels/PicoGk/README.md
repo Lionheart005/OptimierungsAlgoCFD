@@ -29,7 +29,7 @@ In klassischen CAD-Kerneln (NURBS / B-Rep) scheitern automatisierte Optimierungs
 
 Als Entwickler eines Bauteilprojekts musst du dich **nicht** um `Library.Go(...)`, Viewer-Fenster oder OpenGL-Kontexte kümmern:
 1. Deine Projektklasse erbt von [`CfdProjectDefinition`](../../Composition/CfdProjectDefinition.cs).
-2. Diese nutzt automatisch [`PicoGkKernel`](PicoGkKernel.cs), der `Library.Go(voxelResolution, ..., bEndAppWithTask: true)` mit der aus `simulation.json` geladenen Voxelgröße (`BaseVoxelResolution`, Standard `0.5` mm) startet.
+2. Diese nutzt automatisch [`PicoGkKernel`](PicoGkKernel.cs), der `Library.Go(voxelResolution, ..., bEndAppWithTask: true)` mit der aus `simulation.json` geladenen Voxelgröße (`BaseVoxelResolution`, Standard `0.5` mm) startet. Zuvor prüft `VoxelResolutionAdvisor` die Voxelgröße im Realraum gegen die Oberflächen-Zielzellgröße und verfeinert sie bei `AutoVoxelResolution = true` automatisch (bis minimal `0.1` mm).
 3. Auf dem Linux-Server sorgt `scripts/sim-runner.sh` automatisch für das virtuelle Display (`xvfb-run -a`) und die native Bibliothek (`libpicogk.so` / `libpicogk.26.2.so`).
 
 ---
@@ -157,5 +157,5 @@ float frontalArea = (boundingBox.vecMax.Y - boundingBox.vecMin.Y)
    - `MetricScaling.Area` ($\times s^2$) für Flächen (`FrontalArea`, `SurfaceArea`, Kreuzprodukte),
    - `MetricScaling.Linear` ($\times s^1$) für Längen (`Span`, `Chord`),
    - `MetricScaling.None` ($\times 1$) für dimensionslose Verhältnisse oder Winkel.
-3. **Mindestwandstärke beachten:**  
-   Bei einer Voxelgröße von `BaseVoxelResolution = 0.5` mm sollten tragende Strukturen und Flügelkanten in der skalierten Arbeitsgröße mindestens ~`1.0` bis `1.5` mm dick sein (mindestens 2–3 Voxel), damit dünne Häute beim Voxeln nicht aufreißen.
+3. **Mindestwandstärke & Start-Voxelprüfung beachten:**  
+   Bei einer Voxelgröße von `BaseVoxelResolution = 0.5` mm sollten tragende Strukturen und Flügelkanten in der skalierten Arbeitsgröße mindestens ~`1.0` bis `1.5` mm dick sein (mindestens 2–3 Voxel), damit dünne Häute beim Voxeln nicht aufreißen. `VoxelResolutionAdvisor` prüft beim Start, ob der Realraum-Voxel nicht gröber als 80 % der Oberflächen-Zielzellgröße ist; mit `"AutoVoxelResolution": true` passt das Framework die effektive Voxelgröße beim Start automatisch nach unten an (ohne den `--resume`-Fingerprint zu ändern).

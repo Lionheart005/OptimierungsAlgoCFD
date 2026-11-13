@@ -64,7 +64,8 @@ namespace OptimierungsAlgoCFD.Tests
         {
             BoundaryLayerMode = "Threshold",
             WakeRefinement = false,
-            DetailBox = false
+            DetailBox = false,
+            MeshSizeFromCurvature = false
         };
 
         [Fact]

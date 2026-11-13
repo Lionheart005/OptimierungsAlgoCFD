@@ -35,6 +35,12 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public bool LastCallWasReplayed { get; private set; }
 
+        /// <summary>
+        /// Gemessene bzw. aus dem Journal wiedergegebene Laufzeit des letzten
+        /// <see cref="RunPipeline"/>-Aufrufs in Sekunden.
+        /// </summary>
+        public double? LastCallDurationSeconds { get; private set; }
+
         /// <param name="requiredMetrics">
         /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
         /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
@@ -294,7 +300,15 @@ namespace OptimierungsAlgoCFD.Core
                 }
 
                 LastCallWasReplayed = false;
-                if (_journal == null) return RunPipelineCore(parameters, iteration, variant);
+                LastCallDurationSeconds = null;
+                if (_journal == null)
+                {
+                    var directStopwatch = Stopwatch.StartNew();
+                    ModelRecord directRecord = RunPipelineCore(parameters, iteration, variant);
+                    directStopwatch.Stop();
+                    LastCallDurationSeconds = directStopwatch.Elapsed.TotalSeconds;
+                    return directRecord;
+                }
 
                 // Wiederaufnahme (TODO-51): erst das Journal fragen, sonst rechnen und anhängen.
                 // Faktor und Tag sind hier schon die wirksamen (nach TODO-42/43).
@@ -305,13 +319,18 @@ namespace OptimierungsAlgoCFD.Core
                     && replayed != null)
                 {
                     LastCallWasReplayed = true;
+                    LastCallDurationSeconds = _journal.LastReplayedDurationSeconds;
                     return replayed;
                 }
 
+                var sw = Stopwatch.StartNew();
                 ModelRecord record = RunPipelineCore(parameters, iteration, variant);
+                sw.Stop();
+                double elapsedSeconds = sw.Elapsed.TotalSeconds;
+                LastCallDurationSeconds = elapsedSeconds;
 
                 // Sofort bei der Rückgabe: die Aufrufer verändern den Datensatz danach noch.
-                _journal.Append(iteration, variant, factor, tag, parameters, record);
+                _journal.Append(iteration, variant, factor, tag, parameters, record, elapsedSeconds);
                 return record;
             }
             finally
@@ -381,6 +400,17 @@ namespace OptimierungsAlgoCFD.Core
                         if (cellCount > 0)
                         {
                             record.PassiveParameters["MeshCells"] = cellCount;
+                        }
+
+                        Su2CellBreakdown? breakdown = MeshMetrics.ReadSu2CellBreakdown(meshPath);
+                        if (breakdown != null)
+                        {
+                            record.PassiveParameters["MeshCells_Tri"] = breakdown.SurfaceTriangles;
+                            record.PassiveParameters["MeshCells_Quad"] = breakdown.SurfaceQuads;
+                            record.PassiveParameters["MeshCells_Prism"] = breakdown.Prisms;
+                            record.PassiveParameters["MeshCells_Hexa"] = breakdown.Hexahedra;
+                            record.PassiveParameters["MeshCells_Tet"] = breakdown.Tetrahedra;
+                            record.PassiveParameters["MeshCells_Pyramid"] = breakdown.Pyramids;
                         }
 
                         // Kennwerte des Netzes (Schichtzahl, Dicke, Stufe der Rückfall-Leiter …) in die CSV

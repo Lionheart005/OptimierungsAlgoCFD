@@ -84,6 +84,42 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         [Fact]
+        public void ThreeDDefaults_Are_Moderately_Tightened_While_TwoDDefaults_Remain_Unchanged()
+        {
+            var gmsh3d = new GmshMesherOptions();
+            var su2 = new Su2SolverOptions();
+            var gmsh2d = new Gmsh2DMesherOptions();
+
+            Assert.Equal(1.5f, gmsh3d.TargetYPlus);
+            Assert.Equal(1.28f, gmsh3d.BoundaryLayerGrowthRate);
+            Assert.Equal(1.5f, su2.TargetYPlus);
+
+            Assert.Equal(1.0f, gmsh2d.TargetYPlus);
+            Assert.Equal(1.2f, gmsh2d.BoundaryLayerGrowthRate);
+        }
+
+        [Fact]
+        public void BoundaryLayerCalculator_MantaAuv_With_New3DDefaults_Produces_Moderate_LayerCount()
+        {
+            var defaults = new GmshMesherOptions();
+            var spec = BoundaryLayerCalculator.Calculate(
+                density: 1025.0f,
+                velocity: 2.0f,
+                dynamicViscosity: 0.001001f,
+                characteristicLengthMm: 50.0f,
+                targetYPlus: defaults.TargetYPlus,
+                growthRate: defaults.BoundaryLayerGrowthRate,
+                minLayers: defaults.BoundaryLayerMinLayers,
+                fixedLayers: defaults.BoundaryLayerLayers,
+                coverage: 1.0f);
+
+            Assert.InRange(spec.LayerCount, 13, 17);
+            Assert.Equal(15, spec.LayerCount);
+            Assert.True(spec.TotalThicknessMm >= spec.BoundaryLayerThicknessMm);
+            Assert.InRange(spec.FirstLayerHeightMm, 0.014f, 0.016f);
+        }
+
+        [Fact]
         public void BoundaryLayerCalculator_Enforces_MinLayers_And_FixedLayers()
         {
             // minLayers greift, wenn automatische Schichten kleiner wären

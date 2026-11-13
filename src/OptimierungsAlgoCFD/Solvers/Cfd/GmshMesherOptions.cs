@@ -48,6 +48,23 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// <summary>Segmente über den Umfang — bestimmt die Feinheit des Mantels.</summary>
         public int TunnelSegments { get; set; } = 64;
 
+        // --- Physikalische Domänengarantien (Mindestabstände & Versperrungsgrad) ---
+
+        /// <summary>Mindestabstand stromaufwärts vor der Modellnase als Vielfaches der Modelllänge L (Standard 5.0).</summary>
+        public float TunnelMinUpstreamFactor { get; set; } = 5.0f;
+
+        /// <summary>Mindestabstand stromabwärts hinter dem Modellheck als Vielfaches der Modelllänge L (Standard 15.0).</summary>
+        public float TunnelMinDownstreamFactor { get; set; } = 15.0f;
+
+        /// <summary>Mindestabstand quer zur Strömung in ±Y und ±Z als Vielfaches von Breite B bzw. Höhe H (Standard 5.0).</summary>
+        public float TunnelMinLateralFactor { get; set; } = 5.0f;
+
+        /// <summary>
+        /// Maximal erlaubter Versperrungsgrad A_frontal / A_tunnel in Prozent (Standard 0.3 %).
+        /// Werte &lt;= 0 deaktivieren die automatische Blockage-Aufweitung.
+        /// </summary>
+        public float TunnelMaxBlockagePercent { get; set; } = 0.3f;
+
         // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
         /// <summary>Kleinste Zellgröße direkt an der Wand.</summary>
         public float BoundaryLayerSizeMin { get; set; } = 1.2f;
@@ -83,20 +100,33 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// </summary>
         public bool DetailBox { get; set; } = true;
 
-        /// <summary>Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge lenX (Standard 1.0).</summary>
-        public float DetailBoxLengthFactor { get; set; } = 1.0f;
+        /// <summary>Länge der Detailbox hinter dem Modell als Vielfaches der Modelllänge lenX (Standard 1.5).</summary>
+        public float DetailBoxLengthFactor { get; set; } = 1.5f;
 
         /// <summary>Überstand in Y und Z als Vielfaches von lenY bzw. lenZ (Standard 0.25).</summary>
         public float DetailBoxWidthFactor { get; set; } = 0.25f;
+
+        /// <summary>
+        /// Mindest-Z-Puffer der Detailbox als Anteil der Modelllänge L (Standard 0.15), damit schlanke/flache
+        /// Körper nicht an einem zu kleinen <c>DetailBoxWidthFactor * lenZ</c> verhungern. Werte &lt;= 0 deaktivieren
+        /// die Mindestlänge.
+        /// </summary>
+        public float DetailBoxMinHeightLengthFactor { get; set; } = 0.15f;
 
         /// <summary>Zellgröße in der Detailbox in mm auf Stufe 1.0; 0 = automatisch 2,5 × Oberflächen-Zellgröße.</summary>
         public float DetailBoxCellSize { get; set; } = 0.0f;
 
         // --- Krümmungsabhängige Netzverfeinerung ---
         /// <summary>
-        /// Mesh.MeshSizeFromCurvature aktivieren; wirkt bei Neuvernetzung der Oberfläche in TODO-40.
+        /// Mesh.MeshSizeFromCurvature aktivieren (Standard true); verfeinert gekrümmte Oberflächen und Kanten.
         /// </summary>
-        public bool MeshSizeFromCurvature { get; set; } = false;
+        public bool MeshSizeFromCurvature { get; set; } = true;
+
+        /// <summary>
+        /// Untergrenze für die krümmungsabhängige Verfeinerung als Faktor auf <c>surfaceSize</c> (Standard 0.5,
+        /// intern auf [0.1, 1.0] geklammert), damit feine Voxel-Splitter/Fillets die Zellzahl nicht explodieren lassen.
+        /// </summary>
+        public float CurvatureMinSizeFactor { get; set; } = 0.5f;
 
         // --- Strukturierte Grenzschicht (TODO-40) ---
         /// <summary>
@@ -109,14 +139,14 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// </summary>
         public string BoundaryLayerMode { get; set; } = "Prism";
 
-        /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.0).</summary>
-        public float TargetYPlus { get; set; } = 1.0f;
+        /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.5).</summary>
+        public float TargetYPlus { get; set; } = 1.5f;
 
         /// <summary>Mindestanzahl an Randschichten (Standard 4).</summary>
         public int BoundaryLayerMinLayers { get; set; } = 4;
 
-        /// <summary>Wachstumsfaktor von Schicht zu Schicht in der Grenzschicht (Standard 1.2).</summary>
-        public float BoundaryLayerGrowthRate { get; set; } = 1.2f;
+        /// <summary>Wachstumsfaktor von Schicht zu Schicht in der Grenzschicht (Standard 1.28).</summary>
+        public float BoundaryLayerGrowthRate { get; set; } = 1.28f;
 
         /// <summary>Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.</summary>
         public int BoundaryLayerLayers { get; set; } = 0;

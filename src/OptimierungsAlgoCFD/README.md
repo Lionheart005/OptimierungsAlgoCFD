@@ -41,7 +41,7 @@ OptimierungsAlgoCFD/
 │       ├── MantaAuv/                  OptimierungsAlgoCFD.Projects.MantaAuv       (3D-AUV-Rumpf)
 │       └── Naca2D/                    OptimierungsAlgoCFD.Projects.Naca2D         (2D-NACA-Profil)
 ├── scripts/                           PowerShell-, Bash- & Python-Skripte (Deploy, Server, Plots)
-├── tests/                             550+ Unit- und Architekturtests (laufen ohne externe Solver)
+├── tests/                             780+ Unit- und Architekturtests (laufen ohne externe Solver)
 ├── config/                            Notausgang für maschinenspezifische *.local.json
 └── Ergebnisse/                        Projektbezogene Simulationsergebnisse (Ergebnisse/<Projekt>/)
 ```
@@ -148,10 +148,10 @@ Am Ende jeder Iteration wird der beste Kandidat mit einem leicht verjitterten Pa
 - **Transparenz:** Spalten `Bayes_PredictedFitness/Low/High/Explorer` in `Simulation_Results.csv`, `[BAYES]`-Logzeilen (Treffsicherheit der letzten Runde, Parameter-Wichtigkeit) und `Analyseergebnisse/Bayes_Verlauf.csv`.
 - **Eigenschaften, auf die man sich verlassen kann:** Das Modell bricht nie den Lauf ab (bei numerischem Scheitern wird die Runde mit Latin-Hypercube-Punkten gefüllt). Mit gleichem Seed und gleichen Ergebnissen macht der Optimierer bitgleich dieselben Vorschläge, damit die Wiederaufnahme (`RunJournal`) greift; getestet in `ReproducibilityAndResumeTests`. `EvaluateAndSelectBest` setzt nur Fitness und Vorhersagespalten, der Zustand ändert sich allein in `PrepareNextIteration`. Voraussetzungen (Parametergrenzen) prüft `IOptimizationPreflight.Preflight` **vor** der Netzkalibrierung.
 - **Grenzen:** Ganzzahlige Parameter werden stetig behandelt (der Generator rundet). `MaxDeviations` wirkt nicht. Das Verfahren ist für etwa 5 bis 20 Parameter gedacht. Bei einer Formel mit Sprüngen und ohne deklarierte `RequiredMetrics` hat der Modus `"Fitness"` keinen Vorteil gegenüber `"Rsm"`; im synthetischen Manta-Test (`BayesMetricsModeTests`) war `"Metrics"` dagegen rund 35 % besser als beide.
-- **Andockstelle für fremde Modelle (z. B. ein PINN eines Partners):** entweder als weiterer, schneller Solver (`ISimulationSolver` in `Solvers/Ml/`, Austausch über Dateien) oder als `ISurrogateModel`, das als Vorwissen für den Gauß-Prozess dient. Siehe `.plans/llm_geometrie_bewertung.md`.
+- **Andockstelle für fremde Modelle (z. B. ein PINN eines Partners):** entweder als weiterer, schneller Solver (`ISimulationSolver` in `Solvers/Ml/`, Austausch über Dateien) oder als `ISurrogateModel`, das als Vorwissen für den Gauß-Prozess dient.
 
-### Reproduzierbarkeit & Wiederaufnahme (`RunJournal`, `RunInfoWriter`)
-Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-Hash, Werkzeugversionen und den Quellcode-Snapshot (`Quellstand/`) im Ergebnisordner. Nach jeder abgeschlossenen Variante wird ein Eintrag in `Wiederaufnahme/journal.jsonl` geflusht. Bei `--resume` startet der Lauf mit demselben Seed von vorn, spielt bereits berechnete Varianten in Sekunden aus dem Journal ab und rechnet nahtlos ab der Abbruchstelle weiter (sofern sich keine Konfigurationsdatei geändert hat).
+### Reproduzierbarkeit, Wiederaufnahme & Voxel-Prüfung (`RunJournal`, `RunInfoWriter`, `VoxelResolutionAdvisor`)
+Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-Hash, Werkzeugversionen und den Quellcode-Snapshot (`Quellstand/`) im Ergebnisordner. Beim Start prüft `VoxelResolutionAdvisor`, ob `BaseVoxelResolution` im Realraum fein genug für die Oberflächen-Zielzellgröße ist, warnt bei groben Voxeln oder passt die effektive Start-Voxelgröße bei `AutoVoxelResolution = true` automatisch nach unten an (ohne den `--resume`-Fingerprint zu verändern). Nach jeder abgeschlossenen Variante wird ein Eintrag in `Wiederaufnahme/journal.jsonl` geflusht; bei `--resume` startet der Lauf mit demselben Seed von vorn, spielt bereits berechnete Varianten samt ihrer `DurationSeconds` in Sekunden aus dem Journal ab und rechnet nahtlos ab der Abbruchstelle weiter (sofern sich keine Konfigurationsdatei geändert hat).
 
 ---
 
@@ -159,7 +159,7 @@ Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-H
 
 - **`ModelRecord`**: Repräsentiert eine Variante und trennt strikt:
   - `ActiveParameters`: Vom Optimierer gesetzte Entwurfsparameter (z. B. `Length`, `Width`, optional auch `AngleOfAttackDeg`).
-  - `PassiveParameters`: Gemessene Größen aus Geometrie (`Volume`, `FrontalArea`, …), Vernetzer (`MeshCells`, `BoundaryLayerHexShare`, `BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerFirstCellMm`, `BoundaryLayerStage`, `BoundaryLayerMaxTiltDeg`, `BoundaryLayerMinScale`, `BoundaryLayerThinnedShare`, `MeshFallback`, `MeshFailed`, `CellLimitExceeded`) und Solver (`Drag`, `Lift`, `YPlus_P95`, `Su2_Iterations`, `Su2_Converged`, `Su2_Osc_*`, `Su2_IterErr_*`).
+  - `PassiveParameters`: Gemessene Größen aus Geometrie (`Volume`, `FrontalArea`, …), Vernetzer (`MeshCells`, `MeshCells_Tri`, `MeshCells_Quad`, `MeshCells_Prism`, `MeshCells_Hexa`, `MeshCells_Tet`, `MeshCells_Pyramid`, `BoundaryLayerHexShare`, `BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerFirstCellMm`, `BoundaryLayerStage`, `BoundaryLayerMaxTiltDeg`, `BoundaryLayerMinScale`, `BoundaryLayerThinnedShare`, `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL`, `MeshFallback`, `MeshFailed`, `CellLimitExceeded`) und Solver (`Drag`, `Lift`, `YPlus_P95`, `Su2_CD_p`, `Su2_CD_v`, `Su2_Iterations`, `Su2_Converged`, `Su2_Osc_*`, `Su2_IterErr_*`).
   - `Fitness`, `SimulationFailed`, `StlPath`, `MeshPath`, `FineVerified`, `FineDeviation`.
 - **`GeometryResult` & `MetricScaling`**: Der Geometriegenerator meldet jede Metrik zusammen mit ihrer physikalischen Dimension:
   ```csharp
@@ -179,23 +179,23 @@ Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-H
 ## 6. Solver- & Vernetzer-Anbindung im Detail (`Solvers/Cfd/`)
 
 ### 6.1 Vernetzung mit Gmsh (`GmshCfdMesher` für 3D, `Gmsh2DMesher` für 2D)
-- **Eigenständiger Windkanal (`TunnelGeometry` + `StlWriter`):** Der 3D-Windkanal (Quader oder Zylinder) wird direkt im C#-Code als STL erzeugt, damit die CFD-Schicht keinerlei Abhängigkeit zu PicoGK besitzt.
+- **Einheitliche `scaleFactor`-Konsistenz & garantierter realer Windkanal (`TunnelGeometry` + `StlWriter`):** `GmshCfdMesher` skaliert alle konfigurierten mm-Zellgrößen und Kanalabstände einheitlich mit `scaleFactor` (sodass alle Maße in realen mm wirken) und erzeugt den 3D-Windkanal direkt im C#-Code als STL ohne PicoGK-Abhängigkeit. Unterschreitet die Tunnelbox die physikalischen Mindestabstände (`TunnelMinUpstreamFactor = 5.0`, `TunnelMinDownstreamFactor = 15.0`, `TunnelMinLateralFactor = 5.0`) oder überschreitet sie `TunnelMaxBlockagePercent = 0.3`, weitet der Mesher sie automatisch nach außen auf.
 - **Zwei-Schritt-Vernetzung für 3D-Grenzschichten (`BoundaryLayerMode = "Prism"` oder `"Hexa"`):**
-  1. `Wall_<Variante>.geo` parametrisiert die STL-Oberfläche über `ClassifySurfaces` neu und vernetzt sie sauber.
-  2. `Meshing_<Variante>.geo` extrudiert darauf die Grenzschicht (erste Zellhöhe $y_1$ über `BoundaryLayerCalculator` aus `TargetYPlus`, Wachstumsrate `BoundaryLayerGrowthRate`) und füllt das restliche Kanalvolumen mit Tetraedern. Für scharfe Voxel-Kanten ist `"Prism"` (Dreiecksprismen ohne Pyramiden-Übergangsschicht) die robuste Wahl. Schlägt die Schichtextrusion an engen Radien fehl, reduziert der Mesher automatisch stufenweise die äußeren Schichten, wobei $y_1$ (und damit $y^+$) erhalten bleibt.
+  1. `Wall_<Variante>.geo` parametrisiert die STL-Oberfläche über `ClassifySurfaces` neu und vernetzt sie sauber — inkl. krümmungsabhängiger Verfeinerung (`MeshSizeFromCurvature = true`, `CurvatureElements = 20`) mit Untergrenze (`CurvatureMinSizeFactor = 0.5`) gegen Zell-Explosionen an Voxel-Splittern.
+  2. `Meshing_<Variante>.geo` extrudiert darauf die Grenzschicht (Standard in 3D: `TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`, erste Zellhöhe $y_1$ über `BoundaryLayerCalculator`), ergänzt die Nachlauf-Detailbox (mit Z-Mindestpuffer `DetailBoxMinHeightLengthFactor = 0.15` und `DetailBoxLengthFactor = 1.5`) und füllt das restliche Kanalvolumen mit Tetraedern. Für scharfe Voxel-Kanten ist `"Prism"` (Dreiecksprismen ohne Pyramiden-Übergangsschicht) die robuste Wahl. Schlägt die Schichtextrusion an engen Radien fehl, reduziert der Mesher automatisch stufenweise Richtung und Dicke der äußeren Schichten, wobei $y_1$ und Schichtzahl erhalten bleiben.
 - **2D-Profilvernetzung (`Gmsh2DMesher`):** Erzeugt aus einer `Shape2D`-Kontur ein ebenes Netz mit großem kreisförmigem Fernfeld (`FarfieldRadiusFactor = 500`), strukturierter Quad-Grenzschicht (`BoundaryLayer`-Feld), Vorder-/Hinterkantenverfeinerung (`EdgeRefinementFactor`), `DetailBox` und Nachlauf-Box (`WakeRefinement`). An scharfen Hinterkanten verhindert ein Knickpunkt-Schutz (`FanPoints`), dass sich Grenzschichtzellen am Profilende selbst durchdringen.
 
-### 6.2 Strömungssimulation mit SU2 (`Su2Solver` & `Su2HistoryAnalyzer`)
-- **Physikalisches Modell:** SU2 löst die inkompressiblen Reynolds-gemittelten Navier-Stokes-Gleichungen (`SOLVER= INC_RANS`) mit konstanter Dichte und Viskosität ohne Energiegleichung (`SA` oder `SST`), stationär (Euler implizit mit adaptiver CFL-Zahl) oder zeitgenau (`TIME_DOMAIN= YES`, `DUAL_TIME_STEPPING-2ND_ORDER`).
+### 6.2 Strömungssimulation mit SU2 (`Su2Solver`, `Su2HistoryAnalyzer` & `Su2SurfaceAnalyzer`)
+- **Physikalisches Modell:** SU2 löst die inkompressiblen Reynolds-gemittelten Navier-Stokes-Gleichungen (`SOLVER= INC_RANS`) mit konstanter Dichte und Viskosität ohne Energiegleichung (`SA` oder `SST`), stationär (Euler implizit mit adaptiver CFL-Zahl) oder zeitgenau (`TIME_DOMAIN= YES`, `DUAL_TIME_STEPPING-2ND_ORDER`). Bei frühem Cauchy-Stopp (`CauchyTolerance = "1e-5"`) mit Rest-Drift setzt `AutoRestartOnDrift` (bis `MaxConvergenceRestarts = 3`) automatisch per `RESTART_SOL= YES` fort.
 - **Randbedingungen (Kopplung an Gmsh über `Physical Surface` / `Physical Curve`):**
   - `MARKER_FAR = ( Farfield )`: Fernfeld-Randbedingung an der Kanal-Außenhülle (Anströmung in $+x$-Richtung bzw. gedreht um `AngleOfAttackDeg`).
   - `MARKER_HEATFLUX = ( Wall, 0.0 )`: Adiabate Haftbedingung ($\vec{v} = 0$) auf der Bauteiloberfläche.
   - `MARKER_MONITORING = ( Wall )` / `MARKER_PLOTTING = ( Wall )`: Integrationsfläche für alle Beiwerte ($C_D, C_L, C_{SF}, C_{Mx}, C_{My}, C_{Mz}$) und Ausgabefläche für `surface.vtu`.
 - **Einheiten:** Das gesamte Framework rechnet in **Millimetern**; die Umrechnung der Referenzfläche (`ReferenceAreaMetric`, $\text{mm}^2 \to \text{m}^2$) und Koordinaten (`MESH_SCALE_CHANGE = 0.001`) für SU2 erfolgt automatisch im Solver.
-- **Spaltenauswertung (`ResultMetrics`) & Konvergenz (`Su2HistoryAnalyzer`):**
+- **Spaltenauswertung (`ResultMetrics`), Konvergenz & Oberflächenanalyse:**
   - `ResultMetrics` ordnet internen Metriknamen (z. B. `"Lift"`) die Spalten aus SU2s `history.csv` (z. B. `"CL"`) zu. Verglichen wird exakt nach Spaltenname (nur notfalls per Präfix mit deutlicher Warnung, damit `"CM"` nicht mehrdeutig auf `CMx`/`CMy`/`CMz` trifft).
   - Nach jedem Lauf archiviert der Solver `history.csv` und `current_config.cfg` unter `Analyseergebnisse/Verlaeufe/`. `Su2HistoryAnalyzer` prüft über das Endfenster die **Drift zwischen erster und zweiter Fensterhälfte** (`IterativeToleranceFraction`), berechnet die trendbereinigte Schwingungsamplitude (`Su2_Osc_<Metrik>`) und bildet je nach Einstellung (`Last`, `CauchyWindowMean`, `TailMean`) den Ergebniswert.
-  - `YPlusAnalyzer` liest die erzeugte `surface.vtu` aus und protokolliert `YPlus_Median`, `YPlus_P95` und `YPlus_Max` in `record.PassiveParameters`.
+  - `YPlusAnalyzer` und `Su2SurfaceAnalyzer` werten die erzeugte `surface.vtu` aus und protokollieren neben `YPlus_Median`, `YPlus_P95` und `YPlus_Max` auch die Druck- und Reibungswiderstandsanteile `Su2_CD_p` und `Su2_CD_v` in `record.PassiveParameters`.
 
 ---
 
@@ -248,7 +248,7 @@ Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-H
 dotnet test OptimierungsAlgoCFD.sln
 ```
 
-Alle über 550 Tests laufen in wenigen Sekunden auf Windows und Linux komplett ohne installierte externe Solver (PicoGK, Gmsh, SU2 werden für Pipeline-Tests über schlanke Mock-/Stub-Implementierungen ersetzt). Neben den Unit-Tests für Algorithmen, Skalierung, GCI-Kalibrierung, Konvergenzanalyse und Journaling sichern fünf spezielle Testklassen die Konsistenz des gesamten Repositories ab:
+Alle über 780 Unit-Tests laufen in wenigen Sekunden auf Windows und Linux komplett ohne installierte externe Solver (PicoGK, Gmsh, SU2 werden für Pipeline-Tests über schlanke Mock-/Stub-Implementierungen ersetzt). Neben den Unit-Tests für Algorithmen, Skalierung, GCI-Kalibrierung, Konvergenzanalyse und Journaling sichern fünf spezielle Testklassen die Konsistenz des gesamten Repositories ab:
 
 - **`ProjectLayoutTests`**: Prüft, dass alle Konfigurationsdateien im jeweiligen Projektordner liegen, `config/` keine eingecheckten JSONs enthält und die Code-Default-Programmpfade PATH-relativ bleiben.
 - **`TemplateProjectTests`**: Prüft, dass `_Vorlage3D` (3D) und `_Vorlage2D` (2D) vollständig sind, kommentierte JSONs besitzen und ihre Code-Defaults exakt mit den Vorlagen-JSONs übereinstimmen.

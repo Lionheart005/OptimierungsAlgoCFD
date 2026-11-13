@@ -124,6 +124,19 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         public bool TreatUnconvergedAsFailed { get; set; } = true;
 
         /// <summary>
+        /// Wenn <c>true</c> (Standard), wird ein stationärer SU2-Lauf, der über das Cauchy-Kriterium
+        /// vor <c>Su2MaxIterations</c> anhält und laut C#-Driftanalyse noch systematisch driftet
+        /// (keine rein stationäre Oszillation), automatisch per <c>RESTART_SOL= YES</c> mit
+        /// verschärftem <c>CONV_CAUCHY_EPS</c> fortgesetzt.
+        /// </summary>
+        public bool AutoRestartOnDrift { get; set; } = true;
+
+        /// <summary>
+        /// Maximale Anzahl automatischer stationärer Restart-Blöcke je Variante (<c>0</c> = deaktiviert).
+        /// </summary>
+        public int MaxConvergenceRestarts { get; set; } = 3;
+
+        /// <summary>
         /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35, TODO-W3):
         /// <list type="bullet">
         ///   <item><c>"TailMean"</c> (Standard): Mittel des Endfensters ohne Anlaufphase.</item>
@@ -148,9 +161,9 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         // --- y+-Ziel und Grenzschichtprüfung (TODO-41) ---
         /// <summary>
-        /// Ziel-y+ für die Wandauflösung der Grenzschicht (Standard 1.0) (TODO-41).
+        /// Ziel-y+ für die Wandauflösung der Grenzschicht (Standard 1.5 in 3D) (TODO-41).
         /// </summary>
-        public float TargetYPlus { get; set; } = 1.0f;
+        public float TargetYPlus { get; set; } = 1.5f;
 
         /// <summary>
         /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 3.0).

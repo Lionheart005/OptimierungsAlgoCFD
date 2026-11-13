@@ -21,7 +21,16 @@ namespace OptimierungsAlgoCFD.Core
         bool CellLimitExceeded = false,
         int BoundaryLayerLayers = 0,
         float BoundaryLayerThicknessMm = 0f,
-        int BoundaryLayerStage = 0);
+        int BoundaryLayerStage = 0,
+        int SurfaceTriangles = 0,
+        int SurfaceQuads = 0,
+        int VolumePrisms = 0,
+        int VolumeHexahedra = 0,
+        int VolumeTetrahedra = 0,
+        int VolumePyramids = 0,
+        float TunnelBlockagePercent = float.NaN,
+        float PressureDragCoeff = float.NaN,
+        float ViscousDragCoeff = float.NaN);
 
     /// <summary>
     /// Ergebnis der Grid Convergence Index (GCI) Berechnung nach Celik et al. (2008).

@@ -25,7 +25,9 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             SimulationConfig config,
             Su2SolverOptions options,
             FlowConditions? flow = null,
-            float? refLength = null)
+            float? refLength = null,
+            string? steadyRestartFile = null,
+            int? convStartIterOverride = null)
         {
             string refAreaString = refArea.ToString(CultureInfo.InvariantCulture);
 
@@ -167,14 +169,14 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 "%",
                 "% =============================================================================",
                 "% ABBRUCHKRITERIEN",
-                "% Abbruch nach ITER Iterationen, wenn CONV_FIELD ueber CONV_CAUCHY_ELEMS",
-                "% um weniger als CONV_CAUCHY_EPS schwankt oder Residuum unter 10^-8 faellt.",
+                "% Abbruch meist ueber Cauchy (CONV_FIELD ueber CONV_CAUCHY_ELEMS < CONV_CAUCHY_EPS)",
+                "% oder nach ITER. CONV_RESIDUAL_MINVAL= -8 greift bei 3D-RANS selten (Plateau -4..-5).",
                 "% =============================================================================",
                 $"ITER= {config.Su2MaxIterations}",          
                 $"CONV_FIELD= {convergenceField}",
                 $"CONV_CAUCHY_ELEMS= {config.CauchyElements}",
                 $"CONV_CAUCHY_EPS= {config.CauchyTolerance}",
-                "CONV_STARTITER= 100",
+                $"CONV_STARTITER= {convStartIterOverride ?? 100}",
                 "CONV_RESIDUAL_MINVAL= -8",
                 $"HISTORY_OUTPUT= ({historyOutput})",
                 "%",
@@ -197,7 +199,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     cfgContent.Add(aoaLine);
             }
 
-            if (options.TimeDomain != null && options.TimeDomain.Enabled)
+            bool isUnsteady = options.TimeDomain != null && options.TimeDomain.Enabled;
+            if (isUnsteady && options.TimeDomain != null)
             {
                 float dt;
                 if (options.TimeDomain.TimeStep > 0f)
@@ -255,6 +258,15 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     cfgContent.Add($"RESTART_ITER= {restartIter}");
                     cfgContent.Add("SOLUTION_FILENAME= restart.dat");
                 }
+            }
+            else if (!string.IsNullOrWhiteSpace(steadyRestartFile))
+            {
+                cfgContent.Add("%");
+                cfgContent.Add("% =============================================================================");
+                cfgContent.Add("% STATIONAERER NEUSTART (AP-1)");
+                cfgContent.Add("% =============================================================================");
+                cfgContent.Add("RESTART_SOL= YES");
+                cfgContent.Add($"SOLUTION_FILENAME= {steadyRestartFile.Trim()}");
             }
 
             File.WriteAllLines(configPath, cfgContent);

@@ -14,7 +14,7 @@
 
 ## 1. Ausgangslage & gemessene Befunde (`MantaAuv`)
 
-Die jüngsten Fixes aus [wandschicht_zellzahl.md](wandschicht_zellzahl.md) (geglättete Normalen via
+Die jüngsten Fixes aus [.old/wandschicht_zellzahl.md](.old/wandschicht_zellzahl.md) (geglättete Normalen via
 `Using View[0]`, `MaxCells3D = 5M`) haben die Grenzschicht deutlich stabilisiert. Im Lauf `20261113_113149`
 liefen alle 7 Kalibrierstufen (`Kal1`–`Kal7`) sauber mit **21 Prismenschichten (~2,22 mm Dicke)** durch,
 ohne auf 16 Schichten zurückzufallen:
@@ -305,3 +305,66 @@ Bevor die Änderungen für volle Serverläufe freigegeben werden:
    * Vergleich `Var2` vs. `Var4`: Verschwindet die unplausible Zellzahl-Spreizung (`3,20M` vs. `1,36M`)?
 3. **Regressionscheck auf `Naca2D`:** Bestehende 2D-Kalibrierung / 2D-Konvergenz darf durch die
    Anpassungen nicht beeinträchtigt werden.
+
+---
+
+## 5. Umsetzungsprotokoll (Live)
+
+### Arbeitspakete
+- [x] **`AP-1` — SU2-Konvergenzabbruch & automatischer Steady-Restart**
+  - **Architektur-/Designentscheidungen:**
+    - `ControlRunConfig.CauchyTolerance` auf `"1e-5"` (bei `CauchyElements = 500`, `Su2MaxIterations = 20000`) umgestellt, da `1e-6` in 3D mit Venkatakrishnan-Limiter selten direkt greift.
+    - Neue Optionen in `Su2SolverOptions`: `AutoRestartOnDrift = true`, `MaxConvergenceRestarts = 3`.
+    - `Su2ConfigGenerator.Generate` behält bei Standardläufen (`steadyRestartFile = null`) identische Nicht-Kommentar-Zeilen; korrigierter ASCII-/<=100-Zeichen-Kommentar zu `CONV_RESIDUAL_MINVAL= -8`; bei aktivem Steady-Restart werden `RESTART_SOL= YES`, `SOLUTION_FILENAME= <datei>` und optional angepasstes `CONV_STARTITER` geschrieben.
+    - `Su2Solver.Solve` prüft nach Block 0 (und jedem Restart-Block) mittels `Su2HistoryAnalyzer` + `Su2ConvergenceJudge` (+ `IsStationary`), setzt bei erkanntem systematischen Drift innerhalb des verbleibenden `Su2MaxIterations`-Budgets automatisch fort (Toleranz je Block ÷ 10 bis Untergrenze `1e-7`), bereinigt vor Block 0 alte `restart.dat`/`restart_flow.dat` gegen Cross-Varianten-Leakage und fügt Block-Historien (`StitchHistoryCsv`) monoton aneinander.
+    - `"0.0-fach"`-Logformatierung in `Su2Solver.cs` auf `"0.000-fach"` (`InvariantCulture`) behoben; `Program.PrepareUnsteadyRestart` unterstützt `restart_flow.dat`-Fallback und `CleanUnsteadyRestartFiles` schont `restart_flow.dat`.
+  - **Erkenntnisse aus lokaler Verifikation (SU2 v8.5.0):** Ein direkter Lauf mit `SU2_CFD.exe` v8.5.0 bestätigte, dass SU2 bei stationärem `RESTART_SOL= YES` `ITER=` als Restbudget ab 0 zählt und `Inner_Iter` wieder bei 0 beginnt (physikalische Fortsetzung von `CD`), weshalb `ITER = remainingBudget` und `StitchHistoryCsv` mit monotonem Iterations-Offset exakt passen.
+  - **Geänderte/neue Dateien:** `SimulationConfig.cs`, `Su2SolverOptions.cs`, `Su2ConfigGenerator.cs`, `Su2Solver.cs`, `Program.cs`, `OptimierungsAlgoCFD.csproj`, `_Vorlage3D/{simulation.json,solvers/su2.json}`, `_Vorlage2D/{simulation.json,solvers/su2.json}`, `src/projects/BEDIENHANDBUCH.md`, `ConvergenceAndToleranceTests.cs`, `Su2AutoRestartTests.cs` (neu, 14 Tests).
+  - **Tests:** `dotnet test OptimierungsAlgoCFD.sln` nach finaler Bereinigung: **731/731 bestanden** (0 Fehler, 0 übersprungen, 0 Warnungen).
+- [x] **`AP-2` — `RubberBandScaler`-Konsistenz im `GmshCfdMesher`**
+  - **Architektur-/Designentscheidungen:**
+    - Neue Hilfsmethode `SanitizeScaleFactor(float)` (`> 0 && finite`, sonst Fallback `1.0f`) in `GmshCfdMesher`.
+    - `WriteGeoScript`, `AddWakeBox` und `AddDetailBox` multiplizieren alle direkt konfigurierten Millimeter-Werte (`BoundaryLayerSizeMin`, `BoundaryLayerSizeMax`, `BoundaryLayerDistMin/Max`, `SurfaceCellSize`, `WakeCellSize > 0`, `DetailBoxCellSize > 0`, `DetailBox`-`VOut` und den `Thickness`-Floor `1.0f * safeScale`) konsistent genau einmal mit `safeScale`, sodass die abschließende Rückskalierung `Mesh.ScalingFactor = (1.0 / safeScale) * 0.001` für jeden `scaleFactor` identische physikalische Metergrößen liefert.
+    - Bereits im PicoGK-Raum gemessene bzw. einmal skalierte Größen (`bbox()`/`lenX`, `y1Geo`, `2.5f * baseSizeGeo`) werden nicht doppelt skaliert.
+  - **Geänderte/neue Dateien:** `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshCfdMesher.cs`, `tests/OptimierungsAlgoCFD.Tests/ScaleFactorAndTunnelGuaranteeTests.cs` (Tests für `Prism`, `Hexa` und `Threshold` inkl. Fallbacks bei `scaleFactor = 0.35`, `0.42`, `0.5`, `1.0`, `2.0`).
+- [x] **`AP-3` — Windkanal physikalisch absichern (`>= 5 L` / `>= 15 L` / `>= 5 B/H` / Blockage `< 0,3 %`)**
+  - **Architektur-/Designentscheidungen:**
+    - `GmshMesherOptions` um `TunnelMinUpstreamFactor = 5.0f`, `TunnelMinDownstreamFactor = 15.0f`, `TunnelMinLateralFactor = 5.0f`, `TunnelMaxBlockagePercent = 0.3f` (`<= 0` deaktiviert Blockage-Aufweitung) erweitert.
+    - `StlWriter.ReadTriangles(string)` hinzugefügt, damit `GmshCfdMesher.GenerateMesh` über `MeshMetrics.Measure` sowohl den Modell-Hüllquader als auch die reale projizierte Stirnfläche in mm² ermitteln kann (Fallback auf `StlWriter.ReadBounds` bzw. `B * H`).
+    - Neue Methoden `ResolveEffectiveTunnel(...)`, `EnsureTunnel(workingDirectory, modelBoundsPicoGk, scaleFactor, realFrontalAreaMm2)` und Record `TunnelSpec`: rechnen in realen mm, weiten den konfigurierten Tunnel nur nach außen auf (nie kleiner), prüfen Box und Zylinder-Querschnitt gegen `TunnelMaxBlockagePercent`, skalieren das Tunnel-STL in den PicoGK-Raum (`safeScale`), nutzen deterministische Hash-Namen `Static_Windtunnel_{hash}.stl` bei Expansion oder `scaleFactor != 1` (mit Header-/Größen-Cache; für unverändertes `Static_Windtunnel.stl` zusätzlich Bounds-Prüfung), loggen die effektiven Maße via `SimulationLog.Detail(...)` und schreiben `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL` nach `_lastMetrics`.
+    - `ModelRecord.IsMeshMetadataKey` filtert `Tunnel*` als Netz-Metadaten (keine Störung von Konvergenz-/Parameter-Auswertungen).
+  - **Geänderte/neue Dateien:** `src/OptimierungsAlgoCFD/Core/Utilities/StlWriter.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshMesherOptions.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshCfdMesher.cs` (inkl. Fix `ToString("0.1")` → `"0.0"` in `LogTunnelSummary`), `src/OptimierungsAlgoCFD/Core/Models/ModelRecord.cs`, `src/projects/_Vorlage3D/solvers/gmsh.json`, `src/projects/BEDIENHANDBUCH.md`, `tests/OptimierungsAlgoCFD.Tests/ScaleFactorAndTunnelGuaranteeTests.cs` (34 Tests für AP-2 + AP-3).
+  - **Tests & reale Gmsh-Verifikation (`AP-2` + `AP-3`):** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` -> **764/764 bestanden**; zusätzlicher End-to-End-Lauf mit lokalem `gmsh.exe` v4.15.2 (`scaleFactor = 1.0` vs. `0.4`) ergab auf 8 Stellen identische Domain-Bounds (`[-0.33 .. 0.93] × [-0.16088109 .. 0.16088109]²` m, Blockage `0.300 %`, Abstand `5.0L vor / 15.0L nach`, `20774` vs. `20766` Zellen).
+- [x] **`AP-4` — Grenzschicht moderat straffen (`TargetYPlus ~ 1,5`, `GrowthRate ~ 1,28`)**
+  - **Architektur-/Designentscheidungen:**
+    - `GmshMesherOptions`: 3D-Standards auf `TargetYPlus = 1.5f` und `BoundaryLayerGrowthRate = 1.28f` gesetzt.
+    - `Su2SolverOptions`: `TargetYPlus = 1.5f` analog nachgezogen, damit `YPlusWarnFactor × TargetYPlus` (`3.0 × 1.5 = 4.5`) im 3D-Standard konsistent bleibt.
+    - 2D-Konfiguration (`Gmsh2DMesherOptions` auf `1.0f` / `1.2f`, `_Vorlage2D/*`, `Naca2D/*`) bleibt bewusst unverändert für regressionsfreie NASA-TMR-Validierung.
+  - **Verifikation:** Bei MantaAuv-Referenzbedingungen (`1025 kg/m³`, `2,0 m/s`, `0,001001 Pa·s`, `L = 50 mm`, `Coverage = 1,0`) sinkt die automatische Schichtzahl von `21` auf `15` (`y1 ≈ 0,0146 mm`, Gesamtdicke ≥ Grenzschichtdicke).
+  - **Geänderte Dateien:** `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshMesherOptions.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/Su2SolverOptions.cs`, `src/projects/_Vorlage3D/solvers/gmsh.json`, `src/projects/_Vorlage3D/solvers/su2.json`, `src/projects/BEDIENHANDBUCH.md`, `tests/OptimierungsAlgoCFD.Tests/BoundaryLayerAndYPlusTests.cs`, `tests/OptimierungsAlgoCFD.Tests/ScaleFactorAndTunnelGuaranteeTests.cs`.
+  - **Tests:** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` -> **767/767 bestanden** (0 Fehler, 0 übersprungen, 0 Warnungen).
+- [x] **`AP-5` — `MeshSizeFromCurvature` aktivieren & `DetailBox` stromab/Z-Puffer entkoppeln**
+  - **Architektur-/Designentscheidungen:**
+    - `GmshMesherOptions`: `DetailBoxLengthFactor = 1.5f`, neue Option `DetailBoxMinHeightLengthFactor = 0.15f`, `MeshSizeFromCurvature = true` (bei `CurvatureElements = 20`) sowie neue Option `CurvatureMinSizeFactor = 0.5f` (intern auf `[0.1, 1.0]` geklammert als Untergrenze `surfaceSize * curvMinFactor` gegen Voxel-Splitter-Explosion). `Gmsh2DMesherOptions` bleibt unverändert.
+    - `GmshCfdMesher.AddDetailBox`: entkoppelt den Z-Puffer für flache/schlanke Körper mittels `dz_pad = (dz_width > dz_min_len) ? dz_width : dz_min_len;` (`dz_min_len = Max(0, DetailBoxMinHeightLengthFactor) * dlenX`); `SurfaceCellSize`, `DetailBoxCellSize` und `BoundaryLayerSizeMax` bleiben über Schritt 1/2 sauber getrennt.
+    - `GmshCfdMesher.WriteGeoScript`: im `Threshold`-Zweig bleiben die Zeilen direkt hinter `ExtendFromBoundary = 0;` kompatibel und erhalten bei aktivem `MeshSizeFromCurvature` zusätzlich `Mesh.MeshSizeMin = sizeMin * curvMinFactor` und `Mesh.MeshSizeMax = sizeMax`.
+    - `MeshCalibration.MesherSchemeVersion` auf `"tunnel-scaled-curvature-2"` erhöht, sodass frühere Kalibrierungen sauber als veraltet erkannt werden.
+  - **Geänderte Dateien:** `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshMesherOptions.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/GmshCfdMesher.cs`, `src/OptimierungsAlgoCFD/Core/Pipeline/MeshCalibration.cs`, `src/projects/_Vorlage3D/solvers/gmsh.json`, `src/projects/BEDIENHANDBUCH.md`, `tests/OptimierungsAlgoCFD.Tests/GmshCfdMesherTunnelTests.cs`, `tests/OptimierungsAlgoCFD.Tests/DetailBoxTests.cs`.
+  - **Tests:** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` -> **773/773 bestanden** (0 Fehler, 0 übersprungen, 0 Warnungen).
+- [x] **`AP-6` — Voxel-Konsistenz beim Start, Resume-Dauer & Kalibrier-Telemetrie (`CD_p/CD_v`, Zellklassen)**
+  - **Architektur-/Designentscheidungen:**
+    - `SimulationConfig`: neue Option `AutoVoxelResolution` (Standard `false`, in `_Vorlage3D` und `_Vorlage2D` dokumentiert).
+    - `VoxelResolutionAdvisor`: ermittelt beim Start vor `kernel.RunHosted(...)` anhand `RubberBandScaler.Create(...)` (`BaseParameters`) und der 3D-`GmshCfdMesher`-Zieloberflächenzellgröße die reale Voxelgröße; bei `AutoVoxelResolution = true` Verfeinerung auf max(`0.1 mm`, `0.75 * surfaceMm * scale`) ohne Mutation von `SimulationConfig` (kein Eingriff in `--resume`-Fingerprint); bei weiter bestehendem Missverhältnis (> `0.8 * surfaceMm`) klare `[WARNUNG]`, bei 2D-Pipelines unverändert `BaseVoxelResolution`.
+    - `RunJournal` & `WorkflowController`: `DurationSeconds` wird im Journal-Eintrag (`journal.jsonl`) gespeichert und beim `--resume`-Replay in `LastCallDurationSeconds` wiederhergestellt, ohne `ModelRecord.PassiveParameters` oder `Simulation_Results.csv` zu verändern. `MeshCalibration` nutzt optional `durationProvider` in allen Kalibrier-, 2D/3D-Bestätigungs- und adaptiven Stufen.
+    - Zellklassen & aerodynamische Zerlegung: `MeshMetrics.ReadSu2CellBreakdown` liest `NELEM` (`Tri`/`Quad`/`Prism`/`Hexa`/`Tet`/`Pyr` bzw. Oberflächen-Marker außer `Farfield`/`Fluid`), `Su2SurfaceAnalyzer.EvaluateAerodynamicDragBreakdown` integriert `Pressure_Coefficient` und `Skin_Friction_Coefficient` aus `surface.vtu` (ASCII + Appended Binary) in 2D/3D zu `Su2_CD_p` und `Su2_CD_v`; `CalibrationEvaluator` / `MeshCalibration` exportieren Tri/Quad/Prism/Hexa/Tet/Pyr, `TunnelBlockagePercent`, `CD_p` und `CD_v` in `calibration.csv`, `calibration.json` und die Konsolenzusammenfassung. `ModelRecord.IsMeshMetadataKey` filtert `Tunnel*` und `MeshCells_*`.
+  - **Geänderte/neue Dateien:** `src/OptimierungsAlgoCFD/Core/Models/SimulationConfig.cs`, `src/OptimierungsAlgoCFD/Core/Models/ModelRecord.cs`, `src/OptimierungsAlgoCFD/Core/Pipeline/VoxelResolutionAdvisor.cs` (neu), `src/OptimierungsAlgoCFD/Core/Pipeline/RunJournal.cs`, `src/OptimierungsAlgoCFD/Core/Pipeline/WorkflowController.cs`, `src/OptimierungsAlgoCFD/Core/Pipeline/CalibrationEvaluator.cs`, `src/OptimierungsAlgoCFD/Core/Pipeline/MeshCalibration.cs`, `src/OptimierungsAlgoCFD/Core/Utilities/MeshMetrics.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/Su2SurfaceAnalyzer.cs`, `src/OptimierungsAlgoCFD/Solvers/Cfd/Su2Solver.cs`, `src/OptimierungsAlgoCFD/Program.cs`, `src/projects/_Vorlage3D/simulation.json`, `src/projects/_Vorlage2D/simulation.json`, `src/projects/BEDIENHANDBUCH.md`, `tests/OptimierungsAlgoCFD.Tests/CalibrationTelemetryAndVoxelTests.cs` (neu).
+  - **Tests:** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` -> **787/787 bestanden** (0 Fehler, 0 übersprungen).
+- [x] **`AP-7` — Alle READMEs, Vorlagen (`_Vorlage3D`, `_Vorlage2D`), Projekt-JSONs (`MantaAuv`, `Naca2D`) & `.plans/` abschließend synchronisieren**
+  - **Projekt-JSONs & Vorlagen:**
+    - `src/projects/MantaAuv/`: `simulation.json` (`AutoVoxelResolution = false`, `CauchyTolerance = "1e-5"`, `ControlRuns` mit `"1e-5"` & `IterativeToleranceFraction = 0.1`, bereinigte 20000-Iterationen-/AP-1..AP-6-Kommentare), `solvers/gmsh.json` (`TunnelMinUpstreamFactor = 5.0`, `TunnelMinDownstreamFactor = 15.0`, `TunnelMinLateralFactor = 5.0`, `TunnelMaxBlockagePercent = 0.3`, `TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`, `DetailBoxLengthFactor = 1.5`, `DetailBoxMinHeightLengthFactor = 0.15`, `MeshSizeFromCurvature = true`, `CurvatureElements = 20`, `CurvatureMinSizeFactor = 0.5`), `solvers/su2.json` (`AutoRestartOnDrift = true`, `MaxConvergenceRestarts = 3`, `TargetYPlus = 1.5`, bereinigter `MachNumber`-Kommentar).
+    - `src/projects/Naca2D/`: 2D-Werte (`TargetYPlus = 1.0`, `BoundaryLayerGrowthRate = 1.2`, `DetailBoxLengthFactor = 1.0`) gezielt erhalten; `solvers/su2.json` um `AutoRestartOnDrift = true` & `MaxConvergenceRestarts = 3` ergänzt; `simulation.json`-Konvergenzkommentar aktualisiert.
+    - `_Vorlage3D/` & `_Vorlage2D/`: JSONs gegen finale C#-Defaults abgeglichen; `src/projects/_Vorlage3D/README.md` um aktuelle 3D-Vorgaben ergänzt.
+  - **Dokumentation & Pläne:**
+    - `src/projects/BEDIENHANDBUCH.md` (Stand `13.11.2026`, `scaleFactor`-Konsistenz, Windkanal-Garantien, Prism/Hexa-Tabelle `y+ ~ 1,5 / 1,28` & Krümmungsverfeinerung, neue CSV-/`calibration.csv`-Spalten, `--resume`-`DurationSeconds`, neue Warn-/Logzeilen).
+    - `src/OptimierungsAlgoCFD/README.md`, `src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md`, `src/projects/README.md`, `scripts/README.md` (`plot_calibration.py`, `plot_optimization.py`, `DurationSeconds`, `calibration.csv`), `README.md` (Link-Korrekturen) sowie `.plans/README.md` (Stand `13.11.2026`, aktiver Verweis auf `netzstrategie_und_su2_abbruch.md`, bereinigte `.old/`-Archivlinks) vollständig synchronisiert.
+  - **Offen (Laufzeit-Abnahme auf Server):** Benchmark-/Validierungslauf auf `BIC_12` für `MantaAuv` und `Naca2D` (Abschnitt 4, Punkte 2 & 3).
