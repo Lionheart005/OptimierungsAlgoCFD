@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace OptimierungsAlgoCFD.Core
@@ -30,7 +31,8 @@ namespace OptimierungsAlgoCFD.Core
         int VolumePyramids = 0,
         float TunnelBlockagePercent = float.NaN,
         float PressureDragCoeff = float.NaN,
-        float ViscousDragCoeff = float.NaN);
+        float ViscousDragCoeff = float.NaN,
+        float YPlusLimit = float.NaN);
 
     /// <summary>
     /// Ergebnis der Grid Convergence Index (GCI) Berechnung nach Celik et al. (2008).
@@ -244,9 +246,7 @@ namespace OptimierungsAlgoCFD.Core
             // Gültigkeit der Referenzstufe: Nicht konvergiert oder y+ verletzt -> Kalibrierung fehlgeschlagen
             if (!refStage.Converged || !refStage.YPlusOk)
             {
-                string reason = !refStage.Converged
-                    ? "Referenzstufe (feinstes Netz) ist numerisch nicht konvergiert."
-                    : "y+ der Referenzstufe liegt außerhalb der Toleranz.";
+                string reason = FormatReferenceFailureReason(refStage, "Referenzstufe");
 
                 return new CalibrationDecision(
                     false,
@@ -368,9 +368,7 @@ namespace OptimierungsAlgoCFD.Core
             // Gültigkeit der 3D-Referenzstufe
             if (!refStage.Converged || !refStage.YPlusOk)
             {
-                string reason = !refStage.Converged
-                    ? "3D-Referenzstufe (feinstes Netz) ist numerisch nicht konvergiert."
-                    : "y+ der 3D-Referenzstufe liegt außerhalb der Toleranz.";
+                string reason = FormatReferenceFailureReason(refStage, "3D-Referenzstufe");
 
                 return new CalibrationDecision(
                     false,
@@ -415,6 +413,20 @@ namespace OptimierungsAlgoCFD.Core
             string failMsg = $"Weder die grobe 3D-Stufe noch der 2D-Faktor ({factor2D:0.00}) erreichen in 3D die Toleranz von {tolerance * 100:0.0} % gegenüber der 3D-Referenzstufe {refStage.Factor:0.00}.";
             var fallback3D = (mediumStage != null && mediumStage.Converged && mediumStage.YPlusOk) ? mediumStage : refStage;
             return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations, fallback3D);
+        }
+
+        private static string FormatReferenceFailureReason(CalibrationStageData refStage, string stageLabel)
+        {
+            if (!refStage.Converged)
+                return $"{stageLabel} (feinstes Netz) ist numerisch nicht konvergiert.";
+
+            string yPlusDetails = refStage.YPlusP95 > 0f
+                ? (float.IsFinite(refStage.YPlusLimit) && refStage.YPlusLimit > 0f
+                    ? $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)} > Limit {refStage.YPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} aus TargetYPlus × YPlusWarnFactor)"
+                    : $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)})")
+                : string.Empty;
+
+            return $"y+ der {stageLabel}{yPlusDetails} liegt außerhalb der Toleranz.";
         }
     }
 }

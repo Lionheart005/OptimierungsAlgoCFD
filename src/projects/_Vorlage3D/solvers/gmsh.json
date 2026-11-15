@@ -49,10 +49,15 @@
 
   // --- Wandschicht ---
   // "Prism": Prismenschichten, y+ ~ 1.5 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
-  // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe. "Hexa": nur glatte Koerper ohne scharfe Kanten.
-  // TargetYPlus gleich wie in su2.json. Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
-  // Die Schichtzahl und die erste Zellhoehe stehen fuer alle Varianten und Kalibrierstufen fest. Scheitert Gmsh an einer
-  // Kehle, aendert das Programm nur Richtung und Dicke der Schicht (nie die Schichtzahl, Handbuch 4.4).
+  // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe -> bricht bei MeshCalibration.Mode = "Auto"
+  // sofort ab, solange TargetYPlus x YPlusWarnFactor in solvers/su2.json < 30 liegt (fuer Vorablaeufe Mode: "Manual" setzen).
+  // "Hexa": nur glatte Koerper ohne scharfe Kanten.
+  // WICHTIG (Synchronpflicht): TargetYPlus legt hier die erste Zellhoehe y1 fest und MUSS gleich wie in solvers/su2.json
+  // sein; dort bildet TargetYPlus x YPlusWarnFactor das harte Akzeptanzlimit fuer Solver und Auto-Kalibrierung.
+  // Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
+  // Die Schichtzahl und die erste Zellhoehe stehen fuer alle Varianten und Kalibrierstufen fest (ein kleinerer
+  // MeshRefinementFactor verkleinert y1 NICHT!). Scheitert Gmsh an einer Kehle, aendert das Programm nur Richtung
+  // und Dicke der Schicht (nie die Schichtzahl, Handbuch 4.4).
   // BoundaryLayerCoverage: Wandschicht = Faktor x Grenzschichtdicke (1.0 genau; Literatur oft 1.2-1.5, kostet Zellen).
   "BoundaryLayerMode": "Prism",
   "TargetYPlus": 1.5,

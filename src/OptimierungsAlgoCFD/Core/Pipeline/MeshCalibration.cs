@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OptimierungsAlgoCFD.Solvers.Cfd;
 
 namespace OptimierungsAlgoCFD.Core
 {
@@ -64,6 +65,74 @@ namespace OptimierungsAlgoCFD.Core
             {
                 throw new InvalidOperationException(
                     $"[KALIBRIERUNG] 'Use2DPrecalibration' ist in simulation.json aktiviert, aber das Projekt '{definition.Name}' besitzt keinen repräsentativen 2D-Querschnitt (IHasRepresentativeSection). Für 3D-Körper ohne einheitliches Profil (wie MantaAuv) ist eine 2D-Vorkalibrierung physikalisch nicht aussagekräftig – bitte 'Use2DPrecalibration': false setzen.");
+            }
+        }
+
+        /// <summary>
+        /// Ermittelt die y+-Akzeptanzgrenzen (Standard- und Grobstufen-Limit) aus <see cref="Su2SolverOptions"/>
+        /// konsistent zu <see cref="Su2Solver"/> (<c>TargetYPlus × YPlusWarnFactor</c>).
+        /// </summary>
+        internal static (float StandardLimit, float CoarseStageLimit) ResolveYPlusLimits(ProjectContext context)
+        {
+            Su2SolverOptions su2 = context.Loaded.Select(l => l.Value).OfType<Su2SolverOptions>().LastOrDefault()
+                ?? context.LoadSolverOptions<Su2SolverOptions>("su2");
+
+            float target = su2.TargetYPlus > 0f && float.IsFinite(su2.TargetYPlus) ? su2.TargetYPlus : 1.5f;
+            float warnFactor = su2.YPlusWarnFactor > 0f && float.IsFinite(su2.YPlusWarnFactor) ? su2.YPlusWarnFactor : 3.0f;
+            float standardLimit = target * warnFactor;
+
+            // Grobe Stufe 1 (Faktor 2.00) darf wie bisher leicht über dem Standard-Limit liegen (mind. +0.5 bzw. +15 %).
+            float coarseLimit = MathF.Round(MathF.Max(standardLimit + 0.5f, standardLimit * 1.15f), 2);
+            return (standardLimit, coarseLimit);
+        }
+
+        /// <summary>
+        /// Prüft beim Start die Konsistenz zwischen <c>solvers/gmsh.json</c>, <c>solvers/su2.json</c> und der
+        /// automatischen Netzkalibrierung: warnt bei abweichendem <c>TargetYPlus</c> zwischen Vernetzer und Solver
+        /// und verhindert einen stundenlangen Fehlstart, wenn <c>BoundaryLayerMode = "Threshold"</c> (y+ ≈ 30–70)
+        /// mit aktiver Auto-Kalibrierung unter niedrigem y+-Limit kombiniert wird.
+        /// </summary>
+        public static void ValidateYPlusConsistency(
+            ProjectContext context,
+            bool calibrationActive,
+            TextWriter? warningWriter = null)
+        {
+            Su2SolverOptions? su2 = context.Loaded.Select(l => l.Value).OfType<Su2SolverOptions>().LastOrDefault();
+            if (su2 == null) return;
+
+            GmshMesherOptions? gmsh3d = context.Loaded.Select(l => l.Value).OfType<GmshMesherOptions>().LastOrDefault();
+            Gmsh2DMesherOptions? gmsh2d = context.Loaded.Select(l => l.Value).OfType<Gmsh2DMesherOptions>().LastOrDefault();
+
+            float? gmshTarget = gmsh3d?.TargetYPlus ?? gmsh2d?.TargetYPlus;
+            if (gmshTarget.HasValue && MathF.Abs(gmshTarget.Value - su2.TargetYPlus) > 0.05f)
+            {
+                string mismatchMsg =
+                    $"solvers/gmsh.json (TargetYPlus = {gmshTarget.Value.ToString("0.##", CultureInfo.InvariantCulture)}) "
+                    + $"und solvers/su2.json (TargetYPlus = {su2.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) weichen voneinander ab. "
+                    + "gmsh.json erzeugt die reale erste Zellhöhe y1, su2.json × YPlusWarnFactor bildet das harte Limit in Solver und Auto-Kalibrierung – bitte angleichen.";
+                if (warningWriter != null)
+                    warningWriter.WriteLine($"[WARNUNG] {mismatchMsg}");
+                else
+                    SimulationLog.Warning(mismatchMsg);
+            }
+
+            if (calibrationActive
+                && gmsh3d != null
+                && string.Equals((gmsh3d.BoundaryLayerMode ?? "Prism").Trim(), "Threshold", StringComparison.OrdinalIgnoreCase))
+            {
+                float target = su2.TargetYPlus > 0f && float.IsFinite(su2.TargetYPlus) ? su2.TargetYPlus : 1.5f;
+                float warnFactor = su2.YPlusWarnFactor > 0f && float.IsFinite(su2.YPlusWarnFactor) ? su2.YPlusWarnFactor : 3.0f;
+                float limit = target * warnFactor;
+
+                if (limit < 30f)
+                {
+                    throw new InvalidOperationException(
+                        $"[KONFIGURATION] BoundaryLayerMode 'Threshold' in solvers/gmsh.json erzeugt typischerweise y+ ≈ 30–70, "
+                        + $"die automatische Netzkalibrierung prüft aber hart gegen TargetYPlus × YPlusWarnFactor = {limit.ToString("0.00", CultureInfo.InvariantCulture)} "
+                        + "und würde auf der Referenzstufe abbrechen (feinere Netze ändern an y1 nichts). "
+                        + "Für belastbare Läufe 'BoundaryLayerMode': \"Prism\" nutzen – oder für grobe Vorabläufe 'MeshCalibration.Mode': \"Manual\" "
+                        + "mit festem 'MeshRefinementFactor' setzen bzw. 'YPlusWarnFactor' in solvers/su2.json entsprechend anheben.");
+                }
             }
         }
 
@@ -173,11 +242,14 @@ namespace OptimierungsAlgoCFD.Core
                 ? monitoredMetrics.ToList()
                 : ResolveMonitoredMetrics(context);
 
+            var (yPlusLimit, coarseYPlusLimit) = ResolveYPlusLimits(context);
+
             Console.WriteLine("\n==================================================");
             Console.WriteLine(" NETZKALIBRIERUNG GESTARTET");
             Console.WriteLine($" Projekt:           {context.Name}");
             Console.WriteLine($" Toleranz:          {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %");
             Console.WriteLine($" Überwachte Größen: {string.Join(", ", metricsToMonitor)}");
+            Console.WriteLine($" y+-Limit (P95):    {yPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} (Grobstufe {coarseYPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)})");
             Console.WriteLine("==================================================");
 
             var stages = new List<CalibrationStageData>();
@@ -190,7 +262,7 @@ namespace OptimierungsAlgoCFD.Core
             {
             // Stufe 1: Grob (2.0f, Tag: "Kal1")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
-            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, 3.5f, durationProvider); // bei grobem Netz y+ oft höher
+            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, coarseYPlusLimit, durationProvider); // bei grobem Netz y+ oft höher
             stages.Add(stage1);
 
             // Vorschau: Zellzahl der feinsten Stufe grob hochrechnen. Mit nur einer Messung ist das ungenau
@@ -209,7 +281,7 @@ namespace OptimierungsAlgoCFD.Core
 
             // Stufe 5: Sehr feine Referenz (0.50f, Tag: "Kal5")
             Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
-            var stage5 = RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, 3.0f, durationProvider);
+            var stage5 = RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, yPlusLimit, durationProvider);
             if (stage5.CellLimitExceeded)
             {
                 throw new InvalidOperationException(
@@ -229,7 +301,7 @@ namespace OptimierungsAlgoCFD.Core
             foreach (var inter in intermediateConfigs)
             {
                 Console.WriteLine($"\n[KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 3.0f, durationProvider));
+                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider));
 
                 // Frühabstiegsprüfung: Wenn diese Stufe innerhalb der Toleranz liegt und wir mindestens 3 Stufen für GCI haben
                 if (stages.Count >= 3)
@@ -244,7 +316,7 @@ namespace OptimierungsAlgoCFD.Core
             }
 
             // Hält die Toleranz bei Faktor 0.5 noch nicht, entscheidet die Kalibrierung selbst, wie fein es sein muss (TODO-W5).
-            RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells, durationProvider);
+            RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells, yPlusLimit, durationProvider);
             }
             finally
             {
@@ -288,11 +360,14 @@ namespace OptimierungsAlgoCFD.Core
                 ? monitoredMetrics.ToList()
                 : ResolveMonitoredMetrics(context);
 
+            var (yPlusLimit, coarseYPlusLimit) = ResolveYPlusLimits(context);
+
             Console.WriteLine("\n==================================================");
             Console.WriteLine(" 2D-VORKALIBRIERUNG + 3D-BESTÄTIGUNG GESTARTET (TODO-48)");
             Console.WriteLine($" Projekt:           {context.Name}");
             Console.WriteLine($" Toleranz:          {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %");
             Console.WriteLine($" Überwachte Größen: {string.Join(", ", metricsToMonitor)}");
+            Console.WriteLine($" y+-Limit (P95):    {yPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} (Grobstufe {coarseYPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)})");
             Console.WriteLine("==================================================");
 
             var cal2 = context.Simulation.MeshCalibration;
@@ -304,10 +379,10 @@ namespace OptimierungsAlgoCFD.Core
             var stages2D = new List<CalibrationStageData>();
 
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 1/5: Grobes 2D-Netz (Faktor 2.00)...");
-            stages2D.Add(RunCalibrationStage(runStage2D, 1, 2.0f, "Kal2D_1", metricsToMonitor, 3.5f, durationProvider2D));
+            stages2D.Add(RunCalibrationStage(runStage2D, 1, 2.0f, "Kal2D_1", metricsToMonitor, coarseYPlusLimit, durationProvider2D));
 
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 5/5: Feines 2D-Referenznetz (Faktor 0.50)...");
-            stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, 3.0f, durationProvider2D));
+            stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, yPlusLimit, durationProvider2D));
 
             // Zwischenstufen 2D: 1.41 (Kal2D_2), 1.00 (Kal2D_3), 0.71 (Kal2D_4)
             var intermediateConfigs2D = new[]
@@ -320,7 +395,7 @@ namespace OptimierungsAlgoCFD.Core
             foreach (var inter in intermediateConfigs2D)
             {
                 Console.WriteLine($"\n[2D-KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, 3.0f, durationProvider2D));
+                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider2D));
 
                 if (stages2D.Count >= 3)
                 {
@@ -333,7 +408,7 @@ namespace OptimierungsAlgoCFD.Core
                 }
             }
 
-            RefineAdaptively(stages2D, runStage2D, "Kal2D_", "2D-KALIBRIERUNG", metricsToMonitor, cal2, 2, cal2.MaxCells2D, durationProvider2D);
+            RefineAdaptively(stages2D, runStage2D, "Kal2D_", "2D-KALIBRIERUNG", metricsToMonitor, cal2, 2, cal2.MaxCells2D, yPlusLimit, durationProvider2D);
 
             var decision2D = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
             float factor2D = decision2D.SelectedStage?.Factor ?? 1.0f;
@@ -374,7 +449,7 @@ namespace OptimierungsAlgoCFD.Core
             // 3D Stufe 1: Grob (f2D * √2, Tag: Kal3D_1)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 1/3: Grobes 3D-Netz (Faktor {fCoarse:0.00})...");
             CalibrationStageData stage3D_1 = RunCalibrationStage(
-                RunLimited3D, 1, fCoarse, "Kal3D_1", metricsToMonitor, 3.5f, durationProvider3D);
+                RunLimited3D, 1, fCoarse, "Kal3D_1", metricsToMonitor, coarseYPlusLimit, durationProvider3D);
             stages3D.Add(stage3D_1);
 
             if (stage3D_1.MeshCells > 0)
@@ -390,17 +465,17 @@ namespace OptimierungsAlgoCFD.Core
             // 3D Stufe 3: Feine 3D-Referenz (f2D / √2, Tag: Kal3D_3)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 3/3: Feine 3D-Referenz (Faktor {fFine:0.00})...");
             stages3D.Add(RunCalibrationStage(
-                RunLimited3D, 3, fFine, "Kal3D_3", metricsToMonitor, 3.0f, durationProvider3D));
+                RunLimited3D, 3, fFine, "Kal3D_3", metricsToMonitor, yPlusLimit, durationProvider3D));
 
             // 3D Stufe 2: Mittlere Stufe (f2D, Tag: Kal3D_2)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 2/3: 2D-Faktor in 3D (Faktor {fMed:0.00})...");
             stages3D.Add(RunCalibrationStage(
-                RunLimited3D, 2, fMed, "Kal3D_2", metricsToMonitor, 3.0f, durationProvider3D));
+                RunLimited3D, 2, fMed, "Kal3D_2", metricsToMonitor, yPlusLimit, durationProvider3D));
 
             // Auswertung der 3-stufigen 3D-Bestätigung
             var decision3D = CalibrationEvaluator.EvaluateConfirmation3D(factor2D, stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
 
-            // Falls weder f2D * √2 noch f2D bestätigen, weiter verfeinern (f2D / 2.0)
+            // Falls weder f2D * √2 noch f2D bestätigen, weiter verfeineren (f2D / 2.0)
             if (!decision3D.Success)
             {
                 float fRefined = (float)Math.Round(factor2D / 2.0f, 2);
@@ -408,7 +483,7 @@ namespace OptimierungsAlgoCFD.Core
                 {
                     Console.WriteLine($"\n[3D-BESTÄTIGUNG] Keine Bestätigung. Zusätzliche 3D-Verfeinerungsstufe (Faktor {fRefined:0.00}, Kal3D_4)...");
                     stages3D.Add(RunCalibrationStage(
-                        RunLimited3D, 4, fRefined, "Kal3D_4", metricsToMonitor, 3.0f, durationProvider3D));
+                        RunLimited3D, 4, fRefined, "Kal3D_4", metricsToMonitor, yPlusLimit, durationProvider3D));
 
                     decision3D = CalibrationEvaluator.EvaluateCalibration(stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
                 }
@@ -584,7 +659,8 @@ namespace OptimierungsAlgoCFD.Core
                 VolumePyramids: ReadInt("MeshCells_Pyramid"),
                 TunnelBlockagePercent: ReadFloat("TunnelBlockagePercent", float.NaN),
                 PressureDragCoeff: ReadFloat("Su2_CD_p", float.NaN),
-                ViscousDragCoeff: ReadFloat("Su2_CD_v", float.NaN));
+                ViscousDragCoeff: ReadFloat("Su2_CD_v", float.NaN),
+                YPlusLimit: yPlusLimit);
         }
 
         /// <summary>Dauer einer Kalibrierstufe ins Log (Plan wandschicht_zellzahl.md, WZ10).</summary>
@@ -609,6 +685,7 @@ namespace OptimierungsAlgoCFD.Core
             MeshCalibrationConfig cal,
             int dimensions,
             long maxCells,
+            float yPlusLimit,
             Func<double?>? durationProvider = null)
         {
             for (int extra = 0; extra < MaxAdditionalStages; extra++)
@@ -624,7 +701,10 @@ namespace OptimierungsAlgoCFD.Core
                 }
                 if (!refStage.YPlusOk)
                 {
-                    Console.WriteLine($"       -> [{label}] y+ der feinsten Stufe liegt außerhalb der Toleranz – ein feineres Netz ändert daran nichts (Wandschicht prüfen).");
+                    string limitNote = float.IsFinite(refStage.YPlusLimit) && refStage.YPlusLimit > 0f
+                        ? $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)} > Limit {refStage.YPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} aus TargetYPlus × YPlusWarnFactor)"
+                        : $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)})";
+                    Console.WriteLine($"       -> [{label}] y+ der feinsten Stufe liegt außerhalb der Toleranz{limitNote} – ein feineres Netz ändert an y1 nichts (TargetYPlus/YPlusWarnFactor in su2.json & gmsh.json prüfen).");
                     return;
                 }
 
@@ -642,7 +722,7 @@ namespace OptimierungsAlgoCFD.Core
 
                 int level = stages.Max(s => s.LevelIndex) + 1;
                 Console.WriteLine($"\n[{label}] Toleranz von {cal.Tolerance * 100:0.0} % noch nicht erreicht – zusätzliche Stufe {level} (Faktor {next:0.00}, Vorschau ~{estimated:N0} Zellen, Grenze {maxCells:N0} gemessen)...");
-                var extraStage = RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, 3.0f, durationProvider);
+                var extraStage = RunCalibrationStage(runStage, level, next, $"{tagPrefix}{level}", metricsToMonitor, yPlusLimit, durationProvider);
                 if (extraStage.CellLimitExceeded)
                 {
                     Console.WriteLine($"       -> [{label}] Stufe {level} (Faktor {next:0.00}) hat gemessen {extraStage.MeshCells:N0} Zellen und überschreitet die Grenze von {maxCells:N0} – sie wird nicht gerechnet, Verfeinerung endet.");

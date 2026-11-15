@@ -9,6 +9,7 @@
   "FarfieldCircleSegments": 64,
 
   // --- Grenzschicht (Schichtanzahl 0 = automatisch) ---
+  // TargetYPlus bestimmt hier y1 und muss synchron zu solvers/su2.json bleiben (hartes Limit dort = TargetYPlus x YPlusWarnFactor).
   "TargetYPlus": 1.0,
   "BoundaryLayerGrowthRate": 1.2,
   "BoundaryLayerMinLayers": 4,

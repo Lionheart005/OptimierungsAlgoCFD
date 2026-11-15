@@ -267,6 +267,9 @@ namespace OptimierungsAlgoCFD
             var simulationReport = context.Loaded.FirstOrDefault(l => l.Name == "simulation.json")?.Report;
             MeshCalibration.ValidateConfig(context.Simulation, simulationReport, context.Name);
             MeshCalibration.ValidatePrecalibrationSupport(context.Simulation, definition);
+            MeshCalibration.ValidateYPlusConsistency(
+                context,
+                calibrationActive: context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase));
 
             // Reproduzierbarkeit und Wiederaufnahme (TODO-50 bis TODO-52). Der Fingerabdruck
             // entsteht NACH CreateStages, sonst fehlen die Solver-Dateien darin.
@@ -435,6 +438,7 @@ namespace OptimierungsAlgoCFD
             IFitnessCalculator fitness = definition.CreateFitness(context);
             IGeometryKernel kernel = definition.CreateKernel();
             SolverStage[] stages = definition.CreateStages(context);
+            MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: true);
 
             var simulationContext = new SimulationContext(context.Simulation, context.Project);
             simulationContext.EnsureDirectories();
@@ -643,6 +647,7 @@ namespace OptimierungsAlgoCFD
             IFitnessCalculator fitness = definition.CreateFitness(context);
             IGeometryKernel kernel = definition.CreateKernel();
             SolverStage[] stages = definition.CreateStages(context);
+            MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: false);
             // Bei --unsteady rechnet der Recheck erst stationär und startet die zeitgenaue Rechnung danach aus
             // dieser Lösung (TODO-W7); die Zeitdomäne wird deshalb erst nach der ersten Stufe eingeschaltet.
 

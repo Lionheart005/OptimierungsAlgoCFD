@@ -640,6 +640,130 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.True(winner.PassiveParameters.ContainsKey("FineDeviation"));
         }
 
+        [Fact]
+        public void MeshCalibration_Run_UsesDynamicYPlusLimitFromSu2Options_AndAcceptsServerLikeThreeDValues()
+        {
+            string projectDir = Path.Combine(_workingDirectory, "DynYPlusAccept");
+            Directory.CreateDirectory(Path.Combine(projectDir, "solvers"));
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 3.0 }");
+
+            var sim = new SimulationConfig
+            {
+                MeshCalibration = new MeshCalibrationConfig { Mode = "Auto", Tolerance = 0.15f }
+            };
+            var project = new ProjectConfig { BaseParameters = new Dictionary<string, float> { ["L"] = 100f } };
+            var context = new ProjectContext("Test", projectDir, null, sim, project);
+            var simContext = new SimulationContext(sim, project, _workingDirectory);
+            simContext.EnsureDirectories();
+
+            // Exakt angelehnt an BIC_12-MantaAuv-Kalibrierung mit TargetYPlus=1.5 (P95 zwischen 3.36 und 3.61)
+            Func<float, string, ModelRecord> runStage = (factor, _) =>
+            {
+                var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
+                rec.PassiveParameters["Su2_Converged"] = 1f;
+                if (factor > 1.8f) { rec.PassiveParameters["MeshCells"] = 109285f; rec.PassiveParameters["Drag"] = 0.84116f; rec.PassiveParameters["YPlus_P95"] = 3.36f; }
+                else if (factor > 1.2f) { rec.PassiveParameters["MeshCells"] = 209122f; rec.PassiveParameters["Drag"] = 0.67191f; rec.PassiveParameters["YPlus_P95"] = 3.45f; }
+                else if (factor > 0.9f) { rec.PassiveParameters["MeshCells"] = 379450f; rec.PassiveParameters["Drag"] = 0.57189f; rec.PassiveParameters["YPlus_P95"] = 3.56f; }
+                else if (factor > 0.6f) { rec.PassiveParameters["MeshCells"] = 616994f; rec.PassiveParameters["Drag"] = 0.51469f; rec.PassiveParameters["YPlus_P95"] = 3.61f; }
+                else { rec.PassiveParameters["MeshCells"] = 1409491f; rec.PassiveParameters["Drag"] = 0.45457f; rec.PassiveParameters["YPlus_P95"] = 3.59f; }
+                return rec;
+            };
+
+            var (decision, _) = MeshCalibration.Run(context, simContext, runStage, new[] { "Drag" }, dimensions: 3);
+
+            Assert.True(decision.Success, decision.SummaryMessage);
+            Assert.All(decision.AllStages, st => Assert.True(st.YPlusOk));
+            Assert.NotNull(decision.SelectedStage);
+            Assert.Equal(0.71f, decision.SelectedStage!.Factor);
+        }
+
+        [Fact]
+        public void MeshCalibration_Run_HonorsCustomSu2YPlusLimit_AndReportsLimitOnFailure()
+        {
+            string projectDir = Path.Combine(_workingDirectory, "DynYPlusCustom");
+            Directory.CreateDirectory(Path.Combine(projectDir, "solvers"));
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                @"{ ""TargetYPlus"": 2.0, ""YPlusWarnFactor"": 4.0 }"); // Limit = 8.0
+
+            var sim = new SimulationConfig
+            {
+                MeshCalibration = new MeshCalibrationConfig { Mode = "Auto", Tolerance = 0.05f }
+            };
+            var project = new ProjectConfig { BaseParameters = new Dictionary<string, float> { ["L"] = 100f } };
+            var contextOk = new ProjectContext("Test", projectDir, null, sim, project);
+            var simContext = new SimulationContext(sim, project, _workingDirectory);
+            simContext.EnsureDirectories();
+
+            var (decisionOk, _) = MeshCalibration.Run(contextOk, simContext, (factor, _) =>
+            {
+                var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
+                rec.PassiveParameters["MeshCells"] = 50000f / factor;
+                rec.PassiveParameters["Drag"] = 0.20f;
+                rec.PassiveParameters["YPlus_P95"] = 7.20f; // < 8.00
+                rec.PassiveParameters["Su2_Converged"] = 1f;
+                return rec;
+            }, new[] { "Drag" }, dimensions: 3);
+
+            Assert.True(decisionOk.Success, decisionOk.SummaryMessage);
+
+            // Jetzt Limit wieder 4.50 (1.5 * 3.0), gemessenes P95 = 4.90 -> klarer Fehlschlag mit Zahlenangabe
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 3.0 }");
+            var contextFail = new ProjectContext("Test", projectDir, null, sim, project);
+
+            var (decisionFail, _) = MeshCalibration.Run(contextFail, simContext, (factor, _) =>
+            {
+                var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
+                rec.PassiveParameters["MeshCells"] = 50000f / factor;
+                rec.PassiveParameters["Drag"] = 0.20f;
+                rec.PassiveParameters["YPlus_P95"] = 4.90f; // > 4.50
+                rec.PassiveParameters["Su2_Converged"] = 1f;
+                return rec;
+            }, new[] { "Drag" }, dimensions: 3);
+
+            Assert.False(decisionFail.Success);
+            Assert.Contains("4.90", decisionFail.SummaryMessage);
+            Assert.Contains("4.50", decisionFail.SummaryMessage);
+        }
+
+        [Fact]
+        public void ValidateYPlusConsistency_WarnsOnTargetMismatch_AndBlocksThresholdWithLowAutoLimit()
+        {
+            string projectDir = Path.Combine(_workingDirectory, "YPlusConsistency");
+            Directory.CreateDirectory(Path.Combine(projectDir, "solvers"));
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "gmsh.json"),
+                @"{ ""BoundaryLayerMode"": ""Threshold"", ""TargetYPlus"": 1.0 }");
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 3.0 }");
+
+            var context = new ProjectContext("Test", projectDir, null, SimulationConfig.CreateDefault(), new ProjectConfig());
+            context.LoadSolverOptions<GmshMesherOptions>("gmsh");
+            context.LoadSolverOptions<Su2SolverOptions>("su2");
+
+            using var sw = new StringWriter();
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: true, warningWriter: sw));
+
+            Assert.StartsWith("[KONFIGURATION]", ex.Message);
+            Assert.Contains("Threshold", ex.Message);
+            Assert.Contains("1", sw.ToString());
+            Assert.Contains("1.5", sw.ToString());
+
+            // Im Manual-/Recheck-Modus (calibrationActive: false) nur Warnung, kein Abbruch:
+            using var swManual = new StringWriter();
+            MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: false, warningWriter: swManual);
+            Assert.Contains("TargetYPlus", swManual.ToString());
+
+            // Mit explizit angehobenem YPlusWarnFactor fuer Threshold (>= 30) ebenfalls kein Abbruch:
+            File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
+                @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 50.0 }");
+            var contextThresholdAllowed = new ProjectContext("Test", projectDir, null, SimulationConfig.CreateDefault(), new ProjectConfig());
+            contextThresholdAllowed.LoadSolverOptions<GmshMesherOptions>("gmsh");
+            contextThresholdAllowed.LoadSolverOptions<Su2SolverOptions>("su2");
+            MeshCalibration.ValidateYPlusConsistency(contextThresholdAllowed, calibrationActive: true, warningWriter: new StringWriter());
+        }
+
         #endregion
     }
 }

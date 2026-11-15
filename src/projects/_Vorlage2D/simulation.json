@@ -77,6 +77,8 @@
   },
 
   // --- Netzkalibrierung ("Auto": der Lauf bestimmt den Netzfaktor am Anfang selbst; in 2D wenige Minuten) ---
+  // Abbruch trotz freier Zellen bei nicht konvergierter Referenzstufe oder YPlus_P95 > TargetYPlus x YPlusWarnFactor
+  // (solvers/su2.json) -- TargetYPlus deshalb synchron zwischen solvers/gmsh.json und solvers/su2.json halten.
   "MeshCalibration": {
     "Mode": "Auto",
     "Tolerance": 0.05,

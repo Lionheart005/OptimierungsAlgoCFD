@@ -76,7 +76,11 @@
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
   // --- y+-Pruefung (konsistent zu gmsh.json und _Vorlage3D) ---
+  // TargetYPlus x YPlusWarnFactor (1.5 x 3.0 = 4.5) ist nicht nur Warnschwelle, sondern in der Auto-Kalibrierung das
+  // harte P95-Akzeptanzlimit (YPlus_Ok). TargetYPlus MUSS synchron zu solvers/gmsh.json bleiben; feineres Gesamtnetz
+  // veraendert y1 nicht. Bei "Threshold" (y+ ~ 30-70) statt "Prism" bricht Auto-Kalibrierung ab (dann Mode: "Manual").
   "TargetYPlus": 1.5,
+  "YPlusWarnFactor": 3.0,
 
   // --- CFL-Steuerung ---
   "CflNumber": 5.0,

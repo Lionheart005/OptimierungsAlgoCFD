@@ -46,7 +46,10 @@
   "CflAdaptMin": 1.0,
   "CflAdaptMax": 50.0,
 
-  // --- y+-Pruefung ---
+  // --- y+-Pruefung (Standard in 2D: TargetYPlus 1.0 x YPlusWarnFactor 3.0 = Limit 3.0 fuer YPlus_P95) ---
+  // TargetYPlus x YPlusWarnFactor ist nicht nur eine Log-Warnung, sondern im Modus MeshCalibration.Mode = "Auto"
+  // das harte Akzeptanzlimit (YPlus_Ok). TargetYPlus synchron zu solvers/gmsh.json halten; bei Verfeinerung
+  // ueber MeshRefinementFactor bleibt die Wandzellhoehe y1 unveraendert (bei Verfehlung TargetYPlus/YPlusWarnFactor pruefen).
   "TargetYPlus": 1.0,
   "YPlusWarnFactor": 3.0,
 

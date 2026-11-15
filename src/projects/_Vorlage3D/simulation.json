@@ -88,6 +88,9 @@
   // "Auto": der Lauf bestimmt den Netzfaktor am Anfang selbst. In 3D dauert das Stunden; fuer einen
   // schnellen Rauchtest "Manual" einstellen und MeshRefinementFactor eintragen.
   // MaxCells2D/MaxCells3D deckeln die Verfeinerung. Use2DPrecalibration nur fuer Koerper mit einheitlichem Profil.
+  // WICHTIG (Abbruchgruende trotz freier Zellen): Auf der feinsten Stufe muessen Konvergenz (Su2MaxIterations) UND
+  // y+ (YPlus_P95 <= TargetYPlus x YPlusWarnFactor aus solvers/su2.json) halten. Ein feinerer Netzfaktor verkleinert
+  // y1 nicht -> deshalb TargetYPlus in gmsh.json & su2.json synchron halten und "Threshold" (y+ ~ 30-70) nicht mit "Auto" mischen.
   "MeshCalibration": {
     "Mode": "Auto",
     "Tolerance": 0.05,
