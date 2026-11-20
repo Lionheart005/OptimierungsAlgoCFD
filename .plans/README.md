@@ -21,7 +21,10 @@ Neue Sessions und KI-Modelle sollen sich primär an diesen aktiven Dokumenten or
 3. **[`fem_ausblick.md`](fem_ausblick.md) — Merkzettel & Schnittstellendesign für FEM:**
    - Multi-Stage-Erweiterung (`"Stages": ["Cfd", "Fem"]`), CalculiX (`ccx`), Drucklasttransfer und Randbedingungs-Zonen.
 
-4. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen & fortlaufendes Feedback:**
+4. **[`zeitschaetzung.md`](zeitschaetzung.md) — Bessere Restzeit-Schätzung (Plan vom 20.11.2026, offen):**
+   - Tage im Format, gleitendes Fenster, Champion-Nachprüfung und Feinprüfung einrechnen, Enddatum je Iteration, Anzeige in `sim.ps1 status`; nebenbei Grenz-Hinweis schon je Iteration.
+
+5. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen & fortlaufendes Feedback:**
    - Rohnotizen des Nutzers; die Vorgaben für den LaTeX-Bericht und die englische Fassung sind in `ROADMAP.md` (Meilensteine 3 und 5) übernommen. Diese Datei wird nicht von Claude verändert.
 
 ---
