@@ -270,16 +270,89 @@ namespace OptimierungsAlgoCFD.Core
         }
 
         /// <summary>
-        /// Abschlusszeile einer Variante mit Laufzeit und geschätzter Restzeit.
+        /// Abschlusszeile einer Variante mit Laufzeit und Prognose (Plan zeitschaetzung.md).
+        /// Die Prognose-Zeilen enthalten das Wort „Prognose:“, danach sucht <c>sim-runner.sh status</c>.
         /// </summary>
-        public static void PrintVariantFooter(double durationSeconds, TimeSpan? estimatedRemaining)
+        public static void PrintVariantFooter(double durationSeconds, RunTimeEstimate? estimate, DateTime now)
         {
-            string remainingStr = estimatedRemaining.HasValue
-                ? $"  (Geschätzte Restzeit: {estimatedRemaining.Value:hh\\:mm\\:ss})"
-                : "";
-            string footer = $"└─ ⏱ Dauer: {durationSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s{remainingStr}";
-            WriteLineColored(footer, ConsoleColor.DarkGray);
+            foreach (string line in VariantFooterLines(durationSeconds, estimate, now))
+                WriteLineColored(line, ConsoleColor.DarkGray);
         }
+
+        /// <summary>Die Zeilen von <see cref="PrintVariantFooter"/> als Text (prüfbar ohne Konsole).</summary>
+        public static IReadOnlyList<string> VariantFooterLines(double durationSeconds, RunTimeEstimate? estimate, DateTime now)
+        {
+            var lines = new List<string>
+            {
+                $"└─ ⏱ Dauer: {FormatDuration(TimeSpan.FromSeconds(durationSeconds))}"
+            };
+            if (estimate == null) return lines;
+
+            string prefix = estimate.UpperBound ? "Optimierung höchstens bis" : "Optimierung fertig ca.";
+            lines[0] += $" | Prognose: {prefix} {FormatDateTime(now + estimate.Remaining)} (Rest ≈ {FormatDuration(estimate.Remaining)})";
+
+            if (estimate.FineCandidates > 0 && estimate.FineVerification > TimeSpan.Zero)
+            {
+                lines.Add(
+                    $"   Prognose: danach Feinprüfung bis zu ≈ {FormatDuration(estimate.FineVerification)} "
+                    + $"({estimate.FineCandidates} {(estimate.FineCandidates == 1 ? "Kandidat" : "Kandidaten")}), "
+                    + $"alles fertig {(estimate.UpperBound ? "höchstens bis" : "ca.")} "
+                    + FormatDateTime(now + estimate.Remaining + estimate.FineVerification));
+            }
+            return lines;
+        }
+
+        /// <summary>
+        /// Eine Zeile nach der Iterations-Tabelle: wann die nächste Iteration fertig ist. Das ist die Angabe,
+        /// die man braucht, um einen Lauf nach Iteration N von Hand zu stoppen.
+        /// </summary>
+        public static void PrintTimeForecast(RunTimeEstimate? estimate, DateTime now)
+        {
+            string? line = TimeForecastLine(estimate, now);
+            if (line != null) WriteLineColored(line, ConsoleColor.Cyan);
+        }
+
+        /// <summary>Die Zeile von <see cref="PrintTimeForecast"/>; <c>null</c>, wenn es nichts zu prognostizieren gibt.</summary>
+        public static string? TimeForecastLine(RunTimeEstimate? estimate, DateTime now)
+        {
+            if (estimate == null) return null;
+
+            string bound = estimate.UpperBound ? "höchstens " : "";
+            string text = estimate.IterationNumber > 0
+                ? $"[PROGNOSE] Iteration {estimate.IterationNumber} fertig {bound}ca. {FormatDateTime(now + estimate.IterationRemaining)}"
+                  + $" | Optimierung fertig {bound}ca. {FormatDateTime(now + estimate.Remaining)}"
+                : $"[PROGNOSE] Optimierung fertig";
+
+            if (estimate.FineCandidates > 0 && estimate.FineVerification > TimeSpan.Zero)
+                text += $" | danach Feinprüfung bis zu ≈ {FormatDuration(estimate.FineVerification)}";
+            return text;
+        }
+
+        /// <summary>
+        /// Dauer lesbar, mit Tagen: <c>4 s</c>, <c>34 min</c>, <c>4 h 49 min</c>, <c>12 T 17 h</c>.
+        /// (Das alte <c>hh:mm:ss</c> ließ die Tage weg: 12 T 17 h erschien als „17:34:24“.)
+        /// </summary>
+        public static string FormatDuration(TimeSpan duration)
+        {
+            if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+
+            // Erst runden, dann die Stufe wählen: 59,6 s sind „1 min“, nicht „60 s“.
+            int totalSeconds = (int)Math.Round(duration.TotalSeconds);
+            if (totalSeconds < 60) return $"{totalSeconds} s";
+
+            int totalMinutes = (int)Math.Round(duration.TotalMinutes);
+            if (totalMinutes < 60) return $"{totalMinutes} min";
+            if (totalMinutes < 24 * 60) return $"{totalMinutes / 60} h {totalMinutes % 60} min";
+
+            int totalHours = (int)Math.Round(duration.TotalHours);
+            return $"{totalHours / 24} T {totalHours % 24} h";
+        }
+
+        private static readonly string[] WeekdayShort = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+
+        /// <summary>Datum mit Wochentag auf Deutsch, z. B. <c>Mo 23.11. 09:00</c> (ohne Kultureinstellung, damit es überall gleich aussieht).</summary>
+        public static string FormatDateTime(DateTime time)
+            => $"{WeekdayShort[(int)time.DayOfWeek]} {time.Day:00}.{time.Month:00}. {time.Hour:00}:{time.Minute:00}";
 
         #endregion
 

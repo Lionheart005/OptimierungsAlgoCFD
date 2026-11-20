@@ -564,7 +564,7 @@ Einzelheiten stehen in [`scripts/README.md`](../../scripts/README.md).
 | `recheck` | Einzelne Variante (`-Variant Gen3_Var2`) auf feinerem Netz (`-Finer 1`) re-simulieren und vergleichen (TODO-43). Mit `-Unsteady` (TODO-W7): erst stationär auf dem feinen Netz, dann zeitgenau (URANS, 20 Perioden) **aus dieser Lösung**; der Bericht stellt stationär und zeitgemittelt gegenüber. Ein großer Unterschied heißt: die Strömung ist instationär. |
 | `deploy` | Nur hochladen und bauen. Läuft schon etwas und hat sich der Code geändert, wird neu gestartet (außer mit `-NoRestart`). |
 | `build` | Nur bauen. |
-| `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Logzeilen. Ohne `-Project` wird das zuletzt gerechnete Projekt abgefragt. |
+| `status` | Läuft etwas? Seit wann? Wie viele Ergebnisse? Letzte Prognose (Ende, siehe [6.1a](#61a-wie-lange-dauert-der-lauf-noch-prognose-im-log)) und letzte Logzeilen. Ohne `-Project` wird das zuletzt gerechnete Projekt abgefragt. |
 | `log` | Log live mitlesen. Strg+C beendet nur das Mitlesen, nicht den Lauf (`-NoFollow` = einmal ausgeben, `-Lines 100` = mehr Zeilen). |
 | `stop` | Lauf und alle Rechenprozesse beenden. |
 | `fetch` | Ergebnisse nach `Serverergebnisse\<Server>_<Projekt>_<Zeitstempel>\` holen: CSV, `effective-config.json`, Log, Verläufe. Mit `-Champion` zusätzlich die VTUs des Champions/Top-N, mit `-All` den ganzen Ergebnisordner (groß). Ohne `-Project` wird automatisch das zuletzt gerechnete Projekt geholt. |
@@ -608,6 +608,40 @@ Journal. Erst wo das Journal endet, wird wieder gerechnet.
   wird mit dem Stand auf dem Server weitergerechnet. Neuer Code heißt neuer Lauf: `run`.
 * Ein neues `run` beginnt immer frisch. Das alte Journal wird dabei nicht gelöscht, sondern
   als `journal_<Zeitstempel>.jsonl` aufgehoben.
+
+### 6.1a Wie lange dauert der Lauf noch? (Prognose im Log)
+
+Das Programm schätzt die Restzeit selbst und schreibt sie ins Log, unter jede Variante und nach jeder Iteration:
+
+```text
+└─ ⏱ Dauer: 4 h 49 min | Prognose: Optimierung fertig ca. Do 03.12. 22:00 (Rest ≈ 12 T 17 h)
+   Prognose: danach Feinprüfung bis zu ≈ 5 T 3 h (3 Kandidaten), alles fertig ca. Mo 08.12. 01:00
+...
+[PROGNOSE] Iteration 6 fertig ca. Mo 23.11. 09:00 | Optimierung fertig ca. Do 03.12. 22:00 | danach Feinprüfung bis zu ≈ 5 T 3 h
+```
+
+`.\scripts\sim.ps1 status` zeigt die jeweils letzten Prognose-Zeilen unter „Prognose (aus dem Log)“ an.
+Die Zeile `[PROGNOSE] Iteration N fertig ca. …` ist die, die man braucht, um einen Lauf nach einer bestimmten Iteration
+von Hand zu stoppen (`stop`): erst stoppen, wenn die Iteration fertig ist und die nächste begonnen hat.
+
+**Was eingerechnet ist:**
+
+* **Gleitendes Fenster:** Als Dauer einer Variante zählt der Mittelwert der **letzten 10** gerechneten Varianten, nicht
+  aller bisherigen. Die Formen werden im Lauf meist größer und teurer; der Gesamtschnitt hinkt dem hinterher.
+  Gescheiterte Varianten (Sekunden statt Stunden) zählen nicht mit.
+* **Nachprüfung des Champions** am Ende jeder Iteration: eine Rechnung, so lang wie eine Variante.
+* **Feinprüfung am Ende** (`ChampionVerification`, siehe 4.2), getrennt ausgewiesen als „bis zu“: feineres Netz
+  (in 3D etwa 2,3-mal so viele Zellen je Stufe) und das strenge Iterationslimit der Kontrollrechnungen
+  (`ControlRuns.Su2MaxIterations`). Das ist eine **Obergrenze**: die strenge Rechnung kann früher konvergieren.
+  Bei `"Mode": "EachIteration"` kommt stattdessen eine Feinprüfung je Iteration dazu, bei `"Off"` keine.
+* Ist das automatische Ende (`AutoStop`) an, steht „höchstens“: der Lauf kann früher enden.
+
+**Was nicht eingerechnet ist:** die Netzkalibrierung am Laufanfang, und nach einem `resume` die ersten Minuten, bis
+Messwerte da sind. Bis zur ersten gemessenen Variante gibt es keine Prognose.
+
+**Parametergrenzen:** Liegt der Champion einer Iteration an einer Grenze aus `ParameterBounds`, steht gleich nach
+der Iterations-Tabelle `[GRENZE] Champion von Iteration N liegt an der Parametergrenze: …`. Die Grenzen werden dadurch
+nie verändert; das ist nur ein Hinweis (wie am Ende des Laufs).
 
 ### 6.2 Lokale Befehle (`dotnet`) und direkte Server-Aufrufe
 

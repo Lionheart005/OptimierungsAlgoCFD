@@ -90,7 +90,7 @@ Manchmal funktioniert der Befehl beim ersten mal nicht, dann einfach nochmal pro
 .\scripts\sim.ps1 calibrate # Netzkalibrierung starten (ermittelt optimalen MeshRefinementFactor)
 .\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Einzelne Variante auf feinerem Netz nachrechnen
 .\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
-.\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze?
+.\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze? Letzte Zeitprognose (Ende, Feinprüfung)
 .\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
 .\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
 .\scripts\sim.ps1 delete    # Sauberer Neuanfang: Ergebnisse aller Projekte + Logs löschen

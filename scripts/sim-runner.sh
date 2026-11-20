@@ -726,6 +726,20 @@ cmd_status() {
     fi
 
     if [ -f "$LOG_FILE" ]; then
+        # Letzte Zeitprognose des Programms (Fusszeile je Variante und Zeile nach jeder Iteration). Nur lesen:
+        # was dort steht, hat das Programm geschaetzt (gleitendes Fenster, Nachpruefung und Feinpruefung inklusive).
+        local forecast
+        forecast="$( {
+            grep -a '\[PROGNOSE\]' "$LOG_FILE" | tail -n 1
+            grep -a 'Prognose: Optimierung' "$LOG_FILE" | tail -n 1
+            grep -a 'Prognose: danach' "$LOG_FILE" | tail -n 1
+        } | sed 's/\x1b\[[0-9;]*m//g' || true)"
+        if [ -n "$forecast" ]; then
+            say ""
+            say "--- Prognose (aus dem Log) ---"
+            printf '%s\n' "$forecast"
+        fi
+
         say ""
         say "--- letzte Logzeilen ---"
         tail -n "${1:-12}" "$LOG_FILE" | colorize_log

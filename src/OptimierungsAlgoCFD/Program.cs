@@ -343,7 +343,11 @@ namespace OptimierungsAlgoCFD
                 optimizer,
                 simulationContext,
                 fitness.RequiredMetrics,
-                journal);
+                journal)
+            {
+                // Die Zeitprognose braucht die Dimension (Zellwachstum der Feinprüfung).
+                MeshDimensions = ResolveMeshDimensions(context)
+            };
 
             float effectiveVoxelResolution = VoxelResolutionAdvisor.Resolve(
                 context.Simulation, context.Project, stages);
@@ -473,6 +477,16 @@ namespace OptimierungsAlgoCFD
                     Console.WriteLine($"  \"MeshRefinementFactor\": {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}");
                 }
             });
+        }
+
+        /// <summary>
+        /// 2 bei einem 2D-Projekt (<c>Dimensions</c> = 2 in der <c>su2.json</c>), sonst 3. Liest nur, was
+        /// <c>CreateStages</c> schon geladen hat, und lädt nichts ein zweites Mal.
+        /// </summary>
+        private static int ResolveMeshDimensions(ProjectContext context)
+        {
+            Su2SolverOptions? su2 = context.Loaded.Select(l => l.Value).OfType<Su2SolverOptions>().LastOrDefault();
+            return su2 != null && su2.Dimensions == 2 ? 2 : 3;
         }
 
         private static (CalibrationDecision Decision, string ReportRelativePath) ExecuteCalibration(

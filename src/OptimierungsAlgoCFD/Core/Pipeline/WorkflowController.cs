@@ -41,6 +41,12 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public double? LastCallDurationSeconds { get; private set; }
 
+        /// <summary>
+        /// 2 oder 3: bestimmt, wie stark die Zellzahl bei der Feinprüfung wächst, und damit die Zeitprognose.
+        /// Program.cs setzt den Wert aus <c>su2.json</c>; ohne Angabe gilt 3.
+        /// </summary>
+        public int MeshDimensions { get; init; } = 3;
+
         /// <param name="requiredMetrics">
         /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
         /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
@@ -85,11 +91,10 @@ namespace OptimierungsAlgoCFD.Core
                     + $"über die letzten {autoStop.WindowVariants} Varianten; höchstens "
                     + $"{_context.Config.MaxIterations} × {_context.Config.VariantsPerIteration} Varianten)");
 
-            int totalVariants = _context.Config.MaxIterations * _context.Config.VariantsPerIteration;
-            int completedVariants = 0;
-            double totalSecondsPassed = 0;
-            int liveVariants = 0;
-            
+            // Restzeit-Prognose (Plan zeitschaetzung.md): gleitendes Fenster, Nachprüfung je Iteration
+            // und Feinprüfung am Ende sind eingerechnet.
+            var estimator = new RunTimeEstimator(_context.Config, MeshDimensions, autoStopEnabled);
+
             // Gewinner der zuletzt gelaufenen Iteration. Nur für die Schlussmeldung
             // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
             // bestimmt (TODO-15), nicht über die letzte Iteration.
@@ -145,7 +150,7 @@ namespace OptimierungsAlgoCFD.Core
 
                     SimulationLog.PrintVariantResult(record);
                     SimulationLog.PrintVariantDiagnostics(record);
-                    UpdateTimer(timer, replayed, ref completedVariants, ref liveVariants, ref totalSecondsPassed, totalVariants);
+                    UpdateTimer(timer, replayed, record, estimator, iter, var);
                 } 
 
                 // =========================================================
@@ -174,6 +179,11 @@ namespace OptimierungsAlgoCFD.Core
                 _context.ExportToCsv(); 
                 
                 SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, currentIterationRecords, trueWinner);
+                SimulationLog.PrintTimeForecast(estimator.Estimate(iter, _context.Config.VariantsPerIteration, iterationFinished: true), DateTime.Now);
+
+                // Liegt der Champion schon jetzt an einer Parametergrenze, sofort sagen und nicht erst am Ende
+                // des Laufs (nach der Feinprüfung, und gar nicht, wenn man von Hand stoppt).
+                PrintBoundaryHint(trueWinner, iter);
 
                 // Automatisches Ende: nur zwischen zwei Iterationen, nie mitten in einer Generation.
                 if (autoStopEnabled && iter < _context.Config.MaxIterations)
@@ -476,23 +486,36 @@ namespace OptimierungsAlgoCFD.Core
             return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        private void UpdateTimer(Stopwatch timer, bool replayed, ref int completed, ref int live, ref double totalSeconds, int totalVariants)
+        private void UpdateTimer(
+            Stopwatch timer, bool replayed, ModelRecord record, RunTimeEstimator estimator, int iteration, int variantsDone)
         {
             timer.Stop();
-            completed++;
 
-            TimeSpan? timeLeft = null;
-            if (!replayed)
+            // Gerechnete Varianten zählen mit ihrer Dauer. Aus dem Journal übernommene zählen mit der
+            // ursprünglichen Dauer (DurationSeconds bleibt erhalten), nicht mit den Millisekunden der Wiedergabe.
+            // Gescheiterte Varianten bleiben außen vor: sie brauchen Sekunden und würden den Schnitt drücken.
+            if (!record.SimulationFailed)
             {
-                live++;
-                totalSeconds += timer.Elapsed.TotalSeconds;
-                
-                double avgSeconds = totalSeconds / live;
-                int variantsLeft = totalVariants - completed;
-                timeLeft = TimeSpan.FromSeconds(variantsLeft * avgSeconds);
+                double? measured = replayed ? LastCallDurationSeconds : timer.Elapsed.TotalSeconds;
+                if (measured.HasValue) estimator.AddVariant(measured.Value);
             }
-            
-            SimulationLog.PrintVariantFooter(timer.Elapsed.TotalSeconds, timeLeft);
+
+            SimulationLog.PrintVariantFooter(
+                timer.Elapsed.TotalSeconds,
+                estimator.Estimate(iteration, variantsDone, iterationFinished: false),
+                DateTime.Now);
+        }
+
+        /// <summary>Meldet eine Parametergrenze, an der der Champion einer Iteration liegt.</summary>
+        private void PrintBoundaryHint(ModelRecord champion, int iteration)
+        {
+            var atBounds = BoundaryHint.Find(champion.ActiveParameters, _context.Project.ParameterBounds);
+            if (atBounds.Count == 0) return;
+
+            SimulationLog.WriteLineColored(
+                $"[GRENZE] Champion von Iteration {iteration} liegt an der Parametergrenze: "
+                + string.Join(", ", atBounds.Select(f => f.Describe())),
+                ConsoleColor.Yellow);
         }
 
         private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
