@@ -39,3 +39,6 @@ imgui.ini
 # Umbenennung des Musters oben sie nicht versehentlich ins Repo holt.
 .claude/settings.local.json
 
+# Persoenliche Standortbestimmung / Strategie-Diskussion (nicht fuer das oeffentliche Repo)
+.plans/strategie_und_projektbewertung.md
+

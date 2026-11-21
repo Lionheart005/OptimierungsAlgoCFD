@@ -1,246 +1,118 @@
-# Entwicklungs-Roadmap (Post-Merge `MajorPhysikFixes`)
+# Gesamt-Roadmap v2: Große Überarbeitung & Neuausrichtung (Plan A)
 
-> **Status:** Aktiv — Stand: 08.11.2026  
-> **Basis:** Konsolidierte Anforderungen aus `.plans/Anmerkungen.txt` (Z. 30–61) sowie den Detailplänen `.plans/ki_optimierung.md`, `.plans/vergleich_optimierer.md`, `.plans/llm_geometrie_bewertung.md` und `.plans/fem_ausblick.md`.  
-> **Ausgangslage:** Meilenstein 1 (Python-Auswerteskripte, Log-Redesign & 10×10 `Naca2D`-Referenzlauf) ist abgeschlossen und archiviert (`.plans/.old/ms1_auswertung_und_logdesign.md`). **Meilenstein 2 (KI-Integration) ist auf Branch `KI_Integration` umgesetzt:** Server-Vergleich 5×5 und 10×10 ausgewertet, **Bayes ist bei 100 Rechnungen klar am besten** (`vergleich_optimierer.md`). Am 08.11.2026 folgte ein Aufräum-Durchgang (Bayes-Fehler der späten Phase behoben, Projekt in `OptimierungsAlgoCFD` umbenannt, Beispielprojekt `TestprojektNACA` entfernt, `_Vorlage` zu `_Vorlage3D`).
+> **Stand:** 21.11.2026 — **Neuausrichtung beschlossen; Schritt 0 erledigt; bereit für Phase 1.**  
+> **Sprache:** Pläne und Diskussionen in `.plans/` bleiben bewusst **auf Deutsch**. Der gesamte Produktcode, Logs, Fehlermeldungen, CSVs, Tests und Nutzer-READMEs werden ab Phase 1 konsequent auf **Englisch** umgestellt.  
+> **Archiv:** Die vorherige Roadmap (`ROADMAP_v1_2026-11-08.md`) sowie alle abgeschlossenen bzw. abgelösten Einzelpläne liegen vollständig unter [`.plans/.old/`](.old/). Alle noch offenen Punkte aus v1 wurden unten sauber übernommen.
 
 ---
 
-## Übersicht der Meilensteine
+## 1. Strategische Vision & Zielbild
+
+Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt zu einer **schlanken, physikalisch verifizierbaren, international nutzbaren Open-Source-Plattform für Computational Engineering** (inspiriert von LEAP 71 / Noyron, `PicoGK` + `LEAP71_ShapeKernel` und moderner Code-Evolution à la AlphaEvolve/OpenEvolve):
+
+- **Klare Nische (Plan A):** Komplexe, topologisch variable, 3D-druckbare **interne Fluidik** (Rohrkrümmer, Strömungsverteiler/Manifolds, Mischer, Kühlkanäle, Düsen) mit **`PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`**, ergänzt um die bewährte 2D-/3D-Außenumströmungs-Pipeline mit **SU2** (NASA-TMR-validiert).
+- **Alleinstellungsmerkmal („Verifiable Engineering Harness“):** Deterministische Prüftore (`--smoke-test`, `checkMesh`, Massenbilanz, `y+`, Konvergenzrichter, GCI, Bouncer, Hash-geschützte Bewertung) garantieren physikalisch belastbare Ergebnisse — erst für menschliche Ingenieure (Phasen 1–4) und später als kugelsicheres Verifikations-Backend für **LLM-gestützte Topologie-/Code-Evolution** (Phase 5).
+- **Wichtigstes Qualitätsprinzip:** **Weniger, aber rund.** Keine Parameter-Explosion, keine ungetesteten Features, keine vorzeitige Überfrachtung. Erst entschlacken, validieren und einfach bedienbar machen — dann erst in der Community testen und danach das LLM andocken.
+
+---
+
+## 2. Getroffene Grundsatzentscheidungen (Stand 21.11.2026)
+
+| # | Thema | Beschlossene Linie |
+| :--- | :--- | :--- |
+| **E1** | **Schritt 0 (`MantaAuv`-Serverlauf)** | **Erledigt (21.11.2026):** Lauf auf `BIC_12` sauber gestoppt; 20-GB-Vollarchiv liegt unter `~/Archive/MantaAuv_2026-11-21_final/` auf `BIC_12`, kompaktes Analyse- & Modellpaket (415,4 MB: alle 49 STLs, 44 CSV-Zeilen, `Bayes_Verlauf.csv`, `Kalibrierung/`, `Quellstand/`, Logs, Champion- & Start-VTUs) liegt lokal unter `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`. |
+| **E2** | **Zielfunktion, Constraints & Optimierer-Backend** | **Single-Objective + getrennte Pre-CFD- & Post-CFD-Constraints** als einfacher, transparenter Standard; Schnittstelle direkt **multi-objective-fähig (Pareto-Front)**. **Hybrid-Backend:** Gefixter C#-`Bayes` bleibt eingebauter Zero-Dependency-Standard; optionale JSON-Ask/Tell-Bridge zu einem Conda-Python-Env (**BoTorch/Ax** für Constrained `qLogEI`, `qNEHVI` Pareto & Multi-Fidelity, **pymoo** für `NSGA-II/III`). |
+| **E3** | **Rollenverteilung SU2 vs. OpenFOAM** | Klare Trennung über **Physik-Presets** (gegen Parameter-Wildwuchs): **OpenFOAM** (`snappyHexMesh`/`cfMesh` + `simpleFoam`) wird Haupt-3D-Solver für **interne Fluidik (`Internal3D`)**; **SU2** bleibt für **`External2D`** (NASA-TMR) und **`External3D`** (neu mit Symmetrieebene). |
+| **E4** | **Bedienung & Konfigurations-Diät** | Radikale Entschlackung von ~127 sichtbaren Keys auf **~15 Projekt-Keys** durch Presets (`External2D`/`External3D`/`Internal3D` × `FastConcept`/`StandardRans`/`VerificationFine`), Single Source of Truth und modulare englische Doku statt 88-KB-Monolith. |
+| **E5** | **Sprache & Projektname** | Code, Logs, Fehlermeldungen, CSV-Header, Tests und Nutzer-Doku werden direkt in **Phase 1/2 komplett auf Englisch** umgestellt; `.plans/` bleiben Deutsch. **Umbenennung** weg von `OptimierungsAlgoCFD` ist für Phase 1 eingeplant — der finale Name wird kurz vor `AP 1.6` entschieden (Vorschläge stehen in `phase1_entschlackung_und_kern.md`). |
+| **E6** | **Benchmarks, Showcase & LaTeX-Bericht** | LaTeX-Dokument wird bewusst **zurückgestellt bis Phase 4** (nach vollständigem Feinschliff). Dauerhafte **Literatur-Benchmarks** (NASA TMR 2D, 90°-Rohrkrümmer 3D intern, DARPA SUBOFF 3D extern) werden eingebaut; das konkrete große Showcase-Projekt bleibt problemunabhängig und wird erst in Phase 4 final gewählt. |
+| **E7** | **Reihenfolge LLM & FEM** | **LLM-Anbindung** erst in **Phase 5**, nachdem Kern, OpenFOAM, Benchmarks und Community-Feedback (Phase 4) stehen (Schnittstellen werden aber schon in Phasen 1–3 sauber vorbereitet). **FEM** bleibt bewusst Zukunftsmusik (siehe Abschnitt 6). |
+
+---
+
+## 3. Phasen-Übersicht & Abhängigkeiten
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 2: KI- & Machine-Learning-Integration  ✔ UMGESETZT (08.11.2026) │
-│ ├── AP 2.1: Datenhygiene & Bouncer-Markierung (TODO-53)                  [x] │
-│ ├── AP 2.2: Gauß-Prozess-Surrogatkern & Cholesky-Numerik (TODO-54)       [x] │
-│ ├── AP 2.3: Bayes-Optimierer mit Expected Improvement (TODO-55)          [x] │
-│ ├── AP 2.4: Mehrziel-Kennwert-Modellierung "Metrics" (TODO-56)           [x] │
-│ ├── AP 2.5: Vertrauensbereiche & Lernmengen-Deckel TuRBO (TODO-57)       [x] │
-│ ├── AP 2.6: Transparenz, Treffsicherheit & Verlauf-CSV (TODO-58)         [x] │
-│ ├── AP 2.7: 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes, TODO-60)    [x] │
-│ └── AP 2.8: Architektur-Bewertung für LLM-Geometriegenerierung           [x] │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 3: Große LaTeX-Gesamtdokumentation & Showcase                   │
-│ ├── AP 3.1: Wissenschaftliche Methodik & Gitterverifikation (GCI, y+)       │
-│ ├── AP 3.2: 2D-Showcase (Naca2D: Polaren, Druckverteilungen, Profilform)    │
-│ ├── AP 3.3: 3D-Showcase (MantaAuv: Druck/Reibung, Wirbel, ParaView-Szenen) │
-│ └── AP 3.4: Algorithmen-Benchmark (Evolution vs. RSM vs. Bayes-KI)          │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 4: FEM-Integration & Fluid-Struktur-Kopplung (fem_ausblick.md)  │
-│ ├── AP 4.1: Multi-Stage-Konfiguration ("Stages": ["Cfd", "Fem"])            │
-│ ├── AP 4.2: CalculiX (ccx) Solver-Anbindung & Gmsh-Tetraeder-Export         │
-│ ├── AP 4.3: Drucklast-Transfer & Randbedingungs-Zonen                       │
-│ └── AP 4.4: Kombinierte Festigkeits- & Strömungs-Fitness                    │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Meilenstein 5: Englische Gesamtfassung (nach der LaTeX-Dokumentation)       │
-│ ├── AP 5.1: LaTeX-Bericht, README und Handbücher ins Englische              │
-│ └── AP 5.2: Konsolen-/Logtexte und Fehlermeldungen (zweisprachig oder EN)   │
-└─────────────────────────────────────────────────────────────────────────────┘
+  [✔] Schritt 0: Laufenden MantaAuv-Lauf auf BIC_12 stoppen & doppelt archivieren (21.11.2026)
+                                           │
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch  │
+  │ Plan: phase1_entschlackung_und_kern.md                                     │
+  │ • 6+ gefundene Bugs fixen (GP sn2, GCI, Smoother-Order, CellLimit, Retry)  │
+  │ • Core/-Isolation reparieren + Architektur-Test; 4 God-Classes zerlegen    │
+  │ • Echte Integrationstests (PicoGK, Gmsh, SU2); Umbenennung & EN-Umstellung │
+  └────────────────────────────────────────┬───────────────────────────────────┘
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 2: Verständliche Bedienung, Presets, Physik & Ziel-/Constraint-Kern  │
+  │ Plan: phase2_bedienung_physik_und_ziele.md                                 │
+  │ • Konfig-Diät (127 → ~15 Keys über Presets); modulare englische Docs       │
+  │ • Trennung Objectives + Pre-CFD- & Post-CFD-Constraints; Bouncer-Fix       │
+  │ • Symmetrieebene, besseres SU2-Abbruchkriterium, Multi-Point, --smoke-test │
+  │ • C#-Bayes-Feinschliff (Constrained EI, L-BFGS-B, Sobol-QMC)               │
+  └────────────────────────────────────────┬───────────────────────────────────┘
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 3 (Plan A): ShapeKernel, OpenFOAM (Internal3D) & Hybrid-Optimierer   │
+  │ Plan: phase3_plan_a_openfoam_shapekernel_hybrid.md                         │
+  │ • LEAP71_ShapeKernel + Multi-Patch-Geometrie (inlet/outlet/wall/seed)      │
+  │ • OpenFOAM Internal3D (snappyHexMesh/cfMesh + simpleFoam, Preset-gekapselt)│
+  │ • Hybrid-Bridge (JSON Ask/Tell) für BoTorch (Pareto/Multi-Fidelity) & pymoo│
+  └────────────────────────────────────────┬───────────────────────────────────┘
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 4: Validierung, Benchmarks, Feinschliff & Community-Release          │
+  │ Plan: phase4_validierung_benchmarks_und_release.md                         │
+  │ • STRIKTER FEATURE-FREEZE: Stabilität, 15-Minuten-Quickstart, Feinschliff  │
+  │ • 3 Literatur-Benchmarks (NASA TMR 2D, 90°-Krümmer 3D, DARPA SUBOFF 3D)    │
+  │ • Großes Showcase-Projekt wählen & rechnen → LaTeX-Bericht → CFD-Community │
+  └────────────────────────────────────────┬───────────────────────────────────┘
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 5 (Grobkonzept): LLM-Code-Evolution („Open-Source Noyron+AlphaEvolve“)│
+  │ Plan: phase5_llm_code_evolution_ausblick.md                                │
+  │ • Maschinenlesbare Diagnostik / MCP-Fassade + SHA-Hash-Schutz              │
+  │ • Äußere LLM-Schleife mutiert ShapeKernel-Topologien (Human-in-the-Loop)   │
+  │ • Großer Vergleichslauf (Baseline vs. Parametrik vs. LLM) + Bericht 2      │
+  └────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Meilenstein 2: KI- & Machine-Learning-Integration (`ki_optimierung.md`) — ✔ umgesetzt
-
-> **Ergebnis (08.11.2026):** `"OptimizationAlgorithm": "Bayes"` ist implementiert (C#, ohne neue Abhängigkeit) und getestet
-> (alle Tests grün, 0 Warnungen). Vergleichsläufe auf dem Server (`Naca2D`): bei 25 Rechnungen (5×5) gleichauf mit Rsm; **bei 100 Rechnungen (10×10, 3 Seeds) klar am besten**:
-> nach der Feinprüfung Bayes 65,9, Rsm 54,7, Evolution 48,5, und Bayes findet auf jedem Seed dasselbe Optimum. Details: **[`vergleich_optimierer.md`](vergleich_optimierer.md)**.
-> AP 2.8 steht in **[`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md)**. **Offen bleibt die Entscheidung, ob `Bayes` Standard wird**
-> (`OptimizationAlgorithmFactory.DefaultAlgorithm`; Empfehlung: ja, ab etwa 40 Rechnungen) sowie ein Wiederholungslauf nach der Korrektur der späten Phase.
-> Die folgenden Abschnitte beschreiben den Plan und bleiben als Referenz stehen.
-
-### Ziel
-Erhöhung der Optimierungseffizienz durch Ersatzmodellierung (Surrogate Modeling) und Bayes-Optimierung (Active Learning). Anstelle blind-heuristischer Suchschritte leitet ein Gauß-Prozess (GP) mit Expected Improvement (EI) die Auswahl der nächsten CFD-Varianten.
-
-### Detail-Fahrplan (Block G–I aus `ki_optimierung.md`)
-
-```text
-TODO-53 (Datenhygiene) ──► TODO-54 (Gauß-Prozess) ──► TODO-55 (Bayes-Algorithmus)
-                                                             │
-┌────────────────────────────────────────────────────────────┴────────────────────────────────┐
-▼                                                                                            ▼
-TODO-56 (Mehrziel/Metrics)                                                       TODO-58 (Transparenz & Log)
-│                                                                                            │
-└────────────────────────────┬───────────────────────────────────────────────────────────────┘
-                             ▼
-               TODO-57 (TuRBO-Vertrauensbereich)
-                             │
-                             ▼
-               TODO-59 (Bedienhandbuch & Tests)
-                             │
-                             ▼
-               TODO-60 (5×5-Vergleichslauf Server)
-```
-
-#### Arbeitspakete im Detail
-1. **TODO-53: Bouncer-Markierung & Datenhygiene:**
-   - Markierung unphysikalischer oder abgestürzter Varianten mit `Disqualified = true`.
-   - Ausschluss disqualifizierter Varianten aus dem Training des Ersatzmodells, um Verzerrungen zu vermeiden.
-2. **TODO-54: Kern des Gauß-Prozesses (`Core/Surrogates/`):**
-   - Implementierung eines parameterfreien Gauß-Prozesses in C# (keine externen Python-Abhängigkeiten zur Laufzeit nötig).
-   - Kovarianzfunktion (Matern 5/2 oder Squared Exponential mit automatischer Relevanzbestimmung / ARD).
-   - Robuste Cholesky-Zerlegung mit Jitter-Leiter gegen numerische Singularitäten.
-3. **TODO-55: `BayesOptimizationAlgorithm` (`IOptimizationAlgorithm`):**
-   - Registrierung von `"Bayes"` in `OptimizationAlgorithmFactory`.
-   - Initiales DoE (z. B. Latin Hypercube Sampling).
-   - Infill-Kriterium: Expected Improvement (EI) über Monte-Carlo-Sampling oder Kriging Believer für synchrone Variantenblöcke.
-   - Dedizierter "Erkunder"-Slot für globale Exploration.
-4. **TODO-56: Mehrziel- & Physik-Ebene (Modus "Metrics"):**
-   - Getrennte Gauß-Prozesse für einzelne Kennwerte ($C_d$, $C_l$, $C_{my}$, Masse).
-   - Verrechnung der Fitness auf den vorhergesagten physikalischen Größen anstelle eines einzigen, hochgradig nichtlinearen Fitness-Surrogats.
-5. **TODO-57: TuRBO-Vertrauensbereich & Lernmengen-Deckel:**
-   - Vertrauensbereichs-Steuerung für hochdimensionale Probleme ($d \ge 10$).
-   - Dynamisches Anpassen der Kantenlänge $L$ (Halbieren bei Misserfolgen, Verdoppeln bei Erfolgen, Neustart bei Kollaps).
-   - Deckelung der Trainingsmenge (`MaxTrainingPoints`), um kubischen Rechenzeit-Anstieg $\mathcal{O}(n^3)$ zu begrenzen.
-6. **TODO-58: Transparenz & Reporting (`Bayes_Verlauf.csv`):**
-   - Ausgabe von Vorhersage vs. tatsächlichem CFD-Ergebnis (Median & 95-%-Konfidenzband).
-   - Bestimmung der Parameterwichtigkeit aus den Längenskalen $\ell_i$.
-   - Schreiben von `Analyseergebnisse/Bayes_Verlauf.csv`.
-7. **TODO-59 & 60: Validierung & Benchmark:**
-   - Handbuch-Aktualisierung (`BEDIENHANDBUCH.md`).
-   - 5×5-Vergleichslauf auf `Naca2D` unter identischem Random-Seed:
-     - Lauf 1: `RSM` (Response Surface Methodology)
-     - Lauf 2: `Evolution` (Evolutionsstrategie)
-     - Lauf 3: `Bayes` (Bayesian Optimization)
-   - Quantitativer Vergleich von Konvergenzgeschwindigkeit, bester Fitness und Berechnungsaufwand.
-
-#### AP 2.8: Architektur-Bewertung für LLM-gestützte Geometriegenerierung — ✔ siehe [`llm_geometrie_bewertung.md`](llm_geometrie_bewertung.md)
-*Hintergrund (Anmerkungen.txt Z. 36):* Frage nach der Machbarkeit von Physics-Informed LLMs zur Code-Synthese auf `Planar2D` / `PicoGK` (Leap71/Nyron-Workflow).
-- **Architektur-Konzept:**
-  - Trennung zwischen algorithmischer Formfindung (SDF-Code) und deterministischer Validierung.
-  - Einsatz eines LLM-Agenten als "Geometrie-Entwickler", der C#-Klassen erzeugt, welche `Planar2D` oder `PicoGK.Voxels` aufrufen.
-  - Sandboxed Roslyn-Compiler (`Microsoft.CodeAnalysis.CSharp`), der dynamisch compiliert und geometrische Integritätsprüfungen durchführt (Wasserdichtigkeit, Mindestwandstärke, Krümmung).
-  - Einordnung im Vergleich zu klassischer parametrischer Optimierung: Für topologische Neukonzeptionen hochattraktiv, für numerische Feinoptimierung ist der Bayes-Ansatz überlegen.
+| Schritt / Phase | Plan-Datei | Fokus | Status |
+| :--- | :--- | :--- | :--- |
+| **Schritt 0** | *(in dieser Roadmap dokumentiert)* | `MantaAuv` stoppen, 20 GB auf `BIC_12` + 415 MB lokal archivieren | ✔ erledigt (21.11.2026) |
+| **Phase 1** | [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md) | Bugfixes, `Core/`-Sauberkeit, God-Classes, echte Tests, Umbenennung & EN | offen (nächster Schritt) |
+| **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | offen |
+| **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`) | offen |
+| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Community-Release | offen |
+| **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 | Ausblick / Grobkonzept |
 
 ---
 
-## Meilenstein 3: Große LaTeX-Gesamtdokumentation & Showcase
+## 4. Übernommene offene Restpunkte aus den v1-Plänen (vollständige Rückverfolgbarkeit)
 
-### Ziel
-Erstellung einer umfassenden, wissenschaftlich exakten und optisch herausragenden Gesamtdokumentation im LaTeX-Format, die das gesamte Potenzial des Frameworks anhand der 2D- und 3D-Realläufe demonstriert. (Einmal zeigen was das gute Stück alles kann.)
+Damit beim Archivieren der alten Pläne nach `.plans/.old/` nichts verloren geht, ist hier jeder noch offene Punkt aus v1 seinem neuen Zielpaket zugeordnet:
 
-### Gliederungsstruktur des Dokuments
-
-1. **Einleitung & Systemarchitektur:**
-   - Vision: Automatisierte, voxel- und profilbasierte Strömungsoptimierung ohne manuelle CAD-Interaktion.
-   - Architekturübersicht: Entkoppelte Schichten (`Core`, `Composition`, `Solvers`, `Projects`), robuster Workflow-Controller, Journaling und Wiederaufnahmefähigkeit.
-2. **Numerische Methodik & Gitterunabhängigkeit:**
-   - Wandaufgelöste Grenzschichtnetze ($y^+ \approx 1$) in 2D (Quad-Layer mit Knickkantenschutz) und 3D (Prismen-Layer mit Glättung).
-   - Nachlauf-Detailbox zur Erfassung von Wirbelnachläufen und Scherschichten.
-   - Systematische Gitterverifikation nach ASME V&V 20 / Roache (GCI-Methode, Richardson-Extrapolation).
-3. **Optimierungsalgorithmen im direkten Vergleich:**
-   - Mathematische Formulierung: Response Surface Methodology (RSM/IDW) vs. Evolutionsverfahren (Mutation um den jeweils Besten; CMA-ES ist nicht umgesetzt) vs. Bayesian Optimization (GP-EI).
-   - Benchmark-Ergebnisse aus dem identisch gesedeten 2D-Vergleichslauf.
-4. **2D-Showcase: Aerodynamische Profiloptimierung (`Naca2D`):**
-   - Inkompressible Umströmung, Anstellwinkel-Optimierung.
-   - Druckverteilungen ($C_p$-Plots über der Sehne), Grenzschichtprofile und Strömungsabrissverhalten.
-   - Entwicklung der Profilgeometrie von Generation 1 bis zum validierten Champion.
-   - Vergleich der Ergebnisse mit NASA Werten und Physikalische akuratess, und ob Grobe optimierung am ende beim Champion auch tatsächlich das beste Modell ausspuckt wenn man es detailiert testet
-5. **3D-Showcase: Hydrodynamische AUV-Optimierung (`MantaAuv`):**
-   - 3D-Geometrieerzeugung über Voxelmorphologie (`PicoGK`).
-   - Druck- und Wandschubspannungsverteilungen auf dem Rumpf.
-   - ParaView-Visualisierungen: Stromlinien, Wirbelstrukturen ($Q$-Kriterium), Nachlaufschleppe in der Detailbox.
-   - Validierung der Champion-Varianten mit verfeinerten Gittern und Jitter-Tests.
-6. **Schlussfolgerungen & Ausblick:**
-   - Erzielte Widerstandsreduktion und hydrodynamische Effizienz.
-   - Roadmap zur FEM-Kopplung.
-
-### Vorgaben für die Läufe im Bericht (aus `Anmerkungen.txt`, Stand 08.11.2026)
-
-Der Bericht erklärt zuerst das Framework (Architektur, Schichten, Konfiguration, Wiederaufnahme), wie oben gegliedert. Für die Ergebnisse gilt:
-
-**2D `Naca2D` (Vergleich und Genauigkeit)**
-- **Jeder Algorithmus (Rsm, Evolution, Bayes) genau einmal, mit Netzkalibrierung und gleichen Konfigurationen**, damit Fitness und Ergebnisse direkt vergleichbar sind.
-- **Bayes zusätzlich einmal mit manuell gesetztem, sehr feinem Netz** und gegen den kalibrierten Durchlauf vergleichen: Rechenzeit und Genauigkeit (lohnt sich die Kalibrierung?).
-- **Werte mit NASA-Daten (TMR) vergleichen** und auf Realismus prüfen, auch gegen professionelle Quellen (Literatur, Windkanaldaten). Gehört dazu: stimmt das grob optimierte Ergebnis mit dem fein nachgerechneten überein (Feinprüfung)?
-- Hinweis: Die Läufe vom 08.11.2026 (`vergleich_optimierer.md`) verwendeten ein festes grobes Netz (Faktor 2,0) und den Stand vor der Korrektur der späten Phase; für den Bericht sauber wiederholen (kalibriert, Code-Stand nach Korrektur).
-
-**3D `MantaAuv` (Showcase, kein Vergleich)**
-- **Nur ein Durchlauf**, aber detailliert und genau (Kalibrierung, Feinprüfung), und **schön dokumentiert** (ParaView-Bilder, Druck/Reibung, Wirbel, Nachlauf).
-- Vorher klären: Der eingecheckte Netzfaktor 0,71 stammt aus dem Servertest und ist nicht netzunabhängig (CD 0,171 grob gegen 0,146 fein); für genaue Absolutwerte kalibrieren (`sim.ps1 calibrate`, ca. 4 h).
-
-**Ausblick:** FEM-Kopplung (Meilenstein 4).
-
-**Übersetzung:** Der gesamte Bericht samt README und Handbüchern wird anschließend ins Englische übersetzt (Meilenstein 5).
-
-### Benötigte Assets & Abbildungen
-- Vektorgrafiken (`.pdf`) aus `plot_history.py`, `plot_optimization.py` und `plot_calibration.py`.
-- Hochauflösende ParaView-Renderings aus den vorhandenen `.vtu`-Dateien (Oberflächen-Druckfelder, Schnittebenen im Strömungsfeld, 3D-Wirbelkerne).
-- Geometrievergleiche (Überlagerung von Ausgangs- und Optimalgeometrie).
+| Alter v1-Plan | Noch offener Punkt | Neu eingeordnet in |
+| :--- | :--- | :--- |
+| `.old/zeitschaetzung.md` | Deploy & Server-Verifikation von `RunTimeEstimator` und `sim.ps1 status`-Prognose | **Phase 1 (`AP 1.1`)** |
+| `.old/netzstrategie_und_su2_abbruch.md` | Server-Validierung & praxistauglicher SU2-Konvergenzabbruch (da `1e-5` bei 3D-Rauschen oft 5.000 Iter. durchlief) | **Phase 2 (`AP 2.4`) & Phase 4 (`AP 4.2`)** |
+| `.old/wandschicht_zellzahl.md` | Geplanter `ClassifyAngleDeg`-Retry in Gmsh Schritt 1 bei `Wrong topology` (fehlte noch im Code) | **Phase 1 (`AP 1.1`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | Wiederholungslauf `Naca2D` (Bayes 10×10, 3 Seeds) nach Spätphasen-Fix | **Phase 4 (`AP 4.2`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | `Naca2D`-Grenzkontakt (`MaxCamber=8`, `MaxThickness=6`) fachlich lösen | **Phase 2 (`AP 2.4`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | Alten Server-Ordner `src/Automatisierung_v2` löschen, alte Branches aufräumen, `-RemoteDir` vereinheitlichen | **Phase 1 (`AP 1.1` & `AP 1.6`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | Englische Gesamtfassung (Code, Logs, READMEs, Handbücher) | **vorgezogen in Phase 1 (`AP 1.6`) & Phase 2 (`AP 2.1`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | Große LaTeX-Dokumentation, ParaView-Showcases, GitHub-Release & `THIRD_PARTY_NOTICES.md`-Check | **Phase 4 (`AP 4.3` & `AP 4.4`)** |
+| `.old/ROADMAP_v1_2026-11-08.md` | FEM-Integration (`CalculiX`) | **Bewusst geparkt (Abschnitt 5 unten)** |
 
 ---
 
-## Meilenstein 3.5: Englische Gesamtfassung (nach der LaTeX-Dokumentation)
+## 5. Geparkte Zukunftsmusik: FEM-Strukturkopplung (bewusst noch NICHT in Planung)
 
-### Ziel
-Das Projekt wird auf GitHub unter echtem Namen veröffentlicht. Nach Abschluss der LaTeX-Dokumentation (Meilenstein 3) wird alles ins Englische übersetzt, damit es international nutzbar ist.
+> **Status:** Zurückgestellt für die Zeit nach Phase 4/5 — hier festgehalten, damit es nicht aus dem Gedächtnis verschwindet und spätere Änderungen den Weg nicht verbauen. Alle technischen Vorüberlegungen (CalculiX `ccx`, Gmsh `C3D10`, Drucklasttransfer, Randbedingungs-Zonen) bleiben vollständig archiviert in [`.plans/.old/fem_ausblick.md`](.old/fem_ausblick.md).
 
-### Arbeitspakete
-1. **AP 5.1: Dokumentation.** LaTeX-Bericht, `README.md`, `BEDIENHANDBUCH.md`, `src/projects/README.md`, `scripts/README.md`, `config/README.md`, die Architektur- und Kernel-READMEs sowie die JSON-Kommentare in den Vorlagen. Deutsch bleibt als zweite Fassung erhalten oder wird archiviert (zu entscheiden).
-2. **AP 5.2: Programmtexte.** Konsolenausgabe, Logs, Fehlermeldungen und Spaltennamen der Ergebnisdateien sind deutsch; viele Tests prüfen Meldungstexte (`Assert.Contains("…")`). Empfehlung: Texte zentral sammeln (eine Ressourcen-Datei oder statische Klasse), dann zweisprachig oder umschaltbar machen, statt alles in 160 Dateien zu ersetzen.
-3. **AP 5.3: Bezeichner und Kommentare im Code** (XML-Kommentare, Testnamen sind bereits englisch bzw. gemischt).
-4. **Begleitend:** Lizenzdatei, README mit Voraussetzungen, Schnellstart und einem Ergebnisbild (siehe „Release-Reife“ unten).
-
----
----
-
-## Meilenstein 4: FEM-Integration & Fluid-Struktur-Kopplung (`fem_ausblick.md`)
-
-### Ziel
-Erweiterung des Frameworks zu einer echten multiphysikalischen Optimierungsplattform durch Integration von linearer und nichtlinearer Strukturmechanik (Spannungen, Verformungen, Eigenfrequenzen).
-
-### Geplante Arbeitspakete
-
-1. **AP 4.1: Konfigurationsgestützte Multi-Stage-Pipeline:**
-   - Erweiterung von `simulation.json` um `"Stages": ["Cfd", "Fem"]` (oder `"Stages": ["Fem", "Cfd"]` als billiger Vorfilter).
-   - Dynamische Instanziierung der Stages in `CfdProjectDefinition` / `WorkflowController`.
-2. **AP 4.2: CalculiX (`ccx`) Anbindung:**
-   - Wahl des Solvers: CalculiX (`ccx`), quelloffen, über conda-forge/Pfade portabel verfügbar.
-   - Netzgenerierung über Gmsh: Automatischer Export von quadratischen Volumentetraedern (C3D10) im `.inp`-Format.
-   - Parsing der `.dat`- und `.frd`-Ergebnisdateien in C#.
-3. **AP 4.3: Kennwert- und Lasttransfer:**
-   - Erweiterung von `ModelRecord.Artifacts` zur Übergabe von Flächendruckfeldern aus SU2 an das FEM-Netz.
-   - Struktur-Kennwerte: `Fem_MaxVonMises`, `Fem_MaxDisplacement`, `Fem_FirstEigenfrequency`, `Fem_Mass`.
-4. **AP 4.4: Multidisziplinäre Fitness & Geometrie-Randbedingungen:**
-   - Formulierung kombinierter Zielfunktionen (z. B. minimaler Strömungswiderstand bei Einhaltung einer maximal zulässigen Von-Mises-Vergleichsspannung und Mindest-Eigenfrequenz).
-   - Generatorkonzept für Randbedingungs-Zonen (Einspann- und Lastflächen wandern parametrisch mit der Geometrie mit).
-
----
-
-
-
-## Offene Punkte aus dem Aufräum-Durchgang (08.11.2026)
-
-Erledigt am 08.11.2026 (Details: `ki_optimierung.md`, Abschnitt „Nachtrag“): Bayes-Fehler der späten Phase, MPI-Falle (Warnung beim Start und in `doctor`, Handbuch korrigiert), doppelte CSV-Spalte und Dezimaltrenner, Unsicherheit bei Türsteher/Feinprüfung/Kalibrierung, `--print-config`, toter Code, Umbenennungen.
-
-Offen:
-- [x] **Entscheidung `DefaultAlgorithm` (09.11.2026): `Bayes` ist Standard.** Umgesetzt in `OptimizationAlgorithmFactory`, Vorlagen und Naca2D (kein Eintrag mehr). MantaAuv trägt seit 09.11.2026 ausdrücklich `Bayes` ein (Test `Repository_Simulation_Json_Selects_Bayes`); der Bericht-Lauf ist zugleich der erste 3D-Bayes-Lauf.
-- [ ] **Wiederholungslauf Bayes auf dem Server** (Naca2D 10×10, drei Seeds) mit dem korrigierten Stand; erwartet: derselbe Sieger, bessere Ausbeute der letzten Runden. Dabei den alten Ordner `src/Automatisierung_v2` auf dem Server löschen (das Deploy räumt Quelldateien ab, nicht `bin/obj`).
-- [x] **Grenzen (09.11.2026):** Werden nicht automatisch erweitert. Stattdessen gibt der Lauf am Ende einen sichtbaren Hinweis aus, wenn der Gewinner an einer Grenze liegt (`BoundaryHint`, 1 % der Spanne). Offen bleibt die fachliche Frage für `Naca2D` (Optimum in der Ecke `MaxCamber = 8`, `MaxThickness = 6`): erweitern oder nicht.
-- [ ] **MantaAuv mit Bayes (Modus `Metrics`) auf dem Server testen** und erst dann den Standard dort umstellen; die Bayes-Verbesserung gegenüber Rsm ist für 3D noch nicht gemessen.
-- [ ] **Release-Reife GitHub:** `LICENSE` (MIT, 09.11.2026) und `THIRD_PARTY_NOTICES.md` sind angelegt und im README verlinkt; SU2/Gmsh/MPICH/ParaView-Angaben vor der Veröffentlichung gegenprüfen. Noch offen: README um Voraussetzungen, Schnellstart und ein Ergebnisbild ergänzen, alte Branches (`WindschiffProjekt`, `MajorPhysikFixes`) aufräumen, `KI_Integration` nach `main` mergen.
-- [ ] **Servername im Repo:** Der Server-Ordner heißt weiter `~/Documents/AutomatisierungCleanVersion` (`-RemoteDir` in `sim.ps1`); zum Vereinheitlichen auf `OptimierungsAlgoCFD` umstellen, dann beim ersten Deploy neu bauen (die Bibliothek legt der Runner selbst an).
-- [ ] **Rsm/Evolution-Tweaks** sind bewusst nicht gemacht (Rsm-Startplan gemessen, gemischt; CMA-ES nicht umgesetzt).
-
----
-
-## Priorisierte Umsetzungsreihenfolge
-
-| Schritt | Paket | Beschreibung | Primäres Ziel / Nutzen | Stand |
-| :--- | :--- | :--- | :--- | :--- |
-| ~~1~~ | ~~AP 1.1–1.2~~ | ~~Python-Auswerteskripte und 2D-Referenzlauf `Naca2D`~~ | ~~Auswertungsbasis und Validierung in 2D~~ | ✔ Meilenstein 1, archiviert in `.old/` |
-| ~~2~~ | ~~AP 2.1–2.7~~ | ~~KI-Bayes-Optimierer und 5×5-Vergleichslauf (RSM vs. Evolution vs. Bayes)~~ | ~~Beschleunigung der Konvergenz, quantitativer Vergleich~~ | ✔ umgesetzt, Auswertung in `vergleich_optimierer.md` |
-| ~~3~~ | ~~AP 2.8~~ | ~~Bewertung LLM-Geometriegenerierung~~ | ~~Entscheidungsgrundlage~~ | ✔ `llm_geometrie_bewertung.md` |
-| **4** | **AP 3.1–3.4** | Große LaTeX-Gesamtdokumentation & Showcase | Hochwertige wissenschaftliche Präsentation der Ergebnisse | offen |
-| **5** | **AP 4.1–4.4** | CalculiX-FEM-Integration | Multiphysik (Fluid-Struktur-Kopplung) | offen |
-| **6** | **AP 5.1–5.3** | Englische Gesamtfassung (nach der LaTeX-Dokumentation) | Internationale Nutzbarkeit | offen |
-| **vorab** | siehe „Offene Punkte aus dem Aufräum-Durchgang“ | Standard-Algorithmus, Wiederholungslauf, Lizenz, README | Release-Reife | offen |
+**Vier Architektur-Leitplanken, die wir in Phasen 1–3 nebenbei gratis einhalten, damit FEM später schmerzfrei andockt:**
+1. **`Core/` bleibt physikneutral** (kein `Drag`, kein `.su2`, kein OpenFOAM-Typ im Kern — wird ab Phase 1 per Architektur-Test erzwungen).
+2. **Stufenkette & Artefakte statt festem Einzel-Solver:** `ModelRecord.Artifacts` (Phase 1) und konfigurierbare `SolverStage[]` erlauben später einfach `"Stages": ["Cfd", "Fem"]` (oder `"Fem"` als schnellen Vorfilter vor CFD).
+3. **Eindeutige Kennwert-Präfixe & echte Multi-Constraint-Unterstützung:** `Fem_MaxVonMises`, `Fem_MaxDisplacement`, `Fem_FirstEigenfrequency` passen ab Phase 2 direkt als Post-Solve-Constraints oder Pareto-Ziele.
+4. **Benannte Funktionsflächen im Geometrie-Generator:** Der Multi-Patch-Vertrag aus Phase 3 (`inlet`, `outlet`, `wall`) lässt sich später direkt um mechanische Zonen (`mount`, `load_surface`) erweitern.

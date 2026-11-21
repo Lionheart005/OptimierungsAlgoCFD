@@ -1,55 +1,47 @@
-# Projektpläne & Roadmap (Übersicht für KI-Sessions)
+# Projektpläne & Roadmap v2 (Einstiegspunkt für KI-Sessions)
 
-> **Stand: 13.11.2026** — Meilenstein 1 & 2 (KI-Integration) abgeschlossen, **Netzstrategie & SU2-Konvergenz (AP-1 bis AP-7) umgesetzt**; Server-Validierung `MantaAuv` steht aus.  
-> **Test- & Buildstatus (13.11.2026):** 787/787 Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler.  
-> **Namen:** Framework `src/OptimierungsAlgoCFD/` (Namespace `OptimierungsAlgoCFD`, wie das GitHub-Repository), Tests `tests/OptimierungsAlgoCFD.Tests/`, Vorlagen `_Vorlage3D` und `_Vorlage2D`. Frühere Pläne in `.old/` nennen noch die alten Namen (`Automatisierung_v2`, `MyPicoGkProject`, `_Vorlage`, `TestprojektNACA`).
+> **Stand: 21.11.2026** — Große Überarbeitung & strategische Neuausrichtung auf **Plan A** (Open-Source Verifiable Computational Engineering Platform: `PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`/`SU2` + Hybrid-Optimierer + später LLM-Code-Evolution) beschlossen.  
+> **Schritt 0 abgeschlossen:** Der 7-Tage-Serverlauf `MantaAuv` auf `BIC_12` ist sauber gestoppt und doppelt archiviert (`~/Archive/MantaAuv_2026-11-21_final/` auf `BIC_12` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/` lokal).  
+> **Sprachregel:** Pläne und Diskussionen hier unter `.plans/` bleiben bewusst **auf Deutsch**. Der Produktcode, Logs, CSVs, Tests und Nutzer-Doku werden ab Phase 1 konsequent auf **Englisch** umgestellt.
 
 ---
 
 ## 1. Aktive Dokumente in `.plans/`
 
-Neue Sessions und KI-Modelle sollen sich primär an diesen aktiven Dokumenten orientieren:
+Neue Sessions und KI-Agenten orientieren sich ausschließlich an diesen aktiven Dokumenten:
 
-1. **[`netzstrategie_und_su2_abbruch.md`](netzstrategie_und_su2_abbruch.md) — Netzstrategie & SU2-Konvergenz (AP-1 bis AP-7 umgesetzt):**
-   - SU2 `CauchyTolerance = "1e-5"` & Steady Auto-Restart (`AutoRestartOnDrift`, `RESTART_SOL= YES`), `scaleFactor`-konsistenter `GmshCfdMesher` (reale mm), physikalischer Windkanal ($\ge 5\,L / \ge 15\,L / \ge 5\,B/H / \le 0{,}3\,\%$ Blockage), $y^+ \approx 1{,}5$ & `BoundaryLayerGrowthRate = 1.28`, `MeshSizeFromCurvature = true` (+ `CurvatureMinSizeFactor = 0.5`) & `DetailBox` (`DetailBoxLengthFactor = 1.5`, `DetailBoxMinHeightLengthFactor = 0.15`), `AutoVoxelResolution` / `VoxelResolutionAdvisor`, `--resume`-`DurationSeconds`-Erhalt sowie `Su2_CD_p`/`Su2_CD_v` & Zellklassen-Telemetrie (`MeshCells_*`). **Offen:** Server-Validierung `MantaAuv`.
-
-2. **[`ROADMAP.md`](ROADMAP.md) — Gesamt-Entwicklungsplan (offen: Meilenstein 3 und 4):**
-   - **Meilenstein 2 (KI, umgesetzt):** Bayes-Optimierung via Gauß-Prozess & Expected Improvement, TuRBO, Modus "Metrics". Bleibt als Referenz in der Roadmap markiert.
-   - **Meilenstein 3:** Große LaTeX-Gesamtdokumentation & Showcase (3D MantaAuv & 2D NACA, ParaView-Renderings, GCI-Gitterkonvergenz).
-   - **Meilenstein 4:** FEM-Integration & Fluid-Struktur-Kopplung (CalculiX `ccx` als zweite `SolverStage`).
-
-3. **[`fem_ausblick.md`](fem_ausblick.md) — Merkzettel & Schnittstellendesign für FEM:**
-   - Multi-Stage-Erweiterung (`"Stages": ["Cfd", "Fem"]`), CalculiX (`ccx`), Drucklasttransfer und Randbedingungs-Zonen.
-
-4. **[`zeitschaetzung.md`](zeitschaetzung.md) — Bessere Restzeit-Schätzung (20.11.2026, lokal umgesetzt, Servertest offen):**
-   - Tage im Format, gleitendes Fenster, Champion-Nachprüfung und Feinprüfung einrechnen, Enddatum je Iteration, Anzeige in `sim.ps1 status`; nebenbei Grenz-Hinweis schon je Iteration.
-
-5. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen & fortlaufendes Feedback:**
-   - Rohnotizen des Nutzers; die Vorgaben für den LaTeX-Bericht und die englische Fassung sind in `ROADMAP.md` (Meilensteine 3 und 5) übernommen. Diese Datei wird nicht von Claude verändert.
+1. **[`ROADMAP.md`](ROADMAP.md) — Gesamt-Roadmap v2 (zuerst lesen!):**
+   - Strategische Vision (Plan A), alle verbindlichen Grundsatzentscheidungen (`E1`–`E7`), Phasen-Übersicht (`0`–`5`), Rückverfolgbarkeit aller übernommenen v1-Restpunkte und der geparkte **FEM-Merkzettel**.
+2. **[`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md) — Phase 1 (nächster Arbeitsschritt):**
+   - Bugfixes (GP `sn2`, GCI-Bug, `StlSmoother`-Messreihenfolge, `CellLimit`, Gmsh-Retry, `Program.cs:517`, Deploy-Hygiene), `Core/`-Isolation + Architektur-Test, Zerlegung der 4 God-Classes, echte Integrationstests (`PicoGK`, `Gmsh`, `SU2`), Umbenennung (Namensentscheidung vor `AP 1.6`) & komplette Englisch-Umstellung.
+3. **[`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) — Phase 2:**
+   - Konfigurations-Diät (`127 → ~15` Projekt-Keys über Physik-Presets), schlanke modulare englische Doku, Trennung von **Objective(s) + Pre-CFD- & Post-CFD-Constraints**, Bouncer-Entkopplung, Symmetrieebene (`MARKER_SYM`), praxistauglicher SU2-Konvergenzabbruch, Multi-Point-Evaluation, `--smoke-test` und C#-Bayes-Feinschliff (`Constrained EI`, L-BFGS-B, Sobol-QMC).
+4. **[`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) — Phase 3 (Plan A):**
+   - Einbindung von **`LEAP71_ShapeKernel`** + Multi-Patch-Geometrie (`inlet`, `outlet`, `wall`, `FluidSeedPoint`), **OpenFOAM (`Internal3D`)** gekapselt hinter Presets (`snappyHexMesh`/`cfMesh` + `simpleFoam` inkl. Massenbilanz-Prüftor) sowie **Hybrid-Optimierer-Bridge** (JSON Ask/Tell) für **BoTorch** (Pareto `qNEHVI`, Multi-Fidelity) & **pymoo** neben dem eingebauten C#-Bayes-Standard.
+5. **[`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) — Phase 4:**
+   - Strikter Feature-Freeze, Zero-to-First-Run-Ergonomie, **3 dauerhafte Literatur-Benchmarks** (NASA TMR NACA 0012 2D, 90°-Rohrkrümmer 3D intern, DARPA SUBOFF 3D extern), Wahl & Durchführung des großen Showcase-Projekts, englischer LaTeX-Bericht & Release/Feedback in CFD-Communities.
+6. **[`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) — Phase 5 (Grobkonzept / Ausblick):**
+   - Äußere LLM-Code-Evolution-Schleife auf `ShapeKernel`-Generatoren (Topologie-Sprünge) mit deterministischen Prüftoren (Build, `--smoke-test`, SHA-Hash-Schutz gegen Reward Hacking, strukturierte Physik-Diagnostik) — Ausdetaillierung erst nach Phase 4.
+7. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen des Nutzers:**
+   - Wird nicht automatisch von KI-Agenten verändert.
 
 ---
 
 ## 2. Historisches Archiv in `.plans/.old/`
 
-*Zur Schonung des Kontextfensters/Token-Verbrauchs müssen folgende Dateien in neuen Sessions **nicht** mehr eingelesen werden:*
+*Zur Schonung des Kontextfensters müssen diese archivierten Dokumente in neuen Sessions **nicht** mehr eingelesen werden (alle relevanten offenen Restpunkte sind in `ROADMAP.md` und Phase 1–4 übernommen):*
 
-* [`.plans/.old/architektur_refactoring.md`](.old/architektur_refactoring.md) — Entscheidungen 1–8 & TODO-1 bis 52 (Architektur, Multi-Stage, Journaling) vollständig umgesetzt.
-* [`.plans/.old/projektbuendel.md`](.old/projektbuendel.md) — Multi-Projekt-Struktur (`src/projects/`), Vorlagen (`_Vorlage3D`, `_Vorlage2D`) und Skripte etabliert.
-* [`.plans/.old/anmerkungen_umsetzung.md`](.old/anmerkungen_umsetzung.md) — Frühe Anmerkungen & Feedbackpunkte abgearbeitet.
-* [`.plans/.old/architektur_kritikpunkte_naca.md`](.old/architektur_kritikpunkte_naca.md) — KP-1 bis KP-7 vollständig behoben (RubberBandScaler, ChampionValidator, AoA-Optimierung, Resolver).
-* [`.plans/.old/physik_feinschliff.md`](.old/physik_feinschliff.md) — Block W (TODO-W1 bis W10: adaptive Kalibrierung, Detailbox, Knickschutz B14, URANS-Restart) vollständig abgeschlossen.
-* [`.plans/.old/ms1_auswertung_und_logdesign.md`](.old/ms1_auswertung_und_logdesign.md) — Meilenstein 1 (Python-Auswerteskripte, Log-Redesign, 10×10-Referenzlauf `Naca2D`) vollständig abgeschlossen.
-* [`.plans/.old/ki_optimierung.md`](.old/ki_optimierung.md) — KI-Architektur, TODO-53 bis 60 (Bayes, Gauß-Prozess, TuRBO, Metrics-Modus) umgesetzt; am Ende der Umsetzungsstand mit allen Abweichungen.
-* [`.plans/.old/vergleich_optimierer.md`](.old/vergleich_optimierer.md) — Vergleichsläufe Rsm vs. Evolution vs. Bayes (`Naca2D`, 5×5 und 10×10, drei Seeds): Bayes klar am besten, seitdem Standard.
-* [`.plans/.old/servertest_2026-11-06.md`](.old/servertest_2026-11-06.md) — Servertest Ketten 1–3 auf BIC_12 ausgewertet; Folgefehler B1–B17 vollständig behoben.
-* [`.plans/.old/automatisches_ende.md`](.old/automatisches_ende.md) — AutoStop (`AutoStop`-Modus `"On"`, Fenster & Mindestverbesserung) umgesetzt.
-* [`.plans/.old/wandschicht_zellzahl.md`](.old/wandschicht_zellzahl.md) — Feste Wandschicht-Schichtzahl (Stufen A/B/C), gemessene Zellgrenze (`MaxCells3D`), Netzkennwerte in CSV.
+* [`.old/ROADMAP_v1_2026-11-08.md`](.old/ROADMAP_v1_2026-11-08.md) — Vorherige Gesamt-Roadmap v1 (abgelöst durch v2).
+* [`.old/netzstrategie_und_su2_abbruch.md`](.old/netzstrategie_und_su2_abbruch.md) — Netzstrategie, `scaleFactor`-Konsistenz, Großkanal, Krümmungsverfeinerung & SU2-Auto-Restart (AP-1 bis AP-7 umgesetzt).
+* [`.old/zeitschaetzung.md`](.old/zeitschaetzung.md) — `RunTimeEstimator`, Tagesformat, Enddatum & früher Grenz-Hinweis (lokal umgesetzt, Server-Verifikation in Phase 1 übernommen).
+* [`.old/fem_ausblick.md`](.old/fem_ausblick.md) — Technischer Merkzettel zur späteren CalculiX-FEM-Kopplung (bewusst geparkt, Leitplanken in `ROADMAP.md` Abschnitt 5 festgehalten).
+* [`.old/ki_optimierung.md`](.old/ki_optimierung.md) & [`.old/vergleich_optimierer.md`](.old/vergleich_optimierer.md) — Meilenstein 2 (C#-Gauß-Prozess, Bayes, TuRBO, Metrics-Modus, 2D-Benchmarks).
+* [`.old/wandschicht_zellzahl.md`](.old/wandschicht_zellzahl.md), [`.old/physik_feinschliff.md`](.old/physik_feinschliff.md), [`.old/servertest_2026-11-06.md`](.old/servertest_2026-11-06.md), [`.old/automatisches_ende.md`](.old/automatisches_ende.md), [`.old/ms1_auswertung_und_logdesign.md`](.old/ms1_auswertung_und_logdesign.md), [`.old/architektur_refactoring.md`](.old/architektur_refactoring.md), [`.old/architektur_kritikpunkte_naca.md`](.old/architektur_kritikpunkte_naca.md), [`.old/projektbuendel.md`](.old/projektbuendel.md), [`.old/anmerkungen_umsetzung.md`](.old/anmerkungen_umsetzung.md) — Frühere Entwicklungsstufen (abgeschlossen).
 
 ---
 
-## 3. Aktueller Systemstatus
+## 3. Aktueller Systemstatus (Ausgangsbasis vor Phase 1)
 
-* **Physik & Vernetzung:** 2D-CFD (`TargetYPlus = 1.0`, `GrowthRate = 1.2`) und 3D-CFD (`TargetYPlus = 1.5`, `GrowthRate = 1.28`, `MeshSizeFromCurvature = true` mit `CurvatureMinSizeFactor = 0.5`), `scaleFactor`-konsistenter `GmshCfdMesher` in realen mm, physikalische Windkanal-Garantien ($\ge 5\,L / \ge 15\,L / \ge 5\,B/H / \le 0{,}3\,\%$ Blockage), `DetailBox` inkl. Z-Mindestpuffer (`DetailBoxMinHeightLengthFactor = 0.15`), adaptive GCI-Kalibrierung, Knickpunkt-Schutz (B14) sowie Start-Voxelprüfung (`VoxelResolutionAdvisor` / `AutoVoxelResolution`).
-* **SU2-Konvergenz & Telemetrie:** `CauchyTolerance = "1e-5"`, automatischer Steady-Restart bei Rest-Drift (`AutoRestartOnDrift = true`, `RESTART_SOL= YES`), Druck-/Reibungs-Widerstandsanteile (`Su2_CD_p`, `Su2_CD_v`), Zellklassen (`MeshCells_*`) und reale Tunnelmaße in CSV/`calibration.csv`, sowie `DurationSeconds`-Erhalt beim `--resume`.
-* **Pipeline & Algorithmen:** RSM, Evolutionäre Optimierung, **Bayes-Optimierung (Gauß-Prozess, EI, Metrics-Modus, Vertrauensbereich)**, robuster Champion-Validator mit relativem Jitter und Parameter-Bounds-Clamping (KP-2), aktive Anstellwinkel-Optimierung (KP-4), plattformunabhängiger `ExecutableResolver` (KP-7).
-* **Konfiguration:** `FreestreamVelocity` (m/s) ist der Standardweg zur Anströmgeschwindigkeit; `MachNumber` bleibt nur als veralteter Rückfall (`FreestreamVelocity = 0`). Die Vorlagen und Projekt-JSONs (`MantaAuv`, `Naca2D`) sind auf genaue Rechnungen ausgelegt (Auto-Netzkalibrierung, strenge `ControlRuns`, Feinprüfung der besten Varianten, instationär-stabile Rechnungen gültig).
+* **Build & Unit-Tests:** 787+ Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen — allerdings noch ohne echte PicoGK-/Gmsh-/SU2-Integrationstests (folgen in Phase 1 `AP 1.5`).
+* **Server `BIC_12`:** Kein aktiver Lauf (Lauf `MantaAuv` am 21.11.2026 gestoppt & archiviert). Bereit für saubere Neuentwicklung und kurze Integrations-/Benchmark-Tests.
+* **Nächster konkreter Schritt:** Start mit **[`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.1` Bugfixes & Hygiene → `AP 1.2` `Core/`-Isolation → `AP 1.3` God-Classes zerlegen → `AP 1.4/1.5` Integrationstests → Namenswahl + `AP 1.6` Englisch-Umstellung).
