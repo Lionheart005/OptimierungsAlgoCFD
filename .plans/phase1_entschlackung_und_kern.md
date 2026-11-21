@@ -1,6 +1,6 @@
 # Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch-Basis
 
-> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation + Architektur-Test) am 21.11.2026 abgeschlossen und verifiziert (836/836 Tests grün, 0 Warnungen).** Offen: Server-/Branch-Cleanup (`AP 1.1`), Etappe 2 (`AP 1.3`–`AP 1.5`), Namensentscheidung & Etappe 3 (`AP 1.6`).  
+> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation) sowie Etappe 2 (`AP 1.3` God-Class-Zerlegung, `AP 1.4` Optimierer-Bereinigung, `AP 1.5` echte Integrations-Test-Suite) am 21.–22.11.2026 abgeschlossen und verifiziert (848/848 Unit-Tests + 3/3 echte Integrationstests grün, 0 Warnungen).** Offen: Server-/Branch-Cleanup (`AP 1.1`), finale Namensentscheidung & Etappe 3 (`AP 1.6` Projekt-Umbenennung & Englisch-Umstellung).  
 > **Sprache dieses Plans:** Deutsch (Arbeits- & Planungssprache). **Zielsprache im Code/Repo:** Englisch (AP 1.6).  
 > **Voraussetzung:** Schritt 0 (`MantaAuv`-Lauf auf `BIC_12` gestoppt & vollständig archiviert) ist abgeschlossen (`~/Archive/MantaAuv_2026-11-21_final/` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`).
 
@@ -63,29 +63,31 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 - [x] **Architektur-Test hinzugefügt (`tests/OptimierungsAlgoCFD.Tests/ArchitectureBoundaryTests.cs`):** Erzwingt dauerhaft, dass `Core/` keine `using`/Typzugriffe auf `Solvers`, `Kernels`, `Composition`, `Projects` oder `PicoGK` hat und `Kernels/`/`Solvers/` nie den Namespace `Core` deklarieren. *(Hinweis: Verschiebung verbliebener Hilfsklassen wie `StlWriter`/`StlSmoother`/`RubberBandScaler` erfolgt sauber zusammen mit der Zerlegung in `AP 1.3`.)*
 
 ### AP 1.3: Zerlegung der God-Classes & Beseitigung von 2D/3D-Duplikaten
-- [ ] **`BayesOptimizationAlgorithm.cs` (1.354 L) zerlegen** in klar getrennte Komponenten:
-  - `SurrogateModelEnsemble` (Training, Log-Transform, `Metrics`- vs. `Fitness`-Modus, Erfolgs-GP)
-  - `AcquisitionOptimizer` (EI, Kriging Believer, Exploration-Slot, Batch-Abstoßung)
-  - `BayesDiagnosticsReporter` (`PredictFitnessBand`, `MeasureAccuracy`, `Bayes_Verlauf.csv`)
-  - schlanker `BayesOptimizationAlgorithm` als Koordinator (~250–350 L)
-- [ ] **`GmshCfdMesher.cs` (1.259 L) & `Gmsh2DMesher.cs` (594 L) zusammenführen/zerlegen:**
-  - Gemeinsame Basis/Helfer (`GmshProcessRunner`, `GmshGeoScriptBuilder`, `GmshErrorParser`, `WakeAndDetailBoxBuilder`) extrahieren; doppelten `.su2`-NELEM-Parser (`GmshCfdMesher.cs:1176`) entfernen und zentral nutzen.
-- [ ] **`Su2Solver.cs` (1.245 L) zerlegen:**
-  - Trennung von Prozessausführung (`Su2ProcessRunner`), Auto-Restart-Orchestrierung (`Su2RestartController`), Ergebnis-/VTU-Archivierung (`Su2ResultArchiver`) und Diagnose-Extraktion (`y+`, `CD_p`/`CD_v`).
-- [ ] **`MeshCalibration.cs` (1.061 L) & `Program.cs` (904 L) entschlacken:**
-  - CLI-Parsing und Subcommands (`--calibrate`, `--recheck`, `--list-projects`, `--print-config`, `--smoke-test`) aus `Program.cs` in eigene `Cli/`-Handler auslagern.
-  - `CfdProjectDefinition` und `Cfd2DProjectDefinition` auf eine gemeinsame konfigurierbare Basis vereinfachen.
+- [x] **`BayesOptimizationAlgorithm.cs` (1.356 → 385 L) zerlegt** in klar getrennte `Core`-Komponenten (alle ≤ 500 L, unveränderte RNG-Reihenfolge & Public-API):
+  - `SurrogateModelEnsemble.cs` (294 L): Training, Log-Transform, `Metrics`- vs. `Fitness`-Modus, Erfolgs-GP
+  - `AcquisitionOptimizer.cs` (487 L): EI, Kriging Believer, TuRBO-Trust-Region, Exploration-Slot, Batch-Abstoßung
+  - `BayesDiagnosticsReporter.cs` (217 L): `PredictFitnessBand` (inkl. `ObservationNoiseVariance`), `MeasureAccuracy`, `Bayes_Verlauf.csv`
+  - schlanker `BayesOptimizationAlgorithm.cs` (385 L) als Koordinator
+- [x] **`GmshCfdMesher.cs` (1.327 → 298 L) & `Gmsh2DMesher.cs` (600 → 116 L) zusammengeführt/zerlegt:**
+  - Gemeinsame Helfer extrahiert: `GmshProcessRunner.cs` (102 L, inkl. gemeinsamem `CopyGeoToFehlerLogs`), `GmshErrorParser.cs` (59 L), `WakeAndDetailBoxBuilder.cs` (155 L), `GmshTunnelBuilder.cs` (424 L), `Gmsh3DGeoScriptBuilder.cs` (335 L), `Gmsh2DGeoScriptBuilder.cs` (378 L).
+  - Doppelter `.su2`-NELEM-Parser in `GmshCfdMesher.ReadSu2BoundaryLayerHexShare` entfernt; delegiert jetzt zentral an `MeshMetrics.ReadSu2CellBreakdown`.
+- [x] **`Su2Solver.cs` (1.245 → 345 L) zerlegt:**
+  - `Su2ProcessRunner.cs` (131 L; zusätzlich um direkten OpenMP-/Single-Rank-Start ohne `mpirun` bei leerem/`"none"` `MpiRunPath` oder `MpiCores <= 1` inkl. `OMP_NUM_THREADS` + 14 Unit-Tests in `Su2ProcessRunnerTests.cs` erweitert), `Su2RestartController.cs` (234 L), `Su2ResultArchiver.cs` (144 L), `Su2DiagnosticsExtractor.cs` (428 L).
+- [x] **`MeshCalibration.cs` (1.150 → 477 L) & `Program.cs` (931 → 88 L) entschlackt:**
+  - `MeshCalibrationValidation.cs` (281 L) & `MeshCalibrationReporter.cs` (369 L) in `Core/Pipeline/` (strikt ohne äußere Abhängigkeiten).
+  - CLI-Parsing und Subcommands in `src/OptimierungsAlgoCFD/Cli/` ausgelagert: `CliArguments.cs` (122 L), `InfoCommands.cs` (98 L), `CalibrationCommand.cs` (176 L), `RecheckCommand.cs` (267 L), `OptimizeCommand.cs` (212 L); `Program.cs` (88 L) behält delegierende `internal static`-Wrapper für Test-Kompatibilität.
+  - `CfdProjectDefinition` (28 L) & `Cfd2DProjectDefinition` (29 L) auf gemeinsame Basis `Composition/CfdProjectDefinitionBase.cs` (52 L) vereinheitlicht.
 
 ### AP 1.4: Alte Optimierer bereinigen
-- [ ] **Ehrliche Bereinigung von `RsmOptimizationAlgorithm` & `EvolutionaryAlgorithm`:**
-  - `EvolutionaryAlgorithm.cs`: Unnormierten euklidischen Distanzcheck (`IsTooSimilarToHistory`) auf normierten `[0,1]^d`-Raum umstellen, verschwendeten Parent-Re-Eval-Slot (`Variant 1`) fixen, sinnvolle Sigma-Grenzen setzen.
-  - `RsmOptimizationAlgorithm.cs`: Entweder ehrlich als `IdwBaseline` kennzeichnen/verschlanken oder komplett als Legacy entfernen, falls `Bayes` + `Evolution` (und später `BoTorch`/`pymoo`) alle Anwendungsfälle sauberer abdecken (Entscheidung mit kurzem Check in der Session).
+- [x] **Ehrliche Bereinigung gemäß Nutzerentscheidung (22.11.2026):**
+  - **`EvolutionaryAlgorithm` vollständig entfernt** (schlechte Vergleichsleistung gegenüber `Bayes` und IDW): `EvolutionaryAlgorithm.cs`, `EvolutionaryAlgorithmTests.cs` sowie die 5 exklusiven Evolution-Config-Keys (`MinimalDeviationExploration`, `MinimalDeviationExploitation`, `RoleFineTuner`, `RoleCautious`, `RoleNormal`) aus `SimulationConfig.cs`, `MantaAuv`/`Naca2D`/`_Vorlage2D`/`_Vorlage3D`-JSONs, `BEDIENHANDBUCH.md` und Tests entfernt (`"Evolution"` fällt in der Factory mit Warnung auf `"Bayes"` zurück; `ProjectConfig.MaxDeviations` bleibt bis Phase 2 `AP 2.1` unberührt).
+  - **`RsmOptimizationAlgorithm` ehrlich in `IdwBaselineAlgorithm` umbenannt & gehärtet:** Neue Datei `Core/Algorithms/IdwBaselineAlgorithm.cs` (`Name = "IDW-Baseline (Inverse Distance Weighting)"`), ehrliche Doku über IDW-Grenzen (keine Extrapolation, keine Unsicherheit), sichere `TryGetValue`-Grenzenprüfung, Umbenennung der 4 Config-Keys auf `IdwVirtualSimulations`, `IdwPower`, `IdwExploitationRatio`, `IdwExploitationSigma` (inkl. JSONs, Handbuch & `IdwBaselineAlgorithmTests.cs`). `OptimizationAlgorithmFactory` unterstützt `"Bayes, IdwBaseline"` und behält `"Rsm"` als Legacy-Alias mit klarem Konsolen-Hinweis.
 
 ### AP 1.5: Echte Integrations-Test-Suite aufbauen
-- [ ] **Testkategorie `[Trait("Category", "Integration")]` etablieren** (im Standard-`dotnet test` optional ausfilterbar, in CI/Lokal gezielt ausführbar).
-- [ ] **Echter `PicoGK`-Test:** Erzeugt eine reale kleine Voxel-Geometrie, exportiert STL, glättet sie, prüft Wasserdichtheit, Volumen und projizierte Stirnfläche.
-- [ ] **Echter 2D-End-to-End-Integrationstest (`Planar2D → Gmsh2D → SU2`):** Schneller grober NACA-0012-Einzellauf (Dauer < 30–60 s), der echten Netzbau, echten SU2-Aufruf, `history.csv`-Parsing und `y+`-Auswertung ohne Mocks prüft.
-- [ ] **Echter 3D-Meshing-Integrationstest (`STL → Gmsh3D Prism`):** Prüft an einer kleinen Test-STL (inkl. spitzer Kante), dass Schritt 1 + Schritt 2 echte Prismen ohne Pyramiden erzeugen.
+- [x] **Testkategorie `[Trait("Category", "Integration")]` etabliert** unter `tests/OptimierungsAlgoCFD.Tests/Integration/` (`dotnet test --filter Category!=Integration` läuft rein als Unit-Suite, `dotnet test --filter Category=Integration` führt alle realen Tests aus).
+- [x] **Echter `PicoGK`-Test (`Integration/PicoGkIntegrationTests.cs`, ~0,34 s):** Erzeugt reale Kapsel-Voxel-Geometrie via `PicoGkKernel` (`Library.Go(..., bEndAppWithTask: true)`), exportiert STL, glättet via `StlSmoother`, prüft Wasserdichtheit (`openEdges=0, nonManifold=0`), positive Normalen, Volumen (`4284,8 mm³` vs. analytisch `4297,7 mm³`, Δ 0,30 %) und Stirnfläche (`112,9 mm²` vs. `113,1 mm²`, Δ 0,15 %).
+- [x] **Echter 2D-End-to-End-Integrationstest (`Integration/Naca2DEndToEndIntegrationTests.cs`, ~2,43 s):** Reale Kette `Naca2DGeometryGenerator → Gmsh2DMesher → Su2Solver` (OpenMP Direct-Mode, 80 Iter., ohne Mocks): `MeshCells=7866` (`Tri2D=6928`, `Quad2D=938`), `CD=0,03258`, `CL=0,20936`, `YPlus_Median=1,503`, `YPlus_P95=2,021`, `YPlus_Max=2,741`.
+- [x] **Echter 3D-Meshing-Integrationstest (`Integration/Gmsh3DPrismIntegrationTests.cs`, ~0,36 s):** Scharfkantiger 3D-Doppelkeil (`50×20×12 mm`) über `GmshCfdMesher` (`BoundaryLayerMode="Prism"`): `TotalCells=5590` (`Tet=3484`, `Prism=2106`, `Pyramid=0`, `Hex=0`, `MeshFallback=0`, `BoundaryLayerStage=1`).
 
 ### AP 1.6: Projekt-Umbenennung (nach Namenswahl) & komplette Englisch-Umstellung
 - [ ] **Namensentscheidung finalisieren** und Solution/Namespaces/Ordner/`sim.ps1 -RemoteDir` sauber umbenennen (erst wenn Name feststeht).
@@ -118,7 +120,17 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
   - `ModelRecord.GeometryPath` trägt `[JsonIgnore]`, damit `RunJournal` (`journal.jsonl`) keine doppelten Pfadfelder serialisiert.
 - **Verifikation:** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` — **836/836 bestanden** (0 Fehler, 0 übersprungen, 0 Warnungen; +16 neue Tests).
 
-### Nächste Schritte (Etappe 2 & 3)
-- **Nächster empfohlener Commit-Schritt:** Etappe 1 jetzt sauber committen, dann in einem frischen `/delegate`-Lauf **Etappe 2 (`AP 1.3` God-Classes zerlegen + `AP 1.4` alte Optimierer bereinigen + `AP 1.5` echte Integrations-Tests)** umsetzen.
-- **Vor Start von Etappe 3 (`AP 1.6`):** Unbedingt mit Leonardo den finalen englischen Projektnamen klären! Das alte 88-KB-`BEDIENHANDBUCH.md` in `AP 1.6` bewusst **nicht** mehr komplett übersetzen, sondern in Phase 2 (`AP 2.1`) direkt durch modulare englische `docs/` ersetzen.
-- Beim Refactoring von `BayesOptimizationAlgorithm`, `GmshCfdMesher` und `Su2Solver` zuerst Charakterisierungs-Tests prüfen, danach zerlegen (keine stillen Verhaltensänderungen).
+### Etappe 2 (`AP 1.3` + `AP 1.4` + `AP 1.5`) — ✔ Abgeschlossen am 22.11.2026
+- **Entscheidungen & Erkenntnisse:**
+  - **AP 1.4 Nutzerentscheidung (22.11.2026):** `EvolutionaryAlgorithm` wurde wegen deutlich schwächerer Performance vollständig entfernt (inkl. der 5 Evolution-only-Keys in `SimulationConfig`/JSONs/Handbuch); `RsmOptimizationAlgorithm` wurde ehrlich als `IdwBaselineAlgorithm` (`Idw*`-Keys + Legacy-Alias `"Rsm"`) bereinigt.
+  - **Windows OpenMP `SU2_CFD`-Start (wichtige Erkenntnis):** Auf Windows liegt `SU2_CFD.exe` als `win64-omp`-Build ohne `mpirun` im PATH vor. `Su2ProcessRunner.BuildExecutionCommand` startet `SU2_CFD` daher direkt (und setzt bei `MpiCores > 1` automatisch `OMP_NUM_THREADS`), sobald `MpiRunPath` leer/`"none"` oder `MpiCores <= 1` ist; bei konfiguriertem MPI bleibt `-n {MpiCores}` unverändert erhalten.
+  - **PicoGK in xUnit:** `PicoGK.Library.Go(..., bEndAppWithTask: true)` kehrt unter Windows sauber aus dem xUnit-Testlauf zurück (ohne vorzeitigen Prozessabbruch); über `[Collection(ProcessWideStateCollection.Name)]` sauber serialisiert.
+  - **2D-Quad-Zählung:** `MeshMetrics.ReadSu2CellBreakdown` füllt `SurfaceQuads` nur aus 3D-Wandmarkern (`NMARK`), sodass in 2D `MeshCells_Quad` stets 0 bleibt; der 2D-Integrationstest prüft `Quad2D` (VTK-Typ 9) daher direkt aus `NELEM=`.
+  - **Dateigrößen-Transparenz:** Alle 4 zerlegten God-Classes (`BayesOptimizationAlgorithm` 385 L, `GmshCfdMesher` 298 L / `Gmsh2DMesher` 116 L, `Su2Solver` 345 L, `MeshCalibration` 477 L) sowie `Program.cs` (88 L) liegen jetzt alle unter 500 Zeilen. Die übrigen größeren Bestandsdateien außerhalb von AP 1.3 sind aktuell `Su2SurfaceAnalyzer.cs` (858 L), `BoundaryLayerWallField.cs` (683 L), `MeshMetrics.cs` (620 L) und `WorkflowController.cs` (598 L).
+  - **Hinweis `Core/Utilities/`:** `StlWriter.cs`, `StlSmoother.cs` und `RubberBandScaler.cs` sind bereits reines `Core` (`System.Numerics`), kein Verschieben erforderlich.
+- **Verifikation:** `dotnet build OptimierungsAlgoCFD.sln` (0 Warnungen, 0 Fehler), `dotnet test --filter Category!=Integration` (**848/848 bestanden**), `dotnet test --filter Category=Integration` (**3/3 real bestanden** in ~3,5 s).
+
+### Nächste Schritte (Etappe 3)
+- **Vor Start von Etappe 3 (`AP 1.6`):** Mit Leonardo den finalen englischen Projektnamen klären (Vorschläge siehe Abschnitt 2)! Das alte 88-KB-`BEDIENHANDBUCH.md` in `AP 1.6` bewusst **nicht** mehr komplett übersetzen, sondern in Phase 2 (`AP 2.1`) direkt durch modulare englische `docs/` ersetzen.
+- **Etappe 3 (`AP 1.6`):** Umbenennung von Solution/Namespaces/Ordnern/`sim.ps1 -RemoteDir` + Umstellung von Code, Logs, Fehlermeldungen, CSV-Spaltennamen und Tests auf konsistentes technisches Englisch (`.plans/` bleibt Deutsch).
+- **Offener Restpunkt aus `AP 1.1`:** Bei nächstem Server-Kontakt alte Git-Branches (`WindschiffProjekt`, `KI_Integration`) prüfen/bereinigen, `src/Automatisierung_v2` auf `BIC_12` aufräumen und `RunTimeEstimator`/`sim.ps1 status` einmalig auf `BIC_12` verifizieren.

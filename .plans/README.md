@@ -40,9 +40,10 @@ Neue Sessions und KI-Agenten orientieren sich ausschließlich an diesen aktiven 
 
 ---
 
-## 3. Aktueller Systemstatus (Stand 21.11.2026)
+## 3. Aktueller Systemstatus (Stand 22.11.2026)
 
 * **Phase 1 — Etappe 1 (`AP 1.1` & `AP 1.2`) ✔ erledigt:** Alle 7 gefundenen Code-/Physik-Bugs & Hygiene-Punkte behoben, `Core/` vollständig von `Solvers.Cfd`/`Kernels`/`PicoGK` entkoppelt und durch `ArchitectureBoundaryTests.cs` dauerhaft abgesichert.
-* **Build & Unit-Tests:** **836/836 Tests grün** (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler.
+* **Phase 1 — Etappe 2 (`AP 1.3`, `AP 1.4`, `AP 1.5`) ✔ erledigt:** Alle 4 God-Classes (`BayesOptimizationAlgorithm`, `GmshCfdMesher`/`Gmsh2DMesher`, `Su2Solver`, `MeshCalibration`) sowie `Program.cs` in schlanke Komponenten (≤ 487 L) zerlegt, `CfdProjectDefinitionBase` vereinheitlicht, `EvolutionaryAlgorithm` entfernt, `RsmOptimizationAlgorithm` ehrlich zu `IdwBaselineAlgorithm` (`Idw*`-Keys + Legacy-Alias `"Rsm"`) bereinigt, und 3 echte ungemockte Integrationstests (`PicoGK`, `NACA0012 2D → Gmsh2D → SU2`, `Gmsh3D Prism`) unter `[Trait("Category", "Integration")]` etabliert und real bestanden.
+* **Build & Tests:** **848/848 Unit-Tests** (`Category!=Integration`) + **3/3 echte Integrationstests** (`Category=Integration`) grün, 0 Warnungen, 0 Fehler.
 * **Server `BIC_12`:** Kein aktiver Lauf (Lauf `MantaAuv` am 21.11.2026 gestoppt & doppelt archiviert).
-* **Nächster konkreter Schritt:** Etappe 1 committen, dann in einer neuen Session **Etappe 2 von [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.3` God-Classes zerlegen, `AP 1.4` alte Optimierer bereinigen, `AP 1.5` echte Integrations-Tests) starten.
+* **Nächster konkreter Schritt:** Finalen englischen Projektnamen mit Leonardo festlegen und **Etappe 3 von [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.6` Projekt-Umbenennung & komplette Englisch-Umstellung) starten.
