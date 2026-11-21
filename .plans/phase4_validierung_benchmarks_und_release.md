@@ -28,7 +28,7 @@ Jeder externe CFD-Ingenieur fragt als Erstes: *„Woher weiß ich, dass deine au
 | :--- | :--- | :--- | :--- | :--- |
 | **B1** | **NASA TMR NACA 0012** ($Re = 6\cdot 10^6$, $\alpha = 0^\circ, 10^\circ$) | `External2D` / **SU2** | NASA Turbulence Modeling Resource (`CL`, `CD`, `Cp`) | 2D-RANS-Genauigkeit innerhalb 2–3 %, GCI-Konvergenz, `y+ ~ 1` |
 | **B2** | **90°-Rohrkrümmer / Diffusor** (intern, turbulent) | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ (ggf. + Literatur-CFD) | Korrekte interne `PicoGK`/`ShapeKernel` → `snappyHexMesh` → `simpleFoam`-Kette, Massenbilanz `< 1 %`, realer Druckverlust in Minuten! |
-| **B3** | **DARPA SUBOFF (Bare Hull)** oder **Myring-Rumpf** | `External3D` / **SU2** (mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene (`MARKER_SYM`), GCI und Blockage-Freiheit |
+| **B3** | **DARPA SUBOFF (Bare Hull)** oder **Myring-Rumpf** | `External3D` / **OpenFOAM** (Vergleich gegen **SU2**, jeweils mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene, GCI und Freigabe von **OpenFOAM als neuem 3D-Standard** (direkter Solver-Quervergleich!) |
 
 *Zusätzlich (offener v1-Punkt):* Sauberer **3-Seed-Benchmarkvergleich** auf dem aktualisierten `Naca2D` (Multi-Point) zwischen eingebautem C#-`Bayes`, `Evolution` und optionalem `BoTorch`-Backend.
 

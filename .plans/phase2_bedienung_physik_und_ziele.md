@@ -18,14 +18,17 @@ Phase 2 löst genau diese drei Engpässe: **Konfigurations-Diät durch Presets**
 
 ## 2. Architektur & Getroffene Entscheidungen
 
-### Entscheidung 1: Physik-Presets statt 127 sichtbarer Projekt-Keys
-* **Problem:** Ein Nutzer will beim Anlegen eines Projekts nicht über `CflAdaptFactorUp`, `CurvatureMinSizeFactor`, `RsmIdwPower` und `RoleFineTuner` nachdenken.
-* **Lösung:** Einführung einer zweistufigen Preset-Matrix im Framework:
-  - **Domänen-Profil:** `External2D` (SU2 + Gmsh2D), `External3D` (SU2 + Gmsh3D, optional Symmetrie), `Internal3D` (ab Phase 3: OpenFOAM + `snappyHexMesh`/`cfMesh`).
-  - **Genauigkeitsstufe:** `FastConcept` (schnelle Exploration), `StandardRans` (ausgewogener Standard), `VerificationFine` (Feinprüfung / Benchmark).
-* **Effekt für Projektdateien:** Ein typisches Projekt definiert nur noch **~10–15 selbsterklärende Keys** (Preset, Fluid, Anströmung/Durchfluss, Parameter & Grenzen, Budget, optionale gezielte Overrides). Alle Experten-Schalter existieren weiter als optionale Overrides, verschwinden aber aus den Standard-Vorlagen!
+### Entscheidung 1: Physik-Presets nach dem Prinzip „Progressive Disclosure“ (einfach als Standard, voller Profi-Zugriff per JSON!)
+* **Problem:** Ein Einsteiger (oder man selbst beim schnellen Projekt-Setup) will nicht über 127 Keys wie `CflAdaptFactorUp`, `CurvatureMinSizeFactor` oder `RoleFineTuner` stolpern. **Gleichzeitig dürfen Profis und Tüftler nie ausgesperrt werden:** Wer genau weiß, was er tut, muss weiterhin **jede einzelne** Simulations-, Vernetzungs-, Solver- und Optimierer-Einstellung transparent über JSON anfassen können, ohne dafür C#-Code umzuschreiben!
+* **Lösung:** Einführung einer zweistufigen Preset-Matrix als **Basisschicht im bestehenden 4-Schichten-Merge** (nicht als starre Black-Box!):
+  - **Domänen-Profil:** `External2D` (SU2 + Gmsh2D — dauerhafter 2D-Standard), `External3D` (in Phase 2 SU2 + Gmsh3D mit Symmetrie; ab Phase 3 optional/perspektivisch OpenFOAM als 3D-Standard), `Internal3D` (ab Phase 3: OpenFOAM + `snappyHexMesh`/`cfMesh`).
+  - **Genauigkeitsstufe:** `FastConcept` (schnelle Exploration), `StandardRans` (ausgewogener Standard), `VerificationFine` (Feinprüfung / Benchmark) — plus voller manueller Modus (`Custom` / beliebige Einzel-Overrides).
+* **Effekt für Projektdateien (Best of Both Worlds):**
+  - **Standardfall (einfach):** Ein neues Projekt definiert in seinen Vorlagen nur noch **~10–15 selbsterklärende Keys** (Preset, Fluid, Anströmung/Durchfluss, Parameter & Grenzen, Budget).
+  - **Profi-/Manuell-Fall (voll transparent):** Jeder einzelne Detail-Key (SU2, Gmsh, OpenFOAM, Grenzschicht, Konvergenz, Optimierer, Kernel) bleibt 100 % über JSON (`simulation.json`, `solvers/*.json`) überschreibbar — ohne eine einzige Zeile C# anzufassen!
+  - **Volle Transparenz per CLI:** Über `--print-config` (sowie `effective-config.json` in jedem Lauf) und einen optionalen Export-Befehl `--dump-preset <Preset>` können Profis sich jederzeit alle aktuell wirksamen Detail-Parameter (inkl. Herkunft: Preset vs. Projekt-Override vs. `*.local.json`) anzeigen oder als bearbeitbare JSON-Vorlage ausgeben lassen.
 * **Single Source of Truth:** Doppelte Pflege zwischen `CreateDefaults()` in C# und `project.json` wird abgeschafft. Parameter, Grenzen und Projekt-Defaults leben an genau **einem** Ort.
-* **JSON-Standard:** Sauberes JSON (oder optional JSON-Schema-Export für Autocomplete in VS Code!), sodass externe Tools und Validatoren Dateien direkt prüfen können.
+* **JSON-Standard:** Sauberes JSON + JSON-Schema-Export für Autocomplete & Inline-Erklärungen direkt in VS Code — so sind auch alle Profi-Keys beim Tippen sofort auffindbar und dokumentiert.
 
 ### Entscheidung 2: Trennung von Zielfunktion(en) & Pre-/Post-CFD-Constraints
 * **Abgestimmtes Modell (21.11.2026):**
@@ -50,11 +53,12 @@ Da der C#-Bayes als **Zero-Dependency-Standard** bestehen bleibt, werden seine g
 
 ## 3. Arbeitspakete (Checkliste)
 
-### AP 2.1: Konfigurations-Diät & Preset-System
-- [ ] **Preset-Registry entwerfen (`Core/Configuration/SimulationPresets.cs`):** Kuratierte Kombinationen aus Domäne (`External2D`, `External3D`, Platzhalter `Internal3D`) × Genauigkeit (`FastConcept`, `StandardRans`, `VerificationFine`).
-- [ ] **Single Source of Truth für Projekte:** Redundanz zwischen `CreateDefaults()` und `project.json` beseitigen; JSON-Schema generieren/hinterlegen für Editor-Unterstützung.
-- [ ] **Vorlagen (`_Template2D`, `_Template3D`) drastisch entschlacken:** Von ~127 sichtbaren Keys auf **~15 klare Kern-Keys** herunterkürzen; Experten-Parameter nur noch über Preset-Overrides dokumentieren.
-- [ ] **Schlanke englische Dokumentation schreiben:** Ersetze das 88-KB-Monolith-Handbuch durch klare, kurze Themen-Guides: `README.md` (5-Minuten-Quickstart), `docs/creating-a-project.md`, `docs/physics-presets.md`, `docs/server-workflow.md`, `docs/config-reference.md` (auto-geprüft via `HandbookCoverageTests`).
+### AP 2.1: Konfigurations-Diät & Preset-System (mit vollem Profi-Override)
+- [ ] **Preset-Registry entwerfen (`Core/Configuration/SimulationPresets.cs`):** Kuratierte Kombinationen aus Domäne (`External2D`, `External3D`, Platzhalter `Internal3D`) × Genauigkeit (`FastConcept`, `StandardRans`, `VerificationFine`) als reguläre Schicht im bestehenden Konfigurations-Merge — **jeder einzelne Detail-Key** bleibt per JSON in `simulation.json` / `solvers/*.json` ohne Code-Änderung überschreibbar (inkl. strikter Levenshtein-Tippfehlerprüfung).
+- [ ] **Profi-Transparenz-Befehle (`--print-config`, `--dump-preset <Name>`):** Zeigen alle wirksamen Detail-Parameter samt Herkunft (`Preset` / `Project` / `Local`) an bzw. schreiben ein komplettes Preset als voll editierbare JSON-Datei zum Experimentieren heraus.
+- [ ] **Single Source of Truth für Projekte:** Redundanz zwischen `CreateDefaults()` und `project.json` beseitigen; JSON-Schema generieren/hinterlegen für Autocomplete aller Standard- und Experten-Keys im Editor.
+- [ ] **Vorlagen (`_Template2D`, `_Template3D`) drastisch entschlacken:** Standardmäßig nur **~15 klare Kern-Keys** zeigen; alle Detail-Parameter bleiben voll funktionsfähig und sind sauber in `docs/config-reference.md` + JSON-Schema dokumentiert.
+- [ ] **Schlanke englische Dokumentation schreiben:** Ersetze das 88-KB-Monolith-Handbuch durch klare, kurze Themen-Guides: `README.md` (5-Minuten-Quickstart), `docs/creating-a-project.md`, `docs/physics-presets.md`, `docs/server-workflow.md`, `docs/config-reference.md` (vollständige Referenz aller Experten-JSON-Keys, auto-geprüft via `HandbookCoverageTests`).
 
 ### AP 2.2: Neue Objective- & Constraint-Architektur
 - [ ] **Schnittstellen einführen (`Core/Interfaces/`):**

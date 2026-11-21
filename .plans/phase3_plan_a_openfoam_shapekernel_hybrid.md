@@ -1,7 +1,7 @@
-# Phase 3 (Plan A): `LEAP71_ShapeKernel`, OpenFOAM (`Internal3D`) & Hybrid-Optimierer-Bridge (`BoTorch`/`pymoo`)
+# Phase 3 (Plan A): `LEAP71_ShapeKernel`, OpenFOAM (künftiger 3D-Standard) & Hybrid-Optimierer-Bridge (`BoTorch`/`pymoo`)
 
 > **Status:** Geplant (Herzstück der strategischen Neuausrichtung auf Plan A)  
-> **Vision:** `PicoGK` + `LEAP71_ShapeKernel` auf ihrem wahren Heimfeld einsetzen — komplexe, 3D-druckbare **interne Fluidik** (Verteiler, Kanäle, Mischer, Düsen, Wärmetauscher) mit OpenFOAM + robuster Multi-Objective-/Multi-Fidelity-Optimierung — **ohne** Parameter-Chaos!
+> **Vision:** `PicoGK` + `LEAP71_ShapeKernel` auf ihrem wahren Heimfeld einsetzen — komplexe, 3D-druckbare **interne Fluidik** (Verteiler, Kanäle, Mischer, Düsen, Wärmetauscher) mit **OpenFOAM als primärem 3D-Standard** + robuster Multi-Objective-/Multi-Fidelity-Optimierung — **ohne** Parameter-Chaos!
 
 ---
 
@@ -9,27 +9,30 @@
 
 Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern. In Phase 3 heben wir das Framework funktional auf das nächste Level und erschließen unsere klare Open-Source-Nische:
 1. **`LEAP71_ShapeKernel`** als erstklassigen parametrischen 3D-Geometrie-Baukasten anbinden (weg von rohen `Lattice.AddBeam`-Bastelformen hin zu echten parametrischen Rohren, Spline-Kanälen, Flanschen, Gyroids, Wandstärken und benannten Funktionsflächen).
-2. **OpenFOAM als primären 3D-Solver für interne Strömungen (`Internal3D`)** anbinden — streng gekapselt hinter Presets, sodass die Bedienung simpel bleibt und keine 100 neuen OpenFOAM-Knöpfe in den Projektdateien auftauchen.
+2. **OpenFOAM als langfristigen 3D-Standard-Solver** anbinden — beginnend mit **`Internal3D`** und nach erfolgreicher Benchmark-Validierung auch auf **`External3D`** ausbaubar (mit Perspektive auf Transitionsmodelle `kOmegaSSTLM` & Wärme `chtMultiRegionSimpleFoam`). Streng gekapselt hinter Presets (mit vollem Profi-JSON-Override), sodass die Bedienung simpel bleibt. **SU2** bleibt gezielt für `External2D` (NASA-TMR), Windows-native Tests ohne WSL sowie als optionale 3D-/High-Speed-Variante erhalten.
 3. **Hybrid-Optimierer-Bridge (`IExternalOptimizer` via JSON Ask/Tell)** ergänzen: Der eingebaute C#-Bayes bleibt Zero-Dependency-Standard; optional schaltet man ein Python-Conda-Env (`BoTorch/Ax`, `pymoo`) dazu — für echte **Pareto-Fronten (`qNEHVI`, `NSGA-II`)**, **Constrained BO** und **Multi-Fidelity-BO**. Gleichzeitig schafft diese Schnittstelle das Fundament für Phase 5 (LLM-Anbindung).
 
 ---
 
 ## 2. Architektur & Getroffene Entscheidungen
 
-### Entscheidung 1: Klare Rollenverteilung SU2 vs. OpenFOAM (gegen Parameter-Wildwuchs!)
-| Domänen-Preset | Mesher | Solver | Einsatzgebiet |
+### Entscheidung 1: Klare Rollenverteilung OpenFOAM vs. SU2 (OpenFOAM als 3D-Standard, SU2 für seine echten Stärken!)
+| Domänen-Preset | Mesher | Primär-Solver | Alternative / Einsatzgebiet |
 | :--- | :--- | :--- | :--- |
-| **`External2D`** | Gmsh 2D (O-Typ Quad-BL) | **SU2** (`INC_RANS`) | 2D-Tragflächen, Profile, NASA-TMR-Validierung (ultraschnell, 2–3 % Genauigkeit) |
-| **`External3D`** | Gmsh 3D (Prism-BL + Symmetrie) | **SU2** (`INC_RANS`) | 3D-Außenumströmungen (AUVs, Rümpfe, Flügel, DARPA SUBOFF) |
-| **`Internal3D`** *(NEU!)* | **OpenFOAM `snappyHexMesh` (oder `cfMesh`)** | **OpenFOAM `simpleFoam`** *(später optional `chtMultiRegionSimpleFoam`)* | **Interne 3D-Druck-Fluidik:** Rohrkrümmer, Verteiler (Manifolds), statische Mischer, Kühlkanäle, Düsen, Ventile |
+| **`Internal3D`** *(NEU, Fokus Plan A)* | **OpenFOAM `snappyHexMesh` (optional `cfMesh`)** | **OpenFOAM `simpleFoam`** *(später `chtMultiRegionSimpleFoam`)* | **Interne 3D-Druck-Fluidik:** Rohrkrümmer, Verteiler (Manifolds), statische Mischer, Kühlkanäle, Düsen, Ventile |
+| **`External3D`** | **OpenFOAM** (`snappyHexMesh`/`cfMesh` oder `gmshToFoam`) *als künftiger 3D-Standard* | **OpenFOAM `simpleFoam`** *(inkl. Option `kOmegaSSTLM`-Transition!)* | **SU2 + Gmsh3D** bleibt als optionale Variante erhalten (für Windows-Tests ohne WSL & spätere kompressible/High-Speed-Strömungen) |
+| **`External2D`** | Gmsh 2D (O-Typ Quad-BL) | **SU2** (`INC_RANS`) | Dauerhafter 2D-Standard: 2D-Tragflächen, Profile, NASA-TMR-Validierung (echte 2D-Netze, Windows-nativ, rasend schnell) |
 
-* **Warum OpenFOAM + `snappyHexMesh`/`cfMesh` für `Internal3D`?**
-  - `snappyHexMesh`/`cfMesh` erzeugen hex-dominante Netze mit automatischen Grenzschicht-Layern direkt auf komplexen `PicoGK`-Voxel-STLs — deutlich robuster gegenüber komplexen inneren Verzweigungen als Gmsh-Tetraeder-Remeshing (`ClassifySurfaces`).
-  - OpenFOAM unterstützt nativ **beliebig viele benannte Randflächen-Patches** (`inlet`, `outlet_1..N`, `wall`, `symmetry`) aus getrennten STL-Dateien oder Multi-Solid-STL.
-  - Druckverlust ($\Delta p = p_{\text{in}} - p_{\text{out}}$), Massenbilanz-Fehler ($\left|\dot{m}_{\text{in}} - \sum \dot{m}_{\text{out}}\right| / \dot{m}_{\text{in}}$), Auslass-Gleichverteilung und `yPlus` sind Standard-FunctionObjects in OpenFOAM!
-* **Wie verhindern wir Parameter-Angst?**
-  - Ein `Internal3D`-Projekt konfiguriert in seiner JSON **nur physikalische Randbedingungen** (z. B. `Fluid`, `InletVelocity` oder `VolumetricFlowRate`, `OutletPressure`, `TurbulenceModel: kOmegaSST`, `Preset: StandardRans`).
-  - Sämtliche OpenFOAM-Dictionaries (`system/controlDict`, `fvSchemes`, `fvSolution`, `snappyHexMeshDict`, `0/U`, `0/p`, `0/k`, `0/omega`) werden **deterministisch aus getesteten Templates im Preset generiert** — kein manuelles Editieren von OpenFOAM-Textdateien!
+* **Warum OpenFOAM als künftiger 3D-Standard — und welche Nachteile wir aktiv abfangen:**
+  - **Stärken:** ~10× größere CFD-Community, eine einzige 3D-Solver-Welt (weniger Doppelpflege), Multi-Patch-Support (`inlet`/`outlet_1..N`/`wall`/`symmetry`), Perspektive auf Wärme (`chtMultiRegionSimpleFoam`), Transition (`kOmegaSSTLM` gegen das Low-$Re$-Problem!) und Rotation (`MRF`).
+  - **Bekannte OpenFOAM-Nachteile & unsere Gegenmaßnahmen:**
+    1. *Kein natives Windows:* Lokal auf Windows via WSL2/Docker; schnelle Windows-native Integrationstests laufen weiter über SU2 (`External2D`).
+    2. *`snappyHexMesh` Layer-Collapse an engen Kehlen:* Automatisches **Layer-Coverage-Prüftor** nach `snappyHexMesh` (wie unser bisheriger `MeshFallback`-Check) + Option auf **`cfMesh`** oder **`gmshToFoam`** (Gmsh-Prismen-Import), falls wandaufgelöste Schichten kollabieren.
+    3. *Inkompatible OpenFOAM-Dialekte (`OpenFOAM.com`/ESI vs. `OpenFOAM.org`/Foundation):* **Strikte Fixierung auf genau EINE gepinnte OpenFOAM-Linie & Version** in `setup_server.sh`, Templates und `sim.ps1 doctor` (Versions-Prüfung beim Start!).
+    4. *GPL-3.0-Lizenz:* OpenFOAM wird ausschließlich als externer CLI-Subprozess aufgerufen (kein Linking) → voll vereinbar mit unserer MIT-Lizenz; sauberer Hinweis in `THIRD_PARTY_NOTICES.md`.
+* **Wie verhindern wir Parameter-Angst — ohne Profis einzuschränken (Progressive Disclosure)?**
+  - **Standardfall:** Ein `Internal3D`-Projekt konfiguriert in seiner JSON **nur physikalische Randbedingungen** (z. B. `Fluid`, `InletVelocity` oder `VolumetricFlowRate`, `OutletPressure`, `TurbulenceModel: kOmegaSST`, `Preset: StandardRans`). Sämtliche OpenFOAM-Dictionaries (`system/controlDict`, `fvSchemes`, `fvSolution`, `snappyHexMeshDict`, `0/U`, `0/p`, `0/k`, `0/omega`) werden deterministisch aus getesteten Preset-Templates generiert.
+  - **Profi-/Manuell-Fall (100 % über JSON anpassbar, kein C#-Umbau nötig):** Alle relevanten Detail-Parameter (`snappyHexMesh`-Verfeinerungsstufen, Layer-Anzahl, Expansionsrate, `firstLayerThickness`, `fvSolution`-Relaxationsfaktoren, Solver-Toleranzen, Diskretisierungsschemata, `maxIterations`, `checkMesh`-Schwellen, `SIMPLE`/`SIMPLEC`) sind sauber als optionale Keys in `solvers/openfoam.json` verfügbar — und zusätzlich können Profis über optionale `CustomDictionaryOverrides` / eigene Template-Verzeichnisse sogar rohe OpenFOAM-Dictionary-Einträge gezielt überschreiben, ohne C#-Code anzufassen! `effective-config.json` und `--dump-preset` dokumentieren dabei jederzeit alle wirksamen Werte transparent.
 * **Rootless-Server-Installation (`setup_server.sh`):**
   - Auf `BIC_12` läuft Miniconda bereits ohne `sudo`. OpenFOAM wird entweder via **`conda-forge` (`openfoam`)** in einem dedizierten Conda-Env (`conda create -n openfoam -c conda-forge openfoam`) oder — falls auf einem Cluster vorhanden — via **Apptainer/Singularity** eingebunden. `ExecutableResolver` + `sim.ps1 doctor` erkennen beide Wege sauber.
 
@@ -60,7 +63,7 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
 - [ ] Unit- & PicoGK-Integrationstest: Einfacher 90°-Rohrkrümmer aus `ShapeKernel` exportiert valide `inlet.stl`, `outlet.stl`, `wall.stl` + gültigen `FluidSeedPoint` im Inneren.
 
 ### AP 3.2: OpenFOAM-Anbindung für `Internal3D` (`Solvers/OpenFoam/`)
-- [ ] **Preset-gekapselte Konfiguration (`OpenFoamOptions.cs`):** Nur physikalische Kernparameter in Projekt-JSONs (`Fluid`, `InletBoundary`, `OutletBoundary`, `TurbulenceModel` Default `kOmegaSST`, `Preset`); Experten-Overrides optional.
+- [ ] **Preset-gekapselte Konfiguration mit vollem Profi-Override (`OpenFoamOptions.cs`):** Im Standardfall nur physikalische Kernparameter in Projekt-JSONs (`Fluid`, `InletBoundary`, `OutletBoundary`, `TurbulenceModel` Default `kOmegaSST`, `Preset`); **alle** relevanten Meshing-/Solver-/Konvergenz-Details (plus optionale Dictionary-/Template-Overrides) bleiben vollständig, typgeprüft und transparent über `solvers/openfoam.json` überschreibbar, ohne C# anzufassen.
 - [ ] **Template-basierter Case-Generator (`OpenFoamCaseGenerator.cs`):** Erzeugt komplette OpenFOAM-Fallstruktur (`0/`, `constant/triSurface/`, `constant/transportProperties`, `constant/turbulenceProperties`, `system/blockMeshDict`, `system/snappyHexMeshDict`, `system/fvSchemes`, `system/fvSolution`, `system/controlDict`, `system/decomposeParDict`) inkl. FunctionObjects für:
   - Totaldruck-/Statikdruck-Mittelwerte an `inlet` & jedem `outlet_*` (`PressureDrop`),
   - Massen-/Volumenströme je Ein-/Auslass (`MassBalanceError`, `FlowImbalance`),
@@ -68,9 +71,10 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
   - ParaView-Export (`foamToVTK` oder natives `.foam`-File).
 - [ ] **Mesher & Solver Stages (`OpenFoamSnappyMesher.cs`, `OpenFoamSimpleSolver.cs`):**
   - Parallele Ausführung (`decomposePar` → `mpirun snappyHexMesh -parallel` → `checkMesh` → `mpirun simpleFoam -parallel` → `reconstructPar`).
-  - Harte deterministische Prüftore: `checkMesh`-Qualitätsprüfung (non-orthogonality, skewness, negative volumes), **Massenbilanz-Check** (`MassBalanceError < 1 %` als Pflicht-Verifikationskriterium!), Residuen- & Druckverlust-Konvergenzrichter (`OpenFoamConvergenceJudge`).
+  - Harte deterministische Prüftore: `checkMesh`-Qualitätsprüfung (non-orthogonality, skewness, negative volumes), **Layer-Coverage-Check** gegen stillen `snappyHexMesh`-Layer-Collapse (optional `cfMesh`/`gmshToFoam`-Pfad), **Massenbilanz-Check** (`MassBalanceError < 1 %` als Pflicht-Verifikationskriterium!), Residuen- & Druckverlust-Konvergenzrichter (`OpenFoamConvergenceJudge`).
+- [ ] **`External3D`-Profil auf OpenFOAM vorbereiten (nach `Internal3D`-Validierung):** Sobald `Internal3D` stabil läuft, zweites OpenFOAM-Preset für `External3D` (inkl. Symmetrieebene & `forceCoeffs`-FunctionObject) ergänzen und gegen SU2 im Benchmark B3 (Phase 4) gegenprüfen — Ziel: OpenFOAM als einheitlicher 3D-Standard!
 - [ ] **Server- & Lokal-Setup (`setup_server.sh`, `sim.ps1 doctor`):**
-  - Rootless-Installation von OpenFOAM in `setup_server.sh` (via `conda-forge` `openfoam` Env oder Apptainer-Support) und Prüfung in `sim.ps1 doctor`.
+  - Rootless-Installation **einer strikt gepinnten OpenFOAM-Linie & Version** in `setup_server.sh` (via `conda-forge` `openfoam` Env oder Apptainer-Support) und Versions-/Dialekt-Prüfung in `sim.ps1 doctor`.
 - [ ] **Echter Integrationstest (`OpenFoamIntegrationTests.cs`):** Kleines gerades Rohr (Hagen-Poiseuille / Darcy-Weisbach) rechnet real durch und prüft Massenbilanz + plausiblen Druckverlust.
 
 ### AP 3.3: Hybrid-Optimierer-Bridge (`IExternalOptimizer` + Python BoTorch / pymoo)
