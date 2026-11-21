@@ -4,9 +4,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace OptimierungsAlgoCFD.Core
@@ -27,268 +24,41 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public const string MesherSchemeVersion = "tunnel-scaled-curvature-2";
 
-        /// <summary>
-        /// Regel 1 (Nachvollziehbarkeit): Validiert die Konfiguration vor dem Lauf.
-        /// </summary>
+        /// <summary>Weitere Verfeinerungsstufen nach den fünf Standardstufen (0.35, 0.25, 0.18, 0.13).</summary>
+        public const int MaxAdditionalStages = 4;
+
+        /// <summary>Kleinster Netzfaktor, der noch versucht wird.</summary>
+        public const float MinRefinementFactor = 0.1f;
+
         public static void ValidateConfig(SimulationConfig config, ConfigLoadReport? simulationReport, string projectName)
-        {
-            string mode = (config.MeshCalibration.Mode ?? "Manual").Trim();
+            => MeshCalibrationValidation.ValidateConfig(config, simulationReport, projectName);
 
-            if (!mode.Equals("Manual", StringComparison.OrdinalIgnoreCase)
-                && !mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"[KONFIGURATION] Unbekannter MeshCalibration.Mode '{config.MeshCalibration.Mode}'. "
-                    + "Gültig sind 'Manual' und 'Auto'.");
-            }
-
-            if (mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
-            {
-                if (simulationReport != null && simulationReport.Origins.TryGetValue("MeshRefinementFactor", out string? originFile))
-                {
-                    throw new InvalidOperationException(
-                        $"[KONFIGURATION] Im Auto-Modus wird der Netzfaktor kalibriert. Bitte 'MeshRefinementFactor' "
-                        + $"aus {originFile} entfernen – einzutragen ist nur MeshCalibration.Tolerance.");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Validiert, ob das Projekt die 2D-Vorkalibrierung unterstützt (TODO-48).
-        /// Besitzt das Projekt keinen repräsentativen 2D-Querschnitt (IHasRepresentativeSection),
-        /// bricht die Methode mit einer aussagekräftigen Ausnahme ab.
-        /// </summary>
         public static void ValidatePrecalibrationSupport(SimulationConfig config, IProjectDefinition definition)
-        {
-            if (config.MeshCalibration.Use2DPrecalibration && definition is not IHasRepresentativeSection)
-            {
-                throw new InvalidOperationException(
-                    $"[KALIBRIERUNG] 'Use2DPrecalibration' ist in simulation.json aktiviert, aber das Projekt '{definition.Name}' besitzt keinen repräsentativen 2D-Querschnitt (IHasRepresentativeSection). Für 3D-Körper ohne einheitliches Profil (wie MantaAuv) ist eine 2D-Vorkalibrierung physikalisch nicht aussagekräftig – bitte 'Use2DPrecalibration': false setzen.");
-            }
-        }
+            => MeshCalibrationValidation.ValidatePrecalibrationSupport(config, definition);
 
-        /// <summary>
-        /// Ermittelt die y+-Akzeptanzgrenzen (Standard- und Grobstufen-Limit) aus <see cref="ICalibrationSolverOptions"/>
-        /// (oder generisch aus <c>solvers/*.json</c>), konsistent zur Solver-Prüfung (<c>TargetYPlus × YPlusWarnFactor</c>).
-        /// </summary>
         internal static (float StandardLimit, float CoarseStageLimit) ResolveYPlusLimits(ProjectContext context)
-        {
-            ICalibrationSolverOptions? solver = context.Loaded
-                .Select(l => l.Value)
-                .OfType<ICalibrationSolverOptions>()
-                .LastOrDefault();
+            => MeshCalibrationValidation.ResolveYPlusLimits(context);
 
-            float target = float.NaN;
-            float warnFactor = float.NaN;
+        public static void ValidateYPlusConsistency(ProjectContext context, bool calibrationActive, TextWriter? warningWriter = null)
+            => MeshCalibrationValidation.ValidateYPlusConsistency(context, calibrationActive, warningWriter);
 
-            if (solver != null)
-            {
-                target = solver.TargetYPlus;
-                warnFactor = solver.YPlusWarnFactor;
-            }
-            else if (context.ProjectDirectory != null)
-            {
-                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
-                if (Directory.Exists(solversDir))
-                {
-                    float fallbackTarget = float.NaN;
-                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
-                    {
-                        try
-                        {
-                            var node = JsonNode.Parse(
-                                File.ReadAllText(file),
-                                documentOptions: new JsonDocumentOptions
-                                {
-                                    CommentHandling = JsonCommentHandling.Skip,
-                                    AllowTrailingCommas = true,
-                                });
-                            if (node is not JsonObject obj) continue;
-
-                            bool hasWarnFactor = TryReadPositiveFloat(obj["YPlusWarnFactor"], out float fileWarn);
-                            if (hasWarnFactor)
-                                warnFactor = fileWarn;
-
-                            if (TryReadPositiveFloat(obj["TargetYPlus"], out float fileTarget))
-                            {
-                                bool isSolverConfig = hasWarnFactor
-                                    || obj["ResultMetrics"] != null
-                                    || obj["Dimensions"] != null;
-                                if (isSolverConfig)
-                                    target = fileTarget;
-                                else
-                                    fallbackTarget = fileTarget;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    if (!(target > 0f && float.IsFinite(target)) && fallbackTarget > 0f && float.IsFinite(fallbackTarget))
-                    {
-                        target = fallbackTarget;
-                    }
-                }
-            }
-
-            float effectiveTarget = target > 0f && float.IsFinite(target) ? target : 1.5f;
-            float effectiveWarnFactor = warnFactor > 0f && float.IsFinite(warnFactor) ? warnFactor : 3.0f;
-            float standardLimit = effectiveTarget * effectiveWarnFactor;
-
-            // Grobe Stufe 1 (Faktor 2.00) darf wie bisher leicht über dem Standard-Limit liegen (mind. +0.5 bzw. +15 %).
-            float coarseLimit = MathF.Round(MathF.Max(standardLimit + 0.5f, standardLimit * 1.15f), 2);
-            return (standardLimit, coarseLimit);
-        }
-
-        private static IEnumerable<string> EnumerateSolverJsonFiles(string solversDir)
-            => Directory.EnumerateFiles(solversDir, "*.json", SearchOption.TopDirectoryOnly)
-                .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
-
-        private static bool TryReadPositiveFloat(JsonNode? node, out float value)
-        {
-            value = 0f;
-            if (node == null) return false;
-            try
-            {
-                float parsed = node.GetValue<float>();
-                if (parsed > 0f && float.IsFinite(parsed))
-                {
-                    value = parsed;
-                    return true;
-                }
-            }
-            catch { }
-            return false;
-        }
-
-        /// <summary>
-        /// Prüft beim Start die Konsistenz zwischen Vernetzer- und Solver-Optionen sowie der
-        /// automatischen Netzkalibrierung: warnt bei abweichendem <c>TargetYPlus</c> zwischen Vernetzer und Solver
-        /// und verhindert einen stundenlangen Fehlstart, wenn <c>BoundaryLayerMode = "Threshold"</c> (y+ ≈ 30–70)
-        /// mit aktiver Auto-Kalibrierung unter niedrigem y+-Limit kombiniert wird.
-        /// </summary>
-        public static void ValidateYPlusConsistency(
-            ProjectContext context,
-            bool calibrationActive,
-            TextWriter? warningWriter = null)
-        {
-            ICalibrationSolverOptions? solver = context.Loaded
-                .Select(l => l.Value)
-                .OfType<ICalibrationSolverOptions>()
-                .LastOrDefault();
-            if (solver == null) return;
-
-            ICalibrationMesherOptions? mesher = context.Loaded
-                .Select(l => l.Value)
-                .OfType<ICalibrationMesherOptions>()
-                .LastOrDefault();
-
-            float? mesherTarget = mesher?.TargetYPlus;
-            if (mesherTarget.HasValue && MathF.Abs(mesherTarget.Value - solver.TargetYPlus) > 0.05f)
-            {
-                string mismatchMsg =
-                    $"solvers/gmsh.json (TargetYPlus = {mesherTarget.Value.ToString("0.##", CultureInfo.InvariantCulture)}) "
-                    + $"und solvers/su2.json (TargetYPlus = {solver.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) weichen voneinander ab. "
-                    + "gmsh.json erzeugt die reale erste Zellhöhe y1, su2.json × YPlusWarnFactor bildet das harte Limit in Solver und Auto-Kalibrierung – bitte angleichen.";
-                if (warningWriter != null)
-                    warningWriter.WriteLine($"[WARNUNG] {mismatchMsg}");
-                else
-                    SimulationLog.Warning(mismatchMsg);
-            }
-
-            if (calibrationActive
-                && mesher is { Is3D: true }
-                && string.Equals((mesher.BoundaryLayerMode ?? "Prism").Trim(), "Threshold", StringComparison.OrdinalIgnoreCase))
-            {
-                float target = solver.TargetYPlus > 0f && float.IsFinite(solver.TargetYPlus) ? solver.TargetYPlus : 1.5f;
-                float warnFactor = solver.YPlusWarnFactor > 0f && float.IsFinite(solver.YPlusWarnFactor) ? solver.YPlusWarnFactor : 3.0f;
-                float limit = target * warnFactor;
-
-                if (limit < 30f)
-                {
-                    throw new InvalidOperationException(
-                        $"[KONFIGURATION] BoundaryLayerMode 'Threshold' in solvers/gmsh.json erzeugt typischerweise y+ ≈ 30–70, "
-                        + $"die automatische Netzkalibrierung prüft aber hart gegen TargetYPlus × YPlusWarnFactor = {limit.ToString("0.00", CultureInfo.InvariantCulture)} "
-                        + "und würde auf der Referenzstufe abbrechen (feinere Netze ändern an y1 nichts). "
-                        + "Für belastbare Läufe 'BoundaryLayerMode': \"Prism\" nutzen – oder für grobe Vorabläufe 'MeshCalibration.Mode': \"Manual\" "
-                        + "mit festem 'MeshRefinementFactor' setzen bzw. 'YPlusWarnFactor' in solvers/su2.json entsprechend anheben.");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Berechnet einen SHA256-Fingerabdruck über Startgeometrie (BaseParameters) und alle Solver-/Mesher-JSONs
-        /// unter <c>solvers/*.json</c> inkl. <c>*.local.json</c> (Regel 6).
-        /// </summary>
         public static string ComputeFingerprint(ProjectContext context)
-        {
-            var sb = new StringBuilder();
-            sb.Append("mesher:").Append(MesherSchemeVersion).Append(';');
+            => MeshCalibrationValidation.ComputeFingerprint(context);
 
-            // 1. Sortierte BaseParameters
-            foreach (var kvp in context.Project.BaseParameters.OrderBy(p => p.Key, StringComparer.Ordinal))
-            {
-                sb.Append($"{kvp.Key}={kvp.Value.ToString("R", CultureInfo.InvariantCulture)};");
-            }
-
-            // 2. Alle *.json-Dateien unter solvers/ (inkl. *.local.json), deterministisch alphabetisch sortiert
-            if (context.ProjectDirectory != null)
-            {
-                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
-                if (Directory.Exists(solversDir))
-                {
-                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
-                    {
-                        string fileName = Path.GetFileName(file);
-                        sb.Append(fileName).Append(':');
-                        sb.Append(File.ReadAllText(file));
-                    }
-                }
-            }
-
-            using var sha = SHA256.Create();
-            byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
-            return Convert.ToHexString(hash).ToLowerInvariant();
-        }
-
-        /// <summary>
-        /// Prüft im manuellen Modus, ob eine frühere Kalibrierung vorliegt und gibt Hinweise aus (Regeln 5 &amp; 6).
-        /// </summary>
         public static void CheckManualCalibrationHints(ProjectContext context, string workingDirectory, TextWriter? writer = null)
-        {
-            var targetWriter = writer ?? Console.Out;
-            string latestJsonPath = Path.Combine(workingDirectory, CalibrationDirectoryName, LatestCalibrationJson);
-            if (!File.Exists(latestJsonPath)) return;
+            => MeshCalibrationValidation.CheckManualCalibrationHints(context, workingDirectory, writer);
 
-            try
-            {
-                string jsonText = File.ReadAllText(latestJsonPath);
-                var node = JsonNode.Parse(jsonText);
-                if (node == null) return;
+        public static List<string> ResolveMonitoredMetrics(ProjectContext context)
+            => MeshCalibrationReporter.ResolveMonitoredMetrics(context);
 
-                string? storedFingerprint = node["Fingerprint"]?.GetValue<string>();
-                string currentFingerprint = ComputeFingerprint(context);
+        internal static JsonObject BuildGciJsonObject(GciResult gci)
+            => MeshCalibrationReporter.BuildGciJsonObject(gci);
 
-                if (!string.IsNullOrEmpty(storedFingerprint) && !storedFingerprint.Equals(currentFingerprint, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetWriter.WriteLine("[HINWEIS] Kalibrierung veraltet (Konfiguration oder Startgeometrie hat sich seitdem geändert).");
-                }
+        public static string? DescribeLayerMismatch(IReadOnlyList<CalibrationStageData> stages)
+            => MeshCalibrationReporter.DescribeLayerMismatch(stages);
 
-                if (node["SelectedFactor"] != null)
-                {
-                    float selectedFactor = node["SelectedFactor"]!.GetValue<float>();
-                    string timestamp = node["Timestamp"]?.GetValue<string>() ?? "unbekannt";
-
-                    if (Math.Abs(selectedFactor - context.Simulation.MeshRefinementFactor) > 0.001f)
-                    {
-                        targetWriter.WriteLine($"[HINWEIS] Letzte Kalibrierung ({timestamp}) empfahl {selectedFactor.ToString("0.00", CultureInfo.InvariantCulture)}, eingetragen ist {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)}.");
-                    }
-                }
-            }
-            catch
-            {
-                // Unlesbare Vorgängerkalibrierung wird ignoriert
-            }
-        }
+        internal static void PrintSummary(CalibrationDecision decision, TextWriter? output = null)
+            => MeshCalibrationReporter.PrintSummary(decision, output);
 
         /// <summary>
         /// Führt die Kalibrierung über den Rückruf <paramref name="runStage"/> aus.
@@ -307,14 +77,7 @@ namespace OptimierungsAlgoCFD.Core
                 : ResolveMonitoredMetrics(context);
 
             var (yPlusLimit, coarseYPlusLimit) = ResolveYPlusLimits(context);
-
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine(" NETZKALIBRIERUNG GESTARTET");
-            Console.WriteLine($" Projekt:           {context.Name}");
-            Console.WriteLine($" Toleranz:          {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %");
-            Console.WriteLine($" Überwachte Größen: {string.Join(", ", metricsToMonitor)}");
-            Console.WriteLine($" y+-Limit (P95):    {yPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} (Grobstufe {coarseYPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)})");
-            Console.WriteLine("==================================================");
+            PrintCalibrationHeader("NETZKALIBRIERUNG GESTARTET", context, metricsToMonitor, yPlusLimit, coarseYPlusLimit);
 
             var stages = new List<CalibrationStageData>();
             var cal = context.Simulation.MeshCalibration;
@@ -324,81 +87,46 @@ namespace OptimierungsAlgoCFD.Core
             simulationContext.CellLimit = maxCells;
             try
             {
-            // Stufe 1: Grob (2.0f, Tag: "Kal1")
-            Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
-            var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, coarseYPlusLimit, durationProvider); // bei grobem Netz y+ oft höher
-            stages.Add(stage1);
+                Console.WriteLine("\n[KALIBRIERUNG] Stufe 1/5: Grobes Netz (Faktor 2.00)...");
+                var stage1 = RunCalibrationStage(runStage, 1, 2.0f, "Kal1", metricsToMonitor, coarseYPlusLimit, durationProvider);
+                stages.Add(stage1);
 
-            // Vorschau: Zellzahl der feinsten Stufe grob hochrechnen. Mit nur einer Messung ist das ungenau
-            // (Wandschicht und Oberfläche wachsen nicht kubisch; MantaAuv 09.11.2026: 4,4-fach zu hoch geschätzt),
-            // deshalb nur ein Hinweis. Entscheidend ist die gemessene Zellzahl der Stufe 5.
-            if (stage1.MeshCells > 0)
-            {
-                long estimatedFineCells = EstimateCells(stage1.MeshCells, 2.0f, 0.5f, dimensions);
-                Console.WriteLine($"       -> Zellen grob: {stage1.MeshCells:N0} | grobe Vorschau für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
-
-                if (estimatedFineCells > maxCells)
+                // Vorschau: Zellzahl der feinsten Stufe grob hochrechnen (nur Hinweis; entscheidend ist Stufe 5).
+                if (stage1.MeshCells > 0)
                 {
-                    Console.WriteLine($"       -> [HINWEIS] Die grobe Vorschau liegt über der Grenze von {maxCells:N0} Zellen. Entscheidend ist die gemessene Zellzahl nach dem Vernetzen der Stufe 5.");
+                    long estimatedFineCells = EstimateCells(stage1.MeshCells, 2.0f, 0.5f, dimensions);
+                    Console.WriteLine($"       -> Zellen grob: {stage1.MeshCells:N0} | grobe Vorschau für Referenz (0.50): ~{estimatedFineCells:N0} Zellen");
+                    if (estimatedFineCells > maxCells)
+                        Console.WriteLine($"       -> [HINWEIS] Die grobe Vorschau liegt über der Grenze von {maxCells:N0} Zellen. Entscheidend ist die gemessene Zellzahl nach dem Vernetzen der Stufe 5.");
                 }
-            }
 
-            // Stufe 5: Sehr feine Referenz (0.50f, Tag: "Kal5")
-            Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
-            var stage5 = RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, yPlusLimit, durationProvider);
-            if (stage5.CellLimitExceeded)
-            {
-                throw new InvalidOperationException(
-                    $"[KALIBRIERUNG] Das Referenznetz (Faktor 0.50) hat gemessen {stage5.MeshCells:N0} Zellen und "
-                    + $"überschreitet das Limit von {maxCells:N0}. Kalibrierung abgebrochen (MeshCalibration.MaxCells erhöhen).");
-            }
-            stages.Add(stage5);
-
-            // Zwischenstufen von grob nach fein: 1.41 (Kal2), 1.0 (Kal3), 0.71 (Kal4)
-            var intermediateConfigs = new[]
-            {
-                (Index: 2, Factor: 1.41f, Tag: "Kal2"),
-                (Index: 3, Factor: 1.00f, Tag: "Kal3"),
-                (Index: 4, Factor: 0.71f, Tag: "Kal4")
-            };
-
-            foreach (var inter in intermediateConfigs)
-            {
-                Console.WriteLine($"\n[KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider));
-
-                // Frühabstiegsprüfung: Wenn diese Stufe innerhalb der Toleranz liegt und wir mindestens 3 Stufen für GCI haben
-                if (stages.Count >= 3)
+                Console.WriteLine("\n[KALIBRIERUNG] Stufe 5/5: Feines Referenznetz (Faktor 0.50)...");
+                var stage5 = RunCalibrationStage(runStage, 5, 0.5f, "Kal5", metricsToMonitor, yPlusLimit, durationProvider);
+                if (stage5.CellLimitExceeded)
                 {
-                    var tempDecision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
-                    if (tempDecision.Success && tempDecision.SelectedStage != null && tempDecision.SelectedStage.LevelIndex == inter.Index)
-                    {
-                        Console.WriteLine($"       -> Stufe {inter.Index} erfüllt bereits die Toleranz!");
-                        break;
-                    }
+                    throw new InvalidOperationException(
+                        $"[KALIBRIERUNG] Das Referenznetz (Faktor 0.50) hat gemessen {stage5.MeshCells:N0} Zellen und "
+                        + $"überschreitet das Limit von {maxCells:N0}. Kalibrierung abgebrochen (MeshCalibration.MaxCells erhöhen).");
                 }
-            }
+                stages.Add(stage5);
 
-            // Hält die Toleranz bei Faktor 0.5 noch nicht, entscheidet die Kalibrierung selbst, wie fein es sein muss (TODO-W5).
-            RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells, yPlusLimit, durationProvider);
+                RunIntermediateStages(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, yPlusLimit, durationProvider);
+                RefineAdaptively(stages, runStage, "Kal", "KALIBRIERUNG", metricsToMonitor, cal, dimensions, maxCells, yPlusLimit, durationProvider);
             }
             finally
             {
                 simulationContext.CellLimit = 0;
             }
 
-            // Vollständige Auswertung
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
 
-            // Berichte schreiben
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
             string calibSubdir = Path.Combine(CalibrationDirectoryName, timestamp);
             string fullCalibDir = Path.Combine(simulationContext.WorkingDirectory, calibSubdir);
             Directory.CreateDirectory(fullCalibDir);
 
             string fingerprint = ComputeFingerprint(context);
-            SaveReports(fullCalibDir, simulationContext.WorkingDirectory, decision, metricsToMonitor, timestamp, fingerprint, context.Simulation.MeshCalibration.Tolerance);
-
+            MeshCalibrationReporter.SaveReports(fullCalibDir, simulationContext.WorkingDirectory, decision, metricsToMonitor, timestamp, fingerprint, cal.Tolerance);
             PrintSummary(decision);
 
             return (decision, calibSubdir.Replace('\\', '/'));
@@ -408,7 +136,6 @@ namespace OptimierungsAlgoCFD.Core
         /// Führt die zweistufige Netzkalibrierung aus (TODO-48):
         /// 1) 5-Stufen-2D-Vorkalibrierung am repräsentativen Querschnitt (liefert f2D).
         /// 2) 3-Stufen-3D-Bestätigung um f2D (f2D * √2, f2D, f2D / √2).
-        /// Schreibt kombinierten Bericht mit beiden Tabellen (calibration_2d.csv und calibration.csv + calibration.json).
         /// </summary>
         public static (CalibrationDecision Decision, string ReportRelativePath) RunWithPrecalibration2D(
             ProjectContext context,
@@ -425,20 +152,11 @@ namespace OptimierungsAlgoCFD.Core
                 : ResolveMonitoredMetrics(context);
 
             var (yPlusLimit, coarseYPlusLimit) = ResolveYPlusLimits(context);
-
-            Console.WriteLine("\n==================================================");
-            Console.WriteLine(" 2D-VORKALIBRIERUNG + 3D-BESTÄTIGUNG GESTARTET (TODO-48)");
-            Console.WriteLine($" Projekt:           {context.Name}");
-            Console.WriteLine($" Toleranz:          {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %");
-            Console.WriteLine($" Überwachte Größen: {string.Join(", ", metricsToMonitor)}");
-            Console.WriteLine($" y+-Limit (P95):    {yPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} (Grobstufe {coarseYPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)})");
-            Console.WriteLine("==================================================");
+            PrintCalibrationHeader("2D-VORKALIBRIERUNG + 3D-BESTÄTIGUNG GESTARTET (TODO-48)", context, metricsToMonitor, yPlusLimit, coarseYPlusLimit);
 
             var cal2 = context.Simulation.MeshCalibration;
 
-            // -------------------------------------------------------------
-            // 1. 2D-Vorkalibrierung (fünf Stufen am Schnitt, bei Bedarf weiter verfeinert)
-            // -------------------------------------------------------------
+            // 1. 2D-Vorkalibrierung
             Console.WriteLine("\n--- TEIL 1: 2D-VORKALIBRIERUNG AM QUERSCHNITT ---");
             var stages2D = new List<CalibrationStageData>();
 
@@ -448,48 +166,19 @@ namespace OptimierungsAlgoCFD.Core
             Console.WriteLine("\n[2D-KALIBRIERUNG] Stufe 5/5: Feines 2D-Referenznetz (Faktor 0.50)...");
             stages2D.Add(RunCalibrationStage(runStage2D, 5, 0.5f, "Kal2D_5", metricsToMonitor, yPlusLimit, durationProvider2D));
 
-            // Zwischenstufen 2D: 1.41 (Kal2D_2), 1.00 (Kal2D_3), 0.71 (Kal2D_4)
-            var intermediateConfigs2D = new[]
-            {
-                (Index: 2, Factor: 1.41f, Tag: "Kal2D_2"),
-                (Index: 3, Factor: 1.00f, Tag: "Kal2D_3"),
-                (Index: 4, Factor: 0.71f, Tag: "Kal2D_4")
-            };
-
-            foreach (var inter in intermediateConfigs2D)
-            {
-                Console.WriteLine($"\n[2D-KALIBRIERUNG] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
-                stages2D.Add(RunCalibrationStage(runStage2D, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider2D));
-
-                if (stages2D.Count >= 3)
-                {
-                    var tempDec = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, cal2.Tolerance, cal2.AbsoluteTolerances);
-                    if (tempDec.Success && tempDec.SelectedStage != null && tempDec.SelectedStage.LevelIndex == inter.Index)
-                    {
-                        Console.WriteLine($"       -> 2D-Stufe {inter.Index} erfüllt bereits die Toleranz!");
-                        break;
-                    }
-                }
-            }
-
+            RunIntermediateStages(stages2D, runStage2D, "Kal2D_", "2D-KALIBRIERUNG", metricsToMonitor, cal2, yPlusLimit, durationProvider2D);
             RefineAdaptively(stages2D, runStage2D, "Kal2D_", "2D-KALIBRIERUNG", metricsToMonitor, cal2, 2, cal2.MaxCells2D, yPlusLimit, durationProvider2D);
 
-            var decision2D = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
+            var decision2D = CalibrationEvaluator.EvaluateCalibration(stages2D, metricsToMonitor, cal2.Tolerance, cal2.AbsoluteTolerances);
             float factor2D = decision2D.SelectedStage?.Factor ?? 1.0f;
             Console.WriteLine($"\n[2D-KALIBRIERUNG] Ermittelter 2D-Faktor: f2D = {factor2D:0.00} (Erfolg={decision2D.Success})");
 
-            // -------------------------------------------------------------
             // 2. 3D-Bestätigung (drei Stufen um f2D)
-            // -------------------------------------------------------------
             Console.WriteLine("\n--- TEIL 2: 3D-BESTÄTIGUNG UM f2D ---");
             float[] factors3D = CalibrationEvaluator.Build3DConfirmationFactors(factor2D);
-            float fCoarse = factors3D[0];  // f2D * √2
-            float fMed = factors3D[1];     // f2D
-            float fFine = factors3D[2];    // f2D / √2
-
+            float fCoarse = factors3D[0], fMed = factors3D[1], fFine = factors3D[2];
             var stages3D = new List<CalibrationStageData>();
 
-            // Zellgrenze an der GEMESSENEN Zellzahl, vor SU2 (wie in Run).
             ModelRecord RunLimited3D(float factor, string tag)
             {
                 simulationContext.CellLimit = maxEstimatedFineCells;
@@ -510,70 +199,47 @@ namespace OptimierungsAlgoCFD.Core
                 }
             }
 
-            // 3D Stufe 1: Grob (f2D * √2, Tag: Kal3D_1)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 1/3: Grobes 3D-Netz (Faktor {fCoarse:0.00})...");
-            CalibrationStageData stage3D_1 = RunCalibrationStage(
-                RunLimited3D, 1, fCoarse, "Kal3D_1", metricsToMonitor, coarseYPlusLimit, durationProvider3D);
+            CalibrationStageData stage3D_1 = RunCalibrationStage(RunLimited3D, 1, fCoarse, "Kal3D_1", metricsToMonitor, coarseYPlusLimit, durationProvider3D);
             stages3D.Add(stage3D_1);
 
             if (stage3D_1.MeshCells > 0)
             {
                 long estimatedFine = (long)(stage3D_1.MeshCells * Math.Pow(fCoarse / Math.Max(fFine, 0.1f), 3));
-                // Nur ein Hinweis: die grobe Hochrechnung ist ungenau, entscheidend ist die gemessene Zellzahl je Stufe.
                 if (estimatedFine > maxEstimatedFineCells)
-                {
                     Console.WriteLine($"       -> [HINWEIS] Die grobe Vorschau ({estimatedFine:N0} Zellen) liegt über dem Limit von {maxEstimatedFineCells:N0}. Gemessen wird nach dem Vernetzen.");
-                }
             }
 
-            // 3D Stufe 3: Feine 3D-Referenz (f2D / √2, Tag: Kal3D_3)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 3/3: Feine 3D-Referenz (Faktor {fFine:0.00})...");
-            stages3D.Add(RunCalibrationStage(
-                RunLimited3D, 3, fFine, "Kal3D_3", metricsToMonitor, yPlusLimit, durationProvider3D));
+            stages3D.Add(RunCalibrationStage(RunLimited3D, 3, fFine, "Kal3D_3", metricsToMonitor, yPlusLimit, durationProvider3D));
 
-            // 3D Stufe 2: Mittlere Stufe (f2D, Tag: Kal3D_2)
             Console.WriteLine($"\n[3D-BESTÄTIGUNG] Stufe 2/3: 2D-Faktor in 3D (Faktor {fMed:0.00})...");
-            stages3D.Add(RunCalibrationStage(
-                RunLimited3D, 2, fMed, "Kal3D_2", metricsToMonitor, yPlusLimit, durationProvider3D));
+            stages3D.Add(RunCalibrationStage(RunLimited3D, 2, fMed, "Kal3D_2", metricsToMonitor, yPlusLimit, durationProvider3D));
 
-            // Auswertung der 3-stufigen 3D-Bestätigung
-            var decision3D = CalibrationEvaluator.EvaluateConfirmation3D(factor2D, stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
+            var decision3D = CalibrationEvaluator.EvaluateConfirmation3D(factor2D, stages3D, metricsToMonitor, cal2.Tolerance, cal2.AbsoluteTolerances);
 
-            // Falls weder f2D * √2 noch f2D bestätigen, weiter verfeineren (f2D / 2.0)
             if (!decision3D.Success)
             {
                 float fRefined = (float)Math.Round(factor2D / 2.0f, 2);
                 if (fRefined > 0.05f && !stages3D.Any(s => Math.Abs(s.Factor - fRefined) < 0.01f))
                 {
                     Console.WriteLine($"\n[3D-BESTÄTIGUNG] Keine Bestätigung. Zusätzliche 3D-Verfeinerungsstufe (Faktor {fRefined:0.00}, Kal3D_4)...");
-                    stages3D.Add(RunCalibrationStage(
-                        RunLimited3D, 4, fRefined, "Kal3D_4", metricsToMonitor, yPlusLimit, durationProvider3D));
-
-                    decision3D = CalibrationEvaluator.EvaluateCalibration(stages3D, metricsToMonitor, context.Simulation.MeshCalibration.Tolerance, context.Simulation.MeshCalibration.AbsoluteTolerances);
+                    stages3D.Add(RunCalibrationStage(RunLimited3D, 4, fRefined, "Kal3D_4", metricsToMonitor, yPlusLimit, durationProvider3D));
+                    decision3D = CalibrationEvaluator.EvaluateCalibration(stages3D, metricsToMonitor, cal2.Tolerance, cal2.AbsoluteTolerances);
                 }
             }
 
-            // -------------------------------------------------------------
             // 3. Kombinierte Berichte schreiben
-            // -------------------------------------------------------------
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
             string calibSubdir = Path.Combine(CalibrationDirectoryName, timestamp);
             string fullCalibDir = Path.Combine(simulationContext.WorkingDirectory, calibSubdir);
             Directory.CreateDirectory(fullCalibDir);
 
             string fingerprint = ComputeFingerprint(context);
-
-            SaveCsvReport(Path.Combine(fullCalibDir, "calibration_2d.csv"), decision2D, metricsToMonitor);
-            SaveCsvReport(Path.Combine(fullCalibDir, "calibration.csv"), decision3D, metricsToMonitor);
-
-            SaveCombinedJsonReport(
-                Path.Combine(fullCalibDir, "calibration.json"),
-                decision3D,
-                decision2D,
-                factor2D,
-                timestamp,
-                fingerprint,
-                context.Simulation.MeshCalibration.Tolerance);
+            MeshCalibrationReporter.SaveCsvReport(Path.Combine(fullCalibDir, "calibration_2d.csv"), decision2D, metricsToMonitor);
+            MeshCalibrationReporter.SaveCsvReport(Path.Combine(fullCalibDir, "calibration.csv"), decision3D, metricsToMonitor);
+            MeshCalibrationReporter.SaveCombinedJsonReport(
+                Path.Combine(fullCalibDir, "calibration.json"), decision3D, decision2D, factor2D, timestamp, fingerprint, cal2.Tolerance);
 
             string latestJson = Path.Combine(simulationContext.WorkingDirectory, CalibrationDirectoryName, LatestCalibrationJson);
             string latestCsv = Path.Combine(simulationContext.WorkingDirectory, CalibrationDirectoryName, LatestCalibrationCsv);
@@ -586,21 +252,57 @@ namespace OptimierungsAlgoCFD.Core
             {
                 simulationContext.EffectiveMeshRefinementFactor = decision3D.SelectedStage.Factor;
                 simulationContext.CalibrationReportPath = calibSubdir.Replace('\\', '/');
-                simulationContext.MeshRefinementSource = $"KALIBRIERT: 2D-Vorkalibrierung, in 3D bestätigt, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %";
+                simulationContext.MeshRefinementSource = $"KALIBRIERT: 2D-Vorkalibrierung, in 3D bestätigt, Toleranz {cal2.Tolerance * 100:0.0} %";
             }
 
             return (decision3D, calibSubdir.Replace('\\', '/'));
         }
 
-        // ===================================================================
-        //  Gemeinsame Stufenlogik (TODO-W5)
-        // ===================================================================
+        private static void PrintCalibrationHeader(
+            string title, ProjectContext context, List<string> metricsToMonitor, float yPlusLimit, float coarseYPlusLimit)
+        {
+            Console.WriteLine("\n==================================================");
+            Console.WriteLine($" {title}");
+            Console.WriteLine($" Projekt:           {context.Name}");
+            Console.WriteLine($" Toleranz:          {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %");
+            Console.WriteLine($" Überwachte Größen: {string.Join(", ", metricsToMonitor)}");
+            Console.WriteLine($" y+-Limit (P95):    {yPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} (Grobstufe {coarseYPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)})");
+            Console.WriteLine("==================================================");
+        }
 
-        /// <summary>Weitere Verfeinerungsstufen nach den fünf Standardstufen (0.35, 0.25, 0.18, 0.13).</summary>
-        public const int MaxAdditionalStages = 4;
+        private static void RunIntermediateStages(
+            List<CalibrationStageData> stages,
+            Func<float, string, ModelRecord> runStage,
+            string tagPrefix,
+            string label,
+            List<string> metricsToMonitor,
+            MeshCalibrationConfig cal,
+            float yPlusLimit,
+            Func<double?>? durationProvider)
+        {
+            var intermediateConfigs = new[]
+            {
+                (Index: 2, Factor: 1.41f, Tag: $"{tagPrefix}2"),
+                (Index: 3, Factor: 1.00f, Tag: $"{tagPrefix}3"),
+                (Index: 4, Factor: 0.71f, Tag: $"{tagPrefix}4")
+            };
 
-        /// <summary>Kleinster Netzfaktor, der noch versucht wird.</summary>
-        public const float MinRefinementFactor = 0.1f;
+            foreach (var inter in intermediateConfigs)
+            {
+                Console.WriteLine($"\n[{label}] Stufe {inter.Index}/5: Zwischenstufe (Faktor {inter.Factor:0.00})...");
+                stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider));
+
+                if (stages.Count >= 3)
+                {
+                    var tempDecision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
+                    if (tempDecision.Success && tempDecision.SelectedStage != null && tempDecision.SelectedStage.LevelIndex == inter.Index)
+                    {
+                        Console.WriteLine($"       -> Stufe {inter.Index} erfüllt bereits die Toleranz!");
+                        break;
+                    }
+                }
+            }
+        }
 
         /// <summary>Hochgerechnete Zellzahl bei Wechsel von <paramref name="fromFactor"/> auf <paramref name="toFactor"/>.</summary>
         public static long EstimateCells(int cells, float fromFactor, float toFactor, int dimensions)
@@ -609,8 +311,6 @@ namespace OptimierungsAlgoCFD.Core
         /// <summary>
         /// Vorschau der Zellzahl für <paramref name="nextFactor"/> mit dem GEMESSENEN Exponenten der beiden feinsten
         /// bisherigen Stufen: <c>p = ln(N_fein / N_grob) / ln(f_grob / f_fein)</c>, begrenzt auf [dimensions/2, dimensions].
-        /// Die kubische Annahme überschätzte am MantaAuv (09.11.2026) die Zellzahl um das 4,4-Fache, weil Wandschicht und
-        /// Oberfläche nur quadratisch wachsen. Mit weniger als zwei Messpunkten gilt der Exponent <paramref name="dimensions"/>.
         /// </summary>
         public static long EstimateNextCells(IReadOnlyList<CalibrationStageData> stages, float nextFactor, int dimensions)
         {
@@ -645,7 +345,6 @@ namespace OptimierungsAlgoCFD.Core
         public static float NextFinerFactor(float factor)
             => (float)Math.Round(factor / Math.Sqrt(2.0), 2);
 
-        /// <summary>Rechnet eine Kalibrierstufe und fasst Zellzahl, Konvergenz und y+ zusammen.</summary>
         private static CalibrationStageData RunCalibrationStage(
             Func<float, string, ModelRecord> runStage,
             int level,
@@ -661,7 +360,7 @@ namespace OptimierungsAlgoCFD.Core
 
             CalibrationStageData stage = BuildStageData(
                 rec, level, factor, timer.Elapsed.TotalSeconds, metricsToMonitor, yPlusLimit, durationProvider);
-            PrintStageDuration(level, factor, stage.DurationSeconds);
+            MeshCalibrationReporter.PrintStageDuration(level, factor, stage.DurationSeconds);
             return stage;
         }
 
@@ -681,8 +380,7 @@ namespace OptimierungsAlgoCFD.Core
             int cells = (int)(rec.PassiveParameters.TryGetValue("MeshCells", out float c) ? c : 0);
             bool cellLimitExceeded = rec.PassiveParameters.ContainsKey(ModelRecord.CellLimitExceededKey);
             float p95 = rec.PassiveParameters.TryGetValue("YPlus_P95", out float y) ? y : 0f;
-            // "Instationär, aber stabil" (Wirbelablösung) zählt als brauchbar: das Mittel des Endfensters ist gültig,
-            // seine Schwankung geht über Uncertainty in den Vergleich ein.
+            // "Instationär, aber stabil" (Wirbelablösung) zählt als brauchbar.
             bool unsteadyStable = rec.PassiveParameters.TryGetValue("Su2_Unsteady", out float un) && un > 0.5f;
             bool converged = !rec.SimulationFailed
                 && (unsteadyStable || !rec.PassiveParameters.TryGetValue("Su2_Converged", out float cv) || cv > 0.5f);
@@ -701,45 +399,22 @@ namespace OptimierungsAlgoCFD.Core
                 => rec.PassiveParameters.TryGetValue(key, out float val) ? val : fallback;
 
             return new CalibrationStageData(
-                LevelIndex: level,
-                Factor: factor,
-                MeshCells: cells,
-                DurationSeconds: durationSeconds,
-                Metrics: ExtractMetrics(rec, metricsToMonitor),
-                Fitness: rec.Fitness,
-                Converged: converged,
-                YPlusP95: p95,
-                YPlusOk: yPlusOk,
-                Uncertainty: uncertainty.Count > 0 ? uncertainty : null,
-                CellLimitExceeded: cellLimitExceeded,
+                LevelIndex: level, Factor: factor, MeshCells: cells, DurationSeconds: durationSeconds,
+                Metrics: MeshCalibrationReporter.ExtractMetrics(rec, metricsToMonitor), Fitness: rec.Fitness,
+                Converged: converged, YPlusP95: p95, YPlusOk: yPlusOk,
+                Uncertainty: uncertainty.Count > 0 ? uncertainty : null, CellLimitExceeded: cellLimitExceeded,
                 BoundaryLayerLayers: ReadInt("BoundaryLayerLayers"),
                 BoundaryLayerThicknessMm: ReadFloat("BoundaryLayerThicknessMm", 0f),
                 BoundaryLayerStage: ReadInt("BoundaryLayerStage"),
-                SurfaceTriangles: ReadInt("MeshCells_Tri"),
-                SurfaceQuads: ReadInt("MeshCells_Quad"),
-                VolumePrisms: ReadInt("MeshCells_Prism"),
-                VolumeHexahedra: ReadInt("MeshCells_Hexa"),
-                VolumeTetrahedra: ReadInt("MeshCells_Tet"),
-                VolumePyramids: ReadInt("MeshCells_Pyramid"),
+                SurfaceTriangles: ReadInt("MeshCells_Tri"), SurfaceQuads: ReadInt("MeshCells_Quad"),
+                VolumePrisms: ReadInt("MeshCells_Prism"), VolumeHexahedra: ReadInt("MeshCells_Hexa"),
+                VolumeTetrahedra: ReadInt("MeshCells_Tet"), VolumePyramids: ReadInt("MeshCells_Pyramid"),
                 TunnelBlockagePercent: ReadFloat("TunnelBlockagePercent", float.NaN),
                 PressureDragCoeff: ReadFloat("Su2_CD_p", float.NaN),
                 ViscousDragCoeff: ReadFloat("Su2_CD_v", float.NaN),
                 YPlusLimit: yPlusLimit);
         }
 
-        /// <summary>Dauer einer Kalibrierstufe ins Log (Plan wandschicht_zellzahl.md, WZ10).</summary>
-        private static void PrintStageDuration(int level, float factor, double seconds)
-        {
-            Console.WriteLine($"       ⏱ Dauer Stufe {level} (Faktor {factor.ToString("0.00", CultureInfo.InvariantCulture)}): {FormatDuration(seconds)}");
-        }
-
-        /// <summary>
-        /// Verfeinert weiter (0.35, 0.25, …), solange keine gröbere Stufe die Toleranz gegenüber der
-        /// feinsten hält (TODO-W5). Die Kalibrierung entscheidet damit selbst, wie fein das Netz sein muss.
-        /// Abbruch, wenn die Toleranz hält, die feinste Stufe selbst nicht konvergiert bzw. y+ verletzt
-        /// (feiner hilft dann nicht), die Zellzahl die Grenze überschreitet oder
-        /// <see cref="MaxAdditionalStages"/> erreicht ist.
-        /// </summary>
         private static void RefineAdaptively(
             List<CalibrationStageData> stages,
             Func<float, string, ModelRecord> runStage,
@@ -775,8 +450,6 @@ namespace OptimierungsAlgoCFD.Core
                 float next = NextFinerFactor(refStage.Factor);
                 if (next < MinRefinementFactor) return;
 
-                // Vorschau mit dem gemessenen Exponenten. Deutlich über der Grenze (> 1,5-fach) lohnt sich nicht einmal das
-                // Vernetzen; knapp darüber oder darunter entscheidet die gemessene Zellzahl nach dem Vernetzen (vor SU2).
                 long estimated = EstimateNextCells(stages, next, dimensions);
                 if (refStage.MeshCells > 0 && estimated > maxCells * 1.5)
                 {
@@ -799,352 +472,6 @@ namespace OptimierungsAlgoCFD.Core
                 }
                 stages.Add(extraStage);
             }
-        }
-
-        /// <summary>Überwachte Größen aus <see cref="ICalibrationSolverOptions.MonitoredMetricNames"/> oder generisch aus <c>solvers/*.json</c>, sonst "Drag".</summary>
-        public static List<string> ResolveMonitoredMetrics(ProjectContext context)
-        {
-            var list = new List<string>();
-            var loadedMetrics = context.Loaded
-                .Select(l => l.Value)
-                .OfType<ICalibrationSolverOptions>()
-                .LastOrDefault()
-                ?.MonitoredMetricNames;
-
-            if (loadedMetrics != null)
-            {
-                foreach (string metric in loadedMetrics)
-                {
-                    if (!string.IsNullOrWhiteSpace(metric) && !list.Contains(metric))
-                        list.Add(metric);
-                }
-            }
-
-            if (list.Count == 0 && context.ProjectDirectory != null)
-            {
-                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
-                if (Directory.Exists(solversDir))
-                {
-                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
-                    {
-                        try
-                        {
-                            // Die Projektdateien tragen //-Kommentare. Ohne CommentHandling scheiterte
-                            // das Parsen still, und es wurde nur "Drag" ueberwacht (Servertest 06.11.2026).
-                            var node = JsonNode.Parse(
-                                File.ReadAllText(file),
-                                documentOptions: new JsonDocumentOptions
-                                {
-                                    CommentHandling = JsonCommentHandling.Skip,
-                                    AllowTrailingCommas = true,
-                                });
-                            if (node?["ResultMetrics"] is JsonObject rm)
-                            {
-                                foreach (var entry in rm)
-                                {
-                                    if (!string.IsNullOrWhiteSpace(entry.Key) && !list.Contains(entry.Key))
-                                        list.Add(entry.Key);
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-                }
-            }
-
-            if (list.Count == 0) list.Add("Drag");
-            return list;
-        }
-
-        private static Dictionary<string, float> ExtractMetrics(ModelRecord record, List<string> metricsToMonitor)
-        {
-            var dict = new Dictionary<string, float>();
-            foreach (var m in metricsToMonitor)
-            {
-                if (record.PassiveParameters.TryGetValue(m, out float val))
-                {
-                    dict[m] = val;
-                }
-            }
-            return dict;
-        }
-
-        private static void SaveCsvReport(string csvPath, CalibrationDecision decision, List<string> metrics)
-        {
-            var csv = new StringBuilder();
-            csv.Append("Stufe;Faktor;MeshCells;Dauer_s;");
-            foreach (var m in metrics) csv.Append($"{m};");
-            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok;NormiertRef;Schichten;SchichtDicke_mm;Wandstufe;Tri;Quad;Prism;Hexa;Tet;Pyramiden;Blockage_%;CD_p;CD_v");
-
-            foreach (var s in decision.AllStages.OrderBy(st => st.LevelIndex))
-            {
-                csv.Append($"{s.LevelIndex};{s.Factor.ToString("0.00", CultureInfo.InvariantCulture)};{s.MeshCells};{s.DurationSeconds.ToString("F1", CultureInfo.InvariantCulture)};");
-                foreach (var m in metrics)
-                {
-                    float val = s.Metrics.TryGetValue(m, out float v) ? v : 0f;
-                    csv.Append($"{val.ToString("F5", CultureInfo.InvariantCulture)};");
-                }
-
-                float maxDev = 0f;
-                if (decision.RelativeDeviationsToRef.TryGetValue(s.LevelIndex, out var devs))
-                {
-                    maxDev = devs.Count > 0 ? devs.Values.Max() : 0f;
-                }
-
-                // Normiert nach MetricTolerance (TODO-W1): höchstens 1 = innerhalb der Toleranz inkl. Mindestbetrag.
-                float maxNorm = 0f;
-                if (decision.NormalizedDeviationsToRef != null
-                    && decision.NormalizedDeviationsToRef.TryGetValue(s.LevelIndex, out var norms) && norms.Count > 0)
-                {
-                    maxNorm = norms.Values.Max();
-                }
-
-                string blockageStr = float.IsFinite(s.TunnelBlockagePercent)
-                    ? s.TunnelBlockagePercent.ToString("F2", CultureInfo.InvariantCulture)
-                    : string.Empty;
-                string cdPStr = float.IsFinite(s.PressureDragCoeff)
-                    ? s.PressureDragCoeff.ToString("F5", CultureInfo.InvariantCulture)
-                    : string.Empty;
-                string cdVStr = float.IsFinite(s.ViscousDragCoeff)
-                    ? s.ViscousDragCoeff.ToString("F5", CultureInfo.InvariantCulture)
-                    : string.Empty;
-
-                csv.AppendLine($"{maxDev.ToString("P2", CultureInfo.InvariantCulture)};{(s.Converged ? 1 : 0)};{s.YPlusP95.ToString("F2", CultureInfo.InvariantCulture)};{(s.YPlusOk ? 1 : 0)};{maxNorm.ToString("F2", CultureInfo.InvariantCulture)};{s.BoundaryLayerLayers};{s.BoundaryLayerThicknessMm.ToString("F2", CultureInfo.InvariantCulture)};{s.BoundaryLayerStage};{s.SurfaceTriangles};{s.SurfaceQuads};{s.VolumePrisms};{s.VolumeHexahedra};{s.VolumeTetrahedra};{s.VolumePyramids};{blockageStr};{cdPStr};{cdVStr}");
-            }
-
-            File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
-        }
-
-        private static JsonArray BuildStagesJsonArray(IReadOnlyList<CalibrationStageData> stages)
-        {
-            var stagesArray = new JsonArray();
-            foreach (var s in stages.OrderBy(st => st.LevelIndex))
-            {
-                var stageObj = new JsonObject
-                {
-                    ["LevelIndex"] = s.LevelIndex,
-                    ["Factor"] = s.Factor,
-                    ["MeshCells"] = s.MeshCells,
-                    ["DurationSeconds"] = s.DurationSeconds,
-                    ["Converged"] = s.Converged,
-                    ["YPlusP95"] = s.YPlusP95,
-                    ["YPlusOk"] = s.YPlusOk,
-                    ["BoundaryLayerLayers"] = s.BoundaryLayerLayers,
-                    ["BoundaryLayerThicknessMm"] = s.BoundaryLayerThicknessMm,
-                    ["BoundaryLayerStage"] = s.BoundaryLayerStage,
-                    ["SurfaceTriangles"] = s.SurfaceTriangles,
-                    ["SurfaceQuads"] = s.SurfaceQuads,
-                    ["VolumePrisms"] = s.VolumePrisms,
-                    ["VolumeHexahedra"] = s.VolumeHexahedra,
-                    ["VolumeTetrahedra"] = s.VolumeTetrahedra,
-                    ["VolumePyramids"] = s.VolumePyramids
-                };
-                if (float.IsFinite(s.TunnelBlockagePercent))
-                    stageObj["TunnelBlockagePercent"] = s.TunnelBlockagePercent;
-                if (float.IsFinite(s.PressureDragCoeff))
-                    stageObj["CD_p"] = s.PressureDragCoeff;
-                if (float.IsFinite(s.ViscousDragCoeff))
-                    stageObj["CD_v"] = s.ViscousDragCoeff;
-
-                var mObj = new JsonObject();
-                foreach (var kvp in s.Metrics) mObj[kvp.Key] = kvp.Value;
-                stageObj["Metrics"] = mObj;
-                stagesArray.Add(stageObj);
-            }
-            return stagesArray;
-        }
-
-        private static void SaveCombinedJsonReport(
-            string jsonPath,
-            CalibrationDecision decision3D,
-            CalibrationDecision decision2D,
-            float factor2D,
-            string timestamp,
-            string fingerprint,
-            float tolerance)
-        {
-            var root = new JsonObject
-            {
-                ["Timestamp"] = timestamp,
-                ["Fingerprint"] = fingerprint,
-                ["Tolerance"] = tolerance,
-                ["Mode"] = "2D-Precalibration+3D-Confirmation",
-                ["Success"] = decision3D.Success,
-                ["Factor2D"] = factor2D,
-                ["SelectedFactor"] = decision3D.SelectedStage?.Factor,
-                ["SelectedLevelIndex"] = decision3D.SelectedStage?.LevelIndex,
-                ["Summary"] = decision3D.SummaryMessage,
-                ["Stages3D"] = BuildStagesJsonArray(decision3D.AllStages),
-                ["Stages2D"] = BuildStagesJsonArray(decision2D.AllStages)
-            };
-
-            if (decision3D.Gci != null)
-            {
-                root["Gci"] = BuildGciJsonObject(decision3D.Gci);
-            }
-
-            string jsonContent = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(jsonPath, jsonContent, Encoding.UTF8);
-        }
-
-        internal static JsonObject BuildGciJsonObject(GciResult gci) => new()
-        {
-            ["ObservedOrderP"] = float.IsFinite(gci.ObservedOrderP) ? gci.ObservedOrderP : null,
-            ["GciFinePercent"] = float.IsFinite(gci.GciFinePercent) ? gci.GciFinePercent : null,
-            ["GciSelectedPercent"] = float.IsFinite(gci.GciSelectedPercent) ? gci.GciSelectedPercent : null,
-            ["IsMonotonic"] = gci.IsMonotonic,
-            ["IsAsymptotic"] = gci.IsAsymptotic,
-            ["Warning"] = gci.Warning,
-            // Richardson-Extrapolation der Hauptgröße (null, wenn nicht im asymptotischen Bereich)
-            ["ExtrapolatedValue"] = float.IsFinite(gci.ExtrapolatedValue) ? gci.ExtrapolatedValue : null,
-            ["ExtrapolatedDeviationPercent"] = float.IsFinite(gci.ExtrapolatedDeviationPercent) ? gci.ExtrapolatedDeviationPercent : null
-        };
-
-        private static void SaveReports(
-            string fullCalibDir,
-            string workingDir,
-            CalibrationDecision decision,
-            List<string> metrics,
-            string timestamp,
-            string fingerprint,
-            float tolerance)
-        {
-            // 1. calibration.csv
-            string csvPath = Path.Combine(fullCalibDir, "calibration.csv");
-            SaveCsvReport(csvPath, decision, metrics);
-
-            // 2. calibration.json
-            var stagesArray = BuildStagesJsonArray(decision.AllStages);
-
-            var root = new JsonObject
-            {
-                ["Timestamp"] = timestamp,
-                ["Fingerprint"] = fingerprint,
-                ["Tolerance"] = tolerance,
-                ["Success"] = decision.Success,
-                ["SelectedFactor"] = decision.SelectedStage?.Factor,
-                ["SelectedLevelIndex"] = decision.SelectedStage?.LevelIndex,
-                ["Summary"] = decision.SummaryMessage,
-                ["Stages"] = stagesArray
-            };
-
-            if (decision.Gci != null)
-            {
-                root["Gci"] = BuildGciJsonObject(decision.Gci);
-            }
-
-            string jsonContent = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            string jsonPath = Path.Combine(fullCalibDir, "calibration.json");
-            File.WriteAllText(jsonPath, jsonContent, Encoding.UTF8);
-
-            // Kopie nach latest_calibration.* im Kalibrierungsverzeichnis
-            string latestJson = Path.Combine(workingDir, CalibrationDirectoryName, LatestCalibrationJson);
-            string latestCsv = Path.Combine(workingDir, CalibrationDirectoryName, LatestCalibrationCsv);
-            File.WriteAllText(latestJson, jsonContent, Encoding.UTF8);
-            File.Copy(csvPath, latestCsv, overwrite: true);
-        }
-
-        /// <summary>
-        /// Warnt, wenn die Stufen mit unterschiedlicher Wandschicht (Schichtzahl, Dicke oder Ersatznetz) gerechnet wurden:
-        /// dann misst die Reihe nicht nur den Netzeinfluss (Bericht-Lauf 09.11.2026: 21 → 16 Schichten).
-        /// <c>null</c>, wenn alles gleich ist oder keine Wandschicht-Angaben vorliegen.
-        /// </summary>
-        public static string? DescribeLayerMismatch(IReadOnlyList<CalibrationStageData> stages)
-        {
-            var withLayers = stages.Where(st => st.BoundaryLayerLayers > 0).OrderBy(st => st.LevelIndex).ToList();
-            if (withLayers.Count == 0) return null;
-
-            var counts = withLayers.Select(st => st.BoundaryLayerLayers).Distinct().ToList();
-            if (counts.Count > 1)
-            {
-                string list = string.Join(", ", withLayers.Select(st => $"Stufe {st.LevelIndex}: {st.BoundaryLayerLayers}"));
-                return $"Die Stufen haben unterschiedliche Schichtzahlen ({list}). Die Netzstudie ist dadurch nicht vergleichbar.";
-            }
-
-            var fallback = withLayers.Where(st => st.BoundaryLayerStage >= 3).Select(st => st.LevelIndex).ToList();
-            if (fallback.Count > 0)
-            {
-                return $"Stufe(n) {string.Join(", ", fallback)} wurden mit Ersatznetz (überall verdünnte Wandschicht) gerechnet und sind nur eingeschränkt vergleichbar.";
-            }
-
-            return null;
-        }
-
-        internal static void PrintSummary(CalibrationDecision decision, TextWriter? output = null)
-        {
-            TextWriter writer = output ?? Console.Out;
-            writer.WriteLine("\n==================================================");
-            writer.WriteLine(" KALIBRIERUNGSERGEBNIS");
-            writer.WriteLine("==================================================");
-            writer.WriteLine(decision.SummaryMessage);
-
-            double totalSeconds = decision.AllStages.Sum(st => st.DurationSeconds);
-            writer.WriteLine($"   Dauer der Kalibrierung gesamt: {FormatDuration(totalSeconds)} ({decision.AllStages.Count} Stufen)");
-            foreach (var st in decision.AllStages.OrderBy(st => st.LevelIndex))
-            {
-                var extras = new List<string>();
-                int totalBreakdown = st.SurfaceTriangles + st.SurfaceQuads + st.VolumePrisms
-                                     + st.VolumeHexahedra + st.VolumeTetrahedra + st.VolumePyramids;
-                if (totalBreakdown > 0)
-                {
-                    extras.Add($"Tri={st.SurfaceTriangles:N0}, Quad={st.SurfaceQuads:N0}, Prism={st.VolumePrisms:N0}, Hexa={st.VolumeHexahedra:N0}, Tet={st.VolumeTetrahedra:N0}, Pyr={st.VolumePyramids:N0}");
-                }
-                if (float.IsFinite(st.TunnelBlockagePercent))
-                {
-                    extras.Add($"Blockage={st.TunnelBlockagePercent.ToString("0.00", CultureInfo.InvariantCulture)}%");
-                }
-                if (float.IsFinite(st.PressureDragCoeff) || float.IsFinite(st.ViscousDragCoeff))
-                {
-                    string cdp = float.IsFinite(st.PressureDragCoeff)
-                        ? st.PressureDragCoeff.ToString("0.#####", CultureInfo.InvariantCulture)
-                        : "-";
-                    string cdv = float.IsFinite(st.ViscousDragCoeff)
-                        ? st.ViscousDragCoeff.ToString("0.#####", CultureInfo.InvariantCulture)
-                        : "-";
-                    extras.Add($"CD_p={cdp}, CD_v={cdv}");
-                }
-                string extraSuffix = extras.Count > 0 ? $" | {string.Join(" | ", extras)}" : string.Empty;
-                writer.WriteLine($"     Stufe {st.LevelIndex} (Faktor {st.Factor.ToString("0.00", CultureInfo.InvariantCulture)}): {FormatDuration(st.DurationSeconds)}, {st.MeshCells:N0} Zellen{extraSuffix}");
-            }
-
-            string? layerWarning = DescribeLayerMismatch(decision.AllStages);
-            if (layerWarning != null) writer.WriteLine($"   [WARNUNG] {layerWarning}");
-
-            if (decision.Gci != null)
-            {
-                string pStr = float.IsFinite(decision.Gci.ObservedOrderP)
-                    ? decision.Gci.ObservedOrderP.ToString("F2", CultureInfo.InvariantCulture)
-                    : "n/a";
-                string gciFineStr = float.IsFinite(decision.Gci.GciFinePercent)
-                    ? $"{decision.Gci.GciFinePercent.ToString("F2", CultureInfo.InvariantCulture)} %"
-                    : "n/a";
-                string gciSelStr = float.IsFinite(decision.Gci.GciSelectedPercent)
-                    ? $"{decision.Gci.GciSelectedPercent.ToString("F2", CultureInfo.InvariantCulture)} %"
-                    : "n/a";
-
-                writer.WriteLine($"   Beobachtete Ordnung p:        {pStr}");
-                writer.WriteLine($"   GCI (Feinstes Netz):          {gciFineStr}");
-                writer.WriteLine($"   GCI (Gewähltes/Mittleres):    {gciSelStr}");
-                if (float.IsFinite(decision.Gci.ExtrapolatedValue))
-                {
-                    writer.WriteLine($"   Extrapolierter netzunabhängiger Wert (Hauptgröße): {decision.Gci.ExtrapolatedValue.ToString("0.#####", CultureInfo.InvariantCulture)} "
-                        + $"(feinstes Netz weicht {decision.Gci.ExtrapolatedDeviationPercent:0.0} % davon ab)");
-                }
-                if (decision.Gci.Warning != null)
-                {
-                    writer.WriteLine($"   [WARNUNG] {decision.Gci.Warning}");
-                }
-            }
-
-            if (decision.Success && decision.SelectedStage != null)
-            {
-                writer.WriteLine($"\n-> Empfohlener Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.SelectedStage.LevelIndex})");
-            }
-            else if (!decision.Success && decision.FallbackStage != null)
-            {
-                writer.WriteLine($"   -> Empfohlener Rückfall-Faktor (feinste gültige Kandidatenstufe): {decision.FallbackStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.FallbackStage.LevelIndex})");
-            }
-            writer.WriteLine("==================================================\n");
         }
     }
 }
