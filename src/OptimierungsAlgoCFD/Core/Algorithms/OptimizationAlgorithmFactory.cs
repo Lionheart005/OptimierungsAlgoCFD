@@ -13,12 +13,12 @@ namespace OptimierungsAlgoCFD.Core
         /// <summary>
         /// Verfahren, das bei fehlendem oder unbekanntem Namen benutzt wird. Seit 08.11.2026 <c>"Bayes"</c>: im
         /// 10 × 10-Vergleich (Naca2D, 3 Seeds) war es bei 100 Rechnungen klar am besten (<c>.plans/vergleich_optimierer.md</c>);
-        /// bei sehr kleinem Budget (bis etwa 25 Rechnungen) ist <c>"Rsm"</c> gleichwertig.
+        /// bei sehr kleinem Budget (bis etwa 25 Rechnungen) ist <c>"IdwBaseline"</c> gleichwertig.
         /// </summary>
         public const string DefaultAlgorithm = "Bayes";
 
         /// <summary>Gültige Werte, so wie sie in der Konfiguration stehen dürfen.</summary>
-        public const string SupportedAlgorithms = "Rsm, Evolution, Bayes";
+        public const string SupportedAlgorithms = "Bayes, IdwBaseline";
 
         /// <summary>
         /// Baut den Algorithmus zum angegebenen Namen. Groß-/Kleinschreibung und
@@ -35,11 +35,15 @@ namespace OptimierungsAlgoCFD.Core
         {
             switch ((name ?? string.Empty).Trim().ToLowerInvariant())
             {
-                case "rsm":
-                    return new RsmOptimizationAlgorithm(fitnessCalculator, random);
+                case "idwbaseline":
+                case "idw":
+                    return new IdwBaselineAlgorithm(fitnessCalculator, random);
 
-                case "evolution":
-                    return new EvolutionaryAlgorithm(fitnessCalculator, random);
+                case "rsm":
+                    Console.WriteLine(
+                        "[HINWEIS] 'Rsm' ist ein veralteter Alias für 'IdwBaseline' " +
+                        "(IDW-Interpolation, kein echtes RSM). Bitte 'IdwBaseline' oder 'Bayes' verwenden.");
+                    return new IdwBaselineAlgorithm(fitnessCalculator, random);
 
                 case "bayes":
                     return new BayesOptimizationAlgorithm(fitnessCalculator, random: random);

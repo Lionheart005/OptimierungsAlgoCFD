@@ -98,7 +98,7 @@ namespace OptimierungsAlgoCFD.Core
 
         // 3. Wahl des Optimierungsverfahrens
         /// <summary>
-        /// Welches Optimierungsverfahren gefahren wird: <c>"Bayes"</c> (Standard seit 08.11.2026), <c>"Rsm"</c> oder <c>"Evolution"</c>.
+        /// Welches Optimierungsverfahren gefahren wird: <c>"Bayes"</c> (Standard seit 08.11.2026) oder <c>"IdwBaseline"</c> (Legacy-Alias <c>"Rsm"</c>).
         /// Aufgelöst über <see cref="OptimizationAlgorithmFactory"/>; ein unbekannter Name
         /// führt zu einer Warnung und dem Standardverfahren.
         /// </summary>
@@ -112,18 +112,11 @@ namespace OptimierungsAlgoCFD.Core
         /// </summary>
         public int RandomSeed { get; set; } = 0;
 
-        // 3a. Algorithmus-Spezifische Einstellungen (Evolution)
-        public float MinimalDeviationExploration { get; set; } = 1.0f;
-        public float MinimalDeviationExploitation { get; set; } = 0.05f;
-        public float RoleFineTuner { get; set; } = 0.20f;
-        public float RoleCautious { get; set; } = 0.40f;
-        public float RoleNormal { get; set; } = 0.60f;
-
-        // 4. Algorithmus RSM
-        public int RsmVirtualSimulations { get; set; } = 50000;
-        public float RsmIdwPower { get; set; } = 3.0f;
-        public float RsmExploitationRatio { get; set; } = 0.7f;
-        public float RsmExploitationSigma { get; set; } = 0.1f;
+        // 4. Algorithmus IdwBaseline (IDW-Interpolations-Baseline)
+        public int IdwVirtualSimulations { get; set; } = 50000;
+        public float IdwPower { get; set; } = 3.0f;
+        public float IdwExploitationRatio { get; set; } = 0.7f;
+        public float IdwExploitationSigma { get; set; } = 0.1f;
 
         // 4a. Algorithmus Bayes (TODO-55). Alles optional, die Vorgaben passen meist.
         /// <summary>Einstellungen des Bayes-Optimierers; wirkt nur bei <c>"OptimizationAlgorithm": "Bayes"</c>.</summary>

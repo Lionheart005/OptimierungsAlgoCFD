@@ -15,34 +15,30 @@ namespace OptimierungsAlgoCFD.Tests
         private static IFitnessCalculator Fitness() => new Mock<IFitnessCalculator>().Object;
 
         [Theory]
+        [InlineData("IdwBaseline")]
+        [InlineData("idwbaseline")]
+        [InlineData("idw")]
         [InlineData("Rsm")]
         [InlineData("rsm")]
         [InlineData("  RSM  ")]
-        public void Creates_Rsm_Regardless_Of_Spelling(string name)
+        public void Creates_IdwBaseline_Regardless_Of_Spelling_And_Legacy_Alias(string name)
         {
-            Assert.IsType<RsmOptimizationAlgorithm>(
-                OptimizationAlgorithmFactory.Create(name, Fitness()));
-        }
-
-        [Theory]
-        [InlineData("Evolution")]
-        [InlineData("evolution")]
-        public void Creates_EvolutionaryAlgorithm(string name)
-        {
-            Assert.IsType<EvolutionaryAlgorithm>(
+            Assert.IsType<IdwBaselineAlgorithm>(
                 OptimizationAlgorithmFactory.Create(name, Fitness()));
         }
 
         /// <summary>
-        /// Ein Tippfehler in der JSON soll den Lauf nicht abbrechen (Entscheidung des
-        /// Nutzers), sondern auf das Standardverfahren zurückfallen.
+        /// Ein Tippfehler oder ein entferntes Verfahren (z. B. "Evolution") soll den Lauf
+        /// nicht abbrechen, sondern auf das Standardverfahren zurückfallen.
         /// </summary>
         [Theory]
+        [InlineData("Evolution")]
+        [InlineData("evolution")]
         [InlineData("RMS")]
         [InlineData("Genetisch")]
         [InlineData("")]
         [InlineData(null)]
-        public void Falls_Back_To_Default_For_Unknown_Name(string? name)
+        public void Falls_Back_To_Default_For_Unknown_Or_Removed_Name(string? name)
         {
             Assert.IsType<BayesOptimizationAlgorithm>(
                 OptimizationAlgorithmFactory.Create(name, Fitness()));

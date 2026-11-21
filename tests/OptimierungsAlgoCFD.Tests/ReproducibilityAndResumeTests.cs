@@ -64,7 +64,7 @@ namespace OptimierungsAlgoCFD.Tests
 
         private static SimulationContext Context()
         {
-            var config = new SimulationConfig { RsmVirtualSimulations = 200 };
+            var config = new SimulationConfig { IdwVirtualSimulations = 200 };
             var project = new ProjectConfig
             {
                 ProjectName = "Seed",
@@ -87,8 +87,8 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         [Theory]
+        [InlineData("IdwBaseline")]
         [InlineData("Rsm")]
-        [InlineData("Evolution")]
         public void Same_Seed_Gives_The_Same_Parameter_Sequence(string algorithm)
         {
             var first = Sequence(algorithm, 1234);
@@ -424,7 +424,7 @@ namespace OptimierungsAlgoCFD.Tests
                 MaxIterations = 3,
                 VariantsPerIteration = 4,
                 UseRubberBandScaler = false,
-                RsmVirtualSimulations = 300,
+                IdwVirtualSimulations = 300,
                 BouncerTolerance = 0.002f,     // streng: der Türsteher lehnt auch einmal ab
                 BouncerJitter = 3f,
                 ChampionVerification = new ChampionVerificationConfig { Mode = verification }
@@ -522,11 +522,10 @@ namespace OptimierungsAlgoCFD.Tests
 
         /// <summary>Die Kernprüfung (TODO-51): fortgesetzt = ununterbrochen, mit genau N − k Rechnungen.</summary>
         [Theory]
+        [InlineData("IdwBaseline", 5, false)]
+        [InlineData("IdwBaseline", 13, true)]
+        [InlineData("IdwBaseline", 0, false)]
         [InlineData("Rsm", 5, false)]
-        [InlineData("Rsm", 13, true)]
-        [InlineData("Evolution", 7, false)]
-        [InlineData("Evolution", 15, true)]
-        [InlineData("Rsm", 0, false)]
         [InlineData("Bayes", 6, false)]
         [InlineData("Bayes", 14, true)]
         [InlineData("Bayes", 0, false)]

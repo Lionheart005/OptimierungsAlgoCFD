@@ -5,29 +5,32 @@ using System.Linq;
 namespace OptimierungsAlgoCFD.Core
 {
     /// <summary>
-    /// RSM (Response Surface Methodology) Optimierungsalgorithmus.
-    /// Surrogate-basiert mit Inverse Distance Weighting (IDW).
-    /// Angepasst für das neue Interface (SimulationContext statt SimulationData).
-    /// IFitnessCalculator wird per Konstruktor injiziert.
+    /// Einfache Inverse-Distance-Weighting-Interpolations-Baseline (IDW).
+    /// <para>
+    /// Hinweis zur Einordnung: Dies ist bewusst <b>kein</b> polynomiales Response Surface Model (RSM),
+    /// sondern eine einfache abstandsgewichtete Interpolation über bisherige Messpunkte. Das Verfahren
+    /// kann nicht über beobachtete Fitnesswerte hinaus extrapolieren und besitzt keine
+    /// Unsicherheitsquantifizierung. Es dient als einfache, robuste Vergleichs-Baseline zu <c>Bayes</c>.
+    /// </para>
     /// </summary>
-    public class RsmOptimizationAlgorithm : IOptimizationAlgorithm
+    public class IdwBaselineAlgorithm : IOptimizationAlgorithm
     {
         private readonly Random _random;
         private readonly IFitnessCalculator _fitnessCalculator;
-        private Queue<Dictionary<string, float>> _nextVirtualCandidates = new Queue<Dictionary<string, float>>();
+        private readonly Queue<Dictionary<string, float>> _nextVirtualCandidates = new Queue<Dictionary<string, float>>();
 
         /// <param name="fitnessCalculator">Bewertet die Modelle einer Iteration.</param>
         /// <param name="random">
         /// Optional: feste Zufallsquelle. Im Lauf ungesetzt (echter Zufall), in Tests
-        /// ein <c>new Random(seed)</c>, damit die DoE-Phase reproduzierbar ist (TODO-19).
+        /// ein <c>new Random(seed)</c>, damit die Start-Sampling-Phase reproduzierbar ist.
         /// </param>
-        public RsmOptimizationAlgorithm(IFitnessCalculator fitnessCalculator, Random? random = null)
+        public IdwBaselineAlgorithm(IFitnessCalculator fitnessCalculator, Random? random = null)
         {
             _fitnessCalculator = fitnessCalculator;
             _random = random ?? new Random();
         }
 
-        public string Name => "RSM (Surrogate-basiert / Ersatzmodell)";
+        public string Name => "IDW-Baseline (Inverse Distance Weighting)";
 
         public Dictionary<string, float> GenerateParameters(SimulationContext context, int iteration, int variant, int maxVariants)
         {
@@ -36,19 +39,18 @@ namespace OptimierungsAlgoCFD.Core
                 return _nextVirtualCandidates.Dequeue();
             }
 
-            Dictionary<string, float> candidate = new Dictionary<string, float>();
-            
             // Arbeitspunkt = Laufzeitzustand im Context (TODO-17), nicht die Projekt-Vorgabe.
-            if (iteration == 1 && variant == 1) return new Dictionary<string, float>(context.CurrentBaseParameters);
+            if (iteration == 1 && variant == 1)
+            {
+                return new Dictionary<string, float>(context.CurrentBaseParameters);
+            }
 
+            var candidate = new Dictionary<string, float>();
             foreach (var kvp in context.CurrentBaseParameters)
             {
-                string paramName = kvp.Key;
-                float min = context.Project.ParameterBounds.ContainsKey(paramName) ? context.Project.ParameterBounds[paramName].Min : kvp.Value * 0.5f;
-                float max = context.Project.ParameterBounds.ContainsKey(paramName) ? context.Project.ParameterBounds[paramName].Max : kvp.Value * 1.5f;
-                
+                var (min, max) = ResolveBounds(context.Project.ParameterBounds, kvp.Key, kvp.Value);
                 float randomValue = min + (float)_random.NextDouble() * (max - min);
-                candidate.Add(paramName, randomValue);
+                candidate.Add(kvp.Key, randomValue);
             }
 
             return candidate;
@@ -56,9 +58,6 @@ namespace OptimierungsAlgoCFD.Core
 
         public ModelRecord EvaluateAndSelectBest(List<ModelRecord> records, SimulationContext context)
         {
-            // ========================================================
-            // ZENTRALE FITNESS BERECHNUNG AUFRUFEN (jetzt über Interface)
-            // ========================================================
             foreach (var record in records)
             {
                 _fitnessCalculator.CalculateFitness(record, context.Config);
@@ -75,8 +74,7 @@ namespace OptimierungsAlgoCFD.Core
             int minRequiredSamples = ((k + 1) * (k + 2)) / 2 + 2;
 
             // Nur gelungene Simulationen taugen als Stützstellen. Fehlgeschlagene Modelle
-            // tragen keine echte Fitness, sie würden die Antwortfläche verzerren — sie zählen
-            // deshalb auch nicht für die DoE-Anzahl. Stattdessen läuft eine Variante mehr.
+            // tragen keine echte Fitness und würden die IDW-Interpolation verzerren.
             var usableSamples = context.History.Where(r => !r.SimulationFailed).ToList();
 
             if (usableSamples.Count < minRequiredSamples)
@@ -84,33 +82,44 @@ namespace OptimierungsAlgoCFD.Core
                 int missing = minRequiredSamples - usableSamples.Count;
                 int failed = context.History.Count - usableSamples.Count;
                 string failedNote = failed > 0 ? $" ({failed} fehlgeschlagene Simulation(en) zählen nicht mit)" : "";
-                Console.WriteLine($"\n[INFO] {Name}: Aufbau des Ersatzmodells. Benötige noch {missing} Basis-Simulationen (DoE).{failedNote}");
+                Console.WriteLine($"\n[INFO] {Name}: Aufbau der Stützstellen. Benötige noch {missing} Basis-Simulationen.{failedNote}");
                 return;
             }
 
-            int virtualSimulations = context.Config.RsmVirtualSimulations;
-            Console.WriteLine($"\n[INFO] {Name}: Ersatzmodell ist aktiv!");
-            Console.WriteLine($"       -> Simuliere {virtualSimulations:N0} virtuelle Varianten auf der Antwortfläche...");
+            int virtualSimulations = context.Config.IdwVirtualSimulations;
+            int variantsToQueue = Math.Max(0, context.Config.VariantsPerIteration);
+            if (virtualSimulations <= 0 || variantsToQueue == 0)
+            {
+                return;
+            }
 
-            var virtualResults = new List<(Dictionary<string, float> Params, float PredictedFitness)>();
+            Console.WriteLine($"\n[INFO] {Name}: IDW-Interpolation ist aktiv!");
+            Console.WriteLine($"       -> Bewerte {virtualSimulations:N0} virtuelle Varianten per IDW...");
+
+            var virtualResults = new List<(Dictionary<string, float> Params, float PredictedFitness)>(virtualSimulations);
 
             for (int i = 0; i < virtualSimulations; i++)
             {
-                bool exploit = _random.NextDouble() < context.Config.RsmExploitationRatio;
+                bool exploit = _random.NextDouble() < context.Config.IdwExploitationRatio;
                 Dictionary<string, float> virtParams = GenerateVirtualCandidate(context, bestRecord, exploit);
-                
-                float predictedFitness = PredictFitnessSurrogate(virtParams, usableSamples, context.Project.ParameterBounds, context.Config.RsmIdwPower);
-                
+
+                float predictedFitness = PredictFitnessSurrogate(virtParams, usableSamples, context.Project.ParameterBounds, context.Config.IdwPower);
+
                 virtualResults.Add((virtParams, predictedFitness));
             }
 
             var topCandidates = virtualResults
                 .OrderByDescending(v => v.PredictedFitness)
-                .Take(context.Config.VariantsPerIteration)
+                .Take(variantsToQueue)
                 .ToList();
 
-            Console.WriteLine($"       -> Virtuelle Optimierung beendet. Erwartete Top-Fitness: {topCandidates[0].PredictedFitness:F3}");
-            Console.WriteLine($"       -> Übergebe die {context.Config.VariantsPerIteration} besten Kandidaten an den echten Windkanal.");
+            if (topCandidates.Count == 0)
+            {
+                return;
+            }
+
+            Console.WriteLine($"       -> Virtuelle Bewertung beendet. Erwartete Top-Fitness: {topCandidates[0].PredictedFitness:F3}");
+            Console.WriteLine($"       -> Übergebe die {topCandidates.Count} besten Kandidaten an die Simulation.");
 
             foreach (var candidate in topCandidates)
             {
@@ -122,9 +131,8 @@ namespace OptimierungsAlgoCFD.Core
         /// IDW-Schätzung der Fitness. <paramref name="samples"/> enthält nur gelungene
         /// Simulationen — abgebrochene Läufe sind keine gültigen Stützstellen.
         ///
-        /// Öffentlich und statisch, damit die Antwortfläche mit bekannten Stützstellen
-        /// geprüft werden kann, ohne einen kompletten Lauf zu fahren (TODO-19) —
-        /// nach demselben Muster wie <c>Su2Solver.ResolveReferenceArea</c>.
+        /// Öffentlich und statisch, damit die Interpolation mit bekannten Stützstellen
+        /// geprüft werden kann, ohne einen kompletten Lauf zu fahren.
         /// </summary>
         public static float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
         {
@@ -137,12 +145,14 @@ namespace OptimierungsAlgoCFD.Core
 
                 foreach (var key in candidate.Keys)
                 {
-                    if (record.ActiveParameters.ContainsKey(key))
+                    if (record.ActiveParameters.TryGetValue(key, out float sampleValue))
                     {
-                        float range = bounds[key].Max - bounds[key].Min;
-                        if (range <= 0) range = 1f;
+                        float range = bounds.TryGetValue(key, out var paramBounds)
+                            ? paramBounds.Max - paramBounds.Min
+                            : 1f;
+                        if (range <= 0f) range = 1f;
 
-                        float diff = (candidate[key] - record.ActiveParameters[key]) / range;
+                        float diff = (candidate[key] - sampleValue) / range;
                         distSq += diff * diff;
                     }
                 }
@@ -150,7 +160,7 @@ namespace OptimierungsAlgoCFD.Core
                 if (distSq < 1e-8f) return record.Fitness;
 
                 float weight = 1.0f / (float)Math.Pow(distSq, idwPower / 2.0);
-                
+
                 numerator += weight * record.Fitness;
                 denominator += weight;
             }
@@ -162,20 +172,19 @@ namespace OptimierungsAlgoCFD.Core
 
         private Dictionary<string, float> GenerateVirtualCandidate(SimulationContext context, ModelRecord bestKnown, bool exploit)
         {
-            Dictionary<string, float> candidate = new Dictionary<string, float>();
+            var candidate = new Dictionary<string, float>();
 
             foreach (var kvp in context.CurrentBaseParameters)
             {
                 string key = kvp.Key;
-                float min = context.Project.ParameterBounds[key].Min;
-                float max = context.Project.ParameterBounds[key].Max;
+                var (min, max) = ResolveBounds(context.Project.ParameterBounds, key, kvp.Value);
                 float range = max - min;
 
                 float value;
-                if (exploit && bestKnown.ActiveParameters.ContainsKey(key))
+                if (exploit && bestKnown.ActiveParameters.TryGetValue(key, out float bestValue))
                 {
-                    float sigma = range * context.Config.RsmExploitationSigma; 
-                    value = bestKnown.ActiveParameters[key] + (float)(NextGaussian() * sigma);
+                    float sigma = range * context.Config.IdwExploitationSigma;
+                    value = bestValue + (float)(NextGaussian() * sigma);
                 }
                 else
                 {
@@ -188,13 +197,27 @@ namespace OptimierungsAlgoCFD.Core
             return candidate;
         }
 
+        private static (float Min, float Max) ResolveBounds(
+            IReadOnlyDictionary<string, (float Min, float Max)> parameterBounds,
+            string key,
+            float fallbackValue)
+        {
+            if (parameterBounds.TryGetValue(key, out var bounds))
+            {
+                return bounds.Min <= bounds.Max ? bounds : (bounds.Max, bounds.Min);
+            }
+
+            float a = fallbackValue * 0.5f;
+            float b = fallbackValue * 1.5f;
+            return a <= b ? (a, b) : (b, a);
+        }
+
         private double NextGaussian()
         {
             double u1 = 1.0 - _random.NextDouble();
             double u2 = 1.0 - _random.NextDouble();
-            if (u1 <= 0) u1 = 0.000001; 
+            if (u1 <= 0) u1 = 0.000001;
             return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
         }
     }
 }
-

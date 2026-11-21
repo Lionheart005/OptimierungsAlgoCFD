@@ -227,13 +227,11 @@ namespace OptimierungsAlgoCFD.Tests
         /// hier fehlt, wäre für einen neuen Nutzer unsichtbar.
         /// </summary>
         /// <summary>
-        /// Bewusst nicht in den Vorlagen (Entscheidung 08.11.2026): die Einstellungen von "Evolution"
-        /// und "Bayes". Die Vorlage nennt sie in einem Kommentar mit Verweis aufs Handbuch.
+        /// Bewusst nicht in den Vorlagen (Entscheidung 08.11.2026): die Einstellungen von "Bayes".
+        /// Die Vorlage nennt sie in einem Kommentar mit Verweis aufs Handbuch.
         /// </summary>
         internal static readonly HashSet<string> OptionalAlgorithmKeys = new(StringComparer.OrdinalIgnoreCase)
         {
-            "MinimalDeviationExploration", "MinimalDeviationExploitation",
-            "RoleFineTuner", "RoleCautious", "RoleNormal",
             "Bayes"
         };
 

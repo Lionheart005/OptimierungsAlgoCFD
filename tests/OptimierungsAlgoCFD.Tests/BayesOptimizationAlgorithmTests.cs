@@ -50,7 +50,7 @@ namespace OptimierungsAlgoCFD.Tests
                 MaxIterations = p.Iterations,
                 VariantsPerIteration = p.Variants,
                 UseRubberBandScaler = false,
-                RsmVirtualSimulations = 2000,
+                IdwVirtualSimulations = 2000,
                 ChampionVerification = new ChampionVerificationConfig { Mode = p.Verification },
                 Bayes = p.Bayes ?? new BayesConfig()
             };
@@ -181,7 +181,8 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.Equal("Bayes", OptimizationAlgorithmFactory.DefaultAlgorithm);
             Assert.IsType<BayesOptimizationAlgorithm>(OptimizationAlgorithmFactory.Create("", new BayesHarness.SingleValueFitness(v => v)));
             Assert.Equal("Bayes", new SimulationConfig().OptimizationAlgorithm);
-            Assert.IsType<RsmOptimizationAlgorithm>(OptimizationAlgorithmFactory.Create("Rsm", new BayesHarness.SingleValueFitness(v => v)));
+            Assert.IsType<IdwBaselineAlgorithm>(OptimizationAlgorithmFactory.Create("IdwBaseline", new BayesHarness.SingleValueFitness(v => v)));
+            Assert.IsType<IdwBaselineAlgorithm>(OptimizationAlgorithmFactory.Create("Rsm", new BayesHarness.SingleValueFitness(v => v)));
         }
 
         [Fact]

@@ -37,18 +37,11 @@
 
   // --- Optimierungsverfahren: nichts eingetragen, es gilt der Standard "Bayes" (10 x 10-Vergleich 08.11.2026) ---
 
-  // --- Evolutionärer Algorithmus ---
-  "MinimalDeviationExploration": 1.0,
-  "MinimalDeviationExploitation": 0.05,
-  "RoleFineTuner": 0.2,
-  "RoleCautious": 0.4,
-  "RoleNormal": 0.6,
-
-  // --- RSM (Antwortflächen-Verfahren) ---
-  "RsmVirtualSimulations": 50000,
-  "RsmIdwPower": 3.0,
-  "RsmExploitationRatio": 0.7,
-  "RsmExploitationSigma": 0.1,
+  // --- IdwBaseline (IDW-Interpolations-Baseline, kein echtes RSM) ---
+  "IdwVirtualSimulations": 50000,
+  "IdwPower": 3.0,
+  "IdwExploitationRatio": 0.7,
+  "IdwExploitationSigma": 0.1,
 
   // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
   // Meist nicht noetig: "Bayes" laeuft ohne Einstellung. Jeder Parameter braucht Grenzen in

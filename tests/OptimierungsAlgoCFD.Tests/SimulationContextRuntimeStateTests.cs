@@ -45,70 +45,23 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// Der EA schreibt den Gewinner als neuen Arbeitspunkt fort und passt Sigma an.
-        /// Beides darf nur im Context landen.
+        /// Auch der Bayes-Optimierer und die IDW-Baseline fassen die ProjectConfig nicht an.
         /// </summary>
         [Fact]
-        public void EvolutionaryAlgorithm_Does_Not_Mutate_The_ProjectConfig()
+        public void BayesAlgorithm_Does_Not_Mutate_The_ProjectConfig()
         {
             var project = Project();
             var context = new SimulationContext(new SimulationConfig(), project);
-            var algorithm = new EvolutionaryAlgorithm(Fitness());
+            var fitness = new Mock<IFitnessCalculator>();
+            fitness.SetupGet(f => f.RequiredMetrics).Returns(System.Array.Empty<string>());
+            var algorithm = new BayesOptimizationAlgorithm(fitness.Object, random: new System.Random(1));
 
-            var records = new List<ModelRecord>
-            {
-                new ModelRecord
-                {
-                    Variant = 1,
-                    Fitness = 1f,
-                    ActiveParameters = new Dictionary<string, float> { { "Length", 50f }, { "Width", 40f } }
-                },
-                new ModelRecord
-                {
-                    Variant = 2,
-                    Fitness = 100f,
-                    ActiveParameters = new Dictionary<string, float> { { "Length", 61f }, { "Width", 44f } }
-                }
-            };
+            var first = algorithm.GenerateParameters(context, iteration: 1, variant: 1, maxVariants: 4);
 
-            algorithm.PrepareNextIteration(context, records, records[1]);
-
-            // Laufzeitzustand ist fortgeschrieben ...
-            Assert.Equal(61f, context.CurrentBaseParameters["Length"]);
-            // ... mit Erfolgsquote 1/1 > 0.2 also Sigma * 1.2
-            Assert.Equal(6f, context.CurrentDeviations["Length"], 3);
-
-            // ... die Konfiguration nicht
+            Assert.Equal(50f, first["Length"]);
             Assert.Equal(50f, project.BaseParameters["Length"]);
             Assert.Equal(40f, project.BaseParameters["Width"]);
             Assert.Equal(5f, project.MaxDeviations["Length"]);
-        }
-
-        /// <summary>
-        /// Der eigentliche Punkt von TODO-17: ein zweiter Lauf mit derselben (geladenen)
-        /// Konfiguration startet wieder bei den Vorgabewerten.
-        /// </summary>
-        [Fact]
-        public void Second_Run_With_The_Same_Config_Starts_At_The_Defaults_Again()
-        {
-            var project = Project();
-            var algorithm = new EvolutionaryAlgorithm(Fitness());
-
-            var firstRun = new SimulationContext(new SimulationConfig(), project);
-            algorithm.PrepareNextIteration(
-                firstRun,
-                new List<ModelRecord> { new ModelRecord { Variant = 1, Fitness = 1f } },
-                new ModelRecord
-                {
-                    ActiveParameters = new Dictionary<string, float> { { "Length", 88f } }
-                });
-
-            Assert.Equal(88f, firstRun.CurrentBaseParameters["Length"]);
-
-            var secondRun = new SimulationContext(new SimulationConfig(), project);
-
-            Assert.Equal(50f, secondRun.CurrentBaseParameters["Length"]);
-            Assert.Equal(5f, secondRun.CurrentDeviations["Length"]);
         }
 
         [Fact]
@@ -143,16 +96,16 @@ namespace OptimierungsAlgoCFD.Tests
         }
 
         /// <summary>
-        /// Auch der RSM sampelt um den Laufzeit-Arbeitspunkt und fasst die Konfiguration nicht an.
+        /// Auch die IDW-Baseline sampelt um den Laufzeit-Arbeitspunkt und fasst die Konfiguration nicht an.
         /// </summary>
         [Fact]
-        public void RsmAlgorithm_Reads_The_Runtime_Base_Parameters()
+        public void IdwBaselineAlgorithm_Reads_The_Runtime_Base_Parameters()
         {
             var project = Project();
             var context = new SimulationContext(new SimulationConfig(), project);
             context.CurrentBaseParameters["Length"] = 77f;
 
-            var algorithm = new RsmOptimizationAlgorithm(Fitness());
+            var algorithm = new IdwBaselineAlgorithm(Fitness());
 
             var first = algorithm.GenerateParameters(context, iteration: 1, variant: 1, maxVariants: 10);
 

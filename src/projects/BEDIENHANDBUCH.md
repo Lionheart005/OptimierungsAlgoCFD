@@ -114,7 +114,7 @@ Erklärung. Sie ist das Nachschlagewerk zum Abschreiben. Ein neues Projekt legt 
 | … **Luft statt Wasser** | `solvers/su2.json` | `Density`, `DynamicViscosity` | Luft: `1.225` und `1.81e-5`; Meerwasser: `1025` und `0.001001` |
 | … zusätzlich den **Auftrieb** (oder andere Kennwerte) haben | `solvers/su2.json` | `ResultMetrics` | `"Lift": "CL"` dazuschreiben; in der Bewertungsformel (C#) verwenden |
 | … ein **anderes Turbulenzmodell** | `solvers/su2.json` | `TurbulenceModel` | `"SA"` (Standard) oder `"SST"` |
-| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Bayes"` (Standard: lernendes Ersatzmodell, spart teure Rechnungen; siehe Abschnitt 4.2), `"Rsm"` (einfacher, braucht keine Parametergrenzen) oder `"Evolution"` |
+| … den **Optimierer wechseln** | `simulation.json` | `OptimizationAlgorithm` | `"Bayes"` (Standard: lernendes Ersatzmodell, spart teure Rechnungen; siehe Abschnitt 4.2) oder `"IdwBaseline"` (einfache IDW-Interpolations-Baseline, Legacy-Alias `"Rsm"`) |
 | … **Startwerte** oder **Grenzen** eines Parameters ändern | `project.json` | `BaseParameters`, `ParameterBounds` | Startwert muss innerhalb der Grenzen liegen |
 | … einen **Parameter fest einstellen** (nicht optimieren) | `project.json` | `ParameterBounds` | `Min` und `Max` auf denselben Wert setzen — der Parameter wird dann immer auf diesen Wert geklemmt |
 | … dass der Optimierer **größere/kleinere Sprünge** macht | `project.json` | `MaxDeviations` | Streuung je Parameter, in dessen Einheit |
@@ -212,26 +212,25 @@ Naca2D die vollen Pfade ein. Ob die Pfade stimmen, prüft `.\scripts\sim.ps1 doc
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `OptimizationAlgorithm` | **Standard `"Bayes"`** (im 10 × 10-Vergleich auf Naca2D bei 100 Rechnungen klar am besten, siehe `.plans/vergleich_optimierer.md`). `"Rsm"` = Ersatzmodell-Verfahren: lernt aus allen bisherigen Rechnungen eine „Landkarte" der Fitness und schlägt die vielversprechendsten Stellen vor. Gut bei wenigen, teuren Rechnungen. `"Evolution"` = evolutionär: verändert die besten Varianten zufällig weiter. `"Bayes"` = Bayes-Optimierung: lernt ebenfalls eine Landkarte, **zeichnet aber zusätzlich den „Nebel" ein**, also wo sie sich nicht auskennt, und rechnet dort, wo die Chance am größten ist, den bisher Besten zu schlagen. Spart bei teuren Rechnungen die meisten Varianten (Entscheidungshilfe unten). Ein unbekannter Name führt zu einer Warnung und `"Bayes"`. | `"Bayes"` | 🟡 |
+| `OptimizationAlgorithm` | **Standard `"Bayes"`** (im 10 × 10-Vergleich auf Naca2D bei 100 Rechnungen klar am besten, siehe `.plans/vergleich_optimierer.md`). `"IdwBaseline"` (Legacy-Alias `"Rsm"`, gibt einen Konsolenhinweis aus) = einfache Inverse-Distance-Weighting-Interpolations-Baseline (IDW, kein echtes polynomiales RSM): schätzt die Fitness per Abstandsgewichtung aus bisherigen Punkten, kann nicht extrapolieren und quantifiziert keine Unsicherheit; dient als einfache Vergleichs-Baseline. `"Bayes"` = Bayes-Optimierung: lernt eine echte Landkarte (Gauß-Prozess) und **zeichnet zusätzlich den „Nebel" ein**, also wo sie sich nicht auskennt, und rechnet dort, wo die Chance am größten ist, den bisher Besten zu schlagen. Spart bei teuren Rechnungen die meisten Varianten (Entscheidungshilfe unten). Ein unbekannter Name führt zu einer Warnung und `"Bayes"`. | `"Bayes"` | 🟡 |
 | `RandomSeed` | Startwert des Zufalls (Optimierer und Türsteher). `0` = bei jedem Lauf neu ziehen; der gezogene Wert steht im Log (`[SYSTEM] Zufalls-Seed: …`) und in `run-info.json`. Wer einen Lauf **exakt wiederholen** will, trägt diesen Wert hier ein. | `0` | 🟢 |
 
-*Nur für `"Rsm"`:*
+*Nur für `"IdwBaseline"` (Legacy-Alias `"Rsm"`):*
 
 | Einstellung | Bedeutung | Standard | Wann |
 | --- | --- | --- | --- |
-| `RsmVirtualSimulations` | Wie viele Kandidaten auf der „Landkarte" probeweise bewertet werden, bevor die besten echt gerechnet werden. Kostet kaum Zeit. | `50000` | 🔴 |
-| `RsmIdwPower` | Wie stark die Landkarte nahe gelegenen echten Rechnungen vertraut (höher = örtlicher). | `3.0` | 🔴 |
-| `RsmExploitationRatio` | Anteil der Kandidaten, die rund um den bisher Besten gesucht werden; der Rest wird frei im ganzen Bereich gesucht. Höher = gezielter, aber Gefahr, ein besseres Gebiet zu übersehen. | `0.7` | 🟡 |
-| `RsmExploitationSigma` | Wie weit um den Besten gesucht wird, als Anteil des Parameterbereichs (`0.1` = 10 %). | `0.1` | 🟡 |
+| `IdwVirtualSimulations` | Wie viele Kandidaten auf der IDW-Interpolation probeweise bewertet werden, bevor die besten echt gerechnet werden. Kostet kaum Zeit. | `50000` | 🔴 |
+| `IdwPower` | Wie stark die IDW-Interpolation nahe gelegenen echten Rechnungen vertraut (höher = örtlicher). | `3.0` | 🔴 |
+| `IdwExploitationRatio` | Anteil der Kandidaten, die rund um den bisher Besten gesucht werden; der Rest wird frei im ganzen Bereich gesucht. Höher = gezielter, aber Gefahr, ein besseres Gebiet zu übersehen. | `0.7` | 🟡 |
+| `IdwExploitationSigma` | Wie weit um den Besten gesucht wird, als Anteil des Parameterbereichs (`0.1` = 10 %). | `0.1` | 🟡 |
 
 *Nur für `"Bayes"` (Abschnitt `Bayes` in `simulation.json`, alles optional, die Vorgaben passen meist):*
 
 > **Entscheidungshilfe:** Standard ist `"Bayes"`: Sind die Rechnungen **teuer** (Minuten bis Stunden je
 > Variante) und gibt es **bis etwa 20 Parameter**, ist es ab etwa 40 Rechnungen deutlich besser als die
-> anderen. Bei einem **sehr kleinen Budget** (bis etwa 25 Rechnungen) ist `"Rsm"` gleichwertig und
-> einfacher, es braucht keine Parametergrenzen. Für einen **Vergleich oder eine Gegenprobe**: `"Rsm"`
-> oder `"Evolution"`. Alle drei verwenden dieselbe Bewertungsformel und denselben Türsteher. MantaAuv
-> rechnet seit 09.11.2026 ebenfalls mit `"Bayes"`.
+> IDW-Baseline. Bei einem **sehr kleinen Budget** (bis etwa 25 Rechnungen) oder für einen **Vergleich
+> bzw. eine Gegenprobe** kann `"IdwBaseline"` (Legacy-Alias `"Rsm"`) genutzt werden; beide verwenden
+> dieselbe Bewertungsformel und denselben Türsteher. MantaAuv rechnet seit 09.11.2026 ebenfalls mit `"Bayes"`.
 >
 > **Zwei Regeln für `"Bayes"`:** (1) Für **jeden** Parameter müssen Grenzen in `ParameterBounds`
 > stehen (`project.json`); fehlt eine, bricht der Lauf **vor der ersten Rechnung** ab und nennt den
@@ -265,22 +264,12 @@ Die inneren Stellschrauben (Größe des Kandidatenpools, Deckel der Lernmenge, V
 freien Parametern) sind feste Vorgaben und nicht einstellbar; im Test hatten andere Werte keinen klaren
 Vorteil.
 
-*Zurück zu `"Rsm"`:*
+*Zurück zu `"IdwBaseline"` (Legacy-Alias `"Rsm"`):*
 
-In der ersten Runde zieht `"Rsm"` die Varianten zufällig (außer Variante 1 = Startwerte), um
-eine erste Landkarte zu bekommen. Bevor das Ersatzmodell greift, benötigt `"Rsm"` mindestens
+In der ersten Runde zieht `"IdwBaseline"` die Varianten zufällig (außer Variante 1 = Startwerte), um
+erste Stützstellen zu bekommen. Bevor die IDW-Interpolation greift, benötigt `"IdwBaseline"` mindestens
 `((k+1)(k+2))/2 + 2` **gelungene** Simulationen bei `k` Parametern (bei 5 Parametern also 23);
-solange würfelt es gleichverteilt im erlaubten Bereich (Log: `Benötige noch N Basis-Simulationen (DoE)`).
-
-*Nur für `"Evolution"` (stehen nicht in den Vorlagen; wer sie ändern will, trägt sie in die `simulation.json` des Projekts ein, sonst gelten die Vorgaben):*
-
-| Einstellung | Bedeutung | Standard | Wann |
-| --- | --- | --- | --- |
-| `RoleFineTuner` | Jede Runde verändert den bisher besten Satz. Die ersten 20 % der Varianten einer Runde verändern ihn nur **fein** (ein Zehntel der Streuung). | `0.2` | 🔴 |
-| `RoleCautious` | Varianten bis 40 % der Runde: **mittlere** Veränderung (halbe Streuung). | `0.4` | 🔴 |
-| `RoleNormal` | Varianten bis 60 %: **normale** Streuung. Der Rest der Runde sucht mit doppelter Streuung weiter weg. | `0.6` | 🔴 |
-| `MinimalDeviationExploration` | Mindestabstand eines neuen Vorschlags zu allen bisherigen (in Parametereinheiten), damit nichts doppelt gerechnet wird. | `1.0` | 🔴 |
-| `MinimalDeviationExploitation` | Dasselbe für die Feinjustierer, deshalb kleiner. | `0.05` | 🔴 |
+solange würfelt es gleichverteilt im erlaubten Bereich (Log: `Benötige noch N Basis-Simulationen`).
 
 **Nachprüfung der Gewinner („Bouncer")**
 
@@ -543,7 +532,7 @@ inzwischen geändert sind:
 | **`Ergebnisse/<Projekt>/Quellstand/`** | Kopie des Projektcodes (`*.cs` und `*.json` aus `src/projects/<Projekt>/`) zum Start des Laufs. Damit ist auch Monate später klar, mit welcher Geometrie und welcher Bewertungsformel gerechnet wurde. `fetch` holt sie immer mit |
 | **`Ergebnisse/<Projekt>/Wiederaufnahme/`** | Lauf-Journal `journal.jsonl` für `resume` (eine Zeile je fertiger Rechnung). Ältere Journale heißen `journal_<Zeitstempel>.jsonl` |
 | **`Ergebnisse/<Projekt>/Simulation_Results.csv`** | Je Variante eine Zeile (semikolongetrennt, öffnet direkt in Excel): Iteration, Variante (`Variant 99` = Kontrollrechnung des Bouncers), alle aktiven Parameter, alle passiven Kennwerte (Geometrie und SU2), `ScaleFactor`, Fitness, Dateipfade (`StlPath`, `MeshPath`), `SimulationFailed` (1 = Rechnung abgebrochen), `Disqualified` (1 = vom Türsteher als instabil verworfen), `MeshRefinementFactor`, `FineVerified` (1 = verifiziert), `FineDeviation` (relative Abweichung zur feinen Rechnung), `Su2_Iterations` (tatsächlich gerechnete Schritte), `Su2_Converged` (1 = konvergiert, 0 = nicht konvergiert), `Su2_Osc_<Metrik>` (relative Schwingung über das Cauchy-Fenster), `Su2_IterErr_<Metrik>`, `Su2_Unsteady` (1 = instationär, aber stabil: der Wert pendelt ohne Trend, es zählt der Mittelwert des Endfensters), `Uncertainty_<Metrik>` (relative Unsicherheit des Werts, 1σ, aus Blockmitteln des Endfensters: nahe 0 bei ruhiger Rechnung, z. B. 0,05 = ±5 % bei Wirbelablösung), `MeshCells` (Zellzahl aus dem `.su2`-Kopf), `MeshCells_Tri`/`Quad`/`Prism`/`Hexa`/`Tet`/`Pyramid` (Zellklassen), `BoundaryLayerHexShare` (Quader-Anteil in der Grenzschicht), `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL` (reale Kanalmaße und Blockage) sowie `YPlus_Median`, `YPlus_P95`, `YPlus_Max` (y+-Wandauflösung) und `Su2_CD_p`, `Su2_CD_v` (Druck- und Reibungsanteil des Widerstands). Bei `"Bayes"` kommen `Bayes_PredictedFitness`, `Bayes_PredictedLow`, `Bayes_PredictedHigh` (vorhergesagte Fitness samt 95-%-Band) und `Bayes_Explorer` (1 = Erkunder) hinzu; Zeilen des Versuchsplans zeigen dort `0`, weil es für sie keine Vorhersage gibt. **Hinweis:** Während einer laufenden Iteration steht die Spalte `Fitness` zunächst auf `0`, bis die gesamte Runde samt Bouncer-Nachprüfung abgeschlossen ist. Die beste Variante des Gesamtlaufs steht außerdem am Ende von `simulation.log` unter `ABSOLUTER CHAMPION`. |
-| **`Ergebnisse/<Projekt>/Analyseergebnisse/Bayes_Verlauf.csv`** | Nur bei `"Bayes"`: eine Zeile je Runde, nach jeder Runde neu geschrieben. Spalten: `Iteration`, `Modus` (`DoE` = noch Versuchsplan, sonst `Fitness` oder `Metrics`), `Lernpunkte` (aus wie vielen Rechnungen das Modell lernte), `Vertrauensbereich_L` (Größe des Suchwürfels, leer = aus), `Abweichung_Mittel` (mittlere relative Abweichung zwischen Vorhersage und Ergebnis der Runde), `Anteil_im_Band` (Anteil der Varianten, die im 95-%-Band lagen), `BesteFitness` und `Relevanz_<Parameter>` (1 = wichtigster Parameter, nahe 0 = hat kaum Einfluss). **Lesebeispiel:** `Abweichung_Mittel` 0.06 und `Anteil_im_Band` 0.9 heißt: Das Modell lag im Mittel 6 % daneben und hat 9 von 10 Varianten richtig eingeschätzt, es taugt. Liegt `Anteil_im_Band` dauerhaft unter 0.5, ist das Modell unsicher oder die Ergebnisse rauschen stark; dann hilft ein Vergleichslauf mit `"Rsm"`. Die letzte Runde eines Laufs steht nicht darin, weil danach nichts mehr vorbereitet wird. Dieselben Angaben stehen als `[BAYES]`-Zeilen im Log. |
+| **`Ergebnisse/<Projekt>/Analyseergebnisse/Bayes_Verlauf.csv`** | Nur bei `"Bayes"`: eine Zeile je Runde, nach jeder Runde neu geschrieben. Spalten: `Iteration`, `Modus` (`DoE` = noch Versuchsplan, sonst `Fitness` oder `Metrics`), `Lernpunkte` (aus wie vielen Rechnungen das Modell lernte), `Vertrauensbereich_L` (Größe des Suchwürfels, leer = aus), `Abweichung_Mittel` (mittlere relative Abweichung zwischen Vorhersage und Ergebnis der Runde), `Anteil_im_Band` (Anteil der Varianten, die im 95-%-Band lagen), `BesteFitness` und `Relevanz_<Parameter>` (1 = wichtigster Parameter, nahe 0 = hat kaum Einfluss). **Lesebeispiel:** `Abweichung_Mittel` 0.06 und `Anteil_im_Band` 0.9 heißt: Das Modell lag im Mittel 6 % daneben und hat 9 von 10 Varianten richtig eingeschätzt, es taugt. Liegt `Anteil_im_Band` dauerhaft unter 0.5, ist das Modell unsicher oder die Ergebnisse rauschen stark; dann hilft ein Vergleichslauf mit `"IdwBaseline"`. Die letzte Runde eines Laufs steht nicht darin, weil danach nichts mehr vorbereitet wird. Dieselben Angaben stehen als `[BAYES]`-Zeilen im Log. |
 | **`Ergebnisse/<Projekt>/Verifikation.csv`** | Vergleichstabelle der feinen Nachrechnung (TODO-43): Iteration, Variante, normaler Rang, feiner Rang, normale/feine Fitness, maximale Kennwertabweichung, Rangstabilität (`RankingHolds`) |
 | **`Ergebnisse/<Projekt>/Kalibrierung/`** | Kalibrierberichte der automatischen oder manuellen Netzkalibrierung (TODO-42): `calibration.csv`, `calibration.json` sowie `latest_calibration.*` (inkl. Zellklassen `Tri;Quad;Prism;Hexa;Tet;Pyramiden`, `Blockage_%`, `CD_p` und `CD_v`) |
 | **`Ergebnisse/<Projekt>/Analyseergebnisse/Verlaeufe/`** | Vollständiger Verlauf jeder gerechneten Variante: `History_Gen{i}_Var{v}.csv` (SU2-Iterationen mit allen Beiwerten und Residuen) und `Config_Gen{i}_Var{v}.cfg` (wirksame SU2-Steuerdatei). Im Abbruchfall liegen beide in `FehlerLogs/` |
@@ -694,7 +683,7 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | `[KONFIGURATION] Der Bayes-Optimierer braucht für jeden Parameter eine Grenze …` | Für den genannten Parameter fehlt in `ParameterBounds` das Min/Max. Der Bayes-Optimierer braucht den Suchraum. | Grenzen in `src/projects/<Projekt>/project.json` unter `ParameterBounds` eintragen (bei einem festen Parameter `Min` = `Max`). |
 | `[KONFIGURATION] Bayes.SurrogateTarget = 'Metrics' verlangt, dass die Fitness … ihre Kennwerte nennt` | `"Metrics"` geht nur, wenn die Bewertungsformel des Projekts `RequiredMetrics` angibt. | `"Auto"` oder `"Fitness"` eintragen. |
 | `[BAYES] Die Fitness liest mehr als die deklarierten Kennwerte …` | Die Gegenprobe hat gezeigt, dass die Formel Werte benutzt, die sie nicht als `RequiredMetrics` nennt. Der Lauf geht mit `"Fitness"` weiter. | Nichts, der Lauf ist gültig. Wer `"Metrics"` nutzen will: die fehlenden Kennwerte in `RequiredMetrics` der Bewertungsformel nachtragen. |
-| `[BAYES] Modell noch unsicher oder Ergebnisse stark verrauscht.` | Weniger als die Hälfte der Varianten der Runde lag im vorhergesagten Band. | Bei den ersten Runden normal. Hält es an: Netz/Konvergenz prüfen (Rauschen) oder Vergleichslauf mit `"Rsm"`. |
+| `[BAYES] Modell noch unsicher oder Ergebnisse stark verrauscht.` | Weniger als die Hälfte der Varianten der Runde lag im vorhergesagten Band. | Bei den ersten Runden normal. Hält es an: Netz/Konvergenz prüfen (Rauschen) oder Vergleichslauf mit `"IdwBaseline"`. |
 | `[BAYES] Das Ersatzmodell konnte nicht gelernt werden …` | Rechnerisches Problem beim Lernen. Der Lauf bricht nicht ab: Die Runde wird mit Versuchsplan-Punkten gefüllt. | Nichts. Tritt es dauernd auf, die Ausgabe an die Entwicklung geben. |
 | `[BAYES] Vertrauensbereich ausgereizt, erkunde neues Gebiet.` | Der Suchwürfel wurde nach vielen Misserfolgen zu klein; die Suche beginnt an einer neuen Stelle. | Nichts, das ist gewollt. |
 | `Unbekanntes Projekt '…'` | Projektname vertippt (Groß-/Kleinschreibung zählt). | `.\scripts\sim.ps1 projects` zeigt die gültigen Namen. |
@@ -729,20 +718,19 @@ Für Trockentests der Konfiguration (läuft auf Windows ohne installierte Solver
 | **y+** | Wie dick die erste Netzzelle an der Wand im Vergleich zur Grenzschicht ist. Für SA ohne Wandfunktion sollte y+ ≈ 1 sein. |
 | **Cauchy-Kriterium** | SU2 hört auf, wenn sich die überwachte Ergebnisgröße (`ConvergenceField`, z. B. Widerstand) über die letzten `CauchyElements` Schritte um weniger als `CauchyTolerance` ändert. Das ist SU2s eigenes Abbruchkriterium. Ob die Rechnung als konvergiert gilt (`Su2_Converged = 1`), entscheidet seit TODO-W3 die **Drift-Prüfung** im Endfenster (siehe „Genauigkeit der Konvergenz“). Über dasselbe Fenster misst der Analyzer die echte Schwingungsamplitude nach Abzug des Trends (`Su2_Osc_<Metrik>`). |
 | **CFL-Zahl** | Schrittweite des Rechenverfahrens: größer = schneller, aber weniger stabil. |
-| **RSM (Ersatzmodell)** | Optimierer, der aus allen bisherigen Rechnungen eine geschätzte Fitness-Landkarte baut und dort sucht. |
+| **IdwBaseline (IDW-Interpolation)** | Einfache Vergleichs-Baseline (Legacy-Alias `"Rsm"`), die aus bisherigen Rechnungen per Inverse Distance Weighting interpoliert (kein echtes polynomiales RSM). |
 | **Bayes-Optimierung** | Optimierer, der nach jeder Runde ein Ersatzmodell lernt und die nächsten Varianten dort rechnen lässt, wo die Chance am größten ist, den Besten zu schlagen. Spart bei teuren Rechnungen viele Varianten. |
 | **Ersatzmodell (Gauß-Prozess)** | Das Modell dahinter: Es schätzt die Fitness an jeder Stelle **und** wie sicher es sich dabei ist („Nebel"). Es lernt in jedem Lauf neu, in Sekunden, auf dem normalen Prozessor. |
 | **Instationär, aber stabil** | Eine Rechnung, deren Ergebnis pendelt (Wirbel lösen sich ab), aber nicht wegläuft. Sie liefert einen gültigen Mittelwert mit Unsicherheit. Erst ein gesichertes Weiterwandern (Drift) gilt als nicht konvergiert. |
 | **Erkunder** | Die letzte Variante einer Runde bei `"Bayes"` (ab 4 Varianten): Sie liegt dort, wo das Modell sich am wenigsten auskennt, aber nur an Stellen, die noch gut sein könnten. |
 | **Vertrauensbereich** | Bei vielen Parametern (ab 10) sucht `"Bayes"` nur in einem Würfel um den besten Punkt, der nach Erfolgen wächst und nach Misserfolgen schrumpft. |
 | **Parameter-Wichtigkeit** | Wie stark ein Parameter die Note beeinflusst, aus dem Ersatzmodell gelesen (`Relevanz_<Parameter>`). Hilft zu erkennen, welche Parameter man festsetzen kann. |
-| **Evolutionär (EA)** | Optimierer, der gute Varianten zufällig weiterverändert („Mutation"). |
 | **`*.local.json`** | Notausgang für Einstellungen, die nur auf einem Rechner gelten sollen. Soll es normalerweise nicht geben. |
 
 ---
 
 ## 9. Grenzen des Systems
 
-- **Fluch der Dimensionalität:** Das RSM-Ersatzmodell (`"Rsm"`) arbeitet besonders effizient bei etwa 3 bis 15 Parametern. Mit steigender Parameterzahl wächst die Zahl der nötigen DoE-Stützstellen quadratisch (`((k+1)(k+2))/2 + 2`). Bei sehr vielen freien Parametern empfiehlt sich `"Evolution"` oder `"Bayes"`; `"Bayes"` schaltet ab 10 freien Parametern einen Vertrauensbereich zu und ist für etwa 5 bis 20 Parameter gedacht. Darüber (über 30) ist noch kein Verfahren vorbereitet.
+- **Fluch der Dimensionalität:** Die IDW-Baseline (`"IdwBaseline"`, Legacy-Alias `"Rsm"`) arbeitet besonders bei etwa 3 bis 15 Parametern. Mit steigender Parameterzahl wächst die Zahl der nötigen Start-Stützstellen quadratisch (`((k+1)(k+2))/2 + 2`). `"Bayes"` schaltet ab 10 freien Parametern einen Vertrauensbereich zu und ist für etwa 5 bis 20 Parameter gedacht. Darüber (über 30) ist noch kein Verfahren vorbereitet.
 - **Voxel-Auflösung (Konzeptphase):** 3D-Voxelgeometrie aus PicoGK ist trotz Oberflächenglättung für die frühe Konzeptphase und den Vergleich von Makroformen ausgelegt. Für die Submillimeter-Feinpolitur glatter Profilkonturen sind direkte analytische Konturen (wie der 2D-Kernel `Shape2D` in `Naca2D`) im Vorteil.
 - **Physikalischer Modellrahmen:** Gerechnet wird inkompressibles RANS (`SOLVER= INC_RANS` mit `SA` oder `SST`), wahlweise stationär oder zeitgenau via Dual-Time-Stepping (URANS). Mehrphasenströmungen (freie Oberfläche, Kavitation), Kompressibilität bei hohen Mach-Zahlen sowie bewegte/rotierende Netze sind damit nicht abgedeckt.

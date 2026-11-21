@@ -28,7 +28,7 @@ OptimierungsAlgoCFD/
 │   │   │   ├── Configuration/         JsonConfigLoader, ConfigSchema, ProjectRegistry, ProjectPaths
 │   │   │   ├── Pipeline/              WorkflowController, ChampionValidator, MeshCalibrationService,
 │   │   │   │                          ChampionVerification, RunJournal, RunInfoWriter
-│   │   │   ├── Algorithms/            EvolutionaryAlgorithm, RsmOptimizationAlgorithm, Factory
+│   │   │   ├── Algorithms/            BayesOptimizationAlgorithm, IdwBaselineAlgorithm, Factory
 │   │   │   └── Utilities/             RubberBandScaler, StlSmoother, StlWriter, MeshMetrics,
 │   │   │                              Shape2D, ExecutableResolver
 │   │   ├── Kernels/PicoGk/            OptimierungsAlgoCFD.Kernels.PicoGk   PicoGkKernel, PicoGkMeshMetrics
@@ -85,7 +85,7 @@ Für die Entwicklung am Framework oder an Bauteilgeometrien unter Windows genüg
 | `IMeshGenerator` | Geometrie → Rechennetz (`.su2`) + Netzmetriken (`MeshCells`, `BoundaryLayerHexShare`). Optional zusätzlich `IMeshMetricsSource`: Wandschicht-Kennwerte (`BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerStage` …), die der `WorkflowController` in die `PassiveParameters` übernimmt. Scheitert die Vernetzung, wirft der Mesher `MeshGenerationException`. | `GmshCfdMesher` (3D), `Gmsh2DMesher` (2D) |
 | `ISimulationSolver` | Rechennetz → Strömungslösung & Messwerte in `record.PassiveParameters` | `Su2Solver` |
 | `IFitnessCalculator` | Messwerte in `ModelRecord` → skalare `Fitness` (größer = besser) | `MantaFitnessCalculator`, `Naca2DFitnessCalculator` |
-| `IOptimizationAlgorithm` | Aus bisheriger Historie die nächste Parametergeneration vorschlagen | `BayesOptimizationAlgorithm` (Standard), `RsmOptimizationAlgorithm`, `EvolutionaryAlgorithm` |
+| `IOptimizationAlgorithm` | Aus bisheriger Historie die nächste Parametergeneration vorschlagen | `BayesOptimizationAlgorithm` (Standard), `IdwBaselineAlgorithm` (IDW-Baseline) |
 | `IModelValidator` | Generationssieger mit Parameter-Jitter gegenprüfen („Türsteher" / Bouncer) | `ChampionValidator` |
 | `IHasRepresentativeSection` | Optional für 3D-Projekte: liefert repräsentativen 2D-Profilschnitt (`Shape2D`) für schnelle 2D-Netz-Vorkalibrierung | (derzeit kein Projekt; im Test mit Stub abgedeckt) |
 
@@ -147,7 +147,7 @@ Am Ende jeder Iteration wird der beste Kandidat mit einem leicht verjitterten Pa
 - **Abstürze und unsichere Ergebnisse (Paket B, 08.11.2026):** Echte Abstürze (`SimulationFailed`) lernt ein eigener Gauß-Prozess auf 1 = gelungen / 0 = abgestürzt; seine Vorhersage (Erfolgswahrscheinlichkeit) dämpft die Auswahlregel, so dass ganze Absturzzonen gemieden werden. Vom Türsteher verworfene Varianten stoßen nur lokal ab. Schreibt der Solver `Uncertainty_<Kennwert>` (relative 1σ-Unsicherheit, Konvention in `Core/Models/MetricUncertainty.cs`), geht sie als Rauschen je Punkt in den Gauß-Prozess ein. `Su2Solver` unterscheidet dafür drei Zustände: konvergiert, instationär-stabil (Blockmittel ohne gesicherten Trend, `Su2_Unsteady = 1`, Fenstermittel zählt) und echte Drift (nur diese kann mit `TreatUnconvergedAsFailed` als Fehlschlag gelten).
 - **Transparenz:** Spalten `Bayes_PredictedFitness/Low/High/Explorer` in `Simulation_Results.csv`, `[BAYES]`-Logzeilen (Treffsicherheit der letzten Runde, Parameter-Wichtigkeit) und `Analyseergebnisse/Bayes_Verlauf.csv`.
 - **Eigenschaften, auf die man sich verlassen kann:** Das Modell bricht nie den Lauf ab (bei numerischem Scheitern wird die Runde mit Latin-Hypercube-Punkten gefüllt). Mit gleichem Seed und gleichen Ergebnissen macht der Optimierer bitgleich dieselben Vorschläge, damit die Wiederaufnahme (`RunJournal`) greift; getestet in `ReproducibilityAndResumeTests`. `EvaluateAndSelectBest` setzt nur Fitness und Vorhersagespalten, der Zustand ändert sich allein in `PrepareNextIteration`. Voraussetzungen (Parametergrenzen) prüft `IOptimizationPreflight.Preflight` **vor** der Netzkalibrierung.
-- **Grenzen:** Ganzzahlige Parameter werden stetig behandelt (der Generator rundet). `MaxDeviations` wirkt nicht. Das Verfahren ist für etwa 5 bis 20 Parameter gedacht. Bei einer Formel mit Sprüngen und ohne deklarierte `RequiredMetrics` hat der Modus `"Fitness"` keinen Vorteil gegenüber `"Rsm"`; im synthetischen Manta-Test (`BayesMetricsModeTests`) war `"Metrics"` dagegen rund 35 % besser als beide.
+- **Grenzen:** Ganzzahlige Parameter werden stetig behandelt (der Generator rundet). `MaxDeviations` wirkt nicht. Das Verfahren ist für etwa 5 bis 20 Parameter gedacht. Bei einer Formel mit Sprüngen und ohne deklarierte `RequiredMetrics` hat der Modus `"Fitness"` keinen Vorteil gegenüber `"IdwBaseline"`; im synthetischen Manta-Test (`BayesMetricsModeTests`) war `"Metrics"` dagegen rund 35 % besser als beide.
 - **Andockstelle für fremde Modelle (z. B. ein PINN eines Partners):** entweder als weiterer, schneller Solver (`ISimulationSolver` in `Solvers/Ml/`, Austausch über Dateien) oder als `ISurrogateModel`, das als Vorwissen für den Gauß-Prozess dient.
 
 ### Reproduzierbarkeit, Wiederaufnahme & Voxel-Prüfung (`RunJournal`, `RunInfoWriter`, `VoxelResolutionAdvisor`)
@@ -261,7 +261,7 @@ Alle über 780 Unit-Tests laufen in wenigen Sekunden auf Windows und Linux kompl
 ## 10. Bewusste Architekturentscheidungen & Roadmap
 
 1. **Der Türsteher (`ChampionValidator`) prüft die Fitness, nicht eine einzelne Metrik** — dadurch bleibt der Kern frei von Domänenbegriffen wie `"Drag"`.
-2. **Fehlgeschlagene Simulationen werden nicht als RSM-Stützstellen verwendet** — sie würden die Antwortfläche verzerren und zählen auch nicht für die DoE-Mindestanzahl. Für den Bayes-Optimierer gilt dieselbe Regel zentral in `SurrogateTrainingSet`; zusätzlich fallen vom Türsteher verworfene Varianten (`Disqualified`) heraus.
+2. **Fehlgeschlagene Simulationen werden nicht als IDW-Stützstellen verwendet** — sie würden die Interpolation verzerren und zählen auch nicht für die Mindestanzahl. Für den Bayes-Optimierer gilt dieselbe Regel zentral in `SurrogateTrainingSet`; zusätzlich fallen vom Türsteher verworfene Varianten (`Disqualified`) heraus.
 3. **Der Kern kennt keine Metriknamen** — auch `RequiredMetrics` wird dem `WorkflowController` nur als `IReadOnlyCollection<string>` übergeben.
 4. **Kein stiller Projekt-Fallback in `Program.cs` oder `sim-runner.sh`** — ein Tippfehler beim Projektnamen bricht sofort ab, statt stundenlang das falsche Bauteil zu rechnen.
 5. **Der Ordnername ist die einzige Quelle für den Projektnamen** — es gibt kein Feld `"ProjectName"` in `project.json`.
