@@ -166,8 +166,8 @@ function Write-Warn([string]$Text) {
 #   - *.local.json      maschinenspezifische Ueberlagerungen. Eine
 #                       simulation.local.json auf dem Server ueberlebt dadurch
 #                       jedes Deploy.
-#   - *.md und *.ps1    Dokumentation und die Windows-Seite selbst. Der Server
-#                       braucht beides nicht -- und weil der Fingerabdruck genau
+#   - *.md, *.ps1, *.pdf Dokumentation, Berichte und die Windows-Seite selbst.
+#                       Der Server braucht nichts davon -- und weil der Fingerabdruck genau
 #                       ueber diese Liste gebildet wird, wuerde sonst schon eine
 #                       Korrektur in dieser README einen laufenden Lauf neu starten.
 function Get-DeployFiles {
@@ -181,7 +181,7 @@ function Get-DeployFiles {
     $files | Where-Object {
         $_.FullName -notmatch '\\(bin|obj)\\' -and
         $_.Name -notlike '*.local.json' -and
-        $_.Extension -notin @('.md', '.ps1')
+        $_.Extension -notin @('.md', '.ps1', '.pdf')
     } | Sort-Object FullName
 }
 

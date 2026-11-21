@@ -489,6 +489,33 @@ namespace OptimierungsAlgoCFD
             return su2 != null && su2.Dimensions == 2 ? 2 : 3;
         }
 
+        /// <summary>
+        /// Löst die 2D-Vernetzer-Optionen für die 2D-Vorkalibrierung auf:
+        /// lädt <c>solvers/gmsh2d.json</c> falls vorhanden, sonst werden kompatible Werte
+        /// aus bereits geladenen <see cref="GmshMesherOptions"/> auf Standardwerte übernommen.
+        /// </summary>
+        internal static Gmsh2DMesherOptions ResolvePrecalibrationGmsh2DOptions(ProjectContext context)
+        {
+            if (!string.IsNullOrWhiteSpace(context.ProjectDirectory))
+            {
+                string gmsh2dPath = Path.Combine(context.ProjectDirectory, "solvers", "gmsh2d.json");
+                if (File.Exists(gmsh2dPath))
+                {
+                    return context.LoadSolverOptions<Gmsh2DMesherOptions>("gmsh2d");
+                }
+            }
+
+            var options = new Gmsh2DMesherOptions();
+            GmshMesherOptions? gmsh3d = context.Loaded.Select(l => l.Value).OfType<GmshMesherOptions>().LastOrDefault();
+            if (gmsh3d != null)
+            {
+                options.TargetYPlus = gmsh3d.TargetYPlus;
+                options.BoundaryLayerGrowthRate = gmsh3d.BoundaryLayerGrowthRate;
+                options.DetailBoxLengthFactor = gmsh3d.DetailBoxLengthFactor;
+            }
+            return options;
+        }
+
         private static (CalibrationDecision Decision, string ReportRelativePath) ExecuteCalibration(
             IProjectDefinition definition,
             ProjectContext context,
@@ -514,7 +541,7 @@ namespace OptimierungsAlgoCFD
             if (context.Simulation.MeshCalibration.Use2DPrecalibration && definition is IHasRepresentativeSection sectionProvider)
             {
                 IGeometryGenerator section2D = sectionProvider.CreateSection2D(context);
-                var gmsh2D = new Gmsh2DMesherOptions();
+                var gmsh2D = ResolvePrecalibrationGmsh2DOptions(context);
                 var su2Options2D = context.LoadSolverOptions<Su2SolverOptions>("su2");
                 su2Options2D.Dimensions = 2;
                 // Der 2D-Schnitt bezieht sich auf die Sehne, nicht auf die Stirnfläche des 3D-Projekts

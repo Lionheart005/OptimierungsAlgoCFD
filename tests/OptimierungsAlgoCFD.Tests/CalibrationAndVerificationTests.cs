@@ -220,9 +220,111 @@ namespace OptimierungsAlgoCFD.Tests
             var gci = CalibrationEvaluator.ComputeGci(103f, 101f, 100f, r: r, safetyFactorFs: 1.25f);
 
             Assert.True(gci.IsMonotonic);
+            Assert.True(gci.IsAsymptotic);
             Assert.Null(gci.Warning);
             Assert.InRange(gci.ObservedOrderP, 1.95f, 2.05f);
             Assert.InRange(gci.GciFinePercent, 1.20f, 1.30f);
+        }
+
+        [Fact]
+        public void ComputeGci_NonMonotonicSequence_MarksNonAsymptoticAndSetsNaN()
+        {
+            var gci = CalibrationEvaluator.ComputeGci(103f, 99f, 100f);
+
+            Assert.False(gci.IsMonotonic);
+            Assert.False(gci.IsAsymptotic);
+            Assert.True(float.IsNaN(gci.ObservedOrderP));
+            Assert.True(float.IsNaN(gci.GciFinePercent));
+            Assert.True(float.IsNaN(gci.GciSelectedPercent));
+            Assert.True(float.IsNaN(gci.ExtrapolatedValue));
+            Assert.True(float.IsNaN(gci.ExtrapolatedDeviationPercent));
+            Assert.NotNull(gci.Warning);
+            Assert.Contains("nicht monoton", gci.Warning);
+        }
+
+        [Fact]
+        public void ComputeGci_MonotonicNonAsymptoticDiverging_MarksNonAsymptoticAndSetsNaN()
+        {
+            // eps32 = 102 - 101 = 1, eps21 = 101 - 99 = 2 => ratio = 0.5 <= 1.0 (Differenzen wachsen!)
+            var gci = CalibrationEvaluator.ComputeGci(102f, 101f, 99f);
+
+            Assert.True(gci.IsMonotonic);
+            Assert.False(gci.IsAsymptotic);
+            Assert.True(float.IsNaN(gci.ObservedOrderP));
+            Assert.True(float.IsNaN(gci.GciFinePercent));
+            Assert.True(float.IsNaN(gci.GciSelectedPercent));
+            Assert.True(float.IsNaN(gci.ExtrapolatedValue));
+            Assert.True(float.IsNaN(gci.ExtrapolatedDeviationPercent));
+            Assert.NotNull(gci.Warning);
+            Assert.Contains("nicht im asymptotischen Bereich", gci.Warning);
+        }
+
+        [Fact]
+        public void ComputeGci_ExactConvergence_ReturnsZeroGciAndValidExtrapolation()
+        {
+            var gci = CalibrationEvaluator.ComputeGci(0.25f, 0.25f, 0.25f);
+
+            Assert.True(gci.IsMonotonic);
+            Assert.True(gci.IsAsymptotic);
+            Assert.Null(gci.Warning);
+            Assert.Equal(1.0f, gci.ObservedOrderP);
+            Assert.Equal(0f, gci.GciFinePercent);
+            Assert.Equal(0f, gci.GciSelectedPercent);
+            Assert.Equal(0.25f, gci.ExtrapolatedValue);
+            Assert.Equal(0f, gci.ExtrapolatedDeviationPercent);
+        }
+
+        [Fact]
+        public void MeshCalibration_Run_SerializesNonAsymptoticGciSafelyToJsonAndPrintsNa()
+        {
+            var sim = new SimulationConfig
+            {
+                MeshCalibration = new MeshCalibrationConfig { Mode = "Auto", Tolerance = 0.05f }
+            };
+            var project = new ProjectConfig { BaseParameters = new Dictionary<string, float> { ["L"] = 100f } };
+            var context = new ProjectContext("Test", null, null, sim, project);
+            var simContext = new SimulationContext(sim, project, _workingDirectory);
+            simContext.EnsureDirectories();
+
+            // Monoton, aber nicht asymptotisch bei den feinsten drei Stufen (0.50 -> 0.48, 0.71 -> 0.49, 1.00 -> 0.495 => ratio = 0.5 <= 1)
+            var (decision, _) = MeshCalibration.Run(context, simContext, (factor, _) =>
+            {
+                var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
+                rec.PassiveParameters["MeshCells"] = 50000f / factor;
+                rec.PassiveParameters["YPlus_P95"] = 1.0f;
+                rec.PassiveParameters["Su2_Converged"] = 1f;
+                rec.PassiveParameters["Drag"] = factor switch
+                {
+                    > 1.8f => 0.52f,
+                    > 1.2f => 0.50f,
+                    > 0.9f => 0.495f,
+                    > 0.6f => 0.49f,
+                    _ => 0.48f
+                };
+                return rec;
+            }, new[] { "Drag" }, dimensions: 3);
+
+            Assert.NotNull(decision.Gci);
+            Assert.False(decision.Gci!.IsAsymptotic);
+
+            string latestJson = Path.Combine(_workingDirectory, MeshCalibration.CalibrationDirectoryName, MeshCalibration.LatestCalibrationJson);
+            Assert.True(File.Exists(latestJson));
+
+            JsonObject root = JsonNode.Parse(File.ReadAllText(latestJson))!.AsObject();
+            JsonObject gciNode = root["Gci"]!.AsObject();
+            Assert.Null(gciNode["ObservedOrderP"]);
+            Assert.Null(gciNode["GciFinePercent"]);
+            Assert.Null(gciNode["GciSelectedPercent"]);
+            Assert.Null(gciNode["ExtrapolatedValue"]);
+            Assert.False(gciNode["IsAsymptotic"]!.GetValue<bool>());
+            Assert.Contains("nicht im asymptotischen Bereich", gciNode["Warning"]!.GetValue<string>());
+
+            using var sw = new StringWriter();
+            MeshCalibration.PrintSummary(decision, sw);
+            string printed = sw.ToString();
+            Assert.Contains("n/a", printed);
+            Assert.Contains("[WARNUNG]", printed);
+            Assert.Contains("nicht im asymptotischen Bereich", printed);
         }
 
         #endregion

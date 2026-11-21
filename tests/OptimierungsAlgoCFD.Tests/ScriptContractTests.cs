@@ -178,6 +178,7 @@ namespace OptimierungsAlgoCFD.Tests
 
             Assert.Contains("*.local.json", sim);
             Assert.Contains(JsonConfigLoader.MachineSpecificSuffix, sim);
+            Assert.Contains("'.pdf'", sim);
         }
 
         /// <summary>

@@ -1,6 +1,6 @@
 # Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch-Basis
 
-> **Status:** Geplant (Startpunkt der großen Überarbeitung v2)  
+> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation + Architektur-Test) am 21.11.2026 abgeschlossen und verifiziert (836/836 Tests grün, 0 Warnungen).** Offen: Server-/Branch-Cleanup (`AP 1.1`), Etappe 2 (`AP 1.3`–`AP 1.5`), Namensentscheidung & Etappe 3 (`AP 1.6`).  
 > **Sprache dieses Plans:** Deutsch (Arbeits- & Planungssprache). **Zielsprache im Code/Repo:** Englisch (AP 1.6).  
 > **Voraussetzung:** Schritt 0 (`MantaAuv`-Lauf auf `BIC_12` gestoppt & vollständig archiviert) ist abgeschlossen (`~/Archive/MantaAuv_2026-11-21_final/` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`).
 
@@ -40,27 +40,27 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 ## 3. Arbeitspakete (Checkliste)
 
 ### AP 1.1: Konkrete Bugs & Repo-Hygiene sofort beheben
-- [ ] **GP-Unsicherheitsband korrigieren (`Core/Algorithms/BayesOptimizationAlgorithm.cs:1147-1185`):** In `PredictFitnessBand` das gelernte Beobachtungsrauschen `sn2` (plus `extraNoise`) zur prädiktiven Varianz addieren (behebt die systematische 30-%-statt-95-%-Bandabdeckung).
-- [ ] **GCI-Berechnung ehrlich machen (`Core/Pipeline/CalibrationEvaluator.cs:82-131`):** Bei nicht-asymptotischer Verfeinerung (`ratio <= 1`, divergierende Differenzen oder Vorzeichenwechsel) explizit `IsAsymptotic = false` / ungültigen GCI melden statt `Math.Abs(Log(ratio))` + Clamp auf `p = 0.50` mit unphysikalischer `CD_ext`.
-- [ ] **Geometrie-Messreihenfolge korrigieren (`src/projects/MantaAuv/MantaGeometryGenerator.cs:82-107` & Vorlagen):** `Volume` und `FrontalArea` (`REF_AREA`) erst **nach** `StlSmoother.SmoothStl` auf dem tatsächlich an Gmsh/SU2 übergebenen Mesh messen (Konsistenz zwischen Geometrie-Metrik und CFD!).
-- [ ] **Zellzahl-Schutz auch in der Optimierung (`Core/Pipeline/WorkflowController.cs:434`):** `CellLimit` (`MaxCells3D`) nicht nur in `MeshCalibration`, sondern auch während der Optimierung prüfen/absichern (mindestens konfigurierbare harte Sicherheitsgrenze + klare Warnung, um unkontrollierte 4,2M-Zellen-Explosionen abzufangen).
-- [ ] **Gmsh Schritt-1-Winkel-Retry implementieren (`Solvers/Cfd/GmshCfdMesher.cs`):** Den noch offenen Punkt aus `.plans/.old/wandschicht_zellzahl.md` umsetzen — bei `Wrong topology of boundary mesh for parametrization` (wie `Gen1_Var5` bei spitzem Heck) automatischer Retry mit angepasstem `ClassifyAngleDeg` (z. B. `40° → 30° → 20°`).
-- [ ] **2D-Vorkalibrierung Config-Bug fixen (`Program.cs:517`):** `solvers/gmsh.json` des Projekts laden statt `new Gmsh2DMesherOptions()` hart zu instanziieren.
-- [ ] **Deploy- & Repo-Hygiene bereinigen:**
-  - `src/projects/MantaAuv/OptimierungsAlgoTestlaufBericht.pdf` (2,9 MB) aus `src/projects/` entfernen (nicht mehr bei jedem `sim.ps1`-Deploy hochladen; ggf. nach `docs/archive/` oder außerhalb des Deploy-Baums legen, und `.pdf` in `Get-DeployFiles` explizit ausschließen).
-  - Benutzerspezifische absolute Pfade (`/home/lpleissner/...`) aus `MantaAuv/simulation.json` und `Naca2D/simulation.json` entfernen (gehören ausschließlich in gitignorierte `*.local.json` oder werden durch `ExecutableResolver` / `sim-runner.sh` gefunden).
-  - Offene Aufräum-Punkte aus v1: alte Git-Branches (`WindschiffProjekt`, `MajorPhysikFixes`, `KI_Integration`) nach Prüfung bereinigen; auf `BIC_12` veralteten Ordner `src/Automatisierung_v2` aufräumen.
-  - `RunTimeEstimator` & `sim.ps1 status`-Prognose (aus `.old/zeitschaetzung.md`) einmalig auf `BIC_12` mit dem nächsten Test-Deploy verifizieren.
+- [x] **GP-Unsicherheitsband korrigieren (`Core/Algorithms/BayesOptimizationAlgorithm.cs:1147-1185`):** `ISurrogateModel.ObservationNoiseVariance` (Default `0.0`) + `GaussianProcess` (`Math.Exp(_theta[d+1]) * _outputScale^2`) ergänzt; `PredictFitnessBand` addiert `ObservationNoiseVariance` im `Fitness`- und `Metrics`-Modus (latente `Predict`-Varianz bleibt unverändert für EI/Kriging Believer).
+- [x] **GCI-Berechnung ehrlich machen (`Core/Pipeline/CalibrationEvaluator.cs` & `MeshCalibration.cs`):** `GciResult` um `bool IsAsymptotic = true` erweitert; bei `!isMonotonic` oder `ratio <= 1.0f` werden `ObservedOrderP`, GCI und Richardson-Extrapolation als `float.NaN` + klare Warnung geliefert (JSON serialisiert `NaN` sauber als `null` via `BuildGciJsonObject`, Konsole zeigt `"n/a"` + Warnung).
+- [x] **Geometrie-Messreihenfolge korrigieren (`src/projects/MantaAuv/MantaGeometryGenerator.cs` & `_Vorlage3D/MeinProjektGeometryGenerator.cs`):** `SaveToStlFile` + `StlSmoother.SmoothStl` laufen zuerst; bei erfolgreicher Glättung werden `Volume`, `SurfaceArea`, `FrontalArea` (`REF_AREA`) und `Span` direkt auf dem geglätteten STL via `StlWriter.ReadTriangles` + `MeshMetrics.Measure` gemessen.
+- [x] **Zellzahl-Schutz auch in der Optimierung (`Core/Pipeline/WorkflowController.cs`):** Prüft nach Vernetzung `_context.CellLimit` (Kalibrierung) bzw. `_context.Config.MeshCalibration.MaxCells3D` als Sicherheitsdeckel im Optimierungsbetrieb und überspringt bei Überschreitung den Solver (`CellLimitExceededKey = 1f`).
+- [x] **Gmsh Schritt-1-Winkel-Retry implementieren (`Solvers/Cfd/GmshCfdMesher.cs`):** `BuildClassifyAngleLadder` (`[configured, 30, 20, 50]`), `WriteGeoScript` akzeptiert optionales `classifyAngleDeg`, Schritt 1 probiert bei Fehlschlag die Leiter durch und protokolliert `BoundaryLayerClassifyAngleDeg` in `_lastMetrics`.
+- [x] **2D-Vorkalibrierung Config-Bug fixen (`Program.cs`):** `ResolvePrecalibrationGmsh2DOptions(context)` lädt `solvers/gmsh2d.json` falls vorhanden und erbt sonst kompatible Felder (`TargetYPlus`, `BoundaryLayerGrowthRate`, `DetailBoxLengthFactor`) aus geladenen `GmshMesherOptions`.
+- [x] **Deploy- & Repo-Hygiene (Code/Repo) bereinigt:**
+  - `src/projects/MantaAuv/OptimierungsAlgoTestlaufBericht.pdf` (2,9 MB) nach `docs/archive/MantaAuv_TestlaufBericht_v1.pdf` verschoben; `.pdf` in `scripts/sim.ps1` (`Get-DeployFiles`) explizit ausgeschlossen.
+  - Benutzerspezifische absolute Pfade (`/home/lpleissner/...`) aus `MantaAuv/simulation.json` und `Naca2D/simulation.json` entfernt.
+- [ ] **Offene Server-/Git-Aufräumpunkte (bei nächstem Server-Kontakt / nach Commit):**
+  - Alte Git-Branches (`WindschiffProjekt`, `MajorPhysikFixes`, `KI_Integration`) nach Prüfung bereinigen; auf `BIC_12` veralteten Ordner `src/Automatisierung_v2` aufräumen.
+  - `RunTimeEstimator` & `sim.ps1 status`-Prognose (aus `.old/zeitschaetzung.md`) einmalig auf `BIC_12` beim nächsten Test-Deploy verifizieren.
 
 ### AP 1.2: `Core/`-Schichtenisolation reparieren & per Architektur-Test erzwingen
-- [ ] **`MeshCalibration.cs:11` entkoppeln:** Direkten Import `using OptimierungsAlgoCFD.Solvers.Cfd` sowie das hartkodierte Lesen von `solvers/gmsh.json`/`su2.json` durch ein sauberes Interface (z. B. `ISolverCalibrationAdapter` / `IStageConfigFingerprintProvider`) ersetzen.
-- [ ] **`VoxelResolutionAdvisor.cs:5` entkoppeln:** Direkten Cast `stage.Mesher is GmshCfdMesher` entfernen; relevante Ziel-Oberflächenzellgröße über ein allgemeines Interface (`IMeshResolutionTarget`) abfragen.
-- [ ] **SU2-/CFD-Leaks aus `Core/` beseitigen:**
-  - `WorkflowController.cs:409-424`: Mesher meldet seine Zellzahl + Zellklassen selbst über `IMeshMetricsSource` (auch in `Gmsh2DMesher` implementieren!), statt im Controller `MeshMetrics.ReadSu2CellCount` direkt aufzurufen.
-  - `ModelRecord.cs`: `StlPath` zu allgemeinem `GeometryPath` (oder `GeometryArtifact`) verallgemeinern; `Artifacts`-Dictionary (`Dictionary<string, string>`) als saubere Dateischnittstelle zwischen Stufen einführen (bereitet auch OpenFOAM & späteres FEM vor!).
-  - `Kernels/Planar2D/BBox2.cs:4`: Namespace-Fehlplatzierung sauber lösen (entweder geometrisches `Bounds2D` nach `Core/Models/` oder sauber trennen).
-  - Solver-/Geometry-spezifische Utilities (`MeshMetrics` `.su2`-Parser, `StlWriter`, `StlSmoother`, `RubberBandScaler`) sauber in `Kernels/` bzw. `Solvers/` einordnen.
-- [ ] **Architektur-Test hinzufügen (`ArchitectureBoundaryTests.cs`):** Automatischer Test, der prüft, dass keine Datei unter `Core/` ein `using` auf `Solvers`, `Kernels`, `Composition` oder `Projects` enthält.
+- [x] **`MeshCalibration.cs` entkoppelt:** `using OptimierungsAlgoCFD.Solvers.Cfd` entfernt; neue Core-Interfaces `ICalibrationSolverOptions` & `ICalibrationMesherOptions` (`Core/Interfaces/ICalibrationOptionsMetadata.cs`) explizit auf `Su2SolverOptions`, `GmshMesherOptions` und `Gmsh2DMesherOptions` implementiert; `ComputeFingerprint` hasht generisch alle `solvers/*.json` (inkl. `*.local.json`) alphabetisch; generischer JSON-Fallback für `ResolveYPlusLimits` & `ResolveMonitoredMetrics`.
+- [x] **`VoxelResolutionAdvisor.cs` entkoppelt:** `using OptimierungsAlgoCFD.Solvers.Cfd` entfernt; neues Core-Interface `IMeshResolutionTarget` (`Core/Interfaces/IMeshResolutionTarget.cs`) auf `GmshCfdMesher` implementiert.
+- [x] **SU2-/CFD-Leaks aus `Core/` beseitigt:**
+  - `GmshCfdMesher` und `Gmsh2DMesher` implementieren beide `IMeshMetricsSource` und füllen `MeshCells*` via `MeshMetrics.PopulateSu2CellMetrics` selbst; `WorkflowController` liest `MeshCells` primär aus `IMeshMetricsSource` (mit Abwärtskompatibilitäts-Fallback für Mock-Mesher).
+  - `ModelRecord.cs`: um `Artifacts` (`Dictionary<string, string>`) und `[JsonIgnore] GeometryPath`-Alias auf `StlPath` erweitert.
+  - `Kernels/Planar2D/BBox2.cs` nach `Core/Models/BBox2.cs` verschoben (Ordner = Namespace `OptimierungsAlgoCFD.Core`).
+- [x] **Architektur-Test hinzugefügt (`tests/OptimierungsAlgoCFD.Tests/ArchitectureBoundaryTests.cs`):** Erzwingt dauerhaft, dass `Core/` keine `using`/Typzugriffe auf `Solvers`, `Kernels`, `Composition`, `Projects` oder `PicoGK` hat und `Kernels/`/`Solvers/` nie den Namespace `Core` deklarieren. *(Hinweis: Verschiebung verbliebener Hilfsklassen wie `StlWriter`/`StlSmoother`/`RubberBandScaler` erfolgt sauber zusammen mit der Zerlegung in `AP 1.3`.)*
 
 ### AP 1.3: Zerlegung der God-Classes & Beseitigung von 2D/3D-Duplikaten
 - [ ] **`BayesOptimizationAlgorithm.cs` (1.354 L) zerlegen** in klar getrennte Komponenten:
@@ -109,7 +109,16 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 
 ---
 
-## 5. Handover-Hinweis für Umsetzungs-Agenten (`/delegate`)
-- Phase 1 eignet sich ideal für eine Aufteilung in kleine, voneinander unabhängige PRs/Pakete (`AP 1.1` → `AP 1.2` → `AP 1.3` → `AP 1.4/1.5` → `AP 1.6`).
-- Vor Start von `AP 1.6` unbedingt mit Leonardo den finalen englischen Projektnamen klären!
-- Beim Refactoring von `BayesOptimizationAlgorithm`, `GmshCfdMesher` und `Su2Solver` zuerst Charakterisierungs-Tests prüfen, danach zerlegen (keine stillen Verhaltensänderungen außer den explizit gelisteten Bugfixes in `AP 1.1`).
+## 5. Umsetzungsprotokoll & Handover-Hinweis für Folge-Agenten (`/delegate`)
+
+### Etappe 1 (`AP 1.1` + `AP 1.2`) — ✔ Abgeschlossen am 21.11.2026
+- **Entscheidungen & Erkenntnisse:**
+  - `ICalibrationSolverOptions` / `ICalibrationMesherOptions` wurden auf den Solver-/Mesher-Optionsklassen **explizit** implementiert, damit bestehende Reflection-Tests (`ConfigSchema`, `HandbookCoverageTests`, `_Vorlage`-Key-Prüfungen) `Is3D` oder `MonitoredMetricNames` nicht als fehlende JSON-Keys melden.
+  - `Gmsh2DMesherOptions` besitzt kein `BoundaryLayerCoverage` (nur `TargetYPlus`, `BoundaryLayerGrowthRate`, `DetailBoxLengthFactor`); `ResolvePrecalibrationGmsh2DOptions` übernimmt gezielt diese kompatiblen Werte bzw. lädt `solvers/gmsh2d.json` falls vorhanden, ohne 3D-Keys aus `solvers/gmsh.json` gegen das strenge 2D-Schema zu parsen.
+  - `ModelRecord.GeometryPath` trägt `[JsonIgnore]`, damit `RunJournal` (`journal.jsonl`) keine doppelten Pfadfelder serialisiert.
+- **Verifikation:** `dotnet test OptimierungsAlgoCFD.sln --verbosity minimal` — **836/836 bestanden** (0 Fehler, 0 übersprungen, 0 Warnungen; +16 neue Tests).
+
+### Nächste Schritte (Etappe 2 & 3)
+- **Nächster empfohlener Commit-Schritt:** Etappe 1 jetzt sauber committen, dann in einem frischen `/delegate`-Lauf **Etappe 2 (`AP 1.3` God-Classes zerlegen + `AP 1.4` alte Optimierer bereinigen + `AP 1.5` echte Integrations-Tests)** umsetzen.
+- **Vor Start von Etappe 3 (`AP 1.6`):** Unbedingt mit Leonardo den finalen englischen Projektnamen klären! Das alte 88-KB-`BEDIENHANDBUCH.md` in `AP 1.6` bewusst **nicht** mehr komplett übersetzen, sondern in Phase 2 (`AP 2.1`) direkt durch modulare englische `docs/` ersetzen.
+- Beim Refactoring von `BayesOptimizationAlgorithm`, `GmshCfdMesher` und `Su2Solver` zuerst Charakterisierungs-Tests prüfen, danach zerlegen (keine stillen Verhaltensänderungen).

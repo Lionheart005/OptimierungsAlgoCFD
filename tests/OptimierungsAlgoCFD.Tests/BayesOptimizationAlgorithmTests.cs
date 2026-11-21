@@ -888,5 +888,74 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.True(relevance[4] <= relevance.Take(4).Max() * 0.5,
                 $"P5 sollte kaum wichtig sein: {string.Join(", ", relevance.Select(v => v.ToString("F2")))}");
         }
+
+        [Fact]
+        public void PredictFitnessBand_IncludesObservationNoise_AndCoversNoisyData()
+        {
+            var noiseRng = new Random(123);
+            var problem = new BayesHarness.Problem
+            {
+                Names = new[] { "X1" },
+                Bounds = new[] { (0f, 1f) },
+                Start = new[] { 0.5f },
+                Iterations = 4,
+                Variants = 8,
+                Bayes = new BayesConfig { SurrogateTarget = "Fitness", InitialSamples = 12 },
+                Solve = r =>
+                {
+                    double x = r.ActiveParameters["X1"];
+                    // Messrauschen (±0.35) um eine flache Basis 5.0 + 0.5*sin(2*pi*x)
+                    double noise = (noiseRng.NextDouble() - 0.5) * 0.7;
+                    r.PassiveParameters["Value"] = (float)(5.0 + 0.5 * Math.Sin(2.0 * Math.PI * x) + noise);
+                }
+            };
+
+            var observedModels = new List<GaussianProcess>();
+            var (context, _) = BayesHarness.Run(
+                problem,
+                "Bayes",
+                7,
+                Sub("band_noise"),
+                (f, r) => new BayesOptimizationAlgorithm(
+                    f,
+                    random: r,
+                    modelFactory: () =>
+                    {
+                        var gp = new GaussianProcess(new Random(7));
+                        observedModels.Add(gp);
+                        return gp;
+                    }));
+
+            // Mindestens das Fitness-Modell hat signifikantes Beobachtungsrauschen gelernt
+            Assert.Contains(observedModels, m => m.ObservationNoiseVariance > 1e-3);
+
+            var predicted = context.History
+                .Where(r => r.PassiveParameters.ContainsKey(BayesOptimizationAlgorithm.PredictedFitnessKey))
+                .ToList();
+            Assert.NotEmpty(predicted);
+
+            // Vergleich: das vorhergesagte 95%-Band muss breiter als das reine latente 95%-Band sein
+            GaussianProcess fitnessGp = observedModels.First(m => m.ObservationNoiseVariance > 1e-3);
+            int widerThanLatent = 0;
+            int covered = 0;
+            foreach (var rec in predicted)
+            {
+                double x = rec.ActiveParameters["X1"];
+                double latentSd = Math.Sqrt(fitnessGp.Predict(new[] { x }).Variance);
+                double bandWidth = rec.PassiveParameters[BayesOptimizationAlgorithm.PredictedHighKey]
+                                 - rec.PassiveParameters[BayesOptimizationAlgorithm.PredictedLowKey];
+                if (bandWidth > 2.0 * 1.96 * latentSd) widerThanLatent++;
+
+                if (rec.Fitness >= rec.PassiveParameters[BayesOptimizationAlgorithm.PredictedLowKey] &&
+                    rec.Fitness <= rec.PassiveParameters[BayesOptimizationAlgorithm.PredictedHighKey])
+                {
+                    covered++;
+                }
+            }
+
+            Assert.True(widerThanLatent > 0, "Erwartet breiteres Band durch ObservationNoiseVariance.");
+            double coverage = (double)covered / predicted.Count;
+            Assert.True(coverage >= 0.75, $"Bandabdeckung bei verrauschten Daten zu niedrig: {coverage:P1}");
+        }
     }
 }

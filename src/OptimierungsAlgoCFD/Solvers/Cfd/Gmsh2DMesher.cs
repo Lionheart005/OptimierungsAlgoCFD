@@ -19,10 +19,14 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// Fernfeld, eine strukturierte Quader-Grenzschicht (BoundaryLayer Field) und Hintergrundfelder
     /// für Nahfeld und Nachlauf (Wake Box).
     /// </summary>
-    public class Gmsh2DMesher : IMeshGenerator
+    public class Gmsh2DMesher : IMeshGenerator, IMeshMetricsSource
     {
         private readonly Gmsh2DMesherOptions _options;
         private readonly FlowConditions? _flow;
+        private Dictionary<string, float> _lastMetrics = new();
+
+        /// <summary>Kennwerte des letzten erzeugten 2D-Netzes (Zellzahlen je Elementklasse).</summary>
+        public IReadOnlyDictionary<string, float> LastMeshMetrics => _lastMetrics;
 
         /// <param name="options">Vorgabedaten aus solvers/gmsh.json; ohne Angabe gelten Standardwerte.</param>
         /// <param name="flow">Physikalische Strömungsbedingungen für die Grenzschichtberechnung.</param>
@@ -37,6 +41,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         public string GenerateMesh(MeshRequest request)
         {
+            _lastMetrics = new Dictionary<string, float>();
             string suffix = request.BaseSuffix;
             string outputMeshPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}.su2");
             string geoScriptPath = Path.Combine(request.WorkingDirectory, $"Meshing_{suffix}.geo");
@@ -72,6 +77,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             }
 
             RemoveMarker(outputMeshPath, FluidMarkerName);
+            MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
 
             SimulationLog.Detail("[OK] 2D-Flächennetz generiert");
             return outputMeshPath;

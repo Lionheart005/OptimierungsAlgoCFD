@@ -558,5 +558,141 @@ NPOIN= 5
             string copiedGeo = Path.Combine(errorLogDir, "Meshing_Gen1_Var1.geo");
             Assert.True(File.Exists(copiedGeo), ".geo-Skript wurde bei Fehlschlag nicht nach FehlerLogs kopiert.");
         }
+
+        [Fact]
+        public void BuildClassifyAngleLadder_Deduplicates_And_Filters_Invalid_Angles()
+        {
+            Assert.Equal(new[] { 40f, 30f, 20f, 50f }, GmshCfdMesher.BuildClassifyAngleLadder(40f));
+            Assert.Equal(new[] { 30f, 20f, 50f }, GmshCfdMesher.BuildClassifyAngleLadder(30f));
+            Assert.Equal(new[] { 30f, 20f, 50f }, GmshCfdMesher.BuildClassifyAngleLadder(0f));
+            Assert.Equal(new[] { 30f, 20f, 50f }, GmshCfdMesher.BuildClassifyAngleLadder(180f));
+            Assert.Equal(new[] { 30f, 20f, 50f }, GmshCfdMesher.BuildClassifyAngleLadder(float.NaN));
+        }
+
+        [Fact]
+        public void GenerateMesh_RetriesStep1WithClassifyAngleLadder_AndHealsWrongTopology()
+        {
+            string fakeGmshPath = CreateFakeGmshScriptForClassifyRetry();
+
+            var options = new GmshMesherOptions
+            {
+                BoundaryLayerMode = "Prism",
+                ClassifyAngleDeg = 40.0f
+            };
+            var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
+            var mesher = new GmshCfdMesher(options, flow);
+
+            var config = SimulationConfig.CreateDefault();
+            config.GmshPath = fakeGmshPath;
+
+            // Geschlossenes Tetraeder als Modell-STL
+            string stlPath = Path.Combine(_workingDirectory, "model_retry.stl");
+            var p0 = Vector3.Zero;
+            var p1 = new Vector3(10, 0, 0);
+            var p2 = new Vector3(0, 10, 0);
+            var p3 = new Vector3(0, 0, 10);
+            var triangles = new[]
+            {
+                new StlTriangle(p0, p2, p1),
+                new StlTriangle(p0, p1, p3),
+                new StlTriangle(p1, p2, p3),
+                new StlTriangle(p2, p0, p3)
+            };
+            StlWriter.WriteBinary(stlPath, triangles);
+
+            var request = new MeshRequest(stlPath, 1, 1, config, 1.0f, _workingDirectory);
+            string meshPath = mesher.GenerateMesh(request);
+
+            Assert.True(File.Exists(meshPath));
+            Assert.True(mesher.LastMeshMetrics.TryGetValue("BoundaryLayerClassifyAngleDeg", out float usedAngle));
+            Assert.Equal(30.0f, usedAngle);
+            // Das endgültige Wall-Skript enthält den 30°-Winkel (pi/6 ≈ 0.523599)
+            string wallScript = GmshCfdMesher.WallScriptPath(Path.Combine(_workingDirectory, "Meshing_Gen1_Var1.geo"));
+            Assert.Contains("0.52359", File.ReadAllText(wallScript));
+        }
+
+        private string CreateFakeGmshScriptForClassifyRetry()
+        {
+            string helperPyOrPs = Path.Combine(_workingDirectory, "fake_gmsh.ps1");
+            string meditMesh = string.Join("\n", new[]
+            {
+                "MeshVersionFormatted 2",
+                "Dimension",
+                "3",
+                "Vertices",
+                "4",
+                "0 0 0 1",
+                "10 0 0 1",
+                "0 10 0 1",
+                "0 0 10 1",
+                "Triangles",
+                "4",
+                "1 3 2 1",
+                "1 2 4 1",
+                "2 3 4 1",
+                "3 1 4 1",
+                "End"
+            });
+            string su2Mesh = "NDIME= 3\nNELEM= 1\n10 0 1 2 3 0\nNPOIN= 4\nNMARK= 0\n";
+
+            if (OperatingSystem.IsWindows())
+            {
+                // PowerShell-Hilfsskript, aufgerufen über .cmd-Wrapper (funktioniert robust mit gequoteten Pfaden)
+                File.WriteAllText(helperPyOrPs, $@"
+$scriptPath = $args[0]
+$outIdx = [Array]::IndexOf($args, '-o')
+$outPath = $args[$outIdx + 1]
+if ($args -contains '-2') {{
+    $content = Get-Content -LiteralPath $scriptPath -Raw
+    if ($content -match 'ClassifySurfaces\{{0\.698') {{
+        Write-Output 'Error   : Wrong topology'
+        exit 1
+    }}
+    Set-Content -LiteralPath $outPath -Value @'
+{meditMesh}
+'@ -Encoding ASCII
+    exit 0
+}}
+Set-Content -LiteralPath $outPath -Value @'
+{su2Mesh}
+'@ -Encoding ASCII
+exit 0
+");
+                string cmdPath = Path.Combine(_workingDirectory, "fake_gmsh.cmd");
+                File.WriteAllText(cmdPath, $"@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File \"{helperPyOrPs}\" %*\r\n");
+                return cmdPath;
+            }
+            else
+            {
+                string shPath = Path.Combine(_workingDirectory, "fake_gmsh.sh");
+                File.WriteAllText(shPath, $@"#!/bin/sh
+script=""$1""
+out=""""
+is2=0
+prev=""""
+for a in ""$@""; do
+  if [ ""$a"" = ""-2"" ]; then is2=1; fi
+  if [ ""$prev"" = ""-o"" ]; then out=""$a""; fi
+  prev=""$a""
+done
+if [ ""$is2"" -eq 1 ]; then
+  if grep -q 'ClassifySurfaces{{0\.698' ""$script""; then
+    echo 'Error   : Wrong topology'
+    exit 1
+  fi
+  cat <<'EOF' > ""$out""
+{meditMesh}
+EOF
+  exit 0
+fi
+cat <<'EOF' > ""$out""
+{su2Mesh}
+EOF
+exit 0
+");
+                File.SetUnixFileMode(shPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                return shPath;
+            }
+        }
     }
 }

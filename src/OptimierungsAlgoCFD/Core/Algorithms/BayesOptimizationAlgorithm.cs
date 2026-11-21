@@ -1150,7 +1150,8 @@ namespace OptimierungsAlgoCFD.Core
             {
                 Slot slot = fit.Slots[0];
                 var (mean, variance) = slot.Model.Predict(x);
-                double sd = Math.Sqrt(variance);
+                double predictiveVar = Math.Max(variance + slot.Model.ObservationNoiseVariance, 0.0);
+                double sd = Math.Sqrt(predictiveVar);
                 return (slot.Back(mean), slot.Back(mean - 1.96 * sd), slot.Back(mean + 1.96 * sd));
             }
 
@@ -1161,7 +1162,8 @@ namespace OptimierungsAlgoCFD.Core
                 var passive = new Dictionary<string, float>();
                 for (int k = 0; k < fit.Slots.Count; k++)
                 {
-                    double value = fit.Slots[k].Back(predictions[k].Mean + Math.Sqrt(predictions[k].Variance) * z(k));
+                    double predVar = Math.Max(predictions[k].Variance + fit.Slots[k].Model.ObservationNoiseVariance, 0.0);
+                    double value = fit.Slots[k].Back(predictions[k].Mean + Math.Sqrt(predVar) * z(k));
                     if (!float.IsFinite((float)value)) return double.NaN;
                     passive[fit.Slots[k].Name] = (float)value;
                 }

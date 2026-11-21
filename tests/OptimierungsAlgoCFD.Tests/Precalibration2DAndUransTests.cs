@@ -411,5 +411,43 @@ namespace OptimierungsAlgoCFD.Tests
                 if (File.Exists(path)) File.Delete(path);
             }
         }
+
+        [Fact]
+        public void ResolvePrecalibrationGmsh2DOptions_LoadsGmsh2dJson_OrFallsBackFromLoadedGmsh3D()
+        {
+            string dirWith2d = Path.Combine(Path.GetTempPath(), "precal_gmsh2d_" + Guid.NewGuid().ToString("N"));
+            string dirWithout2d = Path.Combine(Path.GetTempPath(), "precal_gmsh3d_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                // Fall 1: solvers/gmsh2d.json existiert -> wird direkt geladen
+                Directory.CreateDirectory(Path.Combine(dirWith2d, "solvers"));
+                File.WriteAllText(Path.Combine(dirWith2d, "solvers", "gmsh2d.json"),
+                    @"{ ""TargetYPlus"": 0.8, ""BoundaryLayerGrowthRate"": 1.15, ""DetailBoxLengthFactor"": 2.5 }");
+
+                var ctx1 = new ProjectContext("P1", dirWith2d, null, SimulationConfig.CreateDefault(), new ProjectConfig());
+                var opt1 = Program.ResolvePrecalibrationGmsh2DOptions(ctx1);
+                Assert.Equal(0.8f, opt1.TargetYPlus);
+                Assert.Equal(1.15f, opt1.BoundaryLayerGrowthRate);
+                Assert.Equal(2.5f, opt1.DetailBoxLengthFactor);
+
+                // Fall 2: kein gmsh2d.json, aber solvers/gmsh.json (mit 3D-Keys) wurde bereits geladen -> kein Schema-Fehler, kompatible Werte werden übernommen
+                Directory.CreateDirectory(Path.Combine(dirWithout2d, "solvers"));
+                File.WriteAllText(Path.Combine(dirWithout2d, "solvers", "gmsh.json"),
+                    @"{ ""TunnelSizeX"": 1200.0, ""TargetYPlus"": 1.75, ""BoundaryLayerGrowthRate"": 1.32, ""DetailBoxLengthFactor"": 2.25 }");
+
+                var ctx2 = new ProjectContext("P2", dirWithout2d, null, SimulationConfig.CreateDefault(), new ProjectConfig());
+                ctx2.LoadSolverOptions<GmshMesherOptions>("gmsh");
+
+                var opt2 = Program.ResolvePrecalibrationGmsh2DOptions(ctx2);
+                Assert.Equal(1.75f, opt2.TargetYPlus);
+                Assert.Equal(1.32f, opt2.BoundaryLayerGrowthRate);
+                Assert.Equal(2.25f, opt2.DetailBoxLengthFactor);
+            }
+            finally
+            {
+                if (Directory.Exists(dirWith2d)) Directory.Delete(dirWith2d, true);
+                if (Directory.Exists(dirWithout2d)) Directory.Delete(dirWithout2d, true);
+            }
+        }
     }
 }

@@ -341,5 +341,34 @@ namespace OptimierungsAlgoCFD.Tests
             var (mean, variance) = gp.Predict(Enumerable.Repeat(0.3, 20).ToArray());
             Assert.True(double.IsFinite(mean) && variance > 0);
         }
+
+        [Fact]
+        public void ObservationNoiseVariance_IsPositiveOnNoisyData_AndScalesWithOutputSpread()
+        {
+            var gp = new GaussianProcess(new Random(3));
+            Assert.Equal(0.0, gp.ObservationNoiseVariance);
+
+            var rng = new Random(42);
+            var x = new List<double[]>();
+            var y = new List<double>();
+            for (int i = 0; i < 25; i++)
+            {
+                double xi = i / 24.0;
+                x.Add(new[] { xi });
+                // Deutliches Messrauschen um eine glatte Funktion
+                double noise = (rng.NextDouble() - 0.5) * 0.8;
+                y.Add(Math.Sin(4.0 * xi) + noise);
+            }
+
+            gp.Fit(x, y);
+            Assert.True(gp.ObservationNoiseVariance > 0.0, $"ObservationNoiseVariance={gp.ObservationNoiseVariance}");
+
+            var gpScaled = new GaussianProcess(new Random(3));
+            gpScaled.Fit(x, y.Select(v => 10.0 * v).ToList());
+            Assert.InRange(
+                gpScaled.ObservationNoiseVariance,
+                95.0 * gp.ObservationNoiseVariance,
+                105.0 * gp.ObservationNoiseVariance);
+        }
     }
 }

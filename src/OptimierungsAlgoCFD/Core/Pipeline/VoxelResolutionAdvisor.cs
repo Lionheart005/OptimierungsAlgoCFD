@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using OptimierungsAlgoCFD.Solvers.Cfd;
 
 namespace OptimierungsAlgoCFD.Core
 {
@@ -19,7 +18,7 @@ namespace OptimierungsAlgoCFD.Core
 
         /// <summary>
         /// Ermittelt die effektive PicoGK-Start-Voxelgröße ohne <paramref name="sim"/> zu mutieren.
-        /// Bei Pipelines ohne 3D-<see cref="GmshCfdMesher"/> (z. B. 2D) wird
+        /// Bei Pipelines ohne <see cref="IMeshResolutionTarget"/> (z. B. 2D) wird
         /// <see cref="SimulationConfig.BaseVoxelResolution"/> unverändert und ohne Warnung zurückgegeben.
         /// </summary>
         public static float Resolve(
@@ -32,17 +31,17 @@ namespace OptimierungsAlgoCFD.Core
             ArgumentNullException.ThrowIfNull(project);
             ArgumentNullException.ThrowIfNull(stages);
 
-            GmshCfdMesher? gmshMesher = null;
+            IMeshResolutionTarget? resolutionTarget = null;
             foreach (SolverStage stage in stages)
             {
-                if (stage.Mesher is GmshCfdMesher mesher)
+                if (stage.Mesher is IMeshResolutionTarget target)
                 {
-                    gmshMesher = mesher;
+                    resolutionTarget = target;
                     break;
                 }
             }
 
-            if (gmshMesher == null)
+            if (resolutionTarget == null)
             {
                 return sim.BaseVoxelResolution;
             }
@@ -62,10 +61,7 @@ namespace OptimierungsAlgoCFD.Core
                 typicalScale = 1.0f;
             }
 
-            GmshMesherOptions gmsh = gmshMesher.Options;
-            float baseSurfaceMm = gmsh.SurfaceCellSize > 0f
-                ? gmsh.SurfaceCellSize
-                : gmsh.BoundaryLayerSizeMin;
+            float baseSurfaceMm = resolutionTarget.TargetSurfaceCellSizeMm;
 
             if (baseSurfaceMm <= 0f || !float.IsFinite(baseSurfaceMm))
             {

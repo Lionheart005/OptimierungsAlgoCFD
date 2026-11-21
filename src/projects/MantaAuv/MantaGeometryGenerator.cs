@@ -90,12 +90,12 @@ namespace OptimierungsAlgoCFD.Projects.MantaAuv
 
             // 7. Export (kein Viewer mehr — wird extern gesteuert)
             Mesh exportModel = new Mesh(voxModel);
-            float frontalArea = config.UseProjectedFrontalArea
-                ? PicoGkMeshMetrics.FrontalProjectedArea(exportModel)
-                : frontalBoxArea;
             string modelName = $"Model_Gen{iteration}_Var{variant}.stl";
             string fullModelPath = Path.Combine(outputDirectory, modelName);
             exportModel.SaveToStlFile(fullModelPath);
+
+            float measuredVolume = modelVolume;
+            float? measuredFrontalArea = null;
 
             if (config.UseStlSmoothing)
             {
@@ -105,6 +105,14 @@ namespace OptimierungsAlgoCFD.Projects.MantaAuv
                         fullModelPath, fullModelPath,
                         config.VoxelSmoothingIterations,
                         config.VoxelSmoothingPremeltingSteps);
+
+                    IReadOnlyList<StlTriangle> smoothedTriangles = StlWriter.ReadTriangles(fullModelPath);
+                    if (smoothedTriangles.Count > 0)
+                    {
+                        MeshMeasurement smoothedMeasurement = MeshMetrics.Measure(smoothedTriangles);
+                        measuredVolume = smoothedMeasurement.Volume;
+                        measuredFrontalArea = smoothedMeasurement.GetFrontalArea(config.UseProjectedFrontalArea);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -112,8 +120,12 @@ namespace OptimierungsAlgoCFD.Projects.MantaAuv
                 }
             }
 
+            float frontalArea = measuredFrontalArea ?? (config.UseProjectedFrontalArea
+                ? PicoGkMeshMetrics.FrontalProjectedArea(exportModel)
+                : frontalBoxArea);
+
             var result = new GeometryResult { StlPath = fullModelPath };
-            result.AddMetric("Volume", modelVolume, MetricScaling.Volume);
+            result.AddMetric("Volume", measuredVolume, MetricScaling.Volume);
             result.AddMetric("FrontalArea", frontalArea, MetricScaling.Area);
             // SensorDistance ist ein halbes Kreuzprodukt, also eine Fläche — nicht eine Länge.
             result.AddMetric("SensorDistance", sensorDistanceScore, MetricScaling.Area);

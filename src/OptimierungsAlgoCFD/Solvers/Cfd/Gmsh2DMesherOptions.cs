@@ -7,7 +7,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// (y+, Wachstumsrate, Mindestschichten), Kontur- und Feldzellgrößen sowie Nachlaufbox.
     /// Werden aus <c>solvers/gmsh.json</c> geladen und per Konstruktor injiziert.
     /// </summary>
-    public class Gmsh2DMesherOptions
+    public class Gmsh2DMesherOptions : ICalibrationMesherOptions
     {
         // --- Fernfeld (Simulationsdomäne) ---
 
@@ -26,6 +26,12 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.0).</summary>
         public float TargetYPlus { get; set; } = 1.0f;
+
+        /// <inheritdoc />
+        string? ICalibrationMesherOptions.BoundaryLayerMode => "Quad";
+
+        /// <inheritdoc />
+        bool ICalibrationMesherOptions.Is3D => false;
 
         /// <summary>Wachstumsfaktor von Schicht zu Schicht in der Grenzschicht (Standard 1.2).</summary>
         public float BoundaryLayerGrowthRate { get; set; } = 1.2f;

@@ -368,6 +368,44 @@ namespace OptimierungsAlgoCFD.Core
             }
         }
 
+        /// <summary>
+        /// Liest Gesamt- und Elementklassen-Zellzahlen aus einer SU2-Netzdatei und schreibt sie in
+        /// <paramref name="target"/> (<c>MeshCells</c>, <c>MeshCells_Tri</c>, <c>MeshCells_Quad</c>,
+        /// <c>MeshCells_Prism</c>, <c>MeshCells_Hexa</c>, <c>MeshCells_Tet</c>, <c>MeshCells_Pyramid</c>).
+        /// </summary>
+        public static void PopulateSu2CellMetrics(
+            IDictionary<string, float> target,
+            string su2MeshPath,
+            bool overwriteExisting = true)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            if (string.IsNullOrWhiteSpace(su2MeshPath) || !File.Exists(su2MeshPath))
+                return;
+
+            int cellCount = ReadSu2CellCount(su2MeshPath);
+            if (cellCount > 0 && (overwriteExisting || !target.ContainsKey("MeshCells")))
+            {
+                target["MeshCells"] = cellCount;
+            }
+
+            Su2CellBreakdown? breakdown = ReadSu2CellBreakdown(su2MeshPath);
+            if (breakdown == null)
+                return;
+
+            void SetMetric(string key, float value)
+            {
+                if (overwriteExisting || !target.ContainsKey(key))
+                    target[key] = value;
+            }
+
+            SetMetric("MeshCells_Tri", breakdown.SurfaceTriangles);
+            SetMetric("MeshCells_Quad", breakdown.SurfaceQuads);
+            SetMetric("MeshCells_Prism", breakdown.Prisms);
+            SetMetric("MeshCells_Hexa", breakdown.Hexahedra);
+            SetMetric("MeshCells_Tet", breakdown.Tetrahedra);
+            SetMetric("MeshCells_Pyramid", breakdown.Pyramids);
+        }
+
         private static string? ReadNextNonCommentLine(StreamReader reader)
         {
             string? line;

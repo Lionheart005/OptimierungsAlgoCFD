@@ -45,7 +45,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// CFD-Mesher basierend auf Gmsh. Erzeugt ein Volumen-Mesh für CFD-Simulationen.
     /// Der Windkanal (Tunnel) wird hier erzeugt, da er zur Simulationsdomäne gehört.
     /// </summary>
-    public class GmshCfdMesher : IMeshGenerator, IMeshMetricsSource
+    public class GmshCfdMesher : IMeshGenerator, IMeshMetricsSource, IMeshResolutionTarget
     {
         private readonly GmshMesherOptions _options;
         private readonly FlowConditions? _flow;
@@ -69,6 +69,9 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         public GmshMesherOptions Options => _options;
         public FlowConditions? Flow => _flow;
+
+        /// <summary>Ziel-Oberflächenzellgröße (mm) bei Netzfaktor 1.0 für <see cref="VoxelResolutionAdvisor"/>.</summary>
+        public float TargetSurfaceCellSizeMm => _options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin;
 
         /// <summary>
         /// Erzeugt den statischen Referenz-Windkanal (gehört zum CFD-Setup, nicht zur Geometrie).
@@ -514,22 +517,65 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                     throw new MeshGenerationException($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {thresholdRun.ExitCode}{thresholdRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
                 }
 
+                MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
                 Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
                 return outputMeshPath;
             }
 
             // --- Strukturierte Wandschicht in zwei Gmsh-Schritten (Servertest 06.11.2026) ---
-            // Schritt 1: Körperoberfläche neu vernetzen und als EINE Fläche speichern.
+            // Schritt 1: Körperoberfläche neu vernetzen und als EINE Fläche speichern (mit Retry über ClassifyAngleDeg-Leiter).
             string wallScript = WallScriptPath(geoScriptPath);
             string wallMesh = WallMeshPath(geoScriptPath);
-            if (File.Exists(wallMesh)) File.Delete(wallMesh);
-            GmshRun wallRun = RunGmsh(request.Config, $"\"{wallScript}\" -2 -nt {request.Config.GmshCores} -format mesh -v 2 -o \"{wallMesh}\"",
-                request.WorkingDirectory, wallScript);
-            if (wallRun.ExitCode != 0 || !File.Exists(wallMesh))
+            IReadOnlyList<float> angleLadder = BuildClassifyAngleLadder(_options.ClassifyAngleDeg);
+            float usedAngle = angleLadder[0];
+            bool wallSucceeded = false;
+            GmshRun? lastWallRun = null;
+
+            for (int idx = 0; idx < angleLadder.Count; idx++)
+            {
+                float angleDeg = angleLadder[idx];
+                if (idx > 0 || MathF.Abs(angleDeg - _options.ClassifyAngleDeg) > 1e-4f)
+                {
+                    WriteGeoScript(
+                        geoScriptPath,
+                        request.GeometryPath,
+                        tunnelStlPath,
+                        request.Config,
+                        safeScale,
+                        request.RefinementFactor,
+                        null,
+                        angleDeg);
+                }
+
+                if (File.Exists(wallMesh)) File.Delete(wallMesh);
+                GmshRun wallRun = RunGmsh(request.Config, $"\"{wallScript}\" -2 -nt {request.Config.GmshCores} -format mesh -v 2 -o \"{wallMesh}\"",
+                    request.WorkingDirectory, wallScript);
+
+                if (wallRun.ExitCode == 0 && File.Exists(wallMesh))
+                {
+                    usedAngle = angleDeg;
+                    wallSucceeded = true;
+                    if (idx > 0)
+                    {
+                        Console.WriteLine($"       -> [WARNUNG] Schritt-1-Wandoberfläche mit Fallback ClassifyAngleDeg = {Format(usedAngle)}° erzeugt (statt {Format(_options.ClassifyAngleDeg)}°).");
+                    }
+                    break;
+                }
+
+                lastWallRun = wallRun;
+                if (idx + 1 < angleLadder.Count)
+                {
+                    Console.WriteLine($"       -> [WARNUNG] Wandoberfläche ließ sich mit ClassifyAngleDeg = {Format(angleDeg)}° nicht erzeugen (ExitCode {wallRun.ExitCode}{wallRun.ErrorSuffix}) – nächster Versuch: {Format(angleLadder[idx + 1])}°.");
+                }
+            }
+
+            if (!wallSucceeded)
             {
                 CopyGeoToFehlerLogs(request.WorkingDirectory, wallScript);
-                throw new MeshGenerationException($"Gmsh konnte die Wandoberfläche {Path.GetFileName(wallMesh)} nicht erstellen (ExitCode {wallRun.ExitCode}{wallRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
+                throw new MeshGenerationException($"Gmsh konnte die Wandoberfläche {Path.GetFileName(wallMesh)} nicht erstellen (ExitCode {lastWallRun!.ExitCode}{lastWallRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
             }
+
+            _lastMetrics["BoundaryLayerClassifyAngleDeg"] = usedAngle;
 
             // Schritt 2: Wandschicht extrudieren, Kern mit Tetraedern füllen.
             //
@@ -563,7 +609,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
                 WallFieldResult candidate = BoundaryLayerWallField.Build(wall, thicknessGeo, ladder[attempt]);
                 BoundaryLayerWallField.WritePos(fieldPath, wall, candidate);
                 WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config,
-                    safeScale, request.RefinementFactor, fieldPath);
+                    safeScale, request.RefinementFactor, fieldPath, usedAngle);
 
                 if (File.Exists(outputMeshPath)) File.Delete(outputMeshPath);
                 GmshRun run = RunGmsh(request.Config, $"\"{geoScriptPath}\" -3 -nt {request.Config.GmshCores} -format su2 -v 2 -o \"{outputMeshPath}\"",
@@ -604,6 +650,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             _lastMetrics["BoundaryLayerMinScale"] = (float)field.MinScale;
             _lastMetrics["BoundaryLayerThinnedShare"] = (float)field.ThinnedShare;
             _lastMetrics["MeshFallback"] = used.Stage >= 3 ? 1f : 0f;
+            MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
 
             float hexShare = ReadSu2BoundaryLayerHexShare(outputMeshPath);
             string hexPart = float.IsFinite(hexShare) ? $", {hexShare * 100f:0} % Quader" : string.Empty;
@@ -817,6 +864,24 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         }
 
         /// <summary>
+        /// Bildet die Winkel-Leiter für Schritt 1 (<c>ClassifySurfaces</c>): dedupliziert
+        /// <c>[configuredAngleDeg, 30, 20, 50]</c> über gültige Winkel (<c>&gt; 0 &amp;&amp; &lt; 180</c>).
+        /// </summary>
+        internal static IReadOnlyList<float> BuildClassifyAngleLadder(float configuredAngleDeg)
+        {
+            var ladder = new List<float>(4);
+            foreach (float candidate in new[] { configuredAngleDeg, 30f, 20f, 50f })
+            {
+                if (!float.IsFinite(candidate) || candidate <= 0f || candidate >= 180f)
+                    continue;
+                if (ladder.Exists(existing => MathF.Abs(existing - candidate) < 1e-4f))
+                    continue;
+                ladder.Add(candidate);
+            }
+            return ladder;
+        }
+
+        /// <summary>
         /// Wie oben; bei "Hexa"/"Prism" schreibt es ZWEI Skripte: <see cref="WallScriptPath"/>
         /// (Schritt 1, Wandoberfläche) und <paramref name="geoScriptPath"/> (Schritt 2, Volumen).
         /// <paramref name="wallFieldPath"/> ist das Wandfeld (<see cref="BoundaryLayerWallField"/>, Richtung × Dicke je Knoten);
@@ -829,7 +894,8 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
             SimulationConfig config,
             float scaleFactor,
             float refinementFactor,
-            string? wallFieldPath)
+            string? wallFieldPath,
+            float? classifyAngleDeg = null)
         {
             string mode = (_options.BoundaryLayerMode ?? "Threshold").Trim();
             bool isThreshold = mode.Equals("Threshold", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(mode);
@@ -978,13 +1044,15 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
                 float surfaceSize = (_options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin) * factor * safeScale;
 
+                float effectiveClassifyAngleDeg = classifyAngleDeg ?? _options.ClassifyAngleDeg;
+
                 // ---------------- Schritt 1: Wandoberfläche ----------------
                 var wallLines = new List<string>
                 {
                     "// Schritt 1 von 2: Koerperoberflaeche neu vernetzen und als EINE Flaeche speichern.",
                     "// Aufruf: gmsh <diese Datei> -2 -format mesh -o <Wall_...mesh>",
                     $"Merge \"{safeModelPath}\";",
-                    $"ClassifySurfaces{{{Format(_options.ClassifyAngleDeg * MathF.PI / 180.0f)}, 1, 1, Pi}};",
+                    $"ClassifySurfaces{{{Format(effectiveClassifyAngleDeg * MathF.PI / 180.0f)}, 1, 1, Pi}};",
                     "CreateGeometry;",
                     "wall[] = Surface{:};",
                     "// Wandzellgroesse (nur hier global, in Schritt 2 waere es das Maximum fuer den ganzen Kanal)",

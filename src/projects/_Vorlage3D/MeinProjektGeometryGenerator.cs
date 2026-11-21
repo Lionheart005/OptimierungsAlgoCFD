@@ -54,21 +54,6 @@ namespace OptimierungsAlgoCFD.Projects.MeinProjekt
             // Das Netz, das exportiert wird — und aus dem alle Maße kommen.
             Mesh exportModel = new Mesh(voxels);
 
-            // Volumen, Oberfläche und Hüllquader in einem Durchgang (TODO-29). Die Oberfläche
-            // ist der Grund, warum es diesen Helfer gibt: PicoGKs CalculateProperties liefert
-            // Volumen und Hüllquader, die Oberfläche NICHT — die muss aus dem Dreiecksnetz
-            // summiert werden, und das wäre in jedem Projekt dieselbe Schleife.
-            //
-            // Die Alternative ist voxels.CalculateProperties(out float volume, out BBox3 box) —
-            // so macht es MantaAuv. Der Unterschied ist echt, aber klein: PicoGK misst das
-            // VOXELFELD, MeshMetrics das daraus gewonnene NETZ.
-            MeshMeasurement measurement = PicoGkMeshMetrics.Measure(exportModel);
-
-            // Ein negatives Vorzeichen hiesse: die Dreiecke sind nach innen gedreht. Gmsh
-            // rechnet so eine Huelle nicht oder falsch, und im Betrag sieht man es nicht.
-            if (measurement.SignedVolume < 0f)
-                Console.WriteLine("       -> [WARNUNG] Das Netz ist nach innen gedreht (negatives Volumen).");
-
             // Der Dateiname ist frei wählbar, das Muster aber praktisch: Iteration und Variante
             // stehen darin, und alle STLs eines Laufs liegen unter Ergebnisse/<Projekt>/.
             string modelPath = Path.Combine(outputDirectory, $"Model_Gen{iteration}_Var{variant}.stl");
@@ -78,6 +63,9 @@ namespace OptimierungsAlgoCFD.Projects.MeinProjekt
             // UseStlSmoothing in der simulation.json auf false, bleibt die STL, wie sie aus dem
             // Voxel-Modell kommt. Eine fehlgeschlagene Glättung darf den Lauf nicht kosten —
             // die ungeglättete Datei ist immer noch rechenbar.
+            // Die Messung erfolgt nach einer erfolgreichen Glättung direkt auf dem geschriebenen STL,
+            // damit Volume, SurfaceArea, FrontalArea und Span zum tatsächlichen CFD-Netz passen.
+            MeshMeasurement? smoothedMeasurement = null;
             if (config.UseStlSmoothing)
             {
                 try
@@ -86,12 +74,25 @@ namespace OptimierungsAlgoCFD.Projects.MeinProjekt
                         modelPath, modelPath,
                         config.VoxelSmoothingIterations,
                         config.VoxelSmoothingPremeltingSteps);
+
+                    IReadOnlyList<StlTriangle> smoothedTriangles = StlWriter.ReadTriangles(modelPath);
+                    if (smoothedTriangles.Count > 0)
+                    {
+                        smoothedMeasurement = MeshMetrics.Measure(smoothedTriangles);
+                    }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"       -> [WARNUNG] Glättung fehlgeschlagen: {ex.Message}");
                 }
             }
+
+            MeshMeasurement measurement = smoothedMeasurement ?? PicoGkMeshMetrics.Measure(exportModel);
+
+            // Ein negatives Vorzeichen hiesse: die Dreiecke sind nach innen gedreht. Gmsh
+            // rechnet so eine Huelle nicht oder falsch, und im Betrag sieht man es nicht.
+            if (measurement.SignedVolume < 0f)
+                Console.WriteLine("       -> [WARNUNG] Das Netz ist nach innen gedreht (negatives Volumen).");
 
             var result = new GeometryResult { StlPath = modelPath };
 

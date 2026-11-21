@@ -157,6 +157,24 @@ namespace OptimierungsAlgoCFD.Tests
             Assert.Single(callsB);
         }
 
+        [Fact]
+        public void Optimization_Cell_Limit_From_MaxCells3D_Stops_Oversized_Mesh_When_CellLimit_Is_Zero()
+        {
+            var mesher = new Mock<IMeshGenerator>();
+            mesher.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>())).Returns(FakeSu2(6000));
+            var (solver, calls) = CountingSolver();
+            SimulationContext context = Context();
+            context.CellLimit = 0; // Optimierungsbetrieb (keine aktive Kalibrierstufe)
+            context.Config.MeshCalibration.MaxCells3D = 5000;
+
+            ModelRecord record = Controller(context, mesher.Object, solver).RunPipeline(Parameters(), 1, 1);
+
+            Assert.True(record.SimulationFailed);
+            Assert.Equal(1f, record.PassiveParameters[ModelRecord.CellLimitExceededKey]);
+            Assert.Equal(6000f, record.PassiveParameters["MeshCells"]);
+            Assert.Empty(calls);
+        }
+
         // ------------------------------------------------------------------ Trainingsdaten (Bayes)
 
         private SurrogateTrainingSet TrainingSet(params ModelRecord[] records)

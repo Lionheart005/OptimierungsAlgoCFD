@@ -406,37 +406,45 @@ namespace OptimierungsAlgoCFD.Core
                         // ModelRecord führt genau einen Mesh-Pfad — den der ersten Stufe.
                         if (string.IsNullOrEmpty(record.MeshPath)) record.MeshPath = meshPath;
 
-                        int cellCount = MeshMetrics.ReadSu2CellCount(meshPath);
-                        if (cellCount > 0)
-                        {
-                            record.PassiveParameters["MeshCells"] = cellCount;
-                        }
-
-                        Su2CellBreakdown? breakdown = MeshMetrics.ReadSu2CellBreakdown(meshPath);
-                        if (breakdown != null)
-                        {
-                            record.PassiveParameters["MeshCells_Tri"] = breakdown.SurfaceTriangles;
-                            record.PassiveParameters["MeshCells_Quad"] = breakdown.SurfaceQuads;
-                            record.PassiveParameters["MeshCells_Prism"] = breakdown.Prisms;
-                            record.PassiveParameters["MeshCells_Hexa"] = breakdown.Hexahedra;
-                            record.PassiveParameters["MeshCells_Tet"] = breakdown.Tetrahedra;
-                            record.PassiveParameters["MeshCells_Pyramid"] = breakdown.Pyramids;
-                        }
-
-                        // Kennwerte des Netzes (Schichtzahl, Dicke, Stufe der Rückfall-Leiter …) in die CSV
+                        // Kennwerte des Netzes (Zellzahlen, Schichtzahl, Dicke, Stufe der Rückfall-Leiter …) in die CSV
                         if (stage.Mesher is IMeshMetricsSource metricsSource)
                         {
                             foreach (var kvp in metricsSource.LastMeshMetrics)
                                 record.PassiveParameters[kvp.Key] = kvp.Value;
                         }
 
-                        // Zellgrenze (Kalibrierstufen): an der GEMESSENEN Zellzahl prüfen, bevor SU2 Stunden rechnet.
-                        if (_context.CellLimit > 0 && cellCount > _context.CellLimit)
+                        int cellCount = 0;
+                        if (record.PassiveParameters.TryGetValue("MeshCells", out float reportedCells)
+                            && float.IsFinite(reportedCells) && reportedCells > 0f)
+                        {
+                            cellCount = (int)MathF.Round(reportedCells);
+                        }
+                        else
+                        {
+                            // Abwärtskompatibilitäts-Fallback für Mock-Mesher ohne IMeshMetricsSource oder ohne "MeshCells"
+                            MeshMetrics.PopulateSu2CellMetrics(record.PassiveParameters, meshPath, overwriteExisting: false);
+                            if (record.PassiveParameters.TryGetValue("MeshCells", out float fallbackCells)
+                                && float.IsFinite(fallbackCells) && fallbackCells > 0f)
+                            {
+                                cellCount = (int)MathF.Round(fallbackCells);
+                            }
+                        }
+
+                        // Zellgrenze (Kalibrierung oder Sicherheitsdeckel MaxCells3D in der Optimierung):
+                        // an der GEMESSENEN Zellzahl prüfen, bevor SU2 Stunden rechnet.
+                        bool isCalibrationLimit = _context.CellLimit > 0;
+                        long effectiveCellLimit = isCalibrationLimit
+                            ? _context.CellLimit
+                            : _context.Config.MeshCalibration.MaxCells3D;
+                        if (effectiveCellLimit > 0 && cellCount > effectiveCellLimit)
                         {
                             record.PassiveParameters[ModelRecord.CellLimitExceededKey] = 1f;
                             record.SimulationFailed = true;
+                            string limitLabel = isCalibrationLimit
+                                ? "Zellgrenze (Kalibrierung)"
+                                : "Sicherheitsgrenze (MeshCalibration.MaxCells3D)";
                             SimulationLog.Error(
-                                $"Zellgrenze überschritten: {cellCount:N0} Zellen gemessen, Grenze {_context.CellLimit:N0}. Die Strömungsrechnung entfällt.");
+                                $"{limitLabel} überschritten: {cellCount:N0} Zellen gemessen, Grenze {effectiveCellLimit:N0}. Die Strömungsrechnung entfällt.");
                             break;
                         }
                     }

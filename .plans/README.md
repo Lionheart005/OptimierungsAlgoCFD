@@ -40,8 +40,9 @@ Neue Sessions und KI-Agenten orientieren sich ausschließlich an diesen aktiven 
 
 ---
 
-## 3. Aktueller Systemstatus (Ausgangsbasis vor Phase 1)
+## 3. Aktueller Systemstatus (Stand 21.11.2026)
 
-* **Build & Unit-Tests:** 787+ Unit-Tests grün (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen — allerdings noch ohne echte PicoGK-/Gmsh-/SU2-Integrationstests (folgen in Phase 1 `AP 1.5`).
-* **Server `BIC_12`:** Kein aktiver Lauf (Lauf `MantaAuv` am 21.11.2026 gestoppt & archiviert). Bereit für saubere Neuentwicklung und kurze Integrations-/Benchmark-Tests.
-* **Nächster konkreter Schritt:** Start mit **[`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.1` Bugfixes & Hygiene → `AP 1.2` `Core/`-Isolation → `AP 1.3` God-Classes zerlegen → `AP 1.4/1.5` Integrationstests → Namenswahl + `AP 1.6` Englisch-Umstellung).
+* **Phase 1 — Etappe 1 (`AP 1.1` & `AP 1.2`) ✔ erledigt:** Alle 7 gefundenen Code-/Physik-Bugs & Hygiene-Punkte behoben, `Core/` vollständig von `Solvers.Cfd`/`Kernels`/`PicoGK` entkoppelt und durch `ArchitectureBoundaryTests.cs` dauerhaft abgesichert.
+* **Build & Unit-Tests:** **836/836 Tests grün** (`dotnet test OptimierungsAlgoCFD.sln`), 0 Warnungen, 0 Fehler.
+* **Server `BIC_12`:** Kein aktiver Lauf (Lauf `MantaAuv` am 21.11.2026 gestoppt & doppelt archiviert).
+* **Nächster konkreter Schritt:** Etappe 1 committen, dann in einer neuen Session **Etappe 2 von [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.3` God-Classes zerlegen, `AP 1.4` alte Optimierer bereinigen, `AP 1.5` echte Integrations-Tests) starten.

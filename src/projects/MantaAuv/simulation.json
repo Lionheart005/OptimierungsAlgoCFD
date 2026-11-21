@@ -21,30 +21,11 @@
 
   // --- Pfade zu externer Software ---
   //
-  // DER CODE-STANDARD IST PATH-RELATIV ("mpirun", "SU2_CFD", "gmsh"), siehe
-  // Core/Models/SimulationConfig.cs. Ein Projekt, das nichts eintraegt, sucht die
-  // Programme also ueber den PATH -- das ist der Normalfall und funktioniert auf
-  // jedem Rechner, der sie regulaer installiert hat.
-  //
-  // DIESES Projekt traegt sie trotzdem absolut ein, weil der Hochschulserver
-  // (BIC_12) sie nicht ueber den PATH findet: SU2 und Gmsh sind dort von Hand
-  // nach ~/software entpackt, mpiexec kommt aus dem conda-Env "mpich". Bei "ssh host befehl"
-  // startet bash nicht-interaktiv und Ubuntus ~/.bashrc steigt sofort wieder aus,
-  // deshalb greift dort nichts aus conda init.
-  //
-  // Die Pfade stammen aus setup_server.sh.
-  // Aendert sich die Gmsh-Version, aendert sich auch dieser Pfad.
-  //
-  // Auf einem anderen Server: diese drei Zeilen loeschen, dann gilt wieder der
-  // PATH-relative Code-Standard. Welche Variante greift, sagt `sim.ps1 doctor`
-  // VOR dem Lauf -- er nennt bei jedem Programm den tatsaechlich gefundenen Ort.
-  // MPICH, nicht das OpenMPI aus Miniconda: das offizielle SU2-7.5.1-Binary ist statisch
-  // mit MPICH gebaut. Unter OpenMPI startete "-n 12" zwoelf unabhaengige SERIELLE Kopien,
-  // die sich gegenseitig die Dateien ueberschrieben (Servertest 06.11.2026). Eingerichtet mit
-  // "conda create -n mpich -c conda-forge mpich" (siehe setup_server.sh).
-  "MpiRunPath": "/home/lpleissner/miniconda/envs/mpich/bin/mpiexec",
-  "Su2Path": "/home/lpleissner/software/bin/SU2_CFD",
-  "GmshPath": "/home/lpleissner/software/gmsh-4.11.1-Linux64/bin/gmsh",
+  // Es gilt der PATH-relative Code-Standard ("mpirun", "SU2_CFD", "gmsh") aus
+  // Core/Models/SimulationConfig.cs. Auf dem Server setzen scripts/sim-runner.sh
+  // und ExecutableResolver die Suchpfade automatisch; abweichende Rechnerpfade
+  // gehoeren bei Bedarf in eine gitignored simulation.local.json.
+  // Welche Pfade aktiv sind, zeigt `.\scripts\sim.ps1 doctor` vor dem Lauf.
 
   // --- Zeit & Umfang ---
   // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.

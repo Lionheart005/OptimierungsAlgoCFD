@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace OptimierungsAlgoCFD.Core
 {
@@ -58,5 +59,16 @@ namespace OptimierungsAlgoCFD.Core
         public float Fitness { get; set; }
         public string StlPath { get; set; } = "";
         public string MeshPath { get; set; } = "";
+
+        /// <summary>
+        /// Generischer Alias für <see cref="StlPath"/> (z. B. auch für 2D-Kontur- oder OpenFOAM-Geometriedateien).
+        /// </summary>
+        [JsonIgnore]
+        public string GeometryPath { get => StlPath; set => StlPath = value; }
+
+        /// <summary>
+        /// Dateipfade für benannte Stufen-Übergaben (z. B. OpenFOAM-Cases oder FEM-Ergebnisse).
+        /// </summary>
+        public Dictionary<string, string> Artifacts { get; set; } = new Dictionary<string, string>();
     }
 }

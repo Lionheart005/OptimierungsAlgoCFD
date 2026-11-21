@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using OptimierungsAlgoCFD.Core;
@@ -11,7 +12,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// Die Standardwerte hier entsprechen exakt dem, was vorher in
     /// <see cref="Su2ConfigGenerator"/> hardcodiert stand.
     /// </summary>
-    public class Su2SolverOptions
+    public class Su2SolverOptions : ICalibrationSolverOptions
     {
         // --- Fluideigenschaften ---
         /// <summary>Dichte des Mediums in kg/m³ (1025 = Meerwasser).</summary>
@@ -91,6 +92,10 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
         /// </para>
         /// </summary>
         public Dictionary<string, string> ResultMetrics { get; set; } = new() { ["Drag"] = "CD" };
+
+        /// <inheritdoc />
+        IReadOnlyCollection<string> ICalibrationSolverOptions.MonitoredMetricNames
+            => (IReadOnlyCollection<string>?)ResultMetrics?.Keys ?? Array.Empty<string>();
 
         /// <summary>
         /// SU2 <c>CONV_FIELD</c> — die Größe, an der SU2 seine Konvergenz misst. War vor

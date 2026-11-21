@@ -44,7 +44,8 @@ namespace OptimierungsAlgoCFD.Core
         bool IsMonotonic,
         string? Warning,
         float ExtrapolatedValue = float.NaN,
-        float ExtrapolatedDeviationPercent = float.NaN);
+        float ExtrapolatedDeviationPercent = float.NaN,
+        bool IsAsymptotic = true);
 
     /// <summary>
     /// Entscheidung und vollständige Auswertung einer Netzkalibrierung (TODO-42).
@@ -89,24 +90,48 @@ namespace OptimierungsAlgoCFD.Core
             float eps32 = f3Coarse - f2Medium;
             float eps21 = f2Medium - f1Fine;
 
-            // Monotonieprüfung: Wechseln die Differenzen das Vorzeichen, ist die Folge nicht monoton.
+            // Exakter Konvergenz-Sonderfall: alle drei Stufen liefern denselben Wert.
+            if (Math.Abs(eps21) <= 1e-9f && Math.Abs(eps32) <= 1e-9f)
+            {
+                return new GciResult(
+                    ObservedOrderP: 1.0f,
+                    GciFinePercent: 0f,
+                    GciSelectedPercent: 0f,
+                    IsMonotonic: true,
+                    Warning: null,
+                    ExtrapolatedValue: f1Fine,
+                    ExtrapolatedDeviationPercent: 0f,
+                    IsAsymptotic: true);
+            }
+
+            // Monotonie- und Asymptotikprüfung nach Celik et al. (2008):
+            // Vorzeichenwechsel der Differenzen => nicht monoton; |eps32 / eps21| <= 1 => Differenzen
+            // nehmen beim Verfeinern nicht ab, nicht im asymptotischen Konvergenzbereich.
             bool isMonotonic = (eps32 * eps21 > 0f);
-            string? warning = isMonotonic
-                ? null
-                : "Konvergenzfolge ist nicht monoton (Vorzeichenwechsel der Differenzen).";
+            float ratio = Math.Abs(eps21) > 1e-9f ? Math.Abs(eps32 / eps21) : float.PositiveInfinity;
+            bool isAsymptotic = isMonotonic && ratio > 1.0f;
+
+            if (!isAsymptotic)
+            {
+                string nonAsymptoticWarning = !isMonotonic
+                    ? "Konvergenzfolge ist nicht monoton (Vorzeichenwechsel der Differenzen) – GCI und Richardson-Extrapolation nicht anwendbar."
+                    : "Konvergenzfolge nicht im asymptotischen Bereich (Differenzen nehmen beim Verfeinern nicht ab, |eps32/eps21| <= 1) – GCI und Richardson-Extrapolation nicht anwendbar.";
+
+                return new GciResult(
+                    ObservedOrderP: float.NaN,
+                    GciFinePercent: float.NaN,
+                    GciSelectedPercent: float.NaN,
+                    IsMonotonic: isMonotonic,
+                    Warning: nonAsymptoticWarning,
+                    ExtrapolatedValue: float.NaN,
+                    ExtrapolatedDeviationPercent: float.NaN,
+                    IsAsymptotic: false);
+            }
 
             // Beobachtete Ordnung p: für konstantes Verfeinerungsverhältnis r = r21 = r32
-            float p;
-            if (Math.Abs(eps21) <= 1e-9f || Math.Abs(eps32) <= 1e-9f)
-            {
-                p = 1.0f;
-            }
-            else
-            {
-                float ratio = Math.Abs(eps32 / eps21);
-                p = (ratio > 1e-9f) ? Math.Abs(MathF.Log(ratio) / MathF.Log(r)) : 1.0f;
-                p = Math.Clamp(p, 0.5f, 8.0f);
-            }
+            float p = float.IsFinite(ratio)
+                ? Math.Clamp(MathF.Log(ratio) / MathF.Log(r), 0.5f, 8.0f)
+                : 8.0f;
 
             // Relative scheinbare Fehler e_a
             float ea21 = Math.Abs(f1Fine - f2Medium) / Math.Max(Math.Abs(f1Fine), 1e-7f);
@@ -117,17 +142,16 @@ namespace OptimierungsAlgoCFD.Core
             float gciFine = (denom > 1e-9f) ? (safetyFactorFs * ea21 / denom) * 100.0f : 0f;
             float gciSelected = (denom > 1e-9f) ? (safetyFactorFs * ea32 / denom) * 100.0f : 0f;
 
-            // Richardson-Extrapolation: Schätzung des netzunabhängigen Werts aus den zwei feinsten Stufen
-            // (nur bei monotoner Folge sinnvoll). Der Bericht zeigt, wie weit das feinste Netz davon entfernt ist.
+            // Richardson-Extrapolation: Schätzung des netzunabhängigen Werts aus den zwei feinsten Stufen.
             float extrapolated = float.NaN;
             float extrapolatedDeviation = float.NaN;
-            if (isMonotonic && denom > 1e-9f)
+            if (denom > 1e-9f)
             {
                 extrapolated = f1Fine + (f1Fine - f2Medium) / denom;
                 extrapolatedDeviation = Math.Abs(f1Fine - extrapolated) / Math.Max(Math.Abs(extrapolated), 1e-7f) * 100.0f;
             }
 
-            return new GciResult(p, gciFine, gciSelected, isMonotonic, warning, extrapolated, extrapolatedDeviation);
+            return new GciResult(p, gciFine, gciSelected, isMonotonic, null, extrapolated, extrapolatedDeviation, IsAsymptotic: true);
         }
 
         /// <summary>

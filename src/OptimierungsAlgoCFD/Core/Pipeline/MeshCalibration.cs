@@ -8,7 +8,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using OptimierungsAlgoCFD.Solvers.Cfd;
 
 namespace OptimierungsAlgoCFD.Core
 {
@@ -69,25 +68,100 @@ namespace OptimierungsAlgoCFD.Core
         }
 
         /// <summary>
-        /// Ermittelt die y+-Akzeptanzgrenzen (Standard- und Grobstufen-Limit) aus <see cref="Su2SolverOptions"/>
-        /// konsistent zu <see cref="Su2Solver"/> (<c>TargetYPlus × YPlusWarnFactor</c>).
+        /// Ermittelt die y+-Akzeptanzgrenzen (Standard- und Grobstufen-Limit) aus <see cref="ICalibrationSolverOptions"/>
+        /// (oder generisch aus <c>solvers/*.json</c>), konsistent zur Solver-Prüfung (<c>TargetYPlus × YPlusWarnFactor</c>).
         /// </summary>
         internal static (float StandardLimit, float CoarseStageLimit) ResolveYPlusLimits(ProjectContext context)
         {
-            Su2SolverOptions su2 = context.Loaded.Select(l => l.Value).OfType<Su2SolverOptions>().LastOrDefault()
-                ?? context.LoadSolverOptions<Su2SolverOptions>("su2");
+            ICalibrationSolverOptions? solver = context.Loaded
+                .Select(l => l.Value)
+                .OfType<ICalibrationSolverOptions>()
+                .LastOrDefault();
 
-            float target = su2.TargetYPlus > 0f && float.IsFinite(su2.TargetYPlus) ? su2.TargetYPlus : 1.5f;
-            float warnFactor = su2.YPlusWarnFactor > 0f && float.IsFinite(su2.YPlusWarnFactor) ? su2.YPlusWarnFactor : 3.0f;
-            float standardLimit = target * warnFactor;
+            float target = float.NaN;
+            float warnFactor = float.NaN;
+
+            if (solver != null)
+            {
+                target = solver.TargetYPlus;
+                warnFactor = solver.YPlusWarnFactor;
+            }
+            else if (context.ProjectDirectory != null)
+            {
+                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
+                if (Directory.Exists(solversDir))
+                {
+                    float fallbackTarget = float.NaN;
+                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
+                    {
+                        try
+                        {
+                            var node = JsonNode.Parse(
+                                File.ReadAllText(file),
+                                documentOptions: new JsonDocumentOptions
+                                {
+                                    CommentHandling = JsonCommentHandling.Skip,
+                                    AllowTrailingCommas = true,
+                                });
+                            if (node is not JsonObject obj) continue;
+
+                            bool hasWarnFactor = TryReadPositiveFloat(obj["YPlusWarnFactor"], out float fileWarn);
+                            if (hasWarnFactor)
+                                warnFactor = fileWarn;
+
+                            if (TryReadPositiveFloat(obj["TargetYPlus"], out float fileTarget))
+                            {
+                                bool isSolverConfig = hasWarnFactor
+                                    || obj["ResultMetrics"] != null
+                                    || obj["Dimensions"] != null;
+                                if (isSolverConfig)
+                                    target = fileTarget;
+                                else
+                                    fallbackTarget = fileTarget;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (!(target > 0f && float.IsFinite(target)) && fallbackTarget > 0f && float.IsFinite(fallbackTarget))
+                    {
+                        target = fallbackTarget;
+                    }
+                }
+            }
+
+            float effectiveTarget = target > 0f && float.IsFinite(target) ? target : 1.5f;
+            float effectiveWarnFactor = warnFactor > 0f && float.IsFinite(warnFactor) ? warnFactor : 3.0f;
+            float standardLimit = effectiveTarget * effectiveWarnFactor;
 
             // Grobe Stufe 1 (Faktor 2.00) darf wie bisher leicht über dem Standard-Limit liegen (mind. +0.5 bzw. +15 %).
             float coarseLimit = MathF.Round(MathF.Max(standardLimit + 0.5f, standardLimit * 1.15f), 2);
             return (standardLimit, coarseLimit);
         }
 
+        private static IEnumerable<string> EnumerateSolverJsonFiles(string solversDir)
+            => Directory.EnumerateFiles(solversDir, "*.json", SearchOption.TopDirectoryOnly)
+                .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+
+        private static bool TryReadPositiveFloat(JsonNode? node, out float value)
+        {
+            value = 0f;
+            if (node == null) return false;
+            try
+            {
+                float parsed = node.GetValue<float>();
+                if (parsed > 0f && float.IsFinite(parsed))
+                {
+                    value = parsed;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         /// <summary>
-        /// Prüft beim Start die Konsistenz zwischen <c>solvers/gmsh.json</c>, <c>solvers/su2.json</c> und der
+        /// Prüft beim Start die Konsistenz zwischen Vernetzer- und Solver-Optionen sowie der
         /// automatischen Netzkalibrierung: warnt bei abweichendem <c>TargetYPlus</c> zwischen Vernetzer und Solver
         /// und verhindert einen stundenlangen Fehlstart, wenn <c>BoundaryLayerMode = "Threshold"</c> (y+ ≈ 30–70)
         /// mit aktiver Auto-Kalibrierung unter niedrigem y+-Limit kombiniert wird.
@@ -97,18 +171,23 @@ namespace OptimierungsAlgoCFD.Core
             bool calibrationActive,
             TextWriter? warningWriter = null)
         {
-            Su2SolverOptions? su2 = context.Loaded.Select(l => l.Value).OfType<Su2SolverOptions>().LastOrDefault();
-            if (su2 == null) return;
+            ICalibrationSolverOptions? solver = context.Loaded
+                .Select(l => l.Value)
+                .OfType<ICalibrationSolverOptions>()
+                .LastOrDefault();
+            if (solver == null) return;
 
-            GmshMesherOptions? gmsh3d = context.Loaded.Select(l => l.Value).OfType<GmshMesherOptions>().LastOrDefault();
-            Gmsh2DMesherOptions? gmsh2d = context.Loaded.Select(l => l.Value).OfType<Gmsh2DMesherOptions>().LastOrDefault();
+            ICalibrationMesherOptions? mesher = context.Loaded
+                .Select(l => l.Value)
+                .OfType<ICalibrationMesherOptions>()
+                .LastOrDefault();
 
-            float? gmshTarget = gmsh3d?.TargetYPlus ?? gmsh2d?.TargetYPlus;
-            if (gmshTarget.HasValue && MathF.Abs(gmshTarget.Value - su2.TargetYPlus) > 0.05f)
+            float? mesherTarget = mesher?.TargetYPlus;
+            if (mesherTarget.HasValue && MathF.Abs(mesherTarget.Value - solver.TargetYPlus) > 0.05f)
             {
                 string mismatchMsg =
-                    $"solvers/gmsh.json (TargetYPlus = {gmshTarget.Value.ToString("0.##", CultureInfo.InvariantCulture)}) "
-                    + $"und solvers/su2.json (TargetYPlus = {su2.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) weichen voneinander ab. "
+                    $"solvers/gmsh.json (TargetYPlus = {mesherTarget.Value.ToString("0.##", CultureInfo.InvariantCulture)}) "
+                    + $"und solvers/su2.json (TargetYPlus = {solver.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) weichen voneinander ab. "
                     + "gmsh.json erzeugt die reale erste Zellhöhe y1, su2.json × YPlusWarnFactor bildet das harte Limit in Solver und Auto-Kalibrierung – bitte angleichen.";
                 if (warningWriter != null)
                     warningWriter.WriteLine($"[WARNUNG] {mismatchMsg}");
@@ -117,11 +196,11 @@ namespace OptimierungsAlgoCFD.Core
             }
 
             if (calibrationActive
-                && gmsh3d != null
-                && string.Equals((gmsh3d.BoundaryLayerMode ?? "Prism").Trim(), "Threshold", StringComparison.OrdinalIgnoreCase))
+                && mesher is { Is3D: true }
+                && string.Equals((mesher.BoundaryLayerMode ?? "Prism").Trim(), "Threshold", StringComparison.OrdinalIgnoreCase))
             {
-                float target = su2.TargetYPlus > 0f && float.IsFinite(su2.TargetYPlus) ? su2.TargetYPlus : 1.5f;
-                float warnFactor = su2.YPlusWarnFactor > 0f && float.IsFinite(su2.YPlusWarnFactor) ? su2.YPlusWarnFactor : 3.0f;
+                float target = solver.TargetYPlus > 0f && float.IsFinite(solver.TargetYPlus) ? solver.TargetYPlus : 1.5f;
+                float warnFactor = solver.YPlusWarnFactor > 0f && float.IsFinite(solver.YPlusWarnFactor) ? solver.YPlusWarnFactor : 3.0f;
                 float limit = target * warnFactor;
 
                 if (limit < 30f)
@@ -137,7 +216,8 @@ namespace OptimierungsAlgoCFD.Core
         }
 
         /// <summary>
-        /// Berechnet einen SHA256-Fingerabdruck über Startgeometrie (BaseParameters), gmsh.json und su2.json (Regel 6).
+        /// Berechnet einen SHA256-Fingerabdruck über Startgeometrie (BaseParameters) und alle Solver-/Mesher-JSONs
+        /// unter <c>solvers/*.json</c> inkl. <c>*.local.json</c> (Regel 6).
         /// </summary>
         public static string ComputeFingerprint(ProjectContext context)
         {
@@ -150,33 +230,17 @@ namespace OptimierungsAlgoCFD.Core
                 sb.Append($"{kvp.Key}={kvp.Value.ToString("R", CultureInfo.InvariantCulture)};");
             }
 
-            // 2. gmsh.json & su2.json falls vorhanden
+            // 2. Alle *.json-Dateien unter solvers/ (inkl. *.local.json), deterministisch alphabetisch sortiert
             if (context.ProjectDirectory != null)
             {
-                string gmshPath = Path.Combine(context.ProjectDirectory, "solvers", "gmsh.json");
-                if (File.Exists(gmshPath))
+                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
+                if (Directory.Exists(solversDir))
                 {
-                    sb.Append("gmsh:");
-                    sb.Append(File.ReadAllText(gmshPath));
-                }
-
-                string su2Path = Path.Combine(context.ProjectDirectory, "solvers", "su2.json");
-                if (File.Exists(su2Path))
-                {
-                    sb.Append("su2:");
-                    sb.Append(File.ReadAllText(su2Path));
-                }
-
-                // Maschinenspezifische Überschreibungen (*.local.json) verändern die Physik genauso und
-                // gehören in den Fingerabdruck; sonst bliebe eine Kalibrierung trotz geänderter Netz- oder
-                // Strömungswerte "aktuell" (TODO-W9).
-                foreach (string local in new[] { "gmsh.local.json", "su2.local.json" })
-                {
-                    string localPath = Path.Combine(context.ProjectDirectory, "solvers", local);
-                    if (File.Exists(localPath))
+                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
                     {
-                        sb.Append(local).Append(':');
-                        sb.Append(File.ReadAllText(localPath));
+                        string fileName = Path.GetFileName(file);
+                        sb.Append(fileName).Append(':');
+                        sb.Append(File.ReadAllText(file));
                     }
                 }
             }
@@ -737,32 +801,54 @@ namespace OptimierungsAlgoCFD.Core
             }
         }
 
-        /// <summary>Überwachte Größen = Schlüssel von <c>ResultMetrics</c> aus <c>solvers/su2.json</c>, sonst "Drag".</summary>
+        /// <summary>Überwachte Größen aus <see cref="ICalibrationSolverOptions.MonitoredMetricNames"/> oder generisch aus <c>solvers/*.json</c>, sonst "Drag".</summary>
         public static List<string> ResolveMonitoredMetrics(ProjectContext context)
         {
             var list = new List<string>();
-            if (context.ProjectDirectory != null)
+            var loadedMetrics = context.Loaded
+                .Select(l => l.Value)
+                .OfType<ICalibrationSolverOptions>()
+                .LastOrDefault()
+                ?.MonitoredMetricNames;
+
+            if (loadedMetrics != null)
             {
-                string su2Path = Path.Combine(context.ProjectDirectory, "solvers", "su2.json");
-                if (File.Exists(su2Path))
+                foreach (string metric in loadedMetrics)
                 {
-                    try
+                    if (!string.IsNullOrWhiteSpace(metric) && !list.Contains(metric))
+                        list.Add(metric);
+                }
+            }
+
+            if (list.Count == 0 && context.ProjectDirectory != null)
+            {
+                string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
+                if (Directory.Exists(solversDir))
+                {
+                    foreach (string file in EnumerateSolverJsonFiles(solversDir))
                     {
-                        // Die Projektdateien tragen //-Kommentare. Ohne CommentHandling scheiterte
-                        // das Parsen still, und es wurde nur "Drag" ueberwacht (Servertest 06.11.2026).
-                        var node = JsonNode.Parse(
-                            File.ReadAllText(su2Path),
-                            documentOptions: new JsonDocumentOptions
-                            {
-                                CommentHandling = JsonCommentHandling.Skip,
-                                AllowTrailingCommas = true,
-                            });
-                        if (node?["ResultMetrics"] is JsonObject rm)
+                        try
                         {
-                            foreach (var entry in rm) list.Add(entry.Key);
+                            // Die Projektdateien tragen //-Kommentare. Ohne CommentHandling scheiterte
+                            // das Parsen still, und es wurde nur "Drag" ueberwacht (Servertest 06.11.2026).
+                            var node = JsonNode.Parse(
+                                File.ReadAllText(file),
+                                documentOptions: new JsonDocumentOptions
+                                {
+                                    CommentHandling = JsonCommentHandling.Skip,
+                                    AllowTrailingCommas = true,
+                                });
+                            if (node?["ResultMetrics"] is JsonObject rm)
+                            {
+                                foreach (var entry in rm)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(entry.Key) && !list.Contains(entry.Key))
+                                        list.Add(entry.Key);
+                                }
+                            }
                         }
+                        catch { }
                     }
-                    catch { }
                 }
             }
 
@@ -894,22 +980,25 @@ namespace OptimierungsAlgoCFD.Core
 
             if (decision3D.Gci != null)
             {
-                root["Gci"] = new JsonObject
-                {
-                    ["ObservedOrderP"] = decision3D.Gci.ObservedOrderP,
-                    ["GciFinePercent"] = decision3D.Gci.GciFinePercent,
-                    ["GciSelectedPercent"] = decision3D.Gci.GciSelectedPercent,
-                    ["IsMonotonic"] = decision3D.Gci.IsMonotonic,
-                    ["Warning"] = decision3D.Gci.Warning,
-                    // Richardson-Extrapolation der Hauptgröße (null, wenn die Folge nicht monoton ist)
-                    ["ExtrapolatedValue"] = float.IsFinite(decision3D.Gci.ExtrapolatedValue) ? decision3D.Gci.ExtrapolatedValue : null,
-                    ["ExtrapolatedDeviationPercent"] = float.IsFinite(decision3D.Gci.ExtrapolatedDeviationPercent) ? decision3D.Gci.ExtrapolatedDeviationPercent : null
-                };
+                root["Gci"] = BuildGciJsonObject(decision3D.Gci);
             }
 
             string jsonContent = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(jsonPath, jsonContent, Encoding.UTF8);
         }
+
+        internal static JsonObject BuildGciJsonObject(GciResult gci) => new()
+        {
+            ["ObservedOrderP"] = float.IsFinite(gci.ObservedOrderP) ? gci.ObservedOrderP : null,
+            ["GciFinePercent"] = float.IsFinite(gci.GciFinePercent) ? gci.GciFinePercent : null,
+            ["GciSelectedPercent"] = float.IsFinite(gci.GciSelectedPercent) ? gci.GciSelectedPercent : null,
+            ["IsMonotonic"] = gci.IsMonotonic,
+            ["IsAsymptotic"] = gci.IsAsymptotic,
+            ["Warning"] = gci.Warning,
+            // Richardson-Extrapolation der Hauptgröße (null, wenn nicht im asymptotischen Bereich)
+            ["ExtrapolatedValue"] = float.IsFinite(gci.ExtrapolatedValue) ? gci.ExtrapolatedValue : null,
+            ["ExtrapolatedDeviationPercent"] = float.IsFinite(gci.ExtrapolatedDeviationPercent) ? gci.ExtrapolatedDeviationPercent : null
+        };
 
         private static void SaveReports(
             string fullCalibDir,
@@ -941,17 +1030,7 @@ namespace OptimierungsAlgoCFD.Core
 
             if (decision.Gci != null)
             {
-                root["Gci"] = new JsonObject
-                {
-                    ["ObservedOrderP"] = decision.Gci.ObservedOrderP,
-                    ["GciFinePercent"] = decision.Gci.GciFinePercent,
-                    ["GciSelectedPercent"] = decision.Gci.GciSelectedPercent,
-                    ["IsMonotonic"] = decision.Gci.IsMonotonic,
-                    ["Warning"] = decision.Gci.Warning,
-                    // Richardson-Extrapolation der Hauptgröße (null, wenn die Folge nicht monoton ist)
-                    ["ExtrapolatedValue"] = float.IsFinite(decision.Gci.ExtrapolatedValue) ? decision.Gci.ExtrapolatedValue : null,
-                    ["ExtrapolatedDeviationPercent"] = float.IsFinite(decision.Gci.ExtrapolatedDeviationPercent) ? decision.Gci.ExtrapolatedDeviationPercent : null
-                };
+                root["Gci"] = BuildGciJsonObject(decision.Gci);
             }
 
             string jsonContent = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
@@ -1033,15 +1112,25 @@ namespace OptimierungsAlgoCFD.Core
 
             if (decision.Gci != null)
             {
-                writer.WriteLine($"   Beobachtete Ordnung p:        {decision.Gci.ObservedOrderP:F2}");
-                writer.WriteLine($"   GCI (Feinstes Netz):          {decision.Gci.GciFinePercent:F2} %");
-                writer.WriteLine($"   GCI (Gewähltes/Mittleres):    {decision.Gci.GciSelectedPercent:F2} %");
+                string pStr = float.IsFinite(decision.Gci.ObservedOrderP)
+                    ? decision.Gci.ObservedOrderP.ToString("F2", CultureInfo.InvariantCulture)
+                    : "n/a";
+                string gciFineStr = float.IsFinite(decision.Gci.GciFinePercent)
+                    ? $"{decision.Gci.GciFinePercent.ToString("F2", CultureInfo.InvariantCulture)} %"
+                    : "n/a";
+                string gciSelStr = float.IsFinite(decision.Gci.GciSelectedPercent)
+                    ? $"{decision.Gci.GciSelectedPercent.ToString("F2", CultureInfo.InvariantCulture)} %"
+                    : "n/a";
+
+                writer.WriteLine($"   Beobachtete Ordnung p:        {pStr}");
+                writer.WriteLine($"   GCI (Feinstes Netz):          {gciFineStr}");
+                writer.WriteLine($"   GCI (Gewähltes/Mittleres):    {gciSelStr}");
                 if (float.IsFinite(decision.Gci.ExtrapolatedValue))
                 {
                     writer.WriteLine($"   Extrapolierter netzunabhängiger Wert (Hauptgröße): {decision.Gci.ExtrapolatedValue.ToString("0.#####", CultureInfo.InvariantCulture)} "
                         + $"(feinstes Netz weicht {decision.Gci.ExtrapolatedDeviationPercent:0.0} % davon ab)");
                 }
-                if (!decision.Gci.IsMonotonic && decision.Gci.Warning != null)
+                if (decision.Gci.Warning != null)
                 {
                     writer.WriteLine($"   [WARNUNG] {decision.Gci.Warning}");
                 }

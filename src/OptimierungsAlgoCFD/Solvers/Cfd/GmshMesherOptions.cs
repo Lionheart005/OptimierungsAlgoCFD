@@ -9,7 +9,7 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
     /// <see cref="GmshCfdMesher"/> hardcodiert stand; seit 08.11.2026 auf genaue Rechnungen ausgelegt
     /// (Kanal 1000 × 300 × 300 mm mit 14 L Nachlauf, Prismen-Wandschicht, Nachlauf- und Detailbox).
     /// </summary>
-    public class GmshMesherOptions
+    public class GmshMesherOptions : ICalibrationMesherOptions
     {
         // --- Windkanal (Simulationsdomäne) in mm ---
 
@@ -141,6 +141,9 @@ namespace OptimierungsAlgoCFD.Solvers.Cfd
 
         /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.5).</summary>
         public float TargetYPlus { get; set; } = 1.5f;
+
+        /// <inheritdoc />
+        bool ICalibrationMesherOptions.Is3D => true;
 
         /// <summary>Mindestanzahl an Randschichten (Standard 4).</summary>
         public int BoundaryLayerMinLayers { get; set; } = 4;

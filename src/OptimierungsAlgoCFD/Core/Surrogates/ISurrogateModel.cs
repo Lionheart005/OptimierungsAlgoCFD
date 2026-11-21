@@ -21,8 +21,13 @@ namespace OptimierungsAlgoCFD.Core
         /// <exception cref="SurrogateFitException">Das Lernen ist numerisch gescheitert.</exception>
         void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs, IReadOnlyList<double>? noiseVariances = null);
 
-        /// <summary>Erwartungswert und <b>latente</b> Varianz (ohne Messrauschen) am Ort <paramref name="input"/>.</summary>
+        /// <summary>Erwartungswert und <b>latente</b> Varianz (ohne Messrauschen, für EI, Kriging Believer, Explorer) am Ort <paramref name="input"/>.</summary>
         (double Mean, double Variance) Predict(double[] input);
+
+        /// <summary>
+        /// Gelernte Beobachtungsrausch-Varianz σ_n² in Original-Ausgabeeinheiten (0, falls unbekannt).
+        /// </summary>
+        double ObservationNoiseVariance => 0.0;
 
         /// <summary>
         /// Trägt eine Scheinbeobachtung ein, ohne die Hyperparameter neu zu lernen. Gebraucht für

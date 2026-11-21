@@ -61,6 +61,10 @@ namespace OptimierungsAlgoCFD.Core
         public double NoiseVariance => _theta == null ? double.NaN : Math.Exp(_theta[_dimension + 1]);
 
         /// <inheritdoc/>
+        public double ObservationNoiseVariance =>
+            _theta == null ? 0.0 : Math.Exp(_theta[_dimension + 1]) * _outputScale * _outputScale;
+
+        /// <inheritdoc/>
         public IReadOnlyList<double>? ParameterRelevance
         {
             get
