@@ -1,0 +1,10 @@
+{
+  // MyInternalProject -- Project Settings (Single Source of Truth). See docs/creating-a-project.md
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": { "LengthMm": 80.0, "RadiusMm": 10.0 },
+  "ParameterBounds": {
+    "LengthMm": { "Min": 40.0, "Max": 150.0 },
+    "RadiusMm": { "Min": 6.0,  "Max": 20.0 }
+  },
+  "DimensionalParameters": [ "LengthMm", "RadiusMm" ]
+}

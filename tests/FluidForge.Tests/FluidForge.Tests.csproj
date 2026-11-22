@@ -46,4 +46,9 @@
              Exclude="..\..\src\projects\_Template2D\**\bin\**;..\..\src\projects\_Template2D\**\obj\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\src\projects\_TemplateInternal3D\**\*.cs"
+             Exclude="..\..\src\projects\_TemplateInternal3D\**\bin\**;..\..\src\projects\_TemplateInternal3D\**\obj\**" />
+  </ItemGroup>
+
 </Project>

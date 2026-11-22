@@ -335,6 +335,23 @@ namespace FluidForge.Core
                         ["BoundaryLayerMode"] = "Prism",
                         ["TargetYPlus"] = 2.0f,
                         ["DetailBox"] = false
+                    },
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "External3D",
+                        ["SymmetryPlane"] = "None",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 3.0f,
+                        ["BoundaryLayerLayers"] = 3,
+                        ["TargetYPlus"] = 30.0f,
+                        ["EndTime"] = 500,
+                        ["WriteInterval"] = 100,
+                        ["ResidualTarget"] = 5e-4f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["Drag"] = "Drag",
+                            ["Lift"] = "Lift"
+                        }
                     }
                 }),
 
@@ -382,6 +399,23 @@ namespace FluidForge.Core
                         ["BoundaryLayerMode"] = "Prism",
                         ["TargetYPlus"] = 1.5f,
                         ["DetailBox"] = false
+                    },
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "External3D",
+                        ["SymmetryPlane"] = "None",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 2.0f,
+                        ["BoundaryLayerLayers"] = 5,
+                        ["TargetYPlus"] = 5.0f,
+                        ["EndTime"] = 1000,
+                        ["WriteInterval"] = 200,
+                        ["ResidualTarget"] = 1e-4f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["Drag"] = "Drag",
+                            ["Lift"] = "Lift"
+                        }
                     }
                 }),
 
@@ -427,16 +461,35 @@ namespace FluidForge.Core
                         ["BoundaryLayerMode"] = "Prism",
                         ["TargetYPlus"] = 1.0f,
                         ["DetailBox"] = true
+                    },
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "External3D",
+                        ["SymmetryPlane"] = "None",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 1.2f,
+                        ["SurfaceRefinementLevelMin"] = 2,
+                        ["SurfaceRefinementLevelMax"] = 3,
+                        ["BoundaryLayerLayers"] = 8,
+                        ["TargetYPlus"] = 1.5f,
+                        ["EndTime"] = 2000,
+                        ["WriteInterval"] = 250,
+                        ["ResidualTarget"] = 5e-5f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["Drag"] = "Drag",
+                            ["Lift"] = "Lift"
+                        }
                     }
                 }),
 
-            // --- Internal3D (Phase 3 OpenFOAM placeholders) ---
+            // --- Internal3D (OpenFOAM internal flow) ---
             new(
                 name: "Internal3D:FastConcept",
                 domain: "Internal3D",
                 accuracy: "FastConcept",
-                description: "Phase 3 placeholder (OpenFOAM internal flow): fast concept budget/convergence overrides; no solver overrides yet.",
-                isPlaceholder: true,
+                description: "Fast 3D internal OpenFOAM screening with manual 1.5x mesh, 3 wall layers, y+ ~ 30, and verification off.",
+                isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
                     ["MaxIterations"] = 5,
@@ -457,14 +510,35 @@ namespace FluidForge.Core
                     {
                         ["Mode"] = "Off"
                     }
+                },
+                solverOverrides: new Dictionary<string, JsonObject>
+                {
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "Internal3D",
+                        ["MesherBackend"] = "SnappyHexMesh",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 3.0f,
+                        ["SurfaceRefinementLevelMin"] = 1,
+                        ["SurfaceRefinementLevelMax"] = 1,
+                        ["BoundaryLayerLayers"] = 3,
+                        ["TargetYPlus"] = 30.0f,
+                        ["EndTime"] = 500,
+                        ["WriteInterval"] = 100,
+                        ["ResidualTarget"] = 5e-4f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["PressureDrop"] = "PressureDrop"
+                        }
+                    }
                 }),
 
             new(
                 name: "Internal3D:StandardRans",
                 domain: "Internal3D",
                 accuracy: "StandardRans",
-                description: "Phase 3 placeholder (OpenFOAM internal flow): standard RANS budget/convergence overrides; no solver overrides yet.",
-                isPlaceholder: true,
+                description: "Production 3D internal OpenFOAM RANS optimization with auto mesh calibration (5%), 5 layers, y+ ~ 5, and Top-3 verification.",
+                isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
                     ["MaxIterations"] = 10,
@@ -486,14 +560,35 @@ namespace FluidForge.Core
                         ["TopN"] = 3,
                         ["RefinementSteps"] = 1
                     }
+                },
+                solverOverrides: new Dictionary<string, JsonObject>
+                {
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "Internal3D",
+                        ["MesherBackend"] = "SnappyHexMesh",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 2.0f,
+                        ["SurfaceRefinementLevelMin"] = 1,
+                        ["SurfaceRefinementLevelMax"] = 2,
+                        ["BoundaryLayerLayers"] = 5,
+                        ["TargetYPlus"] = 5.0f,
+                        ["EndTime"] = 1000,
+                        ["WriteInterval"] = 200,
+                        ["ResidualTarget"] = 1e-4f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["PressureDrop"] = "PressureDrop"
+                        }
+                    }
                 }),
 
             new(
                 name: "Internal3D:VerificationFine",
                 domain: "Internal3D",
                 accuracy: "VerificationFine",
-                description: "Phase 3 placeholder (OpenFOAM internal flow): fine verification budget/convergence overrides; no solver overrides yet.",
-                isPlaceholder: true,
+                description: "High-accuracy 3D internal OpenFOAM RANS with tight calibration (2%), 8 layers, y+ ~ 1.5, and 2k simpleFoam iterations.",
+                isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
                     ["MaxIterations"] = 10,
@@ -512,6 +607,27 @@ namespace FluidForge.Core
                         ["Mode"] = "FinalTopN",
                         ["TopN"] = 3,
                         ["RefinementSteps"] = 1
+                    }
+                },
+                solverOverrides: new Dictionary<string, JsonObject>
+                {
+                    ["solvers/openfoam.json"] = new JsonObject
+                    {
+                        ["DomainMode"] = "Internal3D",
+                        ["MesherBackend"] = "SnappyHexMesh",
+                        ["TurbulenceModel"] = "kOmegaSST",
+                        ["BaseCellSizeMm"] = 1.2f,
+                        ["SurfaceRefinementLevelMin"] = 2,
+                        ["SurfaceRefinementLevelMax"] = 3,
+                        ["BoundaryLayerLayers"] = 8,
+                        ["TargetYPlus"] = 1.5f,
+                        ["EndTime"] = 2000,
+                        ["WriteInterval"] = 250,
+                        ["ResidualTarget"] = 5e-5f,
+                        ["ResultMetrics"] = new JsonObject
+                        {
+                            ["PressureDrop"] = "PressureDrop"
+                        }
                     }
                 })
         };

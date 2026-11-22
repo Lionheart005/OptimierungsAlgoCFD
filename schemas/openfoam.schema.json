@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge OpenFoamOptions",
+  "description": "OpenFOAM mesher \u0026 CFD solver settings (solvers/openfoam.json).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "AddLayers": {
+      "type": "boolean",
+      "default": true
+    },
+    "AngleOfAttackDeg": {
+      "type": "number",
+      "default": 0
+    },
+    "BaseCellSizeMm": {
+      "type": "number",
+      "default": 2
+    },
+    "BoundaryLayerExpansionRatio": {
+      "type": "number",
+      "default": 1.2
+    },
+    "BoundaryLayerLayers": {
+      "type": "integer",
+      "default": 5
+    },
+    "CustomDictionaryOverrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
+    "CustomTemplateDirectory": {
+      "type": "string",
+      "default": ""
+    },
+    "Density": {
+      "type": "number",
+      "default": 998.2
+    },
+    "DomainMode": {
+      "type": "string",
+      "default": "Internal3D"
+    },
+    "DynamicViscosity": {
+      "type": "number",
+      "default": 0.001002
+    },
+    "EndTime": {
+      "type": "integer",
+      "default": 1000
+    },
+    "ExportVtk": {
+      "type": "boolean",
+      "default": false
+    },
+    "FallbackToCfMesh": {
+      "type": "boolean",
+      "default": false
+    },
+    "FeatureAngleDeg": {
+      "type": "number",
+      "default": 30
+    },
+    "FinalLayerThickness": {
+      "type": "number",
+      "default": 0.5
+    },
+    "FirstLayerThickness": {
+      "type": "number",
+      "default": 0.05
+    },
+    "HydraulicDiameter": {
+      "type": "number",
+      "default": 0
+    },
+    "InletCondition": {
+      "type": "string",
+      "default": "Velocity"
+    },
+    "InletDirection": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "InletMassFlowRate": {
+      "type": "number",
+      "default": 0
+    },
+    "InletPatchName": {
+      "type": "string",
+      "default": "inlet"
+    },
+    "InletVelocity": {
+      "type": "number",
+      "default": 1
+    },
+    "InletVolumetricFlowRate": {
+      "type": "number",
+      "default": 0
+    },
+    "MaxGlobalCells": {
+      "type": "integer",
+      "default": 8000000
+    },
+    "MaxLocalCells": {
+      "type": "integer",
+      "default": 2000000
+    },
+    "MaxMassBalanceErrorPercent": {
+      "type": "number",
+      "default": 1
+    },
+    "MaxNonOrthogonality": {
+      "type": "number",
+      "default": 65
+    },
+    "MaxSkewness": {
+      "type": "number",
+      "default": 4
+    },
+    "MesherBackend": {
+      "type": "string",
+      "default": "SnappyHexMesh"
+    },
+    "MinLayerCoveragePercent": {
+      "type": "number",
+      "default": 50
+    },
+    "MinLayerThickness": {
+      "type": "number",
+      "default": 0.1
+    },
+    "MpiRunPath": {
+      "type": "string",
+      "default": "/usr/bin/mpirun"
+    },
+    "OpenFoamBashrcPath": {
+      "type": "string",
+      "default": ""
+    },
+    "OutletPatchPrefix": {
+      "type": "string",
+      "default": "outlet"
+    },
+    "OutletPressure": {
+      "type": "number",
+      "default": 0
+    },
+    "ReferenceArea": {
+      "type": "number",
+      "default": 0
+    },
+    "ReferenceAreaMetric": {
+      "type": "string",
+      "default": "FrontalArea"
+    },
+    "ReferenceLength": {
+      "type": "number",
+      "default": 0.1
+    },
+    "RelativeDriftTolerance": {
+      "type": "number",
+      "default": 0.005
+    },
+    "RelativeLayerSizes": {
+      "type": "boolean",
+      "default": true
+    },
+    "ResidualTarget": {
+      "type": "number",
+      "default": 0.0001
+    },
+    "ResultMetrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "Solver": {
+      "type": "string",
+      "default": "simpleFoam"
+    },
+    "SurfaceRefinementLevelMax": {
+      "type": "integer",
+      "default": 2
+    },
+    "SurfaceRefinementLevelMin": {
+      "type": "integer",
+      "default": 1
+    },
+    "SymmetryPlane": {
+      "type": "string",
+      "default": "None"
+    },
+    "TargetYPlus": {
+      "type": "number",
+      "default": 5
+    },
+    "TrailingWindowIterations": {
+      "type": "integer",
+      "default": 100
+    },
+    "TreatUnconvergedAsFailed": {
+      "type": "boolean",
+      "default": true
+    },
+    "TunnelDownstreamFactor": {
+      "type": "number",
+      "default": 15
+    },
+    "TunnelLateralFactor": {
+      "type": "number",
+      "default": 5
+    },
+    "TunnelUpstreamFactor": {
+      "type": "number",
+      "default": 5
+    },
+    "TurbulenceIntensity": {
+      "type": "number",
+      "default": 0.05
+    },
+    "TurbulenceModel": {
+      "type": "string",
+      "default": "kOmegaSST"
+    },
+    "UsePotentialFoamInit": {
+      "type": "boolean",
+      "default": false
+    },
+    "WallPatchName": {
+      "type": "string",
+      "default": "wall"
+    },
+    "WriteInterval": {
+      "type": "integer",
+      "default": 200
+    },
+    "YPlusWarnFactor": {
+      "type": "number",
+      "default": 3
+    }
+  },
+  "additionalProperties": false
+}

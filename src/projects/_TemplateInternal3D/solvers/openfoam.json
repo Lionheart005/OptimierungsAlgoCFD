@@ -1,0 +1,7 @@
+{
+  // MyInternalProject -- OpenFOAM Solver & Mesher. Fluid overrides only; mesh/solver defaults come from Preset (docs/physics-presets.md).
+  "$schema": "../../../../schemas/openfoam.schema.json",
+  "Density": 998.2,
+  "DynamicViscosity": 0.001002,
+  "InletVelocity": 1.0
+}

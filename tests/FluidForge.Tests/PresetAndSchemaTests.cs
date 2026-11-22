@@ -9,6 +9,7 @@ using FluidForge.Cli;
 using FluidForge.Composition;
 using FluidForge.Core;
 using FluidForge.Solvers.Cfd;
+using FluidForge.Solvers.OpenFoam;
 using Xunit;
 
 namespace FluidForge.Tests
@@ -49,7 +50,7 @@ namespace FluidForge.Tests
                     Assert.NotNull(preset);
                     Assert.Equal(domain, preset!.Domain);
                     Assert.Equal(accuracy, preset.Accuracy);
-                    Assert.Equal(domain == "Internal3D", preset.IsPlaceholder);
+                    Assert.False(preset.IsPlaceholder);
 
                     // Validate SimulationOverrides against SimulationConfig
                     ConfigSchema.Validate(typeof(SimulationConfig), preset.SimulationOverrides, $"preset:{preset.Name}");
@@ -64,7 +65,9 @@ namespace FluidForge.Tests
                     // Validate solver overrides
                     if (domain == "Internal3D")
                     {
-                        Assert.Empty(preset.SolverOverrides);
+                        JsonObject? openFoam = preset.GetSolverOverrides("solvers/openfoam.json");
+                        Assert.NotNull(openFoam);
+                        ConfigSchema.Validate(typeof(OpenFoamOptions), openFoam!, $"preset:{preset.Name}/openfoam");
                     }
                     else
                     {
@@ -76,6 +79,13 @@ namespace FluidForge.Tests
                         ConfigSchema.Validate(typeof(Su2SolverOptions), su2!, $"preset:{preset.Name}/su2");
                         Type gmshType = domain == "External2D" ? typeof(Gmsh2DMesherOptions) : typeof(GmshMesherOptions);
                         ConfigSchema.Validate(gmshType, gmsh!, $"preset:{preset.Name}/gmsh");
+
+                        if (domain == "External3D")
+                        {
+                            JsonObject? openFoam = preset.GetSolverOverrides("solvers/openfoam.json");
+                            Assert.NotNull(openFoam);
+                            ConfigSchema.Validate(typeof(OpenFoamOptions), openFoam!, $"preset:{preset.Name}/openfoam");
+                        }
                     }
                 }
             }
@@ -292,11 +302,19 @@ namespace FluidForge.Tests
             Assert.True(File.Exists(Path.Combine(out2d, "solvers", "su2.json")));
             Assert.True(File.Exists(Path.Combine(out2d, "solvers", "gmsh.json")));
 
-            // 3. Dump Internal3D placeholder -> only simulation.json
+            // 3. Dump Internal3D preset -> simulation.json + solvers/openfoam.json
             string outInternal = Path.Combine(_tempRoot, "dumpInternal");
             InfoCommands.DumpPreset("Internal3D:StandardRans", outInternal);
             Assert.True(File.Exists(Path.Combine(outInternal, "simulation.json")));
+            Assert.True(File.Exists(Path.Combine(outInternal, "solvers", "openfoam.json")));
             Assert.False(File.Exists(Path.Combine(outInternal, "solvers", "su2.json")));
+
+            // 4. Dump External3D preset -> includes solvers/openfoam.json alongside su2/gmsh
+            string out3d = Path.Combine(_tempRoot, "dump3d");
+            InfoCommands.DumpPreset("External3D:StandardRans", out3d);
+            Assert.True(File.Exists(Path.Combine(out3d, "solvers", "su2.json")));
+            Assert.True(File.Exists(Path.Combine(out3d, "solvers", "gmsh.json")));
+            Assert.True(File.Exists(Path.Combine(out3d, "solvers", "openfoam.json")));
         }
 
         [Fact]
@@ -344,7 +362,8 @@ namespace FluidForge.Tests
                 ("project.schema.json", typeof(ProjectConfigDto)),
                 ("su2.schema.json", typeof(Su2SolverOptions)),
                 ("gmsh.schema.json", typeof(GmshMesherOptions)),
-                ("gmsh2d.schema.json", typeof(Gmsh2DMesherOptions))
+                ("gmsh2d.schema.json", typeof(Gmsh2DMesherOptions)),
+                ("openfoam.schema.json", typeof(OpenFoamOptions))
             };
 
             foreach (var (file, type) in expected)

@@ -195,7 +195,8 @@ namespace FluidForge.Tests
                 new Regex(@"\busing\s+(?:static\s+)?(?:FluidForge\.(?:Solvers|Kernels|Composition|Projects)|PicoGK|Leap71)\b"),
                 new Regex(@"\bFluidForge\.(?:Solvers|Kernels|Composition|Projects)\."),
                 new Regex(@"\bPicoGK\."),
-                new Regex(@"\bLeap71\.")
+                new Regex(@"\bLeap71\."),
+                new Regex(@"\bOpenFoam(?:Options|ProcessRunner|CaseGenerator|SnappyMesher|SimpleSolver|PostProcessor|ConvergenceJudge|MeshQualityParser)\b")
             };
 
             List<string> files = EnumerateCsFiles(coreDir).ToList();

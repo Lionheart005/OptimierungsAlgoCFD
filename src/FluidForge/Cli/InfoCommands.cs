@@ -8,6 +8,7 @@ using System.Text.Json;
 using FluidForge.Composition;
 using FluidForge.Core;
 using FluidForge.Solvers.Cfd;
+using FluidForge.Solvers.OpenFoam;
 
 namespace FluidForge.Cli
 {
@@ -140,9 +141,19 @@ namespace FluidForge.Cli
                     new Su2SolverOptions(), preset.Name, preset.GetSolverOverrides("solvers/su2.json"), printOrigins: false).Value;
                 GmshMesherOptions gmsh3d = JsonConfigLoader.LoadWithPresetCore(
                     new GmshMesherOptions(), preset.Name, preset.GetSolverOverrides("solvers/gmsh.json"), printOrigins: false).Value;
+                OpenFoamOptions openFoam = JsonConfigLoader.LoadWithPresetCore(
+                    new OpenFoamOptions(), preset.Name, preset.GetSolverOverrides("solvers/openfoam.json"), printOrigins: false).Value;
 
                 files["solvers/su2.json"] = JsonSerializer.Serialize(su2, PrettyJsonOptions) + Environment.NewLine;
                 files["solvers/gmsh.json"] = JsonSerializer.Serialize(gmsh3d, PrettyJsonOptions) + Environment.NewLine;
+                files["solvers/openfoam.json"] = JsonSerializer.Serialize(openFoam, PrettyJsonOptions) + Environment.NewLine;
+            }
+            else if (preset.Domain.Equals("Internal3D", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenFoamOptions openFoam = JsonConfigLoader.LoadWithPresetCore(
+                    new OpenFoamOptions(), preset.Name, preset.GetSolverOverrides("solvers/openfoam.json"), printOrigins: false).Value;
+
+                files["solvers/openfoam.json"] = JsonSerializer.Serialize(openFoam, PrettyJsonOptions) + Environment.NewLine;
             }
 
             if (!string.IsNullOrWhiteSpace(outDirectory))
@@ -185,7 +196,8 @@ namespace FluidForge.Cli
                 ("project.schema.json", typeof(ProjectConfigDto), "FluidForge ProjectConfig", "Project parameters, bounds, targets, and dimensional keys (project.json)."),
                 ("su2.schema.json", typeof(Su2SolverOptions), "FluidForge Su2SolverOptions", "SU2 CFD solver settings (solvers/su2.json)."),
                 ("gmsh.schema.json", typeof(GmshMesherOptions), "FluidForge GmshMesherOptions", "Gmsh 3D mesher settings (solvers/gmsh.json)."),
-                ("gmsh2d.schema.json", typeof(Gmsh2DMesherOptions), "FluidForge Gmsh2DMesherOptions", "Gmsh 2D mesher settings (solvers/gmsh.json for 2D projects).")
+                ("gmsh2d.schema.json", typeof(Gmsh2DMesherOptions), "FluidForge Gmsh2DMesherOptions", "Gmsh 2D mesher settings (solvers/gmsh.json for 2D projects)."),
+                ("openfoam.schema.json", typeof(OpenFoamOptions), "FluidForge OpenFoamOptions", "OpenFOAM mesher & CFD solver settings (solvers/openfoam.json).")
             };
 
             foreach (var (fileName, type, title, description) in targets)

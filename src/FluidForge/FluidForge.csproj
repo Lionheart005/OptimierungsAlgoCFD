@@ -41,7 +41,7 @@
     beim Anlegen des naechsten Projekts.
   -->
   <ItemGroup>
-    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Template3D\**;..\projects\_Template2D\**" />
+    <Compile Include="..\projects\**\*.cs" Exclude="..\projects\**\bin\**;..\projects\**\obj\**;..\projects\_Template3D\**;..\projects\_Template2D\**;..\projects\_TemplateInternal3D\**" />
   </ItemGroup>
 
 </Project>

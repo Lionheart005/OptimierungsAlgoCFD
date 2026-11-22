@@ -7,6 +7,7 @@ using FluidForge.Composition;
 using FluidForge.Core;
 using FluidForge.Projects.MantaAuv;
 using FluidForge.Solvers.Cfd;
+using FluidForge.Solvers.OpenFoam;
 
 namespace FluidForge.Tests
 {
@@ -93,6 +94,16 @@ namespace FluidForge.Tests
 
             var registry = ProjectRegistry.Discover(typeof(MantaProject).Assembly);
             IProjectDefinition definition = registry.Resolve(name);
+
+            if (definition is OpenFoamProjectDefinition)
+            {
+                var openFoam = context.LoadSolverOptions<OpenFoamOptions>("openfoam");
+                Assert.False(string.IsNullOrWhiteSpace(openFoam.DomainMode), $"{name}: DomainMode is empty.");
+                Assert.True(openFoam.Density > 0f, $"{name}: Density must be > 0.");
+                Assert.True(openFoam.DynamicViscosity > 0f, $"{name}: DynamicViscosity must be > 0.");
+                Assert.NotEmpty(openFoam.ResultMetrics);
+                return;
+            }
 
             var su2 = context.LoadSolverOptions<Su2SolverOptions>("su2");
 

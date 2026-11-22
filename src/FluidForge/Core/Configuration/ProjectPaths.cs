@@ -41,6 +41,11 @@ namespace FluidForge.Core
         /// </summary>
         public const string Template2DDirectoryName = "_Template2D";
 
+        /// <summary>
+        /// 3D internal-flow (OpenFOAM) template for new projects. Not counted as a project.
+        /// </summary>
+        public const string TemplateInternal3DDirectoryName = "_TemplateInternal3D";
+
         /// <summary>Any folder starting with this prefix is a template, not a runnable project.</summary>
         public const string TemplatePrefix = "_Template";
 

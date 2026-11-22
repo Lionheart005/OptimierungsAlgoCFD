@@ -19,7 +19,7 @@
     becomes the class name (<Name>Project) and namespace (FluidForge.Projects.<Name>).
 
 .PARAMETER Template
-    Template to copy: '3D' (uses _Template3D, default) or '2D' (uses _Template2D).
+    Template to copy: '3D' (uses _Template3D, default), '2D' (uses _Template2D), or 'Internal3D' (uses _TemplateInternal3D).
 
 .EXAMPLE
     .\scripts\new-project.ps1 Propeller
@@ -31,7 +31,7 @@ param(
     [string]$Name,
 
     [Parameter(Position = 1)]
-    [ValidateSet('3D', '2D')]
+    [ValidateSet('3D', '2D', 'Internal3D')]
     [string]$Template = '3D'
 )
 
@@ -39,15 +39,19 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ProjectsRoot = Join-Path $RepoRoot 'src\projects'
-$TemplateDir = if ($Template -eq '2D') {
-    Join-Path $ProjectsRoot '_Template2D'
-} else {
-    Join-Path $ProjectsRoot '_Template3D'
+$TemplateDir = switch ($Template) {
+    '2D'         { Join-Path $ProjectsRoot '_Template2D' }
+    'Internal3D' { Join-Path $ProjectsRoot '_TemplateInternal3D' }
+    default      { Join-Path $ProjectsRoot '_Template3D' }
 }
 
 # Placeholder token used in the template files.
 $Placeholder = 'MyProject'
-$ActivePlaceholder = if ($Template -eq '2D') { 'MyProject2D' } else { 'MyProject' }
+$ActivePlaceholder = switch ($Template) {
+    '2D'         { 'MyProject2D' }
+    'Internal3D' { 'MyInternalProject' }
+    default      { 'MyProject' }
+}
 
 # File extensions in which the placeholder is replaced. Binary or STL files are left untouched.
 $TextExtensions = @('.cs', '.json')
@@ -75,8 +79,8 @@ if ($Name -notmatch '^[A-Za-z][A-Za-z0-9_]*$') {
     throw "Invalid project name '$Name'. Must start with a letter followed by letters, digits, or underscores -- it also becomes the class name (${Name}Project) and namespace (FluidForge.Projects.${Name})."
 }
 
-if ($Name -eq $Placeholder -or $Name -eq 'MyProject2D') {
-    throw "'$Placeholder' is the template placeholder and cannot be used as a project name. Choose the actual name for your project."
+if ($Name -eq $Placeholder -or $Name -eq 'MyProject2D' -or $Name -eq 'MyInternalProject') {
+    throw "'$Name' is a template placeholder and cannot be used as a project name. Choose the actual name for your project."
 }
 
 if (-not (Test-Path $TemplateDir)) {
@@ -100,7 +104,11 @@ if ($existing) {
 # Copy
 # ---------------------------------------------------------------------------
 
-$templateName = if ($Template -eq '2D') { '_Template2D' } else { '_Template3D' }
+$templateName = switch ($Template) {
+    '2D'         { '_Template2D' }
+    'Internal3D' { '_TemplateInternal3D' }
+    default      { '_Template3D' }
+}
 Write-Step "Creating src/projects/$Name (copy of $templateName)"
 
 Copy-Item -Path $TemplateDir -Destination $TargetDir -Recurse

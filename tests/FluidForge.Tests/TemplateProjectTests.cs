@@ -9,6 +9,7 @@ using Xunit;
 
 using FluidForge.Core;
 using FluidForge.Projects.MantaAuv;
+using FluidForge.Projects.MyInternalProject;
 using FluidForge.Projects.MyProject;
 using FluidForge.Projects.MyProject2D;
 using FluidForge.Solvers.Cfd;
@@ -454,6 +455,68 @@ namespace FluidForge.Tests
                 new MyProject2DProject().Name,
                 registry.Names,
                 StringComparer.OrdinalIgnoreCase);
+        }
+
+        // ------------------------------------------------------------------
+        //  Internal3D template tests
+        // ------------------------------------------------------------------
+
+        [Theory]
+        [InlineData("project.json")]
+        [InlineData("simulation.json")]
+        [InlineData("solvers/openfoam.json")]
+        [InlineData("MyInternalProjectProject.cs")]
+        [InlineData("MyInternalProjectGeometryGenerator.cs")]
+        [InlineData("MyInternalProjectFitnessCalculator.cs")]
+        [InlineData("README.md")]
+        public void The_Internal3D_Template_Is_Complete(string relativeName)
+        {
+            string root = ProjectPaths.ResolveProjectsRoot()!;
+            string path = Path.Combine(root, ProjectPaths.TemplateInternal3DDirectoryName, relativeName.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(path), $"Missing {path}");
+        }
+
+        [Fact]
+        public void The_Internal3D_Template_Is_Slim_Commented_And_Isolated_From_Program()
+        {
+            string root = ProjectPaths.ResolveProjectsRoot()!;
+            string templateDir = Path.Combine(root, ProjectPaths.TemplateInternal3DDirectoryName);
+            string[] jsonFiles = { "project.json", "simulation.json", "solvers/openfoam.json" };
+
+            int totalKeys = 0;
+            foreach (string rel in jsonFiles)
+            {
+                string filePath = Path.Combine(templateDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                string text = File.ReadAllText(filePath);
+                Assert.Contains("//", text);
+
+                var obj = JsonNode.Parse(text, documentOptions: new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                }) as JsonObject;
+                Assert.NotNull(obj);
+
+                string? schemaRel = obj!["$schema"]?.GetValue<string>();
+                Assert.False(string.IsNullOrWhiteSpace(schemaRel));
+                string resolvedSchema = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(filePath)!, schemaRel!));
+                Assert.True(File.Exists(resolvedSchema), $"_TemplateInternal3D/{rel} $schema target missing: {resolvedSchema}");
+
+                totalKeys += obj.Count(e => !e.Key.Equals("$schema", StringComparison.OrdinalIgnoreCase));
+            }
+
+            Assert.True(totalKeys <= 15, $"_TemplateInternal3D has {totalKeys} keys (expected <= 15).");
+            Assert.DoesNotContain(ProjectPaths.TemplateInternal3DDirectoryName, ProjectPaths.ListProjectNames(), StringComparer.OrdinalIgnoreCase);
+
+            Assembly program = typeof(MantaProject).Assembly;
+            Assert.NotEqual(program, typeof(MyInternalProjectProject).Assembly);
+            Assert.DoesNotContain(new MyInternalProjectProject().Name, ProjectRegistry.Discover(program).Names, StringComparer.OrdinalIgnoreCase);
+
+            var fitness = new MyInternalProjectFitnessCalculator(new ProjectConfig());
+            var rec = new ModelRecord();
+            rec.PassiveParameters["PressureDrop"] = 120f;
+            fitness.CalculateFitness(rec, SimulationConfig.CreateDefault());
+            Assert.Equal(-120f, rec.Fitness, 3);
         }
     }
 }
