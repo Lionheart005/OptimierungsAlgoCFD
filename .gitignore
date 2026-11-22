@@ -15,6 +15,7 @@ logs/
 
 # Vom Server zurueckgeholte Laufergebnisse (scripts/sim.ps1 fetch)
 Serverergebnisse/
+server-results/
 
 # Stand des zuletzt auf den Server geschobenen Codes (liegt nur dort)
 .deploy_hash

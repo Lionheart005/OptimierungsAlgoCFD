@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using OptimierungsAlgoCFD.Core;
+using FluidForge.Core;
 
-namespace OptimierungsAlgoCFD.Projects.Naca2D
+namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
     /// Aerodynamische Bewertung für das 2D-NACA-Flügelprofil (TODO-47).

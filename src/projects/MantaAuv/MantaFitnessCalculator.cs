@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using OptimierungsAlgoCFD.Core;
+using FluidForge.Core;
 
-namespace OptimierungsAlgoCFD.Projects.MantaAuv
+namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
     /// Manta-Ray AUV Fitness-Berechnung.

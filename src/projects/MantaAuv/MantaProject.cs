@@ -1,7 +1,7 @@
-using OptimierungsAlgoCFD.Composition;
-using OptimierungsAlgoCFD.Core;
+using FluidForge.Composition;
+using FluidForge.Core;
 
-namespace OptimierungsAlgoCFD.Projects.MantaAuv
+namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
     /// Das Manta-Ray AUV, verdrahtet (TODO-23). Diese Klasse ersetzt den <c>case "MantaAuv":</c>,

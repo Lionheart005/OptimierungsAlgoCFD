@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 
-using OptimierungsAlgoCFD.Composition;
-using OptimierungsAlgoCFD.Core;
+using FluidForge.Composition;
+using FluidForge.Core;
 
-namespace OptimierungsAlgoCFD.Projects.Naca2D
+namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
     /// Verdrahtung des 2D-CFD-Projekts Naca2D (TODO-47).

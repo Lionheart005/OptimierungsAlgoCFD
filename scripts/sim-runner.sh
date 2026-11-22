@@ -34,9 +34,9 @@ SESSION="${SIM_SESSION:-sim}"
 # es nur einmal gibt.
 PROJECT_NAME="${SIM_PROJECT:-}"
 
-APP_PROJECT="$REPO_DIR/src/OptimierungsAlgoCFD/OptimierungsAlgoCFD.csproj"
-BIN_DIR="$REPO_DIR/src/OptimierungsAlgoCFD/bin/Debug/net9.0"
-APP_DLL="$BIN_DIR/OptimierungsAlgoCFD.dll"
+APP_PROJECT="$REPO_DIR/src/FluidForge/FluidForge.csproj"
+BIN_DIR="$REPO_DIR/src/FluidForge/bin/Debug/net9.0"
+APP_DLL="$BIN_DIR/FluidForge.dll"
 
 # Seit TODO-24 liegt alles Einstellbare im Projektordner. config/ enthaelt nur noch
 # die README und ggf. eine maschinenspezifische *.local.json -- es ist kein
@@ -63,7 +63,7 @@ PICOGK_BUILD_DIR="${PICOGK_BUILD_DIR:-$HOME/software/PicoGK/build}"
 # Das Prozessmuster, an dem wir unseren eigenen Lauf erkennen. Bewusst die DLL und
 # nicht "dotnet": ein pkill auf "dotnet" wuerde jeden anderen .NET-Prozess des
 # Nutzers mit abschiessen.
-PROCESS_PATTERN="OptimierungsAlgoCFD.dll"
+PROCESS_PATTERN="FluidForge.dll"
 
 # ---------------------------------------------------------------------------
 # Umgebung
@@ -114,7 +114,7 @@ list_project_folders() {
     [ -d "$PROJECTS_DIR" ] || return 0
 
     find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-        | grep -Ev '^(_Vorlage3D|bin|obj|\..*)$' | sort || true
+        | grep -Ev '^(_Template3D|_Template2D|bin|obj|\..*)$' | sort || true
 }
 
 # Bricht ab, wenn kein Projekt angegeben wurde, und leitet erst danach die

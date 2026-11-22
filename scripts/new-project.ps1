@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Legt ein neues Projekt an: kopiert src/projects/_Vorlage3D und setzt den Namen ein.
+    Legt ein neues Projekt an: kopiert src/projects/_Template3D und setzt den Namen ein.
 
 .DESCRIPTION
     Ein Projekt ist ein Ordner unter src/projects/ (Entscheidung 1: der Ordnername IST der
     Projektname). Dieses Skript nimmt die Vorlage, kopiert sie auf den gewuenschten Namen und
-    ersetzt darin das Platzhalterwort "MeinProjekt" -- in Dateinamen, Klassennamen, im
+    ersetzt darin das Platzhalterwort "MyProject" -- in Dateinamen, Klassennamen, im
     Namensraum und in den Kommentarkoepfen der JSON-Dateien.
 
     Danach ist NICHTS weiter anzumelden: die ProjectRegistry findet die neue
@@ -19,7 +19,7 @@
 .PARAMETER Name
     Der Projektname und damit der Ordnername. Muss ein gueltiger C#-Bezeichner sein, denn er
     wird auch zum Klassennamen (<Name>Project) und zum Namensraum
-    (OptimierungsAlgoCFD.Projects.<Name>).
+    (FluidForge.Projects.<Name>).
 
 .EXAMPLE
     .\scripts\new-project.ps1 Propeller
@@ -40,15 +40,15 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ProjectsRoot = Join-Path $RepoRoot 'src\projects'
 $TemplateDir = if ($Template -eq '2D') {
-    Join-Path $ProjectsRoot '_Vorlage2D'
+    Join-Path $ProjectsRoot '_Template2D'
 } else {
-    Join-Path $ProjectsRoot '_Vorlage3D'
+    Join-Path $ProjectsRoot '_Template3D'
 }
 
 # Das Wort, das in der Vorlage ueberall steht, wo der Projektname hin muss. Bewusst ein Wort,
 # das in keinem deutschen Kommentarsatz vorkommt: "Vorlage" waere in Prosa mitgetroffen worden.
-$Placeholder = 'MeinProjekt'
-$ActivePlaceholder = if ($Template -eq '2D') { 'MeinProjekt2D' } else { 'MeinProjekt' }
+$Placeholder = 'MyProject'
+$ActivePlaceholder = if ($Template -eq '2D') { 'MyProject2D' } else { 'MyProject' }
 
 # Dateiendungen, in denen der Platzhalter ersetzt wird. Die STL- oder Binaerdateien eines
 # spaeteren Projekts sollen unangetastet bleiben, deshalb eine ausdrueckliche Liste.
@@ -75,10 +75,10 @@ function Write-Warn([string]$Text) {
 # Leerzeichen oder eine fuehrende Ziffer wuerden erst beim naechsten Build auffallen -- und
 # dann mit einer Fehlermeldung, die nicht von diesem Skript spricht.
 if ($Name -notmatch '^[A-Za-z][A-Za-z0-9_]*$') {
-    throw "Ungueltiger Projektname '$Name'. Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern und Unterstrich -- der Name wird auch Klassenname (${Name}Project) und Namensraum (OptimierungsAlgoCFD.Projects.${Name})."
+    throw "Ungueltiger Projektname '$Name'. Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern und Unterstrich -- der Name wird auch Klassenname (${Name}Project) und Namensraum (FluidForge.Projects.${Name})."
 }
 
-if ($Name -eq $Placeholder -or $Name -eq 'MeinProjekt2D') {
+if ($Name -eq $Placeholder -or $Name -eq 'MyProject2D') {
     throw "'$Placeholder' ist das Platzhalterwort der Vorlage und als Projektname nicht zu gebrauchen. Nimm den Namen, unter dem du das Projekt wirklich rechnen willst."
 }
 
@@ -104,7 +104,7 @@ if ($existing) {
 # Kopieren
 # ---------------------------------------------------------------------------
 
-$templateName = if ($Template -eq '2D') { '_Vorlage2D' } else { '_Vorlage3D' }
+$templateName = if ($Template -eq '2D') { '_Template2D' } else { '_Template3D' }
 Write-Step "Lege src/projects/$Name an (Kopie von $templateName)"
 
 Copy-Item -Path $TemplateDir -Destination $TargetDir -Recurse
@@ -205,13 +205,13 @@ Write-Host @"
 
     Ohne Server pruefen, ob die Konfigurationskette steht:
 
-        dotnet build OptimierungsAlgoCFD.sln
-        dotnet run --project src\OptimierungsAlgoCFD --no-build -- $Name --print-config
+        dotnet build FluidForge.sln
+        dotnet run --project src\FluidForge --no-build -- $Name --print-config
 
     Und dann rechnen:
 
         .\scripts\sim.ps1 run -Project $Name
 
-    src/projects/_Vorlage3D bleibt unberuehrt liegen, MantaAuv ebenso -- die Projekte
+    src/projects/_Template3D bleibt unberuehrt liegen, MantaAuv ebenso -- die Projekte
     kommen sich nicht in die Quere, auch die Ergebnisse nicht (Ergebnisse/$Name/).
 "@

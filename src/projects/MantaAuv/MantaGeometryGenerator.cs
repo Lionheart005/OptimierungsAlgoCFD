@@ -4,10 +4,10 @@ using System.IO;
 using System.Numerics;
 using PicoGK;
 
-using OptimierungsAlgoCFD.Core;
-using OptimierungsAlgoCFD.Kernels.PicoGk;
+using FluidForge.Core;
+using FluidForge.Kernels.PicoGk;
 
-namespace OptimierungsAlgoCFD.Projects.MantaAuv
+namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
     /// Manta-Ray AUV Geometrie-Generator.

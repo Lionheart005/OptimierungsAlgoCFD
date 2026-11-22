@@ -70,7 +70,7 @@ param(
 
     # Zielverzeichnis auf dem Server, relativ zum Home-Verzeichnis.
     # Bewusst NICHT das alte Automatisierung_v2: das bleibt als main-Referenz liegen.
-    [string]$RemoteDir = 'Documents/AutomatisierungCleanVersion',
+    [string]$RemoteDir = 'Documents/FluidForge',
 
     # Der Umschalter zwischen Projekten. Der Name ist der Ordnername unter src/projects/
     # (Entscheidung 1) und wird als SIM_PROJECT an sim-runner.sh durchgereicht.

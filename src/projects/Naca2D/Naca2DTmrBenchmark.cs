@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-using OptimierungsAlgoCFD.Solvers.Cfd;
+using FluidForge.Solvers.Cfd;
 
-namespace OptimierungsAlgoCFD.Projects.Naca2D
+namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
     /// Ergebnis eines Validierungsabgleichs gegen die NASA-TMR-Referenzdaten (TODO-47).

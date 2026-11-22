@@ -1,0 +1,30 @@
+{
+  // MyProject2D -- Projektvorgaben. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  //
+  // Der Projektname steht nur im Ordnernamen, nicht in dieser Datei.
+  // Was hier fehlt, kommt aus MyProject2DProject.CreateDefaults(); beide sind deckungsgleich.
+
+  // --- Startwerte der Parameter (mm); die Namen sind der Vertrag mit MyProject2DGeometryGenerator ---
+  "BaseParameters": {
+    "Chord": 50.0,
+    "Thickness": 6.0
+  },
+
+  // --- Anfaengliche Streuung je Parameter (Faustregel: etwa ein Zehntel der Spanne) ---
+  "MaxDeviations": {
+    "Chord": 5.0,
+    "Thickness": 0.6
+  },
+
+  // --- Harte Grenzen; der Algorithmus verlaesst sie nie ---
+  "ParameterBounds": {
+    "Chord": { "Min": 20.0, "Max": 100.0 },
+    "Thickness": { "Min": 2.0, "Max": 25.0 }
+  },
+
+  // --- Optimierungsziele fuer die Fitness-Formel (leer: die Vorlage minimiert nur den Widerstand) ---
+  "OptimizationTargets": {},
+
+  // --- Parameter, die eine Laenge sind (werden mitskaliert) ---
+  "DimensionalParameters": [ "Chord", "Thickness" ]
+}

@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
-using OptimierungsAlgoCFD.Core;
-using OptimierungsAlgoCFD.Kernels.Planar2D;
+using FluidForge.Core;
+using FluidForge.Kernels.Planar2D;
 
-namespace OptimierungsAlgoCFD.Projects.Naca2D
+namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
     /// Parametrischer 2D-Geometrie-Generator für 4-stellige NACA-Tragflügelprofile (TODO-47).

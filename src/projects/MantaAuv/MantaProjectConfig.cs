@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 
-using OptimierungsAlgoCFD.Core;
+using FluidForge.Core;
 
-namespace OptimierungsAlgoCFD.Projects.MantaAuv
+namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
     /// Projektspezifische Konfiguration für das Manta-Ray AUV.
