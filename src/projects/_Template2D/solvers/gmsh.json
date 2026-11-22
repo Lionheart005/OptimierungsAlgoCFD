@@ -1,38 +1,5 @@
 {
-  // MyProject2D -- Gmsh 2D Mesher. Plain-text reference: src/projects/BEDIENHANDBUCH.md
-  //
-  // Lists every key with its code default (Solvers/Cfd/Gmsh2DMesherOptions.cs).
-  // All dimensionless factors are multiples of chord length c (at mesh level 1.0).
-
-  // --- Farfield: circle of radius FarfieldRadiusFactor x c (500 matches NASA TMR grids) ---
-  "FarfieldRadiusFactor": 500.0,
-  "FarfieldCircleSegments": 64,
-
-  // --- Boundary layer (BoundaryLayerLayers = 0 -> automatic) ---
-  // TargetYPlus sets y1 here and must stay in sync with solvers/su2.json.
-  "TargetYPlus": 1.0,
-  "BoundaryLayerGrowthRate": 1.2,
-  "BoundaryLayerMinLayers": 4,
-  "BoundaryLayerLayers": 0,
-
-  // --- Cell sizes (SurfaceCellSizeMm in mm when > 0; NearfieldGrowthDistanceFactor = 0 -> automatic) ---
-  "SurfaceCellSizeFactor": 0.01,
-  "SurfaceCellSizeMm": 0.0,
-  "NearfieldCellSizeFactor": 0.04,
-  "FarfieldCellSizeFactor": 25.0,
-  "NearfieldGrowthDistanceFactor": 0.0,
-
-  // --- Wake refinement boxes behind the airfoil ---
-  "WakeRefinement": true,
-  "WakeLengthFactor": 3.0,
-  "WakeWidthFactor": 0.6,
-  "WakeCellSizeFactor": 0.04,
-  "DetailBox": true,
-  "DetailBoxLengthFactor": 1.0,
-  "DetailBoxWidthFactor": 0.25,
-  "DetailBoxCellSizeFactor": 0.01,
-
-  // --- Leading and trailing edges: wall cell size = EdgeRefinementFactor x contour cell size (1 = off) ---
-  "EdgeRefinementFactor": 0.25,
-  "EdgeRefinementDistanceFactor": 0.1
+  // MyProject2D -- Gmsh 2D Mesher. All meshing defaults come from the active Preset in ../simulation.json.
+  // Override any expert keys here if needed (full list: docs/config-reference.md or `--dump-preset External2D:StandardRans`).
+  "$schema": "../../../../schemas/gmsh2d.schema.json"
 }

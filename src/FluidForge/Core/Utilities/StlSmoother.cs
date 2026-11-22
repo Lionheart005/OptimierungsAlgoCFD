@@ -71,7 +71,7 @@ namespace FluidForge.Core
                 return;
             }
 
-            VertexMerger merger = new VertexMerger(1e-2f);
+            VertexMerger merger = new VertexMerger(1e-5f);
             List<int> indices = new List<int>();
 
             using (BinaryReader br = new BinaryReader(File.OpenRead(inputPath)))

@@ -36,7 +36,7 @@ namespace FluidForge.Projects.MyProject
             string outputDirectory,
             SimulationConfig config)
         {
-            // Parameters come from project.json (or CreateDefaults) and are already scaled to
+            // Parameters come from project.json and are already scaled to
             // PicoGK's working size — the controller scales reported metrics back afterward.
             float length = Read(parameters, "Length");
             float width = Read(parameters, "Width");
@@ -139,8 +139,7 @@ namespace FluidForge.Projects.MyProject
             throw new InvalidOperationException(
                 $"[GEOMETRY] Missing parameter '{name}'. Present: "
                 + (parameters.Count > 0 ? string.Join(", ", parameters.Keys) : "(none)")
-                + ". Add it to BaseParameters, MaxDeviations, and ParameterBounds in "
-                + "project.json -- and to the same three dictionaries in CreateDefaults().");
+                + ". Add it to BaseParameters and ParameterBounds in project.json.");
         }
     }
 }

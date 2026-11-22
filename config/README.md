@@ -1,7 +1,7 @@
 # `config/` — Escape Hatch for Machine-Specific Overrides (`*.local.json`)
 
 > **Related Documentation:**
-> - **Legacy User Manual & JSON Reference (Layers 1–4):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
+> - **Configuration Key Reference & Layer Precedence:** [`docs/config-reference.md`](../docs/config-reference.md) | [`docs/physics-presets.md`](../docs/physics-presets.md)
 > - **Configuration Loader Architecture:** [`src/FluidForge/README.md`](../src/FluidForge/README.md)
 > - **Server Control & Deployment:** [`scripts/README.md`](../scripts/README.md)
 

@@ -1,50 +1,65 @@
 # FluidForge — Automated CFD Shape Optimization
 
-Inspired by various ideas online and in publications — not least by Leap71 — I wanted to explore what an optimization framework could look like that generates and optimizes complex geometries purely in code, independent of heavy CAD programs with cumbersome GUIs.
+FluidForge is a code-first optimization framework that couples parametric C# geometry generation (3D voxel modeling via PicoGK and analytical 2D contours via `Planar2D`), automated meshing (`Gmsh`), and CFD flow solving (`SU2`) with online Bayesian optimization (`Bayes`) and an inverse-distance-weighted baseline (`IdwBaseline`).
 
-It was especially important to me to keep the pipeline completely independent of proprietary third-party software suites, so that everything can be scaled to arbitrary complexity. There are no limits on parameters, objective functions, model complexity, runtime, or algorithm choice. Long-term, the goal would be to connect a neural network that generates the C# code for PicoGK itself and evaluates n-dimensional optimization problems that become too complex for brute-force methods.
+Every project lives in its own folder under `src/projects/<Name>/` with clean JSON configuration files, curated physics presets, and JSON Schema autocomplete for VS Code.
 
-Much of this was built with AI assistance; I am not a professional software developer and therefore very open to feedback and criticism.
+## 5-Minute Quickstart
 
-## How It Works
+1. **Create a new project** from the 3D or 2D template:
+   ```powershell
+   .\scripts\new-project.ps1 MyComponent                  # 3D (PicoGK -> Gmsh 3D -> SU2)
+   .\scripts\new-project.ps1 MyAirfoil -Template 2D       # 2D (Planar2D -> Gmsh 2D -> SU2)
+   ```
+2. **Edit geometry, fitness, and parameters:**
+   - Parameters & bounds (`project.json`, Single Source of Truth)
+   - Geometry (`<Name>GeometryGenerator.cs`)
+   - Objective function (`<Name>FitnessCalculator.cs`, framework maximizes `Fitness`)
+   - Preset & overrides (`simulation.json`, e.g. `"Preset": "External3D:StandardRans"`)
+3. **Verify configuration & run unit tests locally (no CFD solvers needed):**
+   ```powershell
+   dotnet build FluidForge.sln
+   dotnet test FluidForge.sln --filter "Category!=Integration"
+   dotnet run --project src\FluidForge --no-build -- MyComponent --print-config
+   dotnet run --project src\FluidForge --no-build -- MyComponent --smoke-test
+   ```
+4. **Deploy and run on the Linux compute server:**
+   ```powershell
+   .\scripts\sim.ps1 doctor -Project MyComponent
+   .\scripts\sim.ps1 run    -Project MyComponent
+   .\scripts\sim.ps1 log
+   .\scripts\sim.ps1 fetch  -Project MyComponent
+   ```
 
-You describe the shape to be optimized in C# code and define active design variables that the optimizer may adjust (such as length and height, or more complex mathematical functions — anything you can express in code). You then define passive parameters that result indirectly from the shape, such as volume and surface area, and choose an objective function (fitness) for the optimizer to maximize. A classic example is `Fitness = Volume / Drag` (maximizing usable volume while minimizing drag).
+## Physics & Workflow Presets
 
-You run your component through the optimization loop, and at the end the framework outputs the parameter values that achieved the best fitness score — along with the printable `.stl` model (in 3D) or `.svg`/contour model (in 2D).
+Instead of tuning dozens of solver and meshing knobs manually, `simulation.json` can select a curated Layer 1.5 preset (`Domain:Accuracy`):
 
-The optimization algorithms and physics solvers are modular and interchangeable while the core pipeline remains the same. Available optimizers are **Bayesian Optimization** (`Bayes`, default) and an inverse-distance-weighted baseline (`IdwBaseline`). `Bayes` learns a surrogate model (Gaussian Process, implemented in pure C# with no pretraining and no GPU) including uncertainty from previous evaluations and proposes candidates where Expected Improvement is highest, saving expensive CFD runs while still simulating every proposed candidate with the real solver. Currently, 2D and 3D fluid simulations in a flow channel are supported using SU2 and Gmsh. The 3D geometry kernel is PicoGK; the 2D kernel (`Planar2D`) is custom-built to follow PicoGK-style conventions.
+| Domain \ Accuracy | `FastConcept` | `StandardRans` | `VerificationFine` |
+|---|---|---|---|
+| `External2D` | 2D manual 1.5x mesh, $y^+ \approx 1.5$, 200c farfield | 2D auto-calibrated (5%), $y^+ \approx 1.0$, 500c farfield | 2D auto-calibrated (2%), $y^+ \approx 0.8$, 10k SU2 iters |
+| `External3D` | 3D manual 1.5x mesh, prism $y^+ \approx 2.0$, fast budget | 3D auto-calibrated (5%), prism $y^+ \approx 1.5$, Top-3 verify | 3D auto-calibrated (2%), prism $y^+ \approx 1.0$, DetailBox on |
+| `Internal3D` | Phase 3 OpenFOAM placeholder | Phase 3 OpenFOAM placeholder | Phase 3 OpenFOAM placeholder |
 
-Feedback and contributions are always welcome!
+Inspect presets and effective values anytime via CLI:
+```powershell
+dotnet run --project src\FluidForge -- --dump-preset
+dotnet run --project src\FluidForge -- --dump-preset External3D:StandardRans
+```
 
-~ Leonardo Pleißner
+## Documentation (`docs/` & Guides)
 
----
-
-## Documentation & Manuals
-
-Detailed documentation is organized by topic:
-
-- **[Legacy User Manual (`src/projects/BEDIENHANDBUCH.md`)](src/projects/BEDIENHANDBUCH.md)**  
-  Comprehensive reference for all JSON settings (`project.json`, `simulation.json`, `su2.json`, `gmsh.json`), CLI commands, and result files. *(Note: This legacy manual is currently still in German and will be replaced by modular English documentation under `docs/` in Phase 2.)*
-- **[Creating a New Component / Project (`src/projects/README.md`)](src/projects/README.md)**  
-  Step-by-step guide for creating custom 3D and 2D projects via `.\scripts\new-project.ps1`, implementing geometry (`IGeometryGenerator`) and fitness (`IFitnessCalculator`), and working with the templates [`_Template3D/`](src/projects/_Template3D/README.md) (3D) and [`_Template2D/`](src/projects/_Template2D/README.md) (2D).
-- **[3D Geometry Manual: PicoGK (`src/FluidForge/Kernels/PicoGk/README.md`)](src/FluidForge/Kernels/PicoGk/README.md)**  
-  Guide to 3D voxel modeling with PicoGK (`Lattice`, `Voxels`, `Mesh`, Boolean operations, `Offset` blending, STL smoothing, `PicoGkMeshMetrics`), including links to the official PicoGK documentation.
-- **[2D Geometry Manual: `Planar2D` Kernel (`src/FluidForge/Kernels/Planar2D/README.md`)](src/FluidForge/Kernels/Planar2D/README.md)**  
-  Guide to the analytical 2D geometry kernel (`Shape2D`, `Lattice2D`, `BBox2`, polygons, Catmull-Rom splines, `TripleOffset`, automatic corner detection for 2D CFD boundary layers, JSON & SVG export).
-- **[Architecture & Developer Guide (`src/FluidForge/README.md`)](src/FluidForge/README.md)**  
-  Technical documentation of the C# framework: repository and layer architecture (`Core`, `Composition`, `Kernels`, `Solvers`), interfaces, data models, algorithms, configuration loader, PicoGK/Gmsh/SU2 integration, and test architecture.
-- **[Server, Deployment & Setup Guide (`scripts/README.md`)](scripts/README.md)**  
-  Running and monitoring jobs on a Linux compute server from Windows (`sim.ps1`, `sim-runner.sh`, `resume`, `fetch`), convergence plotting (`plot_history.py`), and server setup without root/sudo privileges (`setup_server.sh`).
-- **[Third-Party Notices (`THIRD_PARTY_NOTICES.md`)](THIRD_PARTY_NOTICES.md)**  
-  Libraries and external tools used (PicoGK, Clipper2, SU2, Gmsh, MPICH), their licenses, and distribution notes.
-- **[Local Override Configuration (`config/README.md`)](config/README.md)**  
-  How gitignored `*.local.json` files work for machine-specific executable paths.
-- **[Development Roadmap & Plans (`.plans/README.md`)](.plans/README.md)**  
-  Overview of the current roadmap and phase plans.
-
----
+- **[Creating a New Project (`docs/creating-a-project.md`)](docs/creating-a-project.md)** — 2D/3D quickstart, `project.json` Single Source of Truth, geometry, fitness, and local checks.
+- **[Physics Presets & Configuration Layers (`docs/physics-presets.md`)](docs/physics-presets.md)** — Preset matrix, Layer 1–4 precedence, `--print-config`, `--dump-preset`, and VS Code JSON Schemas (`schemas/`).
+- **[Server Workflow (`docs/server-workflow.md`)](docs/server-workflow.md)** — Deploying, monitoring, fetching, resuming, calibrating, and rechecking with `scripts/sim.ps1`.
+- **[Configuration Reference (`docs/config-reference.md`)](docs/config-reference.md)** — Exhaustive key-by-key reference for `simulation.json`, `project.json`, `solvers/su2.json`, and `solvers/gmsh.json`.
+- **[Project Folder Overview (`src/projects/README.md`)](src/projects/README.md)** — Existing projects (`MantaAuv`, `Naca2D`) and templates (`_Template3D`, `_Template2D`).
+- **[3D Geometry Kernel: PicoGK (`src/FluidForge/Kernels/PicoGk/README.md`)](src/FluidForge/Kernels/PicoGk/README.md)** — Voxel modeling (`Lattice`, `Voxels`, `Mesh`, `Offset`, `StlSmoother`).
+- **[2D Geometry Kernel: `Planar2D` (`src/FluidForge/Kernels/Planar2D/README.md`)](src/FluidForge/Kernels/Planar2D/README.md)** — Analytical 2D contours (`Shape2D`, `Lattice2D`, corner detection).
+- **[Architecture & Developer Guide (`src/FluidForge/README.md`)](src/FluidForge/README.md)** — Clean architecture, interfaces, pipeline internals, and test suite.
+- **[Local Override Escape Hatch (`config/README.md`)](config/README.md)** — Machine-specific `*.local.json` rules.
+- **[Third-Party Notices (`THIRD_PARTY_NOTICES.md`)](THIRD_PARTY_NOTICES.md)** — PicoGK, Clipper2, SU2, Gmsh, and MPICH licenses.
 
 ## License
 
-The code in this repository is licensed under the [MIT License](LICENSE). Third-party libraries and external tools (PicoGK, Clipper2, SU2, Gmsh, MPICH) are subject to their own licenses; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Licensed under the [MIT License](LICENSE). See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for third-party components.

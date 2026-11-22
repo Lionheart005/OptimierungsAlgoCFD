@@ -13,12 +13,12 @@ namespace FluidForge.Core
     {
         private const double MinSeparation = 1e-3;
         private const int FullSamples = SurrogateModelEnsemble.FullSamples;
-        private const int ScreenSamples = 8;
+        private const int ScreenSamples = 16;
         private const int ScreenSurvivors = 200;
         private const int LocalStarts = 10;
         private const int LocalSteps = 30;
 
-        /// <summary>Number of standard deviations above the mean for the optimistic estimate in "Fitness" mode (Metrics: best of 64 samples, approx. 2.4).</summary>
+        /// <summary>Number of standard deviations above the mean for the optimistic estimate in "Fitness" mode (Metrics: best of 128 samples, approx. 2.4).</summary>
         private const double OptimismSigmas = 2.4;
 
         /// <summary>Candidates with a repulsion factor below this threshold (crash zone, near failures) are excluded from fallback and explorer selection.</summary>
@@ -99,14 +99,17 @@ namespace FluidForge.Core
 
         private (double[]? Center, double Best) RegionalBest(SurrogateTrainingSet training)
         {
+            IReadOnlyList<ModelRecord> records = training.FeasibleRecords.Count > 0 ? training.FeasibleRecords : training.Records;
+            IReadOnlyList<double[]> inputs = training.FeasibleRecords.Count > 0 ? training.FeasibleInputs : training.Inputs;
+
             int best = -1;
-            for (int i = 0; i < training.Records.Count; i++)
+            for (int i = 0; i < records.Count; i++)
             {
-                if (_trustSnapshot != null && _trustSnapshot.Contains(training.Records[i])) continue;
-                if (best < 0 || training.Records[i].Fitness > training.Records[best].Fitness) best = i;
+                if (_trustSnapshot != null && _trustSnapshot.Contains(records[i])) continue;
+                if (best < 0 || records[i].Fitness > records[best].Fitness) best = i;
             }
 
-            return best < 0 ? (null, double.NegativeInfinity) : (training.Inputs[best], training.Records[best].Fitness);
+            return best < 0 ? (null, double.NegativeInfinity) : (inputs[best], records[best].Fitness);
         }
 
         private static (double[] Lo, double[] Hi) TrustBox(double[] center, double length, double[] relevance)
@@ -135,7 +138,7 @@ namespace FluidForge.Core
             double[][] pool = UniformPool(Math.Max(500, _tuning.CandidatePool / 5), d, _random);
 
             double[] values;
-            if (_ensemble.ActiveMode == SurrogateTargetMode.Fitness)
+            if (fit.Slots.Count > 0 && fit.ConstraintSlots.Count == 0 && _ensemble.ActiveMode == SurrogateTargetMode.Fitness)
             {
                 values = new double[pool.Length];
                 SurrogateSlot slot = fit.Slots[0];
@@ -159,42 +162,41 @@ namespace FluidForge.Core
         {
             int d = lo.Length;
             var pool = new double[size][];
-            int uniform = size / 2;
+            bool hasAnchors = training.Records.Count > 0;
+            int uniform = hasAnchors ? size / 2 : size;
 
+            double[][] sobol = SobolSequence.GenerateShifted(uniform, d, _random);
             for (int i = 0; i < uniform; i++)
             {
                 var p = new double[d];
-                for (int k = 0; k < d; k++) p[k] = lo[k] + _random.NextDouble() * (hi[k] - lo[k]);
+                for (int k = 0; k < d; k++) p[k] = lo[k] + sobol[i][k] * (hi[k] - lo[k]);
                 pool[i] = p;
             }
 
-            var bestPoints = Enumerable.Range(0, training.Records.Count)
-                .OrderByDescending(i => training.Records[i].Fitness).ThenBy(i => i)
-                .Take(5).Select(i => training.Inputs[i]).ToList();
-
-            for (int i = uniform; i < size; i++)
+            if (hasAnchors)
             {
-                double[] anchor = bestPoints[(i - uniform) % bestPoints.Count];
-                var p = new double[d];
-                for (int k = 0; k < d; k++)
-                    p[k] = Math.Clamp(anchor[k] + 0.1 * NormalDistribution.Sample(_random), lo[k], hi[k]);
-                pool[i] = p;
+                IReadOnlyList<ModelRecord> anchorRecords = training.FeasibleRecords.Count > 0 ? training.FeasibleRecords : training.Records;
+                IReadOnlyList<double[]> anchorInputs = training.FeasibleRecords.Count > 0 ? training.FeasibleInputs : training.Inputs;
+
+                var bestPoints = Enumerable.Range(0, anchorRecords.Count)
+                    .OrderByDescending(i => anchorRecords[i].Fitness).ThenBy(i => i)
+                    .Take(5).Select(i => anchorInputs[i]).ToList();
+
+                for (int i = uniform; i < size; i++)
+                {
+                    double[] anchor = bestPoints[(i - uniform) % bestPoints.Count];
+                    var p = new double[d];
+                    for (int k = 0; k < d; k++)
+                        p[k] = Math.Clamp(anchor[k] + 0.1 * NormalDistribution.Sample(_random), lo[k], hi[k]);
+                    pool[i] = p;
+                }
             }
 
             return pool;
         }
 
         private static double[][] UniformPool(int size, int d, Random random)
-        {
-            var pool = new double[size][];
-            for (int i = 0; i < size; i++)
-            {
-                var p = new double[d];
-                for (int k = 0; k < d; k++) p[k] = random.NextDouble();
-                pool[i] = p;
-            }
-            return pool;
-        }
+            => SobolSequence.GenerateShifted(size, d, random);
 
         private static double SquaredDistance(double[] a, double[] b)
         {
@@ -218,10 +220,10 @@ namespace FluidForge.Core
             FittedEnsemble fit, ParameterSpace space, double[][] pool,
             List<double[]> known, List<double[]> chosen, double[] lo, double[] hi)
         {
-            bool monteCarlo = _ensemble.ActiveMode == SurrogateTargetMode.Metrics;
+            bool monteCarlo = fit.Slots.Count > 0 && fit.HasFeasibleIncumbent && _ensemble.ActiveMode == SurrogateTargetMode.Metrics;
 
             // Stage 1: full pool (in "Metrics" mode pre-screened with a small sample count)
-            var (ei, _, _, pred, rep) = Score(fit, space, pool, monteCarlo ? ScreenSamples : FullSamples);
+            var (ei, _, _, pred, rep, pFeas) = Score(fit, space, pool, monteCarlo ? ScreenSamples : FullSamples);
             var order = Enumerable.Range(0, pool.Length).OrderByDescending(i => ei[i]).ThenBy(i => i).ToList();
 
             var candidates = new List<double[]>();
@@ -251,9 +253,19 @@ namespace FluidForge.Core
                 // exploration is handled by the dedicated explorer slot.
                 FallbackSelections++;
 
+                bool hasConstraints = fit.ConstraintSlots.Count > 0;
                 var shortlist = Enumerable.Range(0, pool.Length)
-                    .Where(i => rep[i] > MinRepulsionFactor && double.IsFinite(pred[i]))
+                    .Where(i => rep[i] > MinRepulsionFactor
+                                && double.IsFinite(pred[i])
+                                && (!hasConstraints || !fit.HasFeasibleIncumbent || pFeas[i] >= 0.25))
                     .OrderByDescending(i => pred[i]).ThenBy(i => i).ToList();
+
+                if (shortlist.Count == 0)
+                    shortlist = Enumerable.Range(0, pool.Length)
+                        .Where(i => rep[i] > MinRepulsionFactor && double.IsFinite(pred[i]))
+                        .OrderByDescending(i => hasConstraints ? pFeas[i] : pred[i])
+                        .ThenByDescending(i => pred[i]).ThenBy(i => i).ToList();
+
                 if (shortlist.Count == 0)
                     shortlist = Enumerable.Range(0, pool.Length).OrderByDescending(i => pred[i]).ThenBy(i => i).ToList();
 
@@ -300,22 +312,31 @@ namespace FluidForge.Core
             FittedEnsemble fit, ParameterSpace space, List<double[]> known, List<double[]> chosen, int d)
         {
             double[][] pool = UniformPool(Math.Max(500, _tuning.CandidatePool / 2), d, _random);
-            var (_, unc, opt, _, rep) = Score(fit, space, pool, _ensemble.ActiveMode == SurrogateTargetMode.Metrics ? ScreenSamples : 1);
+            int samples = fit.Slots.Count > 0 && fit.HasFeasibleIncumbent && _ensemble.ActiveMode == SurrogateTargetMode.Metrics
+                ? ScreenSamples
+                : 1;
+            var (_, unc, opt, _, rep, pFeas) = Score(fit, space, pool, samples);
 
+            bool hasConstraints = fit.ConstraintSlots.Count > 0;
             List<int> plausible = Enumerable.Range(0, pool.Length)
-                .Where(i => rep[i] > MinRepulsionFactor && opt[i] >= -fit.PlausibleGap)
+                .Where(i => rep[i] > MinRepulsionFactor
+                            && opt[i] >= -fit.PlausibleGap
+                            && (!hasConstraints || pFeas[i] >= 0.25))
                 .ToList();
 
             IEnumerable<int> ranking = plausible.Count > 0
                 ? plausible.OrderByDescending(i => unc[i]).ThenBy(i => i)
-                : Enumerable.Range(0, pool.Length).OrderByDescending(i => opt[i]).ThenBy(i => i);
+                : Enumerable.Range(0, pool.Length)
+                    .OrderByDescending(i => hasConstraints ? pFeas[i] : opt[i])
+                    .ThenByDescending(i => opt[i])
+                    .ThenBy(i => i);
 
             return ranking.Select(i => pool[i]).FirstOrDefault(p => !IsTooClose(p, known) && !IsTooClose(p, chosen));
         }
 
         /// <summary>
         /// Expected improvement and uncertainty for a batch of candidates, multiplied by
-        /// repulsion from failed locations.
+        /// constraint feasibility probability <c>∏ P(margin_k &gt;= 0)</c> and repulsion from failed locations.
         /// </summary>
         /// <remarks>
         /// <c>Opt</c> is the optimistic improvement: the best sample ("Metrics" mode) or
@@ -323,18 +344,24 @@ namespace FluidForge.Core
         /// improvement of predicted (mean) fitness without uncertainty. <c>Rep</c> is the
         /// repulsion factor (0..1).
         /// </remarks>
-        private (double[] Ei, double[] Unc, double[] Opt, double[] Pred, double[] Rep) Score(
+        private (double[] Ei, double[] Unc, double[] Opt, double[] Pred, double[] Rep, double[] PFeasible) Score(
             FittedEnsemble fit, ParameterSpace space, IReadOnlyList<double[]> points, int samples)
         {
-            int n = points.Count, m = fit.Slots.Count;
+            int n = points.Count, m = fit.Slots.Count, c = fit.ConstraintSlots.Count;
             var mean = new double[m][];
             var variance = new double[m][];
             for (int s = 0; s < m; s++) { mean[s] = new double[n]; variance[s] = new double[n]; }
+
+            var cMean = new double[c][];
+            var cVar = new double[c][];
+            for (int k = 0; k < c; k++) { cMean[k] = new double[n]; cVar[k] = new double[n]; }
 
             void Predict(int i)
             {
                 for (int s = 0; s < m; s++)
                     (mean[s][i], variance[s][i]) = fit.Slots[s].Model.Predict(points[i]);
+                for (int k = 0; k < c; k++)
+                    (cMean[k][i], cVar[k][i]) = fit.ConstraintSlots[k].Model.Predict(points[i]);
             }
 
             if (n >= 64) Parallel.For(0, n, Predict);
@@ -345,26 +372,57 @@ namespace FluidForge.Core
             var opt = new double[n];
             var pred = new double[n];
             var rep = new double[n];
+            var pFeas = new double[n];
 
             for (int i = 0; i < n; i++)
             {
                 double u = 0.0;
                 for (int s = 0; s < m; s++) u += variance[s][i] / fit.Slots[s].OutputVariance;
+                if (m == 0)
+                {
+                    for (int k = 0; k < c; k++) u += cVar[k][i];
+                }
                 unc[i] = u;
 
-                if (_ensemble.ActiveMode == SurrogateTargetMode.Fitness)
+                double pFeasible = 1.0;
+                for (int k = 0; k < c; k++)
                 {
-                    double sd = Math.Sqrt(variance[0][i]);
-                    double improvement = mean[0][i] - fit.BestTransformed - fit.Offset;
-                    opt[i] = improvement + OptimismSigmas * sd;
-                    pred[i] = improvement;
-                    if (sd < 1e-12) ei[i] = Math.Max(improvement, 0.0);
-                    else { double z = improvement / sd; ei[i] = improvement * NormalDistribution.Cdf(z) + sd * NormalDistribution.Pdf(z); }
+                    double obsNoise = fit.ConstraintSlots[k].Model.ObservationNoiseVariance;
+                    double cSd = Math.Sqrt(Math.Max(cVar[k][i] + obsNoise, 0.0));
+                    double cMu = cMean[k][i];
+                    double pk = cSd < 1e-12 ? (cMu >= 0.0 ? 1.0 : 0.0) : NormalDistribution.Cdf(cMu / cSd);
+                    pFeasible *= pk;
                 }
-                else
+                pFeas[i] = pFeasible;
+
+                if (c > 0 && !fit.HasFeasibleIncumbent)
                 {
-                    (ei[i], opt[i]) = MonteCarloImprovement(fit, space, points[i], mean, variance, i, samples);
-                    pred[i] = PredictedImprovement(fit, space, points[i], mean, i);
+                    // Pure feasibility search until at least one feasible point is found.
+                    ei[i] = pFeasible;
+                    pred[i] = pFeasible;
+                    opt[i] = pFeasible;
+                }
+                else if (m > 0)
+                {
+                    if (_ensemble.ActiveMode == SurrogateTargetMode.Fitness)
+                    {
+                        double sd = Math.Sqrt(variance[0][i]);
+                        double improvement = mean[0][i] - fit.BestTransformed - fit.Offset;
+                        opt[i] = improvement + OptimismSigmas * sd;
+                        pred[i] = improvement;
+                        if (sd < 1e-12) ei[i] = Math.Max(improvement, 0.0);
+                        else { double z = improvement / sd; ei[i] = improvement * NormalDistribution.Cdf(z) + sd * NormalDistribution.Pdf(z); }
+                    }
+                    else
+                    {
+                        (ei[i], opt[i]) = MonteCarloImprovement(fit, space, points[i], mean, variance, i, samples);
+                        pred[i] = PredictedImprovement(fit, space, points[i], mean, i);
+                    }
+
+                    if (c > 0)
+                    {
+                        ei[i] *= pFeasible;
+                    }
                 }
 
                 double repulsion = Repulsion(fit, points[i]);
@@ -373,7 +431,7 @@ namespace FluidForge.Core
                 unc[i] *= repulsion;
             }
 
-            return (ei, unc, opt, pred, rep);
+            return (ei, unc, opt, pred, rep, pFeas);
         }
 
         /// <summary>Fitness improvement resulting from predicted (mean) metrics without uncertainty.</summary>
@@ -455,6 +513,14 @@ namespace FluidForge.Core
         /// <summary>Kriging Believer: treats the proposal as evaluated with the predicted mean as outcome.</summary>
         public void Believe(FittedEnsemble fit, double[] x, Dictionary<string, float> parameters)
         {
+            foreach (ConstraintSlot cSlot in fit.ConstraintSlots)
+            {
+                double cMean = cSlot.Model.Predict(x).Mean;
+                cSlot.Model.AddPseudoObservation(x, cMean);
+            }
+
+            if (fit.Slots.Count == 0) return;
+
             var passive = new Dictionary<string, float>();
             var means = new double[fit.Slots.Count];
 
@@ -464,6 +530,8 @@ namespace FluidForge.Core
                 fit.Slots[k].Model.AddPseudoObservation(x, means[k]);
                 passive[fit.Slots[k].Name] = (float)fit.Slots[k].Back(means[k]);
             }
+
+            if (!fit.HasFeasibleIncumbent) return;
 
             double believed;
             if (_ensemble.ActiveMode == SurrogateTargetMode.Fitness)
@@ -477,7 +545,11 @@ namespace FluidForge.Core
                 believed = fit.T(f);
             }
 
-            if (believed > fit.BestTransformed) fit.BestTransformed = believed;
+            // Cap believed incumbent lift at 0.25 * PlausibleGap above the real observed best so an
+            // optimistic extrapolation cannot wipe out EI around known good regions for the rest of the batch.
+            double cap = fit.InitialBestTransformed + 0.25 * fit.PlausibleGap;
+            double clamped = Math.Min(believed, cap);
+            if (clamped > fit.BestTransformed) fit.BestTransformed = clamped;
         }
     }
 }

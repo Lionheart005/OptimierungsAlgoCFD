@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge Gmsh2DMesherOptions",
+  "description": "Gmsh 2D mesher settings (solvers/gmsh.json for 2D projects).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "BoundaryLayerGrowthRate": {
+      "type": "number",
+      "default": 1.2
+    },
+    "BoundaryLayerLayers": {
+      "type": "integer",
+      "default": 0
+    },
+    "BoundaryLayerMinLayers": {
+      "type": "integer",
+      "default": 4
+    },
+    "DetailBox": {
+      "type": "boolean",
+      "default": true
+    },
+    "DetailBoxCellSizeFactor": {
+      "type": "number",
+      "default": 0.01
+    },
+    "DetailBoxLengthFactor": {
+      "type": "number",
+      "default": 1
+    },
+    "DetailBoxWidthFactor": {
+      "type": "number",
+      "default": 0.25
+    },
+    "EdgeRefinementDistanceFactor": {
+      "type": "number",
+      "default": 0.1
+    },
+    "EdgeRefinementFactor": {
+      "type": "number",
+      "default": 0.25
+    },
+    "FarfieldCellSizeFactor": {
+      "type": "number",
+      "default": 25
+    },
+    "FarfieldCircleSegments": {
+      "type": "integer",
+      "default": 64
+    },
+    "FarfieldRadiusFactor": {
+      "type": "number",
+      "default": 500
+    },
+    "NearfieldCellSizeFactor": {
+      "type": "number",
+      "default": 0.04
+    },
+    "NearfieldGrowthDistanceFactor": {
+      "type": "number",
+      "default": 0
+    },
+    "SurfaceCellSizeFactor": {
+      "type": "number",
+      "default": 0.01
+    },
+    "SurfaceCellSizeMm": {
+      "type": "number",
+      "default": 0
+    },
+    "TargetYPlus": {
+      "type": "number",
+      "default": 1
+    },
+    "WakeCellSizeFactor": {
+      "type": "number",
+      "default": 0.04
+    },
+    "WakeLengthFactor": {
+      "type": "number",
+      "default": 3
+    },
+    "WakeRefinement": {
+      "type": "boolean",
+      "default": true
+    },
+    "WakeWidthFactor": {
+      "type": "number",
+      "default": 0.6
+    }
+  },
+  "additionalProperties": false
+}

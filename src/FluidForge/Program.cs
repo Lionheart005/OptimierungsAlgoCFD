@@ -21,7 +21,7 @@ namespace FluidForge
     {
         /// <summary>
         /// Usage: <c>&lt;ProjectName&gt; [ProjectDirectory] [--list-projects] [--print-config]
-        /// [--calibrate] [--recheck[=Variant]] [--resume]</c>
+        /// [--smoke-test] [--calibrate] [--recheck[=Variant]] [--resume]</c>
         /// </summary>
         /// <returns>0 on success, 1 on failure.</returns>
         static int Main(string[] args)
@@ -31,10 +31,22 @@ namespace FluidForge
                 CliArguments cli = CliArguments.Parse(args);
                 var registry = ProjectRegistry.Discover();
 
-                // --list-projects requires neither a project nor a kernel.
+                // Project-independent informational commands.
                 if (cli.ListProjects)
                 {
                     InfoCommands.PrintProjects(registry, cli.ProjectDirectoryArgument);
+                    return 0;
+                }
+
+                if (cli.DumpPreset)
+                {
+                    InfoCommands.DumpPreset(cli.DumpPresetName, cli.OutDirectory);
+                    return 0;
+                }
+
+                if (cli.ExportSchemas)
+                {
+                    InfoCommands.ExportSchemas(cli.ExportSchemasDirectory);
                     return 0;
                 }
 
@@ -50,8 +62,22 @@ namespace FluidForge
                 // --print-config prints the effective configuration and exits without starting a run.
                 if (cli.PrintConfig)
                 {
+                    try
+                    {
+                        definition.CreateStages(context);
+                    }
+                    catch
+                    {
+                        // Best-effort: surface solver options even if a stage requires external runtime tools.
+                    }
+
                     InfoCommands.PrintConfiguration(context);
                     return 0;
+                }
+
+                if (cli.SmokeTest)
+                {
+                    return SmokeTestCommand.Run(definition, context) ? 0 : 1;
                 }
 
                 if (cli.Calibrate)

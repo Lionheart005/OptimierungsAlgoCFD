@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge SimulationConfig",
+  "description": "Framework \u0026 optimization settings (simulation.json).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "AutoStop": {
+      "type": "object",
+      "properties": {
+        "MinImprovement": {
+          "type": "number",
+          "default": 0.01
+        },
+        "Mode": {
+          "type": "string",
+          "default": "Off"
+        },
+        "WindowVariants": {
+          "type": "integer",
+          "default": 20
+        }
+      },
+      "additionalProperties": false
+    },
+    "AutoVoxelResolution": {
+      "type": "boolean",
+      "default": false
+    },
+    "BaseVoxelResolution": {
+      "type": "number",
+      "default": 0.5
+    },
+    "Bayes": {
+      "type": "object",
+      "properties": {
+        "InitialSamples": {
+          "type": "integer",
+          "default": 0
+        },
+        "SurrogateTarget": {
+          "type": "string",
+          "default": "Auto"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BouncerJitter": {
+      "type": "number",
+      "default": 0.01
+    },
+    "BouncerTolerance": {
+      "type": "number",
+      "default": 0.2
+    },
+    "CauchyElements": {
+      "type": "integer",
+      "default": 300
+    },
+    "CauchyTolerance": {
+      "type": "string",
+      "default": "1e-5"
+    },
+    "ChampionVerification": {
+      "type": "object",
+      "properties": {
+        "Mode": {
+          "type": "string",
+          "default": "FinalTopN"
+        },
+        "RefinementSteps": {
+          "type": "integer",
+          "default": 1
+        },
+        "Tolerance": {
+          "type": "number",
+          "default": 0.05
+        },
+        "TopN": {
+          "type": "integer",
+          "default": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "ControlRuns": {
+      "type": "object",
+      "properties": {
+        "CauchyElements": {
+          "type": "integer",
+          "default": 500
+        },
+        "CauchyTolerance": {
+          "type": "string",
+          "default": "1e-5"
+        },
+        "IterativeToleranceFraction": {
+          "type": "number",
+          "default": 0.1
+        },
+        "Su2MaxIterations": {
+          "type": "integer",
+          "default": 20000
+        }
+      },
+      "additionalProperties": false
+    },
+    "GmshCores": {
+      "type": "integer",
+      "default": 12
+    },
+    "GmshPath": {
+      "type": "string",
+      "default": "gmsh"
+    },
+    "IdwExploitationRatio": {
+      "type": "number",
+      "default": 0.7
+    },
+    "IdwExploitationSigma": {
+      "type": "number",
+      "default": 0.1
+    },
+    "IdwPower": {
+      "type": "number",
+      "default": 3
+    },
+    "IdwVirtualSimulations": {
+      "type": "integer",
+      "default": 50000
+    },
+    "IterativeToleranceFraction": {
+      "type": "number",
+      "default": 0.25
+    },
+    "MachNumber": {
+      "type": "number",
+      "default": 0.1
+    },
+    "MaxIterations": {
+      "type": "integer",
+      "default": 10
+    },
+    "MeshCalibration": {
+      "type": "object",
+      "properties": {
+        "AbsoluteTolerances": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "MaxCells2D": {
+          "type": "integer",
+          "default": 2000000
+        },
+        "MaxCells3D": {
+          "type": "integer",
+          "default": 3000000
+        },
+        "Mode": {
+          "type": "string",
+          "default": "Auto"
+        },
+        "Tolerance": {
+          "type": "number",
+          "default": 0.05
+        },
+        "Use2DPrecalibration": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "MeshRefinementFactor": {
+      "type": "number",
+      "default": 1
+    },
+    "MpiCores": {
+      "type": "integer",
+      "default": 12
+    },
+    "MpiRunPath": {
+      "type": "string",
+      "default": "mpirun"
+    },
+    "OptimizationAlgorithm": {
+      "type": "string",
+      "default": "Bayes"
+    },
+    "Preset": {
+      "type": "string",
+      "enum": [
+        "",
+        "Custom",
+        "External2D",
+        "External3D",
+        "Internal3D",
+        "External2D:FastConcept",
+        "External2D:StandardRans",
+        "External2D:VerificationFine",
+        "External3D:FastConcept",
+        "External3D:StandardRans",
+        "External3D:VerificationFine",
+        "Internal3D:FastConcept",
+        "Internal3D:StandardRans",
+        "Internal3D:VerificationFine"
+      ],
+      "description": "Physics \u0026 workflow preset (Layer 1.5), e.g. \u0027External3D:StandardRans\u0027, \u0027External2D:StandardRans\u0027, or \u0027Custom\u0027/empty for none.",
+      "default": ""
+    },
+    "RandomSeed": {
+      "type": "integer",
+      "default": 0
+    },
+    "Su2MaxIterations": {
+      "type": "integer",
+      "default": 3000
+    },
+    "Su2Path": {
+      "type": "string",
+      "default": "SU2_CFD"
+    },
+    "TargetPicoGkSize": {
+      "type": "number",
+      "default": 50
+    },
+    "UseProjectedFrontalArea": {
+      "type": "boolean",
+      "default": true
+    },
+    "UseRubberBandScaler": {
+      "type": "boolean",
+      "default": true
+    },
+    "UseStlSmoothing": {
+      "type": "boolean",
+      "default": true
+    },
+    "VariantsPerIteration": {
+      "type": "integer",
+      "default": 10
+    },
+    "VoxelSmoothingIterations": {
+      "type": "integer",
+      "default": 40
+    },
+    "VoxelSmoothingPremeltingSteps": {
+      "type": "integer",
+      "default": 2
+    }
+  },
+  "additionalProperties": false
+}

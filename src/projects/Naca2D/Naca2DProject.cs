@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using FluidForge.Composition;
 using FluidForge.Core;
+using FluidForge.Solvers.Cfd;
 
 namespace FluidForge.Projects.Naca2D
 {
@@ -48,8 +50,12 @@ namespace FluidForge.Projects.Naca2D
                 { "MaxThickness", (6.0f, 24.0f) }
             },
 
-            // Empty because fitness is formulated as glide ratio CL / CD with no external targets:
-            OptimizationTargets = new Dictionary<string, float>(),
+            // Structural minimum thickness (4.5 mm = 9% of 50 mm chord) and positive lift requirement:
+            OptimizationTargets = new Dictionary<string, float>
+            {
+                { "MinThicknessMm", Naca2DGeometryConstraints.DefaultMinThicknessMm },
+                { "MinLift", Naca2DFitnessCalculator.DefaultMinLift }
+            },
 
             // Empty because all three parameters are dimensionless percentages of chord length:
             DimensionalParameters = new HashSet<string>()
@@ -60,7 +66,18 @@ namespace FluidForge.Projects.Naca2D
             => new Naca2DGeometryGenerator();
 
         /// <inheritdoc/>
+        public override IGeometryConstraintEvaluator? CreateGeometryConstraints(ProjectContext context)
+            => new Naca2DGeometryConstraints();
+
+        /// <inheritdoc/>
         public override IFitnessCalculator CreateFitness(ProjectContext context)
-            => new Naca2DFitnessCalculator(context.Project);
+        {
+            var su2Loaded = context.Loaded.FirstOrDefault(l => l.Name == "solvers/su2.json")?.Value as Su2SolverOptions;
+            Su2SolverOptions su2 = su2Loaded ?? context.LoadSolverOptions<Su2SolverOptions>("su2");
+            List<float>? weights = su2.OperatingPoints != null && su2.OperatingPoints.Count > 0
+                ? su2.OperatingPoints.Select(op => op.Weight).ToList()
+                : null;
+            return new Naca2DFitnessCalculator(context.Project, weights);
+        }
     }
 }

@@ -6,6 +6,12 @@ namespace FluidForge.Core
     /// </summary>
     public class SimulationConfig
     {
+        /// <summary>
+        /// Optional physics &amp; workflow preset (Layer 1.5), e.g. <c>"External3D:StandardRans"</c>,
+        /// <c>"External2D:StandardRans"</c>, or <c>"Custom"</c> / empty for none.
+        /// </summary>
+        public string Preset { get; set; } = "";
+
         // --- EXTERNAL TOOL PATHS ---
         //
         // PATH-relative by default. .NET resolves bare executable names via PATH in

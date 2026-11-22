@@ -7,10 +7,13 @@ using FluidForge.Core;
 namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
-    /// Manta-Ray AUV fitness calculation.
-    /// Formula: Fitness = (Volume * SensorDistance) / Drag^DragBalanceFactor
+    /// Manta-Ray AUV aerodynamic/hydrodynamic evaluator.
+    /// Computes the dimensionless volumetric drag coefficient
+    /// <c>C_{D,V} = C_D * A_front / V^(2/3)</c> and maximizes
+    /// <c>HydrodynamicEfficiency = SensorDistance / max(C_{D,V}, 0.001)^DragBalanceFactor</c>.
+    /// Volume bounds are enforced strictly pre-CFD via <see cref="MantaGeometryConstraints"/>.
     /// </summary>
-    public class MantaFitnessCalculator : IFitnessCalculator
+    public class MantaFitnessCalculator : ObjectiveEvaluatorBase
     {
         /// <summary>Target keys required by the fitness formula.</summary>
         private static readonly string[] RequiredTargets =
@@ -19,17 +22,16 @@ namespace FluidForge.Projects.MantaAuv
         };
 
         /// <summary>
-        /// Metrics required by the formula: Drag comes from SU2's history.csv
-        /// (mapped in su2.json under 'ResultMetrics'), while Volume and SensorDistance
-        /// are reported by <see cref="MantaGeometryGenerator"/>.
-        ///
-        /// FrontalArea is intentionally omitted here: the fitness formula does not use it,
-        /// it is passed as REF_AREA to the solver (which warns if it is missing).
+        /// Metrics required by the formula: Drag comes from SU2's history.csv, while
+        /// FrontalArea, Volume, and SensorDistance come from <see cref="MantaGeometryGenerator"/>.
         /// </summary>
-        private static readonly string[] RequiredMetricNames = { "Drag", "Volume", "SensorDistance" };
+        private static readonly string[] RequiredMetricNames = { "Drag", "FrontalArea", "Volume", "SensorDistance" };
 
-        private readonly float _minimumAllowedVolume;
-        private readonly float _maximumAllowedVolume;
+        private static readonly string[] ComparisonMetricNames =
+        {
+            "Drag", "FrontalArea", "Volume", "SensorDistance", "VolumetricDragCoeff"
+        };
+
         private readonly float _dragBalanceFactor;
 
         /// <summary>
@@ -54,53 +56,51 @@ namespace FluidForge.Projects.MantaAuv
                     $"(or in MantaProjectConfig.Create()).");
             }
 
-            _minimumAllowedVolume = project.OptimizationTargets["MinimumAllowedVolume"];
-            _maximumAllowedVolume = project.OptimizationTargets["MaximumAllowedVolume"];
             _dragBalanceFactor = project.OptimizationTargets["DragBalanceFactor"];
         }
 
         /// <inheritdoc/>
-        public IReadOnlyCollection<string> RequiredMetrics => RequiredMetricNames;
+        public override IReadOnlyCollection<string> RequiredMetrics => RequiredMetricNames;
 
-        public void CalculateFitness(ModelRecord record, SimulationConfig config)
+        /// <inheritdoc/>
+        public override IReadOnlyCollection<string> RawComparisonMetrics => ComparisonMetricNames;
+
+        /// <inheritdoc/>
+        public override EvaluationOutcome EvaluateObjectives(ModelRecord record, SimulationConfig config)
         {
-            // Failed meshing or simulation: the core signals this generically via SimulationFailed.
-            if (record.SimulationFailed)
+            if (!record.PassiveParameters.TryGetValue("Drag", out float drag) ||
+                !record.PassiveParameters.TryGetValue("FrontalArea", out float frontalArea) ||
+                !record.PassiveParameters.TryGetValue("Volume", out float volume) ||
+                !record.PassiveParameters.TryGetValue("SensorDistance", out float sensorDist) ||
+                drag == float.MaxValue ||
+                !float.IsFinite(drag) ||
+                !float.IsFinite(frontalArea) ||
+                !float.IsFinite(volume) ||
+                !float.IsFinite(sensorDist) ||
+                frontalArea <= 0f ||
+                volume <= 0f)
             {
-                record.Fitness = 0.0001f;
-                return;
+                return new EvaluationOutcome { ScalarFitnessOverride = DefaultFailedFitness };
             }
 
-            float drag = record.PassiveParameters.ContainsKey("Drag") ? record.PassiveParameters["Drag"] : float.MaxValue;
-            float volume = record.PassiveParameters.ContainsKey("Volume") ? record.PassiveParameters["Volume"] : 0f;
-            float sensorDist = record.PassiveParameters.ContainsKey("SensorDistance") ? record.PassiveParameters["SensorDistance"] : 0f;
+            // Volumetric drag coefficient C_{D,V} = C_D * A_front / V^(2/3)
+            // (FrontalArea in mm^2, Volume in mm^3 -> V^(2/3) in mm^2 -> dimensionless).
+            float safeDrag = Math.Max(Math.Abs(drag), 0.001f);
+            float volumeTwoThirds = MathF.Pow(volume, 2.0f / 3.0f);
+            float cdV = (safeDrag * frontalArea) / Math.Max(volumeTwoThirds, 1e-6f);
+            record.PassiveParameters["VolumetricDragCoeff"] = cdV;
 
-            if (drag == float.MaxValue || float.IsNaN(drag))
+            float adjustedCdV = MathF.Pow(MathF.Max(cdV, 0.001f), _dragBalanceFactor);
+            float hydroEfficiency = sensorDist / adjustedCdV;
+            record.PassiveParameters["HydrodynamicEfficiency"] = hydroEfficiency;
+
+            return new EvaluationOutcome
             {
-                record.Fitness = 0.0001f;
-                return;
-            }
-
-            // Targets were validated and cached in the constructor.
-            float minVol = _minimumAllowedVolume;
-            float maxVol = _maximumAllowedVolume;
-            float dragBalance = _dragBalanceFactor;
-
-            // 1. Guard denominator against sign and near-zero values
-            float realDrag = Math.Abs(drag);
-            float safeDrag = Math.Max(realDrag, 0.001f);
-
-            // 2. Mathematical fitness equation for the AUV concept
-            float adjustedDrag = (float)Math.Pow(safeDrag, dragBalance);
-
-            // Fitness = (Volume * SensorDistance) / adjustedDrag
-            record.Fitness = (volume * sensorDist) / adjustedDrag;
-
-            // 3. Volume constraint penalty
-            if (volume < minVol || volume > maxVol)
-            {
-                record.Fitness *= 0.1f; // Strong penalty, but non-zero so partial shapes remain comparable
-            }
+                Objectives =
+                {
+                    new ObjectiveValue("HydrodynamicEfficiency", hydroEfficiency, OptimizationDirection.Maximize)
+                }
+            };
         }
     }
 }

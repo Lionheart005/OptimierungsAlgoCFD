@@ -88,8 +88,7 @@ namespace FluidForge.Projects.MyProject2D
             throw new InvalidOperationException(
                 $"[GEOMETRY] Missing parameter '{name}'. Present: "
                 + (parameters.Count > 0 ? string.Join(", ", parameters.Keys) : "(none)")
-                + ". Add it to BaseParameters, MaxDeviations, and ParameterBounds in "
-                + "project.json -- and to the same three dictionaries in CreateDefaults().");
+                + ". Add it to BaseParameters and ParameterBounds in project.json.");
         }
     }
 }

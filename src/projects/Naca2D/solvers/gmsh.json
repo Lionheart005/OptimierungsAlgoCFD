@@ -1,50 +1,20 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../../schemas/gmsh2d.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
   //  Naca2D -- Gmsh 2D Mesher
   // ===================================================================
-  //
-  // Options for Gmsh2DMesher.
-  // Generates a circular farfield around the 2D airfoil contour with a structured
-  // quad boundary layer (BoundaryLayer field) and a downstream wake box.
+  // Base y+ (1.0) and 500c farfield come from External2D:StandardRans.
 
-  // --- Farfield (simulation domain) ---
-  // Circular farfield radius as a multiple of chord c (in 2D at least 50 c).
-  // 500 matches NASA TMR grids; cells grow outward so the farfield costs only a few thousand cells.
-  "FarfieldRadiusFactor": 500.0,
-  "FarfieldCircleSegments": 64,
-
-  // --- Boundary layer resolution (BoundaryLayer Field) ---
-  // Target y+ for the first wall cell and growth rate:
-  "TargetYPlus": 1.0,
   "BoundaryLayerGrowthRate": 1.2,
-  "BoundaryLayerMinLayers": 4,
-  "BoundaryLayerLayers": 0,
-
-  // --- Cell sizes relative to chord c ---
   "SurfaceCellSizeFactor": 0.005,
-  "SurfaceCellSizeMm": 0.0,
   "NearfieldCellSizeFactor": 0.02,
-  // Rule of thumb: Radius / 20.
-  "FarfieldCellSizeFactor": 25.0,
-  // Distance (x c) over which cell size grows to farfield size; 0 = automatic 0.4 x radius.
-  "NearfieldGrowthDistanceFactor": 0.0,
-
-  // --- Wake refinement box ---
-  "WakeRefinement": true,
   "WakeLengthFactor": 3.0,
-  "WakeWidthFactor": 0.6,
   "WakeCellSizeFactor": 0.02,
-
-  // --- Detail box around and behind the airfoil ---
-  // Fine box for near-wake and vortices; active on every run, scales with mesh factor.
   "DetailBox": true,
   "DetailBoxLengthFactor": 1.0,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxCellSizeFactor": 0.01,
-
-  // --- Leading and trailing edges ---
-  // Wall cell size there = EdgeRefinementFactor x contour cell size (1 = no extra refinement).
   "EdgeRefinementFactor": 0.25,
   "EdgeRefinementDistanceFactor": 0.1
 }

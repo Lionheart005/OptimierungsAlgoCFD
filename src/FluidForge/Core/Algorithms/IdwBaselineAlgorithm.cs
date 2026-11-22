@@ -63,7 +63,7 @@ namespace FluidForge.Core
                 _fitnessCalculator.CalculateFitness(record, context.Config);
             }
 
-            return records.OrderByDescending(r => r.Fitness).First();
+            return WorkflowController.SelectBestRecord(records) ?? records.First();
         }
 
         public void PrepareNextIteration(SimulationContext context, List<ModelRecord> currentRecords, ModelRecord bestRecord)

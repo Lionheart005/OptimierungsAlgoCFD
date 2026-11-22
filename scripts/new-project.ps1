@@ -182,14 +182,15 @@ Write-Host @"
                    Fitness = 1 / Drag. The framework MAXIMIZES fitness.
 
     3. Parameters  src/projects/$Name/project.json
-                   Parameters, bounds, targets. Mirror the same defaults in
-                   CreateDefaults() inside ${Name}Project.cs (code layer).
+                   Single Source of Truth for BaseParameters, ParameterBounds,
+                   OptimizationTargets, and DimensionalParameters (no C# CreateDefaults()
+                   duplication needed; MaxDeviations is auto-derived if omitted).
 
-    4. Cleanup     simulation.json and solvers/*.json list EVERY key with its code
-                   default as a reference: remove anything you do not override.
-                   MaxIterations=5 and VariantsPerIteration=5 are intentionally small
-                   (defaults 10 x 10), and MeshRefinementFactor is omitted because
-                   auto mesh calibration is enabled.
+    4. Presets     src/projects/$Name/simulation.json & solvers/*.json
+                   Starts with a curated Preset (External3D:StandardRans or External2D:StandardRans)
+                   so you only edit what differs. Inspect full effective defaults with:
+                     dotnet run --project src\FluidForge -- --dump-preset External3D:StandardRans
+                   Guides: docs/creating-a-project.md and docs/physics-presets.md
 
     Verify the configuration chain locally before deploying:
 

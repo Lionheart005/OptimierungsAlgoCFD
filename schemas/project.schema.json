@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge ProjectConfig",
+  "description": "Project parameters, bounds, targets, and dimensional keys (project.json).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "BaseParameters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "DimensionalParameters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "MaxDeviations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "OptimizationTargets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "ParameterBounds": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "Max": {
+            "type": "number",
+            "default": 0
+          },
+          "Min": {
+            "type": "number",
+            "default": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "ProjectName": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "additionalProperties": false
+}

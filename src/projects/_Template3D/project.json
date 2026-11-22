@@ -1,41 +1,11 @@
 {
-  // MyProject -- Project Settings. Plain-text reference: src/projects/BEDIENHANDBUCH.md
-  //
-  // The project name comes from the folder name only, never from this file.
-  // Launch with `.\scripts\sim.ps1 run -Project <FolderName>`.
-  // Anything omitted here falls back to MyProjectProject.CreateDefaults(); both are kept
-  // in sync by a template test. An unknown key aborts startup (except user-defined parameter
-  // names inside the dictionaries below).
-  // Optimization algorithm is configured in simulation.json; geometry and fitness are C# code.
-
-  // --- Initial parameter values (mm) ---
-  // Names form the contract with MyProjectGeometryGenerator.
-  "BaseParameters": {
-    "Length": 50.0,
-    "Width": 30.0,
-    "Height": 20.0
-  },
-
-  // --- Initial step size per parameter (rule of thumb: ~1/10 of range) ---
-  "MaxDeviations": {
-    "Length": 5.0,
-    "Width": 3.0,
-    "Height": 2.0
-  },
-
-  // --- Hard bounds; the optimizer never leaves this box ---
+  // MyProject -- Project Settings (Single Source of Truth). See docs/creating-a-project.md
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": { "Length": 50.0, "Width": 30.0, "Height": 20.0 },
   "ParameterBounds": {
     "Length": { "Min": 20.0, "Max": 100.0 },
-    "Width": { "Min": 10.0, "Max": 80.0 },
-    "Height": { "Min": 5.0, "Max": 50.0 }
+    "Width":  { "Min": 10.0, "Max": 80.0 },
+    "Height": { "Min": 5.0,  "Max": 50.0 }
   },
-
-  // --- Optimization targets for the fitness formula ---
-  // Empty because the template minimizes drag only (1 / Drag). To add a target:
-  // add it here, in MyProjectProject.CreateDefaults(), and in MyProjectFitnessCalculator.RequiredTargets.
-  "OptimizationTargets": {},
-
-  // --- Length parameters (scaled by RubberBandScaler) ---
-  // Ratios, angles, and counts do not belong here.
   "DimensionalParameters": [ "Length", "Width", "Height" ]
 }

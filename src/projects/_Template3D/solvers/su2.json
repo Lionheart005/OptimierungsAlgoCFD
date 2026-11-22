@@ -1,69 +1,7 @@
 {
-  // MyProject -- SU2 Solver. Plain-text reference: src/projects/BEDIENHANDBUCH.md
-  //
-  // Lists every key with its code default (Solvers/Cfd/Su2SolverOptions.cs).
-  // In a real project, keep only overrides. Machine-specific overrides belong in su2.local.json.
-  // Su2MaxIterations, Cauchy settings, MpiCores, and tool paths live in ../simulation.json.
-
-  // --- Fluid (default seawater; air: 1.225 kg/m^3 and 1.81e-5 Pa*s) ---
-  "Density": 1025.0,            // kg/m^3
-  "DynamicViscosity": 0.001001, // Pa*s
-  "TurbulenceModel": "SA",      // SA or SST
-  "SpeedOfSound": 343.2,        // m/s (air), only used when FreestreamVelocity = 0
-
-  // Freestream velocity in m/s (2.0 = typical AUV cruise speed).
-  // 0 = MachNumber x SpeedOfSound.
-  "FreestreamVelocity": 2.0,
-
-  // --- Dimension, angle of attack, reference values ---
-  "Dimensions": 3,
-  "AngleOfAttackDeg": 0.0,
-  "ReferenceLength": 0.01,
-  // Geometry metric (from AddMetric, in mm^2) used for SU2 REF_AREA.
-  "ReferenceAreaMetric": "FrontalArea",
-
-  // --- Result metrics (left: PassiveParameters key, right: SU2 history.csv column) ---
-  // Note: nested objects merge additively with code defaults, so "Drag" is always included.
-  "ResultMetrics": {
-    "Drag": "CD"
-  },
-
-  // Quantity monitored by SU2 for convergence (use "LIFT" for lift optimization).
-  "ConvergenceField": "DRAG",
-  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
-
-  // --- Convergence evaluation ---
-  // True tail-window drift = failed; pure oscillation (vortex shedding) remains valid.
-  // TailMean = average over tail window; OscillationWarnLimit is a warning threshold only.
-  "OscillationWarnLimit": 0.05,
-  "TreatUnconvergedAsFailed": true,
-  "AutoRestartOnDrift": true,
-  "MaxConvergenceRestarts": 3,
-  "ResultAveraging": "TailMean",
-
-  // --- CFL (if SU2 diverges, halve CflNumber first) ---
-  "CflNumber": 5.0,
-  "CflAdapt": true,
-  "CflAdaptFactorDown": 0.5,
-  "CflAdaptFactorUp": 1.2,
-  "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0,
-
-  // --- y+ check (default: TargetYPlus 1.5 x YPlusWarnFactor 3.0 = limit 4.5 for YPlus_P95) ---
-  // In MeshCalibration.Mode = "Auto", exceeding this limit fails the finest reference level.
-  // Keep TargetYPlus in sync with solvers/gmsh.json.
-  "TargetYPlus": 1.5,
-  "YPlusWarnFactor": 3.0,
-
-  // --- Time-accurate URANS for unsteady flows; typically enabled via `sim.ps1 recheck -Unsteady` ---
-  "TimeDomain": {
-    "Enabled": false,
-    "TimeStep": 0.0,
-    "StepsPerPeriod": 50,
-    "StrouhalEstimate": 0.2,
-    "TimeIterations": 1000,
-    "InnerIterations": 30,
-    "AveragingStartFraction": 0.5,
-    "RestartIteration": 0
-  }
+  // MyProject -- SU2 Solver. Fluid overrides only; solver/y+ defaults come from Preset (docs/config-reference.md).
+  "$schema": "../../../../schemas/su2.schema.json",
+  "Density": 1025.0,
+  "DynamicViscosity": 0.001001,
+  "FreestreamVelocity": 2.0
 }

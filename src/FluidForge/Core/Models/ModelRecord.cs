@@ -55,6 +55,33 @@ namespace FluidForge.Core
         /// </summary>
         public bool Disqualified { get; set; }
 
+        /// <summary>
+        /// True when all evaluated pre-solve and post-solve constraints are satisfied.
+        /// </summary>
+        public bool Feasible { get; set; } = true;
+
+        /// <summary>
+        /// Pipeline stage where evaluation failed or violated a constraint.
+        /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public EvaluationFailureStage FailedStage { get; set; } = EvaluationFailureStage.None;
+
+        /// <summary>
+        /// Raw physical objectives produced by an <see cref="IObjectiveEvaluator"/>.
+        /// </summary>
+        public List<ObjectiveValue> Objectives { get; set; } = new();
+
+        /// <summary>
+        /// Evaluated pre-solve (geometry) and post-solve (physics) constraints with margins.
+        /// </summary>
+        public List<ConstraintEvaluation> Constraints { get; set; } = new();
+
+        /// <summary>
+        /// True when the variant was rejected by pre-CFD geometry constraints before meshing/solver.
+        /// </summary>
+        [JsonIgnore]
+        public bool IsPreConstraintInfeasible => FailedStage == EvaluationFailureStage.PreConstraint;
+
         public float Fitness { get; set; }
         public string StlPath { get; set; } = "";
         public string MeshPath { get; set; } = "";

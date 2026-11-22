@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge GmshMesherOptions",
+  "description": "Gmsh 3D mesher settings (solvers/gmsh.json).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "BoundaryLayerCoverage": {
+      "type": "number",
+      "default": 1
+    },
+    "BoundaryLayerDistMax": {
+      "type": "number",
+      "default": 40
+    },
+    "BoundaryLayerDistMin": {
+      "type": "number",
+      "default": 3
+    },
+    "BoundaryLayerGrowthRate": {
+      "type": "number",
+      "default": 1.28
+    },
+    "BoundaryLayerLayers": {
+      "type": "integer",
+      "default": 0
+    },
+    "BoundaryLayerMinLayers": {
+      "type": "integer",
+      "default": 4
+    },
+    "BoundaryLayerMode": {
+      "type": "string",
+      "default": "Prism"
+    },
+    "BoundaryLayerSizeMax": {
+      "type": "number",
+      "default": 120
+    },
+    "BoundaryLayerSizeMin": {
+      "type": "number",
+      "default": 1.2
+    },
+    "ClassifyAngleDeg": {
+      "type": "number",
+      "default": 40
+    },
+    "CurvatureElements": {
+      "type": "integer",
+      "default": 20
+    },
+    "CurvatureMinSizeFactor": {
+      "type": "number",
+      "default": 0.5
+    },
+    "DetailBox": {
+      "type": "boolean",
+      "default": true
+    },
+    "DetailBoxCellSize": {
+      "type": "number",
+      "default": 0
+    },
+    "DetailBoxLengthFactor": {
+      "type": "number",
+      "default": 1.5
+    },
+    "DetailBoxMinHeightLengthFactor": {
+      "type": "number",
+      "default": 0.15
+    },
+    "DetailBoxWidthFactor": {
+      "type": "number",
+      "default": 0.25
+    },
+    "MeshSizeFromCurvature": {
+      "type": "boolean",
+      "default": true
+    },
+    "SurfaceCellSize": {
+      "type": "number",
+      "default": 0
+    },
+    "SymmetryPlane": {
+      "type": "string",
+      "default": "None"
+    },
+    "TargetYPlus": {
+      "type": "number",
+      "default": 1.5
+    },
+    "TunnelCenterX": {
+      "type": "number",
+      "default": 200
+    },
+    "TunnelCenterY": {
+      "type": "number",
+      "default": 0
+    },
+    "TunnelCenterZ": {
+      "type": "number",
+      "default": 0
+    },
+    "TunnelDiameter": {
+      "type": "number",
+      "default": 300
+    },
+    "TunnelLength": {
+      "type": "number",
+      "default": 1000
+    },
+    "TunnelMaxBlockagePercent": {
+      "type": "number",
+      "default": 0.3
+    },
+    "TunnelMinDownstreamFactor": {
+      "type": "number",
+      "default": 15
+    },
+    "TunnelMinLateralFactor": {
+      "type": "number",
+      "default": 5
+    },
+    "TunnelMinUpstreamFactor": {
+      "type": "number",
+      "default": 5
+    },
+    "TunnelSegments": {
+      "type": "integer",
+      "default": 64
+    },
+    "TunnelShape": {
+      "type": "string",
+      "default": "Box"
+    },
+    "TunnelSizeX": {
+      "type": "number",
+      "default": 1000
+    },
+    "TunnelSizeY": {
+      "type": "number",
+      "default": 300
+    },
+    "TunnelSizeZ": {
+      "type": "number",
+      "default": 300
+    },
+    "WakeCellSize": {
+      "type": "number",
+      "default": 0
+    },
+    "WakeLengthFactor": {
+      "type": "number",
+      "default": 2
+    },
+    "WakeRefinement": {
+      "type": "boolean",
+      "default": true
+    },
+    "WakeWidthFactor": {
+      "type": "number",
+      "default": 0.5
+    }
+  },
+  "additionalProperties": false
+}

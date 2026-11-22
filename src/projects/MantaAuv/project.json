@@ -1,5 +1,6 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../schemas/project.schema.json",
+  // Full key reference: docs/config-reference.md | Project guide: docs/creating-a-project.md
   // ===================================================================
   //  MantaAuv -- Project Settings
   // ===================================================================
@@ -48,9 +49,10 @@
     "TailTaper": { "Min": 0.1, "Max": 1.5 }
   },
 
-  // --- Optimization targets (used by the fitness formula) ---
-  // Fitness = (Volume * SensorDistance) / Drag^DragBalanceFactor,
-  // x0.1 penalty outside the allowed volume range.
+  // --- Optimization targets & pre-CFD volume constraints ---
+  // HydrodynamicEfficiency = SensorDistance / C_{D,V}^DragBalanceFactor,
+  // where C_{D,V} = CD * FrontalArea / Volume^(2/3).
+  // Volume outside [MinimumAllowedVolume, MaximumAllowedVolume] is rejected pre-CFD.
   "OptimizationTargets": {
     "MinimumAllowedVolume": 2000.0,
     "MaximumAllowedVolume": 85000.0,

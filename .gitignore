@@ -17,9 +17,10 @@ __pycache__/
 *.log
 logs/
 
-# Run results fetched from the server (scripts/sim.ps1 fetch)
+# Run results fetched from the server (scripts/sim.ps1 fetch) and local run/smoke-test outputs
 Serverergebnisse/
 server-results/
+results/
 
 # State of the latest code deployed to the server (server-side only)
 .deploy_hash

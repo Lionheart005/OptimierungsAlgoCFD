@@ -1,45 +1,45 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../schemas/project.schema.json",
+  // Full key reference: docs/config-reference.md | Project guide: docs/creating-a-project.md
   // ===================================================================
   //  Naca2D -- Project Settings
   // ===================================================================
   //
-  // Two-dimensional NACA airfoil.
-  // The manifest file is named "project.json" in EVERY project.
+  // Two-dimensional NACA airfoil with multi-point evaluation across
+  // cruise/climb angles of attack (configured in solvers/su2.json).
   // THE PROJECT NAME IS NEVER WRITTEN IN THIS FILE. It comes from the folder name.
-  //
-  // Anything omitted here falls back to Naca2DProject.CreateDefaults().
 
   // --- Initial active parameter values (% of chord length c) ---
   // NACA 0012: 0% camber, 40% camber position, 12% maximum thickness.
   "BaseParameters": {
     "MaxCamber": 0.0,
     "CamberPosition": 40.0,
-    "MaxThickness": 12.0,
-    "AngleOfAttackDeg": 0.0
+    "MaxThickness": 12.0
   },
 
   // --- Initial mutation step sizes (sigma) ---
   "MaxDeviations": {
     "MaxCamber": 0.8,
     "CamberPosition": 6.0,
-    "MaxThickness": 2.0,
-    "AngleOfAttackDeg": 2.0
+    "MaxThickness": 2.0
   },
 
   // --- Hard bounds for physical plausibility ---
   "ParameterBounds": {
     "MaxCamber": { "Min": 0.0, "Max": 8.0 },
     "CamberPosition": { "Min": 15.0, "Max": 75.0 },
-    "MaxThickness": { "Min": 6.0, "Max": 24.0 },
-    "AngleOfAttackDeg": { "Min": -10.0, "Max": 30.0 }
+    "MaxThickness": { "Min": 6.0, "Max": 24.0 }
   },
 
-  // --- Optimization targets (used by the fitness formula) ---
-  // Empty because fitness is formulated as glide ratio CL / CD.
-  "OptimizationTargets": {},
+  // --- Optimization targets & structural/aerodynamic constraints ---
+  // MinThicknessMm: 4.5 mm = 9% of 50 mm chord (pre-CFD structural constraint).
+  // MinLift: minimum weighted lift coefficient (post-CFD constraint).
+  "OptimizationTargets": {
+    "MinThicknessMm": 4.5,
+    "MinLift": 0.1
+  },
 
   // --- Dimensional parameters (scaled by RubberBandScaler) ---
-  // Empty: all parameters are dimensionless percentages of chord length (or degrees).
+  // Empty: all parameters are dimensionless percentages of chord length.
   "DimensionalParameters": []
 }

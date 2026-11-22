@@ -1,7 +1,8 @@
 # Server, Deployment & Setup Guide (`scripts/`)
 
 > **Related documentation:**
-> - **User Manual & All JSON Settings:** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
+> - **Server Workflow Overview:** [`docs/server-workflow.md`](../docs/server-workflow.md)
+> - **All JSON Settings & Physics Presets:** [`docs/config-reference.md`](../docs/config-reference.md) | [`docs/physics-presets.md`](../docs/physics-presets.md)
 > - **Creating a New Project / Geometry (3D & 2D):** [`src/projects/README.md`](../src/projects/README.md)
 > - **Framework Architecture & C# Development:** [`src/FluidForge/README.md`](../src/FluidForge/README.md)
 > - **Local Override Configuration (`*.local.json`):** [`config/README.md`](../config/README.md)

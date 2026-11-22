@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,37 +12,38 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-49: <c>src/projects/BEDIENHANDBUCH.md</c> explains every setting and every command.
-    ///
-    /// <para>
-    /// A handbook that omits a setting is worse than none: you rely on it and then look in the wrong place.
-    /// Therefore every new key and every new <c>sim.ps1</c> command breaks this test until it is documented
-    /// in the handbook — written as <c>`Name`</c>, just as the handbook does everywhere.
-    /// </para>
+    /// Ensures the modular documentation under <c>docs/</c> explains every configurable JSON setting,
+    /// every <c>scripts/sim.ps1</c> command, and every curated physics preset.
     /// </summary>
     public class HandbookCoverageTests
     {
-        private const string HandbookFileName = "BEDIENHANDBUCH.md";
-
-        private static string Handbook
+        private static string RepoRoot
         {
             get
             {
-                string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
-                Assert.True(projectsRoot != null, "Directory src/projects/ was not found.");
-
-                string file = Path.Combine(projectsRoot!, HandbookFileName);
-                Assert.True(File.Exists(file), $"src/projects/{HandbookFileName} is missing.");
-
-                return File.ReadAllText(file);
+                string? root = ProjectPaths.ResolveRepositoryRoot();
+                Assert.True(root != null, "Repository root was not found.");
+                return root!;
             }
+        }
+
+        private static string ReadDoc(string fileName)
+        {
+            string file = Path.Combine(RepoRoot, "docs", fileName);
+            Assert.True(File.Exists(file), $"docs/{fileName} is missing.");
+            return File.ReadAllText(file);
         }
 
         public static IEnumerable<object[]> SettingTypes() => new[]
         {
             new object[] { typeof(SimulationConfig), "simulation.json" },
+            new object[] { typeof(AutoStopConfig), "simulation.json (AutoStop)" },
             new object[] { typeof(BayesConfig), "simulation.json (Bayes)" },
+            new object[] { typeof(ControlRunConfig), "simulation.json (ControlRuns)" },
+            new object[] { typeof(MeshCalibrationConfig), "simulation.json (MeshCalibration)" },
+            new object[] { typeof(ChampionVerificationConfig), "simulation.json (ChampionVerification)" },
             new object[] { typeof(Su2SolverOptions), "solvers/su2.json" },
+            new object[] { typeof(Su2TimeDomainOptions), "solvers/su2.json (TimeDomain)" },
             new object[] { typeof(GmshMesherOptions), "solvers/gmsh.json" },
             new object[] { typeof(Gmsh2DMesherOptions), "solvers/gmsh.json (2D)" },
             new object[] { typeof(ProjectConfigDto), "project.json" },
@@ -49,30 +51,26 @@ namespace FluidForge.Tests
 
         [Theory]
         [MemberData(nameof(SettingTypes))]
-        public void Every_Setting_Is_Explained(System.Type type, string file)
+        public void Every_Setting_Is_Explained(Type type, string file)
         {
-            string handbook = Handbook;
+            string reference = ReadDoc("config-reference.md");
 
             var missing = type
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(property => property.CanWrite)
                 .Select(property => property.Name)
-                .Where(name => !handbook.Contains($"`{name}`"))
+                .Where(name => !reference.Contains($"`{name}`"))
                 .ToList();
 
             Assert.True(missing.Count == 0,
-                $"Handbook is missing setting(s) from {file}: {string.Join(", ", missing)}. "
-                + $"Please document in src/projects/{HandbookFileName}, Section 4.");
+                $"docs/config-reference.md is missing setting(s) from {file}: {string.Join(", ", missing)}. "
+                + "Please document every setting wrapped in backticks.");
         }
 
         [Fact]
         public void Every_Script_Command_Is_Explained()
         {
-            string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
-            Assert.True(projectsRoot != null);
-
-            string sim = File.ReadAllText(Path.Combine(
-                Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot!)!)!, "scripts", "sim.ps1"));
+            string sim = File.ReadAllText(Path.Combine(RepoRoot, "scripts", "sim.ps1"));
 
             Match set = Regex.Match(sim, @"\[ValidateSet\(([^\)]*)\)\]");
             Assert.True(set.Success, "Command list (ValidateSet) in scripts/sim.ps1 was not found.");
@@ -83,11 +81,24 @@ namespace FluidForge.Tests
 
             Assert.NotEmpty(commands);
 
-            string handbook = Handbook;
-            var missing = commands.Where(command => !handbook.Contains($"`{command}`")).ToList();
+            string workflowDoc = ReadDoc("server-workflow.md");
+            var missing = commands.Where(command => !workflowDoc.Contains($"`{command}`")).ToList();
 
             Assert.True(missing.Count == 0,
-                $"Handbook is missing command(s): {string.Join(", ", missing)} (Section 6).");
+                $"docs/server-workflow.md is missing command(s): {string.Join(", ", missing)}.");
+        }
+
+        [Fact]
+        public void Every_Preset_Is_Documented()
+        {
+            string presetsDoc = ReadDoc("physics-presets.md");
+            var missing = SimulationPresets.All
+                .Select(p => p.Name)
+                .Where(name => !presetsDoc.Contains($"`{name}`"))
+                .ToList();
+
+            Assert.True(missing.Count == 0,
+                $"docs/physics-presets.md is missing preset(s): {string.Join(", ", missing)}.");
         }
     }
 }

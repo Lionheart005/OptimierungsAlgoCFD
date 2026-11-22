@@ -1,93 +1,9 @@
 {
-  // MyProject2D -- Framework Settings. Plain-text reference: src/projects/BEDIENHANDBUCH.md
-  //
-  // Lists all 2D-relevant keys with their code defaults (Core/Models/SimulationConfig.cs);
-  // 3D-only voxel keys are intentionally omitted.
-  // Defaults target accurate runs. Overrides here: MaxIterations/VariantsPerIteration (small test run),
-  // AutoStop (enabled), and MeshRefinementFactor (omitted for Auto calibration).
-  // In a real project, delete unused keys. Machine-specific overrides belong in simulation.local.json.
-
-  // --- Executables (PATH-relative; `.\scripts\sim.ps1 doctor` shows resolved paths) ---
-  // On the server, "mpirun" / "mpiexec" automatically resolves to the MPICH environment
-  // (~/miniconda/envs/mpich/bin/mpiexec) if present, avoiding OpenMPI serial issues.
-  "MpiRunPath": "mpirun",
-  "Su2Path": "SU2_CFD",
-  "GmshPath": "gmsh",
-
-  // --- Budget: MaxIterations x VariantsPerIteration = total evaluations (code default: 10 x 10) ---
+  // MyProject2D -- Framework Settings. Presets & overrides: docs/physics-presets.md | All keys: docs/config-reference.md
+  "$schema": "../../../schemas/simulation.schema.json",
+  "Preset": "External2D:StandardRans",
   "MaxIterations": 5,
   "VariantsPerIteration": 5,
-
-  // --- Auto-stop (code default: "Off", window 20) ---
-  // Stops early if best fitness improves by less than MinImprovement (0.01 = 1%) over the
-  // last WindowVariants variants. Window 10 = two iterations of 5 variants.
-  "AutoStop": {
-    "Mode": "On",
-    "MinImprovement": 0.01,
-    "WindowVariants": 10
-  },
-
-  "AutoVoxelResolution": false,
-  "UseProjectedFrontalArea": true,
-
-  // --- CFD & SU2 ---
-  // MeshRefinementFactor is intentionally omitted: with MeshCalibration "Auto" the run
-  // calibrates it automatically, and specifying a value aborts startup. Set only for "Manual".
-  "Su2MaxIterations": 3000,
-  "CauchyElements": 300,
-  "CauchyTolerance": "1e-5",
   "MpiCores": 12,
-  "GmshCores": 12,
-
-  // --- Optimization algorithm: "Bayes" (default) or "IdwBaseline" (legacy alias "Rsm") ---
-  // Bayes learns a Gaussian Process surrogate and requires ParameterBounds in project.json.
-  // IdwBaseline is a simple IDW interpolation baseline.
-  "OptimizationAlgorithm": "Bayes",
-  // 0 = draw a new seed per run (recorded in run-info.json); fixed value = reproducible.
-  "RandomSeed": 0,
-
-  // --- IdwBaseline ---
-  "IdwVirtualSimulations": 50000,
-  "IdwPower": 3.0,
-  "IdwExploitationRatio": 0.7,
-  "IdwExploitationSigma": 0.1,
-
-  // Bayes needs no configuration by default
-  // (optional: "Bayes": { "SurrogateTarget": "Auto", "InitialSamples": 0 }).
-
-  // --- Champion validator (bouncer): re-evaluates iteration champion with parameter jitter ---
-  "BouncerTolerance": 0.2,
-  "BouncerJitter": 0.01,
-
-  // --- Convergence ---
-  // Normal runs: allowed tail-window drift as a fraction of mesh tolerance.
-  // ControlRuns: stricter profile for calibration, fine verification, and recheck.
-  "IterativeToleranceFraction": 0.25,
-  "ControlRuns": {
-    "Su2MaxIterations": 20000,
-    "CauchyElements": 500,
-    "CauchyTolerance": "1e-5",
-    "IterativeToleranceFraction": 0.1
-  },
-
-  // --- Mesh calibration ("Auto": determines MeshRefinementFactor at startup; takes minutes in 2D) ---
-  // Fails despite free cell budget if the finest reference level does not converge or
-  // YPlus_P95 > TargetYPlus x YPlusWarnFactor (solvers/su2.json); keep TargetYPlus in sync with gmsh.json.
-  "MeshCalibration": {
-    "Mode": "Auto",
-    "Tolerance": 0.05,
-    "Use2DPrecalibration": false,
-    "AbsoluteTolerances": {},
-    "MaxCells2D": 2000000,
-    "MaxCells3D": 3000000
-  },
-
-  // --- Fine verification: re-evaluates TopN candidates on a finer mesh at the end ---
-  // Mode: "Off" | "Final" | "FinalTopN" | "EachIteration"
-  "ChampionVerification": {
-    "Mode": "FinalTopN",
-    "TopN": 3,
-    "RefinementSteps": 1,
-    "Tolerance": 0.05
-  }
+  "GmshCores": 12
 }

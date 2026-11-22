@@ -28,6 +28,7 @@ namespace FluidForge.Core
 
         // Run journal for resuming aborted runs (TODO-51). null = exact pre-TODO-51 behavior.
         private readonly RunJournal? _journal;
+        private readonly IGeometryConstraintEvaluator? _geometryConstraints;
 
         /// <summary>
         /// True if the last call to <see cref="RunPipeline"/> was replayed from the journal without
@@ -56,6 +57,9 @@ namespace FluidForge.Core
         /// and in replay mode the journal answers instead of running solvers. All controllers in a run
         /// share one instance.
         /// </param>
+        /// <param name="geometryConstraints">
+        /// Optional pre-CFD geometry constraint evaluator run before meshing and solver execution.
+        /// </param>
         public WorkflowController(
             IGeometryGenerator geometry,
             SolverStage[] stages,
@@ -63,7 +67,8 @@ namespace FluidForge.Core
             IOptimizationAlgorithm optimizer,
             SimulationContext context,
             IReadOnlyCollection<string>? requiredMetrics = null,
-            RunJournal? journal = null)
+            RunJournal? journal = null,
+            IGeometryConstraintEvaluator? geometryConstraints = null)
         {
             _journal = journal;
             _geometry = geometry;
@@ -72,6 +77,7 @@ namespace FluidForge.Core
             _optimizer = optimizer;
             _context = context;
             _requiredMetrics = requiredMetrics ?? Array.Empty<string>();
+            _geometryConstraints = geometryConstraints;
         }
 
         public void RunOptimization()
@@ -134,7 +140,7 @@ namespace FluidForge.Core
                     }
 
                     // 6a. Does the pipeline provide everything the fitness formula requires?
-                    if (!requiredMetricsChecked && !record.SimulationFailed)
+                    if (!requiredMetricsChecked && !record.SimulationFailed && !record.IsPreConstraintInfeasible)
                     {
                         requiredMetricsChecked = true;
                         EnsureRequiredMetrics(record);
@@ -217,20 +223,45 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Returns the record with the highest fitness. Disqualified and failed models carry a tiny
-        /// fitness and naturally fall behind. Ties break in favor of the earlier record for reproducibility.
-        /// Returns <c>null</c> if the sequence is empty.
+        /// Returns the record with the highest fitness, preferring valid feasible records over
+        /// infeasible, disqualified, or failed ones. Ties break in favor of the earlier record for
+        /// reproducibility. Returns <c>null</c> if the sequence is empty.
         /// </summary>
         public static ModelRecord? SelectBestRecord(IEnumerable<ModelRecord> records)
         {
             ModelRecord? best = null;
+            int bestTier = -1;
 
             foreach (var record in records)
             {
-                if (best == null || record.Fitness > best.Fitness) best = record;
+                int tier = SelectionTier(record);
+                if (best == null || tier > bestTier)
+                {
+                    best = record;
+                    bestTier = tier;
+                    continue;
+                }
+
+                if (tier == bestTier)
+                {
+                    bool currentFinite = float.IsFinite(record.Fitness);
+                    bool bestFinite = float.IsFinite(best.Fitness);
+                    if ((currentFinite && !bestFinite) || (record.Fitness > best.Fitness))
+                    {
+                        best = record;
+                    }
+                }
             }
 
             return best;
+        }
+
+        private static int SelectionTier(ModelRecord record)
+        {
+            if (!record.SimulationFailed && !record.Disqualified && record.Feasible) return 3;
+            if (!record.SimulationFailed && !record.Disqualified) return 2;
+            if (!record.SimulationFailed) return 1;
+            return 0;
         }
 
         /// <summary>
@@ -377,6 +408,31 @@ namespace FluidForge.Core
 
             SimulationLog.PrintGeometry(geoResult.StlPath, record.PassiveParameters);
 
+            if (_geometryConstraints != null)
+            {
+                IReadOnlyList<ConstraintEvaluation> preConstraints = _geometryConstraints.EvaluateGeometryConstraints(record, _context.Project);
+                if (preConstraints != null && preConstraints.Count > 0)
+                {
+                    foreach (ConstraintEvaluation constraint in preConstraints)
+                    {
+                        record.Constraints.Add(constraint.IsPreSolve ? constraint : constraint with { IsPreSolve = true });
+                    }
+
+                    var violated = record.Constraints.Where(c => c.IsPreSolve && !c.IsSatisfied).ToList();
+                    if (violated.Count > 0)
+                    {
+                        record.Feasible = false;
+                        record.FailedStage = EvaluationFailureStage.PreConstraint;
+                        record.SimulationFailed = false;
+                        string violatedNames = string.Join(
+                            ", ",
+                            violated.Select(c => $"{c.Name} (margin {c.Margin.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)})"));
+                        SimulationLog.Warning($"Pre-CFD constraint violated ({violatedNames}) — skipping meshing and solver.");
+                        return record;
+                    }
+                }
+            }
+
             try
             {
                 // Each stage meshes with its own mesher and then runs its solver.
@@ -434,6 +490,8 @@ namespace FluidForge.Core
                         {
                             record.PassiveParameters[ModelRecord.CellLimitExceededKey] = 1f;
                             record.SimulationFailed = true;
+                            record.FailedStage = EvaluationFailureStage.Mesh;
+                            record.Feasible = false;
                             string limitLabel = isCalibrationLimit
                                 ? "Cell limit (calibration)"
                                 : "Safety cap (MeshCalibration.MaxCells3D)";
@@ -444,6 +502,11 @@ namespace FluidForge.Core
                     }
 
                     stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
+                    if (record.SimulationFailed && record.FailedStage == EvaluationFailureStage.None)
+                    {
+                        record.FailedStage = EvaluationFailureStage.Solver;
+                        record.Feasible = false;
+                    }
                 }
             }
             catch (Exception ex)
@@ -452,10 +515,19 @@ namespace FluidForge.Core
                 // Generic failure marker — the FitnessCalculator handles it.
                 // Core remains agnostic to project-specific metric names like "Drag".
                 record.SimulationFailed = true;
+                record.Feasible = false;
 
                 // A meshing failure is not a solver divergence: Bayes should not avoid the entire
                 // shape region for it (boundary-layer cell count plan, FZ7).
-                if (ex is MeshGenerationException) record.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
+                if (ex is MeshGenerationException)
+                {
+                    record.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
+                    record.FailedStage = EvaluationFailureStage.Mesh;
+                }
+                else
+                {
+                    record.FailedStage = EvaluationFailureStage.Solver;
+                }
             }
 
             return record;
@@ -495,8 +567,8 @@ namespace FluidForge.Core
 
             // Live variants contribute their measured duration. Journal-replayed variants contribute
             // their originally recorded duration (DurationSeconds preserved), not replay milliseconds.
-            // Failed variants are excluded so quick crashes do not pull the average down.
-            if (!record.SimulationFailed)
+            // Failed and pre-CFD-skipped variants are excluded so quick rejections do not pull the average down.
+            if (!record.SimulationFailed && !record.IsPreConstraintInfeasible)
             {
                 double? measured = replayed ? LastCallDurationSeconds : timer.Elapsed.TotalSeconds;
                 if (measured.HasValue) estimator.AddVariant(measured.Value);

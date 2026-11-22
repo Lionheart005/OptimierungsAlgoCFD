@@ -1,12 +1,9 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../../schemas/su2.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
-  //  Naca2D -- SU2 Solver (2D)
+  //  Naca2D -- SU2 Solver (2D Multi-Point)
   // ===================================================================
-  //
-  // 2D CFD flow solver for NACA airfoils.
-  // Boundary conditions (Farfield and Wall) and incompressible RANS (SA)
-  // are generated automatically in 2D: Solvers/Cfd/Su2ConfigGenerator.cs.
 
   // --- Fluid properties (air at sea level, ISA 15 deg C) ---
   "Density": 1.225,
@@ -15,42 +12,22 @@
   "SpeedOfSound": 343.2,
   "FreestreamVelocity": 51.48,
 
-  // --- Dimension & angle of attack ---
+  // --- Dimension & multi-point operating envelope ---
   "Dimensions": 2,
-  "AngleOfAttackDeg": 5.0,
+  "OperatingPoints": [
+    { "Name": "CruiseLow", "AngleOfAttackDeg": 2.0, "Weight": 0.3 },
+    { "Name": "CruiseNom", "AngleOfAttackDeg": 5.0, "Weight": 0.4 },
+    { "Name": "ClimbHigh", "AngleOfAttackDeg": 8.0, "Weight": 0.3 }
+  ],
 
   // --- Reference values ---
-  // In 2D, the reference area equals the chord length (REF_AREA = c * 1 m).
   "ReferenceLength": 0.05,
   "ReferenceAreaMetric": "Chord",
 
-  // --- Result metrics: how SU2 columns map to PassiveParameters ---
+  // --- Result metrics ---
   "ResultMetrics": {
     "Drag": "CD",
     "Lift": "CL"
   },
-
-  "ConvergenceField": "DRAG",
-
-  // Unconverged runs (excessive tail-window drift) must not enter optimization.
-  // AutoRestartOnDrift continues automatically via RESTART_SOL on early Cauchy stops with drift.
-  // Result is averaged over the tail window rather than taking the final iteration.
-  "TreatUnconvergedAsFailed": true,
-  "AutoRestartOnDrift": true,
-  "MaxConvergenceRestarts": 3,
-  "ResultAveraging": "TailMean",
-  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
-
-  // --- CFL control ---
-  "CflNumber": 5.0,
-  "CflAdapt": true,
-  "CflAdaptFactorDown": 0.5,
-  "CflAdaptFactorUp": 1.2,
-  "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0,
-
-  // --- y+ target, boundary layer, and oscillation check ---
-  "TargetYPlus": 1.0,
-  "YPlusWarnFactor": 3.0,
-  "OscillationWarnLimit": 0.05
+  "ConvergenceField": "DRAG"
 }

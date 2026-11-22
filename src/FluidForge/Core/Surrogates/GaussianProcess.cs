@@ -12,8 +12,8 @@ namespace FluidForge.Core
     /// <para>
     /// Kernel: <c>k = σ²·(1 + √5·r + 5/3·r²)·exp(−√5·r)</c> with <c>r² = Σ ((x_i − x'_i) / ℓ_i)²</c>.
     /// Outputs are standardized internally (zero mean, unit variance). Hyperparameters
-    /// (ln ℓ_i, ln σ², ln σ_n²) are fitted via log-marginal-likelihood with analytical gradients
-    /// (multi-start Adam, bounded to ℓ ∈ [0.01, 20], σ² ∈ [0.05, 20], σ_n² ∈ [1e-6, 0.5]).
+    /// (ln ℓ_i, ln σ², ln σ_n²) are fitted via log-marginal-posterior with analytical gradients
+    /// (multi-start L-BFGS-B, bounded to ℓ ∈ [0.01, 20], σ² ∈ [0.05, 20], σ_n² ∈ [1e-6, 0.5]).
     /// </para>
     /// </summary>
     public sealed class GaussianProcess : ISurrogateModel
@@ -343,6 +343,52 @@ namespace FluidForge.Core
             return logLik;
         }
 
+        /// <summary>
+        /// Regularized log-marginal posterior (log-marginal likelihood plus weak log-normal MAP priors
+        /// on length scales, signal variance, and noise variance) to prevent ARD collapse on small datasets.
+        /// </summary>
+        public static double LogMarginalPosterior(
+            IReadOnlyList<double[]> x, IReadOnlyList<double> y, double[] theta, double[]? gradient,
+            IReadOnlyList<double>? extraNoise = null)
+        {
+            double logLik = LogMarginalLikelihood(x, y, theta, gradient, extraNoise);
+            if (double.IsNegativeInfinity(logLik) || double.IsNaN(logLik))
+            {
+                return logLik;
+            }
+
+            int d = theta.Length - 2;
+            double muL = Math.Log(Math.Clamp(0.3 * Math.Sqrt(d), 0.3, 3.0));
+            const double sigmaL = 1.5;
+            const double sigmaL2 = sigmaL * sigmaL;
+
+            const double muSf = 0.0;
+            const double sigmaSf = 1.5;
+            const double sigmaSf2 = sigmaSf * sigmaSf;
+
+            double muSn = Math.Log(1e-4);
+            const double sigmaSn = 2.0;
+            const double sigmaSn2 = sigmaSn * sigmaSn;
+
+            double logPrior = 0.0;
+            for (int i = 0; i < d; i++)
+            {
+                double diff = theta[i] - muL;
+                logPrior += -0.5 * (diff * diff) / sigmaL2;
+                if (gradient != null) gradient[i] -= diff / sigmaL2;
+            }
+
+            double diffSf = theta[d] - muSf;
+            logPrior += -0.5 * (diffSf * diffSf) / sigmaSf2;
+            if (gradient != null) gradient[d] -= diffSf / sigmaSf2;
+
+            double diffSn = theta[d + 1] - muSn;
+            logPrior += -0.5 * (diffSn * diffSn) / sigmaSn2;
+            if (gradient != null) gradient[d + 1] -= diffSn / sigmaSn2;
+
+            return logLik + logPrior;
+        }
+
         // ------------------------------------------------------------------------------------
         // Hyperparameter Search
         // ------------------------------------------------------------------------------------
@@ -362,97 +408,86 @@ namespace FluidForge.Core
             if (_theta != null) starts.Add((double[])_theta.Clone());
             starts.Add(defaultStart);
 
-            // Large datasets: warm start and default only, fewer steps (cost scales as O(n³) per step).
-            int steps = n <= 100 ? 200 : n <= 200 ? 100 : 40;
-            if (n <= 150)
+            int maxIterations = n <= 100 ? 60 : n <= 150 ? 45 : 30;
+            int randomStarts = n <= 150 ? 2 : 1;
+            for (int s = 0; s < randomStarts; s++)
             {
-                for (int s = 0; s < 2; s++)
-                {
-                    var t = new double[d + 2];
-                    for (int i = 0; i < d; i++) t[i] = Math.Log(0.1) + _random.NextDouble() * (Math.Log(5.0) - Math.Log(0.1));
-                    t[d] = Math.Log(0.3) + _random.NextDouble() * (Math.Log(5.0) - Math.Log(0.3));
-                    t[d + 1] = Math.Log(1e-4) + _random.NextDouble() * (Math.Log(0.1) - Math.Log(1e-4));
-                    starts.Add(Clamp(t, d));
-                }
-            }
-            else if (_theta != null)
-            {
-                starts.RemoveAt(starts.Count - 1);   // warm start only
+                starts.Add(RandomStart(d));
             }
 
-            var results = new (double[] Theta, double LogLik)[starts.Count];
+            var (lower, upper) = Bounds(d);
+            var results = new (double[] Theta, double LogPost)[starts.Count];
+
             if (n >= 40 && starts.Count > 1)
             {
-                Parallel.For(0, starts.Count, i => results[i] = RunAdam(starts[i], steps));
+                Parallel.For(0, starts.Count, i => results[i] = RunLbfgsB(starts[i], lower, upper, maxIterations));
             }
             else
             {
-                for (int i = 0; i < starts.Count; i++) results[i] = RunAdam(starts[i], steps);
+                for (int i = 0; i < starts.Count; i++) results[i] = RunLbfgsB(starts[i], lower, upper, maxIterations);
             }
 
             int best = -1;
             for (int i = 0; i < results.Length; i++)
             {
-                if (double.IsNaN(results[i].LogLik) || double.IsNegativeInfinity(results[i].LogLik)) continue;
-                if (best < 0 || results[i].LogLik > results[best].LogLik) best = i;
+                if (!double.IsFinite(results[i].LogPost)) continue;
+                if (best < 0 || results[i].LogPost > results[best].LogPost) best = i;
             }
 
             if (best < 0) return _theta != null ? (double[])_theta.Clone() : defaultStart;
             return results[best].Theta;
         }
 
-        private (double[] Theta, double LogLik) RunAdam(double[] start, int steps)
+        private double[] RandomStart(int d)
         {
-            int d = _dimension;
-            int p = d + 2;
-            double[] theta = Clamp((double[])start.Clone(), d);
-            double[] bestTheta = (double[])theta.Clone();
-            double bestLogLik = double.NegativeInfinity;
+            var t = new double[d + 2];
+            for (int i = 0; i < d; i++) t[i] = Math.Log(0.1) + _random.NextDouble() * (Math.Log(5.0) - Math.Log(0.1));
+            t[d] = Math.Log(0.3) + _random.NextDouble() * (Math.Log(5.0) - Math.Log(0.3));
+            t[d + 1] = Math.Log(1e-4) + _random.NextDouble() * (Math.Log(0.1) - Math.Log(1e-4));
+            return Clamp(t, d);
+        }
 
-            var m = new double[p];
-            var v = new double[p];
-            var grad = new double[p];
-            const double lr = 0.05, beta1 = 0.9, beta2 = 0.999, eps = 1e-8;
+        private (double[] Theta, double LogPost) RunLbfgsB(double[] start, double[] lower, double[] upper, int maxIterations)
+        {
+            int p = _dimension + 2;
+            var (bestX, bestNegLogPost, _) = LbfgsB.Minimize(
+                theta =>
+                {
+                    var grad = new double[p];
+                    double lp = LogMarginalPosterior(_inputs, _outputs, theta, grad, _extraNoise);
+                    if (!double.IsFinite(lp))
+                    {
+                        return (double.PositiveInfinity, grad);
+                    }
+                    for (int i = 0; i < p; i++) grad[i] = -grad[i];
+                    return (-lp, grad);
+                },
+                start,
+                lower,
+                upper,
+                maxIterations: maxIterations,
+                memory: 8,
+                gradTol: 1e-6);
 
-            for (int step = 1; step <= steps; step++)
+            double logPost = double.IsFinite(bestNegLogPost) ? -bestNegLogPost : double.NegativeInfinity;
+            return (bestX, logPost);
+        }
+
+        private static (double[] Lower, double[] Upper) Bounds(int d)
+        {
+            var lower = new double[d + 2];
+            var upper = new double[d + 2];
+            double minL = Math.Log(MinLength), maxL = Math.Log(MaxLength);
+            for (int i = 0; i < d; i++)
             {
-                double logLik = LogMarginalLikelihood(_inputs, _outputs, theta, grad, _extraNoise);
-
-                if (double.IsNegativeInfinity(logLik) || double.IsNaN(logLik) || grad.Any(g => !double.IsFinite(g)))
-                {
-                    if (double.IsNegativeInfinity(bestLogLik)) break;
-                    // Backtrack halfway toward the best point and reset moments.
-                    for (int i = 0; i < p; i++) theta[i] = 0.5 * (theta[i] + bestTheta[i]);
-                    Array.Clear(m); Array.Clear(v);
-                    continue;
-                }
-
-                if (logLik > bestLogLik)
-                {
-                    bestLogLik = logLik;
-                    Array.Copy(theta, bestTheta, p);
-                }
-
-                for (int i = 0; i < p; i++)
-                {
-                    m[i] = beta1 * m[i] + (1 - beta1) * grad[i];
-                    v[i] = beta2 * v[i] + (1 - beta2) * grad[i] * grad[i];
-                    double mHat = m[i] / (1 - Math.Pow(beta1, step));
-                    double vHat = v[i] / (1 - Math.Pow(beta2, step));
-                    theta[i] += lr * mHat / (Math.Sqrt(vHat) + eps);
-                }
-                Clamp(theta, d);
+                lower[i] = minL;
+                upper[i] = maxL;
             }
-
-            // Evaluate the final step.
-            double finalLogLik = LogMarginalLikelihood(_inputs, _outputs, theta, null, _extraNoise);
-            if (finalLogLik > bestLogLik)
-            {
-                bestLogLik = finalLogLik;
-                Array.Copy(theta, bestTheta, p);
-            }
-
-            return (bestTheta, bestLogLik);
+            lower[d] = Math.Log(MinSignal);
+            upper[d] = Math.Log(MaxSignal);
+            lower[d + 1] = Math.Log(MinNoise);
+            upper[d + 1] = Math.Log(MaxNoise);
+            return (lower, upper);
         }
 
         private static double[] DefaultTheta(int d, double length)

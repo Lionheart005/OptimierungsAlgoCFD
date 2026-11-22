@@ -814,9 +814,9 @@ namespace FluidForge.Tests
             }
 
             // Measured on 2026-11-08 (sum over 3 seeds): Metrics 110.4, Fitness 78.6, Rsm 82.2.
-            // "Fitness" mode has no advantage over Rsm at the formula discontinuity,
-            // "Metrics" mode does. That is precisely why it exists.
-            Assert.True(metrics >= fitness * 1.1, $"Metrics {metrics} not clearly better than Fitness {fitness}");
+            // Global maximum over 3 seeds is 3 * 36.8 = 110.4. With L-BFGS-B + Sobol-QMC, Fitness mode
+            // also improved to ~101.3, so a 10% margin (111.4) exceeds the mathematical maximum (110.4).
+            Assert.True(metrics >= fitness * 1.05, $"Metrics {metrics} not clearly better than Fitness {fitness}");
             Assert.True(metrics >= rsm * 1.1, $"Metrics {metrics} not clearly better than Rsm {rsm}");
             Assert.True(fitness >= rsm * 0.85, $"Fitness {fitness} significantly worse than Rsm {rsm}");
         }

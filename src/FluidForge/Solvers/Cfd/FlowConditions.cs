@@ -27,6 +27,39 @@ namespace FluidForge.Solvers.Cfd
             if (options == null) throw new ArgumentNullException(nameof(options));
 
             float velocity = Su2ConfigGenerator.ResolveVelocity(config, options, out string source);
+            if (options.OperatingPoints != null && options.OperatingPoints.Count > 0)
+            {
+                float maxVelocity = 0f;
+                for (int i = 0; i < options.OperatingPoints.Count; i++)
+                {
+                    OperatingPointOptions op = options.OperatingPoints[i];
+                    if (op == null) continue;
+
+                    float opVelocity;
+                    if (op.Velocity.HasValue)
+                    {
+                        if (!float.IsFinite(op.Velocity.Value) || op.Velocity.Value <= 0f)
+                        {
+                            throw new InvalidOperationException(
+                                $"{OutputConventions.ConfigTag} OperatingPoints[{i}] ('{op.Name}') has invalid Velocity '{op.Velocity.Value}'; must be finite and > 0 (or null to inherit FreestreamVelocity).");
+                        }
+                        opVelocity = op.Velocity.Value;
+                    }
+                    else
+                    {
+                        opVelocity = velocity;
+                    }
+
+                    maxVelocity = MathF.Max(maxVelocity, opVelocity);
+                }
+
+                if (maxVelocity > 0f)
+                {
+                    velocity = maxVelocity;
+                    source = $"{source} (max over {options.OperatingPoints.Count} operating points)";
+                }
+            }
+
             return new FlowConditions(velocity, options.Density, options.DynamicViscosity, source);
         }
 

@@ -1,26 +1,14 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../../schemas/gmsh.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
-  //  MantaAuv -- Gmsh Mesher
+  //  MantaAuv -- Gmsh 3D Mesher (Y0 Symmetry Half-Model)
   // ===================================================================
-  //
-  // Anything omitted here falls back to defaults in Solvers/Cfd/GmshMesherOptions.cs.
-  // An unknown key aborts startup.
-  //
-  // Configured in ../simulation.json instead: GmshCores and GmshPath.
-  //
-  // Machine-specific overrides belong in gmsh.local.json (gitignored).
-  // Target state is that none exist.
-  //
-  // Boundary markers: SU2 marker names ("Farfield" for the tunnel, "Wall" for the model)
-  // are assigned by Solvers/Cfd/GmshCfdMesher.cs.
+
+  "SymmetryPlane": "Y0",
 
   // --- Wind tunnel (simulation domain) in mm ---
-  // "Box" = box from TunnelSize*, "Cylinder" = cylinder along X from TunnelDiameter/TunnelLength/TunnelSegments.
-  // Both are centered at TunnelCenter*. Shift TunnelCenterX downstream (+X) so at least 10 body lengths
-  // (>= 10 L) remain behind the model for wake development.
   "TunnelShape": "Box",
-  // 1200 mm long, model (~100 mm) shifted 300 mm upstream of center: ~6 L ahead, ~18 L behind for wake.
   "TunnelSizeX": 1200.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
@@ -28,46 +16,21 @@
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
 
-  // --- Cylindrical wind tunnel (only active when TunnelShape = "Cylinder") ---
-  "TunnelDiameter": 300.0,
-  "TunnelLength": 600.0,
-  "TunnelSegments": 64,
-
-  // --- Physical domain guarantees (decoupled from RubberBandScaler in real mm) ---
-  // If the tunnel box falls below these clearances or exceeds the blockage limit,
-  // GmshCfdMesher automatically expands the domain outward (never inward).
+  // --- Physical domain guarantees ---
   "TunnelMinUpstreamFactor": 5.0,
   "TunnelMinDownstreamFactor": 15.0,
   "TunnelMinLateralFactor": 5.0,
   "TunnelMaxBlockagePercent": 0.3,
 
-  // --- Boundary layer distance field (Gmsh Threshold Field) ---
-  "BoundaryLayerSizeMin": 1.2,
-  "BoundaryLayerSizeMax": 120.0,
-  "BoundaryLayerDistMin": 3.0,
-  "BoundaryLayerDistMax": 40.0,
-
-  // --- Wall layer & wake ---
-  // "Prism": flat prism layers at the wall (y+ ~ 1.5; converges reliably on MantaAuv).
-  // TargetYPlus sets the real-world first cell height y1 (independent of mesh factor) and MUST match
-  // solvers/su2.json (where TargetYPlus x YPlusWarnFactor is the hard P95 limit for solver & auto-calibration).
-  // Layer count and y1 follow a consistent rule across all variants (~14-16 layers).
-  // In tight fillets (e.g., sensor sphere to wing), the mesher smooths growth directions rather than dropping layers.
-  // "Threshold" (y+ ~ 30-70) fails auto-calibration under the default limit (use only with "Manual").
-  // "Hexa" produces skewed transition cells on sharp voxel edges and diverges.
+  // --- Wall layer, wake & detail refinement ---
   "BoundaryLayerMode": "Prism",
   "TargetYPlus": 1.5,
   "BoundaryLayerGrowthRate": 1.28,
   "WakeRefinement": true,
-
-  // Fine detail box around and behind the model (dimensions derived automatically from body bounding box)
   "DetailBox": true,
   "DetailBoxLengthFactor": 1.5,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxMinHeightLengthFactor": 0.15,
-  "DetailBoxCellSize": 0.0,
-
-  // --- Curvature-based surface refinement with minimum size floor ---
   "MeshSizeFromCurvature": true,
   "CurvatureElements": 20,
   "CurvatureMinSizeFactor": 0.5

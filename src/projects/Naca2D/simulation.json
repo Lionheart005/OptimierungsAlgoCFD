@@ -1,71 +1,22 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../schemas/simulation.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
   //  Naca2D -- Framework Settings for This Project
   // ===================================================================
   //
-  // 2D CFD optimization and NASA TMR validation.
-  // Configured for the Linux compute server (BIC_12).
+  // 2D CFD multi-point optimization and NASA TMR validation.
+  // Inherits External2D:StandardRans (Auto calibration at 5%, Cauchy 5e-5, y+ ~ 1.0).
 
-  // --- External tool paths ---
-  // Uses PATH-relative code defaults ("mpirun", "SU2_CFD", "gmsh"); on the server,
-  // scripts/sim-runner.sh and ExecutableResolver resolve the executables.
-  // Machine-specific overrides belong in a gitignored simulation.local.json.
+  "Preset": "External2D:StandardRans",
 
   // --- Iterations & budget ---
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
 
-  // --- Auto-stop: off by default. Uncomment the last line to enable ---
-  // Ends the run early if the best fitness improves by less than MinImprovement (0.01 = 1%)
-  // over the last WindowVariants variants; MaxIterations x VariantsPerIteration remains the cap.
-  // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
-
-  // --- CFD & SU2 ---
-  // MeshRefinementFactor is intentionally omitted: in Auto mode (MeshCalibration below),
-  // the run calibrates the mesh factor automatically at startup.
-  //
-  // Regular variants: moderate convergence. Control runs (calibration, verification, recheck)
-  // use the strict "ControlRuns" profile (up to 20000 iterations, window 500, Cauchy "1e-5",
-  // iterative error <= 1/10). Tail-window drift determines convergence; AutoRestartOnDrift
-  // automatically continues on remaining drift.
-  "Su2MaxIterations": 3000,
-  "CauchyElements": 300,
-  "CauchyTolerance": "1e-5",
+  // --- Server parallelism ---
   "MpiCores": 12,
   "GmshCores": 12,
-
-  // --- Optimization algorithm: omitted, uses default "Bayes" ---
-
-  // --- IdwBaseline (inverse-distance-weighted baseline) ---
-  "IdwVirtualSimulations": 50000,
-  "IdwPower": 3.0,
-  "IdwExploitationRatio": 0.7,
-  "IdwExploitationSigma": 0.1,
-
-  // --- Bayesian optimizer (only when "OptimizationAlgorithm": "Bayes", all optional) ---
-  // Usually not needed: "Bayes" runs without settings. Every parameter needs bounds in
-  // project.json (ParameterBounds); MaxDeviations has no effect in "Bayes" mode.
-  // "Bayes": {
-  //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
-  //   "InitialSamples": 0          // 0 = automatic: max(VariantsPerIteration, 2 x free params + 2)
-  // },
-
-  // --- Mesh calibration at startup ---
-  // Auto: evaluates levels 2.0 ... 0.5 and refines further if needed (0.35, 0.25, ...)
-  // until a coarser level stays within the combined tolerance relative to the finest level.
-  "MeshCalibration": {
-    "Mode": "Auto",
-    "Tolerance": 0.05
-  },
-
-  // --- Fine verification of top variants ---
-  "ChampionVerification": {
-    "Mode": "FinalTopN",
-    "TopN": 3,
-    "RefinementSteps": 1,
-    "Tolerance": 0.05
-  },
 
   // --- Champion validation (bouncer) ---
   "BouncerTolerance": 0.10,

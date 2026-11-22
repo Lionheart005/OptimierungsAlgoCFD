@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -31,17 +32,29 @@ namespace FluidForge.Core
             DimensionalParameters = config.DimensionalParameters.ToList()
         };
 
-        public ProjectConfig ToProjectConfig() => new ProjectConfig
+        public ProjectConfig ToProjectConfig()
         {
-            ProjectName = ProjectName,
-            BaseParameters = new Dictionary<string, float>(BaseParameters),
-            MaxDeviations = new Dictionary<string, float>(MaxDeviations),
-            ParameterBounds = ParameterBounds.ToDictionary(
-                entry => entry.Key,
-                entry => (entry.Value.Min, entry.Value.Max)),
-            OptimizationTargets = new Dictionary<string, float>(OptimizationTargets),
-            DimensionalParameters = new HashSet<string>(DimensionalParameters)
-        };
+            var deviations = new Dictionary<string, float>(MaxDeviations);
+            foreach (KeyValuePair<string, ParameterBoundsDto> entry in ParameterBounds)
+            {
+                if (!deviations.ContainsKey(entry.Key))
+                {
+                    deviations[entry.Key] = MathF.Max((entry.Value.Max - entry.Value.Min) * 0.1f, 1e-4f);
+                }
+            }
+
+            return new ProjectConfig
+            {
+                ProjectName = ProjectName,
+                BaseParameters = new Dictionary<string, float>(BaseParameters),
+                MaxDeviations = deviations,
+                ParameterBounds = ParameterBounds.ToDictionary(
+                    entry => entry.Key,
+                    entry => (entry.Value.Min, entry.Value.Max)),
+                OptimizationTargets = new Dictionary<string, float>(OptimizationTargets),
+                DimensionalParameters = new HashSet<string>(DimensionalParameters)
+            };
+        }
     }
 
     /// <summary>Lower and upper bound of a parameter, JSON-serializable.</summary>

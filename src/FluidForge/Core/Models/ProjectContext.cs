@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 
 namespace FluidForge.Core
 {
@@ -56,22 +57,32 @@ namespace FluidForge.Core
 
         /// <summary>
         /// Loads solver or mesher options from <c>&lt;ProjectDirectory&gt;/solvers/&lt;name&gt;.json</c>
-        /// (e.g., <c>"su2"</c> or <c>"gmsh"</c>) across all four configuration layers.
-        /// Falls back to code defaults if <see cref="ProjectDirectory"/> is null.
+        /// (e.g., <c>"su2"</c> or <c>"gmsh"</c>) across all configuration layers, including Layer 1.5
+        /// preset overrides when <see cref="SimulationConfig.Preset"/> is set.
+        /// Falls back to code defaults (+ preset overrides if configured) when <see cref="ProjectDirectory"/> is null.
         /// </summary>
         public T LoadSolverOptions<T>(string name) where T : class, new()
         {
+            string relativeName = $"solvers/{name}.json";
+            PresetDefinition? preset = SimulationPresets.Resolve(Simulation.Preset);
+            JsonObject? presetOverlay = preset?.GetSolverOverrides(relativeName);
+
             if (string.IsNullOrWhiteSpace(ProjectDirectory))
             {
+                if (presetOverlay != null && presetOverlay.Count > 0)
+                {
+                    var presetOnly = JsonConfigLoader.LoadWithPreset(new T(), preset!.Name, presetOverlay);
+                    Record(relativeName, presetOnly);
+                    return presetOnly.Value;
+                }
+
                 Console.WriteLine(
                     $"{OutputConventions.ConfigTag} No project directory — '{name}' uses code defaults.");
                 return new T();
             }
 
-            string relativeName = $"solvers/{name}.json";
-
-            var result = JsonConfigLoader.LoadForProject(
-                new T(), relativeName, ProjectDirectory!, ConfigDirectory);
+            var result = JsonConfigLoader.LoadForProjectWithPreset(
+                new T(), relativeName, ProjectDirectory!, preset?.Name, presetOverlay, ConfigDirectory);
 
             result.Report.PrintMachineOverrideWarning(Name);
             Record(relativeName, result);

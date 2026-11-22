@@ -9,7 +9,7 @@
 > **Related Repository Documentation:**
 > - **Creating a new 3D/2D project:** [`src/projects/README.md`](../../../projects/README.md) (Template: [`src/projects/_Template3D/`](../../../projects/_Template3D/README.md), Example: [`src/projects/MantaAuv/`](../../../projects/MantaAuv/))
 > - **Built-in 2D Geometry Kernel (`Planar2D`):** [`src/FluidForge/Kernels/Planar2D/README.md`](../Planar2D/README.md)
-> - **Voxel & Smoothing Settings (`simulation.json`):** [`src/projects/BEDIENHANDBUCH.md`](../../../projects/BEDIENHANDBUCH.md)
+> - **Voxel & Smoothing Settings (`simulation.json`):** [`docs/config-reference.md`](../../../../docs/config-reference.md)
 
 This document explains how three-dimensional parts are generated, organically blended, measured, smoothed, and exported for CFD simulation using **PicoGK** in C#.
 

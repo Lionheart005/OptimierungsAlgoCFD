@@ -29,6 +29,7 @@ namespace FluidForge.Solvers.Cfd
         public GmshCfdMesher(GmshMesherOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new GmshMesherOptions();
+            StlHalfClipper.ParseConfigValue(_options.SymmetryPlane);
             _flow = flow;
             _tunnelBuilder = new GmshTunnelBuilder(_options);
         }
@@ -71,6 +72,7 @@ namespace FluidForge.Solvers.Cfd
         public string GenerateMesh(MeshRequest request)
         {
             _lastMetrics = new Dictionary<string, float>();
+            SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(_options.SymmetryPlane);
             float safeScale = GmshTunnelBuilder.SanitizeScaleFactor(request.ScaleFactor);
             (MeshBounds? modelBoundsPicoGk, float? realFrontalAreaMm2) = GmshTunnelBuilder.ReadModelMetricsForTunnel(request.GeometryPath, safeScale);
             string tunnelStlPath = EnsureTunnel(request.WorkingDirectory, modelBoundsPicoGk, safeScale, realFrontalAreaMm2);
@@ -79,11 +81,28 @@ namespace FluidForge.Solvers.Cfd
             string outputMeshPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}.su2");
             string geoScriptPath = Path.Combine(request.WorkingDirectory, $"Meshing_{suffix}.geo");
 
+            string effectiveModelPath = request.GeometryPath;
+            if (symAxis != SymmetryAxis.None)
+            {
+                IReadOnlyList<StlTriangle> fullTriangles = StlWriter.ReadTriangles(request.GeometryPath);
+                HalfClipResult clip = StlHalfClipper.ClipToHalfSpace(fullTriangles, symAxis);
+                if (clip.HalfTriangles.Count == 0)
+                {
+                    throw new MeshGenerationException(
+                        $"Symmetry clipping ({symAxis}) produced zero triangles for {Path.GetFileName(request.GeometryPath)}.");
+                }
+
+                effectiveModelPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}_Half.stl");
+                StlWriter.WriteBinary(effectiveModelPath, clip.HalfTriangles);
+                _lastMetrics["SymmetryClippedFromFull"] = clip.InputWasFullBody ? 1f : 0f;
+                _lastMetrics["SymmetryFactor"] = 2f;
+            }
+
             string mode = (_options.BoundaryLayerMode ?? "Threshold").Trim();
             bool isHexa = mode.Equals("Hexa", StringComparison.OrdinalIgnoreCase);
             bool isPrism = mode.Equals("Prism", StringComparison.OrdinalIgnoreCase);
 
-            WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor);
+            WriteGeoScript(geoScriptPath, effectiveModelPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor);
 
             if (!isHexa && !isPrism)
             {
@@ -98,16 +117,22 @@ namespace FluidForge.Solvers.Cfd
                     throw new MeshGenerationException($"Gmsh failed to create {Path.GetFileName(outputMeshPath)} (ExitCode {thresholdRun.ExitCode}{thresholdRun.ErrorSuffix}). .geo script copied to {OutputConventions.ErrorLogsDirectory}.");
                 }
 
+                if (symAxis != SymmetryAxis.None)
+                {
+                    Gmsh2DMesher.RemoveMarker(outputMeshPath, Gmsh2DMesher.FluidMarkerName);
+                }
+
                 MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
                 Console.WriteLine($"       -> [OK] 3D volume mesh generated");
                 return outputMeshPath;
             }
 
-            return GenerateStructuredWallMesh(request, safeScale, tunnelStlPath, outputMeshPath, geoScriptPath, mode);
+            return GenerateStructuredWallMesh(request, safeScale, effectiveModelPath, tunnelStlPath, outputMeshPath, geoScriptPath, mode, symAxis);
         }
 
         private string GenerateStructuredWallMesh(
-            MeshRequest request, float safeScale, string tunnelStlPath, string outputMeshPath, string geoScriptPath, string mode)
+            MeshRequest request, float safeScale, string effectiveModelPath, string tunnelStlPath,
+            string outputMeshPath, string geoScriptPath, string mode, SymmetryAxis symAxis)
         {
             string F(float v) => WakeAndDetailBoxBuilder.Format(v);
             string FormatMm(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
@@ -125,7 +150,7 @@ namespace FluidForge.Solvers.Cfd
                 float angleDeg = angleLadder[idx];
                 if (idx > 0 || MathF.Abs(angleDeg - _options.ClassifyAngleDeg) > 1e-4f)
                 {
-                    WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor, null, angleDeg);
+                    WriteGeoScript(geoScriptPath, effectiveModelPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor, null, angleDeg);
                 }
 
                 if (File.Exists(wallMesh)) File.Delete(wallMesh);
@@ -162,7 +187,7 @@ namespace FluidForge.Solvers.Cfd
             _lastMetrics["BoundaryLayerClassifyAngleDeg"] = usedAngle;
 
             // Step 2: Extrude boundary layer, fill core with tetrahedra.
-            BoundaryLayerSpec spec = Gmsh3DGeoScriptBuilder.ComputeBoundaryLayerSpec(_options, _flow, request.Config, request.GeometryPath, safeScale);
+            BoundaryLayerSpec spec = Gmsh3DGeoScriptBuilder.ComputeBoundaryLayerSpec(_options, _flow, request.Config, effectiveModelPath, safeScale);
             int layers = spec.LayerCount;
             float thicknessMm = Gmsh3DGeoScriptBuilder.LayerThicknessMm(spec, layers);
             double thicknessGeo = thicknessMm * (double)safeScale;
@@ -184,9 +209,9 @@ namespace FluidForge.Solvers.Cfd
             var ladder = BoundaryLayerWallField.Ladder;
             for (int attempt = 0; attempt < ladder.Count; attempt++)
             {
-                WallFieldResult candidate = BoundaryLayerWallField.Build(wall, thicknessGeo, ladder[attempt]);
+                WallFieldResult candidate = BoundaryLayerWallField.Build(wall, thicknessGeo, ladder[attempt], symAxis);
                 BoundaryLayerWallField.WritePos(fieldPath, wall, candidate);
-                WriteGeoScript(geoScriptPath, request.GeometryPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor, fieldPath, usedAngle);
+                WriteGeoScript(geoScriptPath, effectiveModelPath, tunnelStlPath, request.Config, safeScale, request.RefinementFactor, fieldPath, usedAngle);
 
                 if (File.Exists(outputMeshPath)) File.Delete(outputMeshPath);
                 GmshRunResult run = GmshProcessRunner.Run(

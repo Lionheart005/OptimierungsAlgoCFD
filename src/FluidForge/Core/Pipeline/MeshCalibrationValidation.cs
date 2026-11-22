@@ -32,7 +32,9 @@ namespace FluidForge.Core
 
             if (mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             {
-                if (simulationReport != null && simulationReport.Origins.TryGetValue("MeshRefinementFactor", out string? originFile))
+                if (simulationReport != null
+                    && simulationReport.Origins.TryGetValue("MeshRefinementFactor", out string? originFile)
+                    && !originFile.StartsWith("preset:", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException(
                         $"{OutputConventions.ConfigTag} In Auto mode, the mesh factor is calibrated automatically. Please remove 'MeshRefinementFactor' "
@@ -210,6 +212,7 @@ namespace FluidForge.Core
         {
             var sb = new StringBuilder();
             sb.Append("mesher:").Append(MeshCalibration.MesherSchemeVersion).Append(';');
+            sb.Append("preset:").Append(context.Simulation.Preset ?? string.Empty).Append(';');
 
             // 1. Sorted BaseParameters
             foreach (var kvp in context.Project.BaseParameters.OrderBy(p => p.Key, StringComparer.Ordinal))

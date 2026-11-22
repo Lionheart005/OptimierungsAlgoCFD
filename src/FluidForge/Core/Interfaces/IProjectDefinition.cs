@@ -24,9 +24,10 @@ namespace FluidForge.Core
 
         /// <summary>
         /// Code-level project defaults: initial parameters, bounds, and optimization targets.
-        /// <c>project.json</c> in the project folder overrides any keys it specifies.
+        /// Optional — by default returns an empty <see cref="ProjectConfig"/> so <c>project.json</c>
+        /// can act as the single source of truth.
         /// </summary>
-        ProjectConfig CreateDefaults();
+        ProjectConfig CreateDefaults() => new ProjectConfig();
 
         /// <summary>
         /// Runtime environment for geometry creation. Typically <c>PicoGkKernel</c>;
@@ -39,6 +40,11 @@ namespace FluidForge.Core
 
         /// <summary>Creates the project's fitness calculator.</summary>
         IFitnessCalculator CreateFitness(ProjectContext context);
+
+        /// <summary>
+        /// Optional pre-CFD geometry constraint evaluator run right after geometry generation.
+        /// </summary>
+        IGeometryConstraintEvaluator? CreateGeometryConstraints(ProjectContext context) => null;
 
         /// <summary>
         /// Pipeline of mesher and solver stages. Stages sharing a single mesher <b>instance</b>

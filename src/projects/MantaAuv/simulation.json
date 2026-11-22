@@ -1,94 +1,35 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../schemas/simulation.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
   //  MantaAuv -- Framework Settings for This Project
   // ===================================================================
   //
-  // Anything omitted here falls back to defaults in Core/Models/SimulationConfig.cs.
-  // Only settings that differ from code defaults need to be listed here.
-  //
-  // An unknown key aborts startup and suggests the closest valid name.
-  //
-  // Each project has its own folder under src/projects/<Name>/ and does not
-  // interfere with other projects.
-  //
-  // Machine-specific overrides belong in simulation.local.json (gitignored).
-  // Target state is that none exist: if found at startup, every overridden key
-  // is logged explicitly.
+  // Inherits External3D:StandardRans (Prism y+ ~ 1.5, Cauchy 5e-5, AutoRestartOnDrift).
+  // Project overrides tune voxel kernel, SU2 iteration budget, and 3D calibration limits.
 
-  // --- External tool paths ---
-  // Uses PATH-relative code defaults ("mpirun", "SU2_CFD", "gmsh") from
-  // Core/Models/SimulationConfig.cs. On the server, scripts/sim-runner.sh and
-  // ExecutableResolver resolve the search paths automatically; machine-specific
-  // overrides belong in a gitignored simulation.local.json.
-  // Run `.\scripts\sim.ps1 doctor` to verify active paths before a run.
+  "Preset": "External3D:StandardRans",
 
   // --- Iterations & budget ---
-  // MaxIterations x VariantsPerIteration = total variants evaluated.
-  // Lower these for a quick test run and redeploy.
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
 
-  // --- Auto-stop: off by default. Uncomment the last line to enable ---
-  // Ends the run early if the best fitness improves by less than MinImprovement (0.01 = 1%)
-  // over the last WindowVariants variants; MaxIterations x VariantsPerIteration remains the cap.
-  // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
+  // --- Geometry & Voxel Kernel (3D PicoGK) ---
   "BaseVoxelResolution": 0.5,
-  // Disable automatic start voxel refinement for coarse real-world voxels (> 80% of surface cell size).
   "AutoVoxelResolution": false,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
   "VoxelSmoothingPremeltingSteps": 2,
-
-  // --- Toggleable framework stages ---
-  // Scaler off: geometry kernel works in real dimensions, ScaleFactor remains 1.
-  // Smoother off: STL is used directly from the voxel model.
   "UseRubberBandScaler": true,
   "UseStlSmoothing": true,
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  // Prism boundary layer (y+ ~ 1.5, growth rate 1.28), decoupled large wind tunnel
-  // (>= 5 L upstream, >= 15 L downstream, >= 5 W/H lateral, <= 0.3% blockage),
-  // MeshSizeFromCurvature = true, CauchyTolerance = "1e-5", and AutoRestartOnDrift in su2.json.
-  // MeshRefinementFactor is omitted: calibrated at startup via MeshCalibration ("Auto");
-  // specifying it in Auto mode aborts startup.
   "Su2MaxIterations": 5000,
-  "CauchyElements": 300,
-  "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimization algorithm: "Bayes" (default) or "IdwBaseline" (legacy alias "Rsm") ---
-  // Code default is "Bayes"; MantaAuv specifies it explicitly so future default changes
-  // do not silently alter this project. Unknown names warn and fall back to default.
-  "OptimizationAlgorithm": "Bayes",
-
-  // --- IdwBaseline (inverse-distance-weighted baseline) ---
-  "IdwVirtualSimulations": 50000,
-  "IdwPower": 3.0,
-  "IdwExploitationRatio": 0.7,
-  "IdwExploitationSigma": 0.1,
-
-  // --- Bayesian optimizer (only when "OptimizationAlgorithm": "Bayes", all optional) ---
-  // Usually not needed: "Bayes" runs without settings. Every parameter needs bounds in
-  // project.json (ParameterBounds); MaxDeviations has no effect in "Bayes" mode.
-  // "Bayes": {
-  //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
-  //   "InitialSamples": 0          // 0 = automatic: max(VariantsPerIteration, 2 x free params + 2)
-  // },
-
-  // --- Control runs & mesh calibration ---
-  // Strict profile for calibration, fine verification, and recheck: up to 20000 iterations,
-  // window 500, CauchyTolerance "1e-5", iterative error <= 0.1 x mesh tolerance.
-  // MaxCells3D = 5M (instead of default 3M): checked against the MEASURED cell count after meshing
-  // before SU2 runs. Measured: factor 0.50 = 0.70M, 0.35 = 1.70M cells.
-  "ControlRuns": {
-    "Su2MaxIterations": 20000,
-    "CauchyElements": 500,
-    "CauchyTolerance": "1e-5",
-    "IterativeToleranceFraction": 0.1
-  },
+  // --- Calibration & verification ---
   "MeshCalibration": {
     "Mode": "Auto",
     "Use2DPrecalibration": false,
@@ -102,8 +43,6 @@
   },
 
   // --- Champion validation (bouncer) ---
-  // Allowed relative FITNESS deviation on re-simulation. Should roughly match calibration tolerance,
-  // not smaller (drag enters fitness cubed: 1% drag ~ 3% fitness, so 5% would be too tight).
   "BouncerTolerance": 0.15,
   "BouncerJitter": 0.01
 }

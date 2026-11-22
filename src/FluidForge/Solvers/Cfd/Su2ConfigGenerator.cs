@@ -80,6 +80,8 @@ namespace FluidForge.Solvers.Cfd
                 : Su2SolverOptions.DefaultHistoryOutput;
 
             string historyOutput = string.Join(", ", historyFields.Select(field => field.Trim()));
+            string turbModel = ResolveTurbulenceModel(options.TurbulenceModel);
+            SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(options.SymmetryPlane);
 
             var cfgContent = new List<string> {
                 "%",
@@ -87,11 +89,11 @@ namespace FluidForge.Solvers.Cfd
                 "% SOLVER & PHYSICS",
                 "% Incompressible RANS equations (mass + momentum, constant density & viscosity).",
                 "% No energy equation (INC_ENERGY_EQUATION= NO).",
-                "% Turbulence model per KIND_TURB_MODEL (default SA: 1-equation transport for nu_tilde).",
+                $"% Turbulence model per KIND_TURB_MODEL ({turbModel}).",
                 "% Steady-state solution via pseudo-time stepping (implicit Euler).",
                 "% =============================================================================",
                 "SOLVER= INC_RANS",
-                $"KIND_TURB_MODEL= {options.TurbulenceModel}",
+                $"KIND_TURB_MODEL= {turbModel}",
                 "MATH_PROBLEM= DIRECT",
                 "INC_DENSITY_MODEL= CONSTANT",
                 "INC_ENERGY_EQUATION= NO",
@@ -137,9 +139,17 @@ namespace FluidForge.Solvers.Cfd
                 "% - MARKER_PLOTTING: surface written to surface.vtu.",
                 "% =============================================================================",
                 "MARKER_HEATFLUX= ( Wall, 0.0 )",
-                "MARKER_FAR= ( Farfield )",        
+                "MARKER_FAR= ( Farfield )",
                 "MARKER_MONITORING= ( Wall )",
                 "MARKER_PLOTTING= ( Wall )",
+            };
+
+            if (symAxis != SymmetryAxis.None)
+            {
+                cfgContent.Add("MARKER_SYM= ( Symmetry )");
+            }
+
+            cfgContent.AddRange(new[] {
                 "%",
                 "% =============================================================================",
                 "% NUMERICAL ROBUSTNESS FOR RANS",
@@ -158,7 +168,7 @@ namespace FluidForge.Solvers.Cfd
                 "%",
                 "% =============================================================================",
                 "% TURBULENCE NUMERICS",
-                "% Turbulence equation (SA) discretized with SCALAR_UPWIND (1st order).",
+                $"% Turbulence equations ({turbModel}) discretized with SCALAR_UPWIND (1st order).",
                 "% =============================================================================",
                 "CONV_NUM_METHOD_TURB= SCALAR_UPWIND",
                 "%",
@@ -183,7 +193,7 @@ namespace FluidForge.Solvers.Cfd
                 "TABULAR_FORMAT= CSV",
                 "OUTPUT_FILES= (RESTART, PARAVIEW, SURFACE_PARAVIEW, SURFACE_CSV)",
                 "VOLUME_OUTPUT= (COORDINATES, SOLUTION, PRIMITIVE, VELOCITY, PRESSURE, MACH, DENSITY, SKIN_FRICTION, Y_PLUS)",
-            };
+            });
 
             if (aoaLine != null)
             {
@@ -261,6 +271,22 @@ namespace FluidForge.Solvers.Cfd
             }
 
             File.WriteAllLines(configPath, cfgContent);
+        }
+
+        /// <summary>
+        /// Validates and normalizes <see cref="Su2SolverOptions.TurbulenceModel"/> (<c>"SA"</c> or <c>"SST"</c>).
+        /// </summary>
+        public static string ResolveTurbulenceModel(string? turbulenceModel)
+        {
+            if (!string.IsNullOrWhiteSpace(turbulenceModel))
+            {
+                string trimmed = turbulenceModel.Trim().ToUpperInvariant();
+                if (trimmed == "SA" || trimmed == "SST")
+                    return trimmed;
+            }
+
+            throw new InvalidOperationException(
+                $"{OutputConventions.ConfigTag} Unknown TurbulenceModel '{turbulenceModel}'. Allowed values are 'SA' or 'SST'.");
         }
 
         /// <summary>

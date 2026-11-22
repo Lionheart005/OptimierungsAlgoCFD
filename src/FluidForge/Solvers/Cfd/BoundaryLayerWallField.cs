@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using FluidForge.Core;
 
 namespace FluidForge.Solvers.Cfd
 {
@@ -260,13 +261,18 @@ namespace FluidForge.Solvers.Cfd
         };
 
         /// <summary>Computes the field for target <paramref name="thickness"/> (in geometry units).</summary>
-        public static WallFieldResult Build(WallSurface wall, double thickness, WallFieldSettings settings)
+        public static WallFieldResult Build(
+            WallSurface wall,
+            double thickness,
+            WallFieldSettings settings,
+            SymmetryAxis symmetryAxis = SymmetryAxis.None)
         {
             if (thickness <= 0) throw new ArgumentOutOfRangeException(nameof(thickness), "Layer thickness must be positive.");
 
             int n = wall.VertexCount;
             double[] raw = wall.RawNormals;
-            double[] dir = SmoothDirections(wall, thickness, settings.SmoothingRadiusFactor, settings.MaxTiltDeg);
+            double symmetryTolerance = Math.Max(1e-4, 1e-3 * wall.MeanEdgeLength);
+            double[] dir = SmoothDirections(wall, thickness, settings.SmoothingRadiusFactor, settings.MaxTiltDeg, symmetryAxis, symmetryTolerance);
 
             // Prediction: how many triangles still fold at full thickness with these directions?
             double[] triCrit = CriticalTriangleThickness(wall, dir);
@@ -390,10 +396,31 @@ namespace FluidForge.Solvers.Cfd
         /// radius (diffusion reach ≈ √steps * edgeLength), keeping smoothing reach consistent across mesh
         /// factors. Directions deviate at most <paramref name="maxTiltDeg"/> from the raw normal.
         /// </summary>
-        public static double[] SmoothDirections(WallSurface wall, double thickness, double radiusFactor, double maxTiltDeg)
+        public static double[] SmoothDirections(
+            WallSurface wall,
+            double thickness,
+            double radiusFactor,
+            double maxTiltDeg,
+            SymmetryAxis symmetryAxis = SymmetryAxis.None,
+            double symmetryTolerance = 1e-3)
         {
             int n = wall.VertexCount;
-            double[] raw = wall.RawNormals;
+            double[] raw = (double[])wall.RawNormals.Clone();
+            bool[]? onSymPlane = symmetryAxis != SymmetryAxis.None
+                ? FindSymmetryPlaneVertices(wall, symmetryAxis, symmetryTolerance)
+                : null;
+
+            if (onSymPlane != null)
+            {
+                for (int v = 0; v < n; v++)
+                {
+                    if (onSymPlane[v])
+                    {
+                        ProjectDirectionToSymmetryPlane(raw, v, symmetryAxis);
+                    }
+                }
+            }
+
             double[] cur = (double[])raw.Clone();
             double[] next = new double[3 * n];
 
@@ -435,11 +462,54 @@ namespace FluidForge.Solvers.Cfd
                             next[3 * v] = raw[3 * v]; next[3 * v + 1] = raw[3 * v + 1]; next[3 * v + 2] = raw[3 * v + 2];
                         }
                     }
+
+                    if (onSymPlane != null && onSymPlane[v])
+                    {
+                        ProjectDirectionToSymmetryPlane(next, v, symmetryAxis);
+                    }
                 }
                 (cur, next) = (next, cur);
             }
 
             return cur;
+        }
+
+        private static bool[] FindSymmetryPlaneVertices(WallSurface wall, SymmetryAxis axis, double tolerance)
+        {
+            int n = wall.VertexCount;
+            var result = new bool[n];
+            int coordOffset = axis == SymmetryAxis.Y0 ? 1 : 2;
+            for (int v = 0; v < n; v++)
+            {
+                if (Math.Abs(wall.Points[3 * v + coordOffset]) <= tolerance)
+                {
+                    result[v] = true;
+                }
+            }
+            return result;
+        }
+
+        private static void ProjectDirectionToSymmetryPlane(double[] dir, int v, SymmetryAxis axis)
+        {
+            if (axis == SymmetryAxis.Y0)
+                dir[3 * v + 1] = 0.0;
+            else if (axis == SymmetryAxis.Z0)
+                dir[3 * v + 2] = 0.0;
+
+            double x = dir[3 * v], y = dir[3 * v + 1], z = dir[3 * v + 2];
+            double len = Math.Sqrt(x * x + y * y + z * z);
+            if (len > 1e-12)
+            {
+                dir[3 * v] = x / len;
+                dir[3 * v + 1] = y / len;
+                dir[3 * v + 2] = z / len;
+            }
+            else
+            {
+                dir[3 * v] = 0.0;
+                dir[3 * v + 1] = axis == SymmetryAxis.Y0 ? 0.0 : 1.0;
+                dir[3 * v + 2] = axis == SymmetryAxis.Z0 ? 0.0 : 1.0;
+            }
         }
 
         /// <summary>

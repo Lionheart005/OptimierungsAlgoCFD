@@ -1,7 +1,7 @@
 # Architecture & Developer Guide (`src/FluidForge/`)
 
 > **Related Documentation:**
-> - **Legacy User Manual & JSON Reference:** [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md) *(currently in German; will be replaced by modular English `docs/` in Phase 2)*
+> - **Configuration Reference & Physics Presets:** [`docs/config-reference.md`](../../docs/config-reference.md) | [`docs/physics-presets.md`](../../docs/physics-presets.md)
 > - **Creating a New Component / Project (3D & 2D):** [`src/projects/README.md`](../projects/README.md)
 > - **3D Geometry Manual (PicoGK):** [`src/FluidForge/Kernels/PicoGk/README.md`](Kernels/PicoGk/README.md)
 > - **2D Geometry Manual (`Planar2D` Kernel):** [`src/FluidForge/Kernels/Planar2D/README.md`](Kernels/Planar2D/README.md)
@@ -252,7 +252,7 @@ All 780+ unit tests run in seconds on Windows and Linux without external solvers
 
 - **`ProjectLayoutTests`**: Verifies that all config files live in their project folders, `config/` contains no checked-in JSONs, and default executable paths remain `PATH`-relative.
 - **`TemplateProjectTests`**: Verifies that `_Template3D` (3D) and `_Template2D` (2D) are complete, have commented JSONs, and their code defaults match their template JSONs.
-- **`HandbookCoverageTests`**: Uses reflection across all option classes and `scripts/sim.ps1` to verify that every JSON setting and script command is documented in [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md).
+- **`HandbookCoverageTests`**: Uses reflection across all option classes and `scripts/sim.ps1` to verify that every JSON setting and script command is documented in [`docs/config-reference.md`](../../docs/config-reference.md) and [`docs/server-workflow.md`](../../docs/server-workflow.md).
 - **`ScriptContractTests`**: Statically checks `scripts/sim.ps1` and `scripts/sim-runner.sh` for SSH timeouts, parameter forwarding (`-Project` → `SIM_PROJECT`), and protection against silent fallbacks.
 - **`RepositoryHygieneTests`**: Scans all text files in `src/`, `scripts/`, and `config/` for accidentally committed secrets (private keys, API tokens, passwords).
 

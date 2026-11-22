@@ -83,6 +83,17 @@ namespace FluidForge.Solvers.Cfd
     }
 
     /// <summary>
+    /// Result of simulating SU2's Cauchy stopping criterion offline on a <c>history.csv</c> trace.
+    /// </summary>
+    public sealed record CauchyStopSimulation(
+        int StopIteration,
+        int TotalIterations,
+        float ValueAtStop,
+        float FinalValue,
+        float RelativeError,
+        bool TriggeredEarly);
+
+    /// <summary>
     /// Pure analysis functions for SU2 convergence history without file or console I/O.
     /// </summary>
     public static class Su2HistoryAnalyzer
@@ -355,6 +366,138 @@ namespace FluidForge.Solvers.Cfd
                 if (residual > max) max = residual;
             }
             return (float)(max - min);
+        }
+
+        /// <summary>
+        /// Simulates SU2's Cauchy convergence criterion offline on <paramref name="lines"/> by comparing
+        /// adjacent window means <c>|mean(i - W .. i) - mean(i - 2W .. i - W)| &lt; cauchyEps</c>
+        /// starting after <paramref name="startIter"/>.
+        /// </summary>
+        public static CauchyStopSimulation SimulateCauchyStop(
+            string[] lines,
+            int cauchyElems,
+            double cauchyEps,
+            string columnName = "CD",
+            int startIter = 100)
+        {
+            if (lines == null || lines.Length < 2)
+                return new CauchyStopSimulation(0, 0, float.NaN, float.NaN, float.NaN, TriggeredEarly: false);
+
+            string[] validLines = lines.Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+            if (validLines.Length < 2)
+                return new CauchyStopSimulation(0, 0, float.NaN, float.NaN, float.NaN, TriggeredEarly: false);
+
+            string[] headers = Su2Solver.SplitCsvLine(validLines[0]);
+            int colIndex = Su2Solver.FindColumn(headers, columnName, out _);
+            if (colIndex < 0)
+                return new CauchyStopSimulation(0, 0, float.NaN, float.NaN, float.NaN, TriggeredEarly: false);
+
+            int iterCol = Su2Solver.FindColumn(headers, "Inner_Iter", out _);
+            if (iterCol < 0) iterCol = Su2Solver.FindColumn(headers, "ITER", out _);
+            if (iterCol < 0) iterCol = Su2Solver.FindColumn(headers, "Iter", out _);
+
+            var values = new List<double>(validLines.Length - 1);
+            var iterations = new List<int>(validLines.Length - 1);
+
+            for (int rowIdx = 1; rowIdx < validLines.Length; rowIdx++)
+            {
+                string[] row = Su2Solver.SplitCsvLine(validLines[rowIdx]);
+                if (colIndex >= row.Length) continue;
+                if (!double.TryParse(row[colIndex], NumberStyles.Float, CultureInfo.InvariantCulture, out double val) ||
+                    !double.IsFinite(val))
+                    continue;
+
+                int iterCount = values.Count + 1;
+                if (iterCol >= 0 && iterCol < row.Length &&
+                    int.TryParse(row[iterCol], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIter) &&
+                    parsedIter >= 0)
+                {
+                    iterCount = parsedIter + 1;
+                }
+
+                values.Add(val);
+                iterations.Add(iterCount);
+            }
+
+            int n = values.Count;
+            if (n == 0)
+                return new CauchyStopSimulation(0, 0, float.NaN, float.NaN, float.NaN, TriggeredEarly: false);
+
+            int w = Math.Max(1, cauchyElems);
+            int totalIterations = iterations[^1];
+
+            var prefix = new double[n + 1];
+            for (int i = 0; i < n; i++)
+                prefix[i + 1] = prefix[i] + values[i];
+
+            int finalCount = Math.Min(w, n);
+            float finalValue = (float)((prefix[n] - prefix[n - finalCount]) / finalCount);
+
+            int minCheckRow = Math.Max(2 * w, Math.Max(0, startIter) + 1);
+            for (int i = minCheckRow; i <= n; i++)
+            {
+                double meanCurrent = (prefix[i] - prefix[i - w]) / w;
+                double meanPrevious = (prefix[i - w] - prefix[i - 2 * w]) / w;
+                if (Math.Abs(meanCurrent - meanPrevious) < cauchyEps)
+                {
+                    int stopIter = iterations[i - 1];
+                    float valueAtStop = (float)meanCurrent;
+                    float relError = Math.Abs(valueAtStop - finalValue) / Math.Max(Math.Abs(finalValue), 1e-7f);
+                    return new CauchyStopSimulation(stopIter, totalIterations, valueAtStop, finalValue, relError, TriggeredEarly: i < n);
+                }
+            }
+
+            return new CauchyStopSimulation(totalIterations, totalIterations, finalValue, finalValue, 0f, TriggeredEarly: false);
+        }
+
+        /// <summary>
+        /// Steps through <paramref name="lines"/> in increments of <paramref name="step"/> rows and returns the
+        /// earliest iteration count where <see cref="Su2ConvergenceJudge"/> passes and all monitored metrics
+        /// show no statistically significant trend (stationary), or <c>null</c> if never achieved.
+        /// </summary>
+        public static int? FindEarliestStationaryIteration(
+            string[] lines,
+            Su2HistoryOptions options,
+            float relativeTolerance,
+            float absoluteTolerance,
+            int step = 100)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            if (lines == null || lines.Length < 2) return null;
+
+            string[] validLines = lines.Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+            if (validLines.Length < 2) return null;
+
+            List<string> metricCols = (options.MetricColumns ?? Array.Empty<string>())
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (metricCols.Count == 0) return null;
+
+            var metricMap = metricCols.ToDictionary(c => c, c => c, StringComparer.OrdinalIgnoreCase);
+            var atolMap = metricCols.ToDictionary(c => c, _ => Math.Max(0f, absoluteTolerance), StringComparer.OrdinalIgnoreCase);
+
+            int dataCount = validLines.Length - 1;
+            int stepSize = Math.Max(1, step);
+            int firstCheck = Math.Min(dataCount, Math.Max(Su2ConvergenceJudge.MinTailRows * 2, stepSize));
+
+            for (int endRow = firstCheck; endRow <= dataCount;)
+            {
+                var prefixLines = new string[endRow + 1];
+                Array.Copy(validLines, prefixLines, endRow + 1);
+
+                Su2HistoryResult history = Evaluate(prefixLines, options);
+                Su2ConvergenceVerdict verdict = Su2ConvergenceJudge.Judge(
+                    history, metricMap, relativeTolerance, absoluteScale: 1.0f, atolMap);
+
+                if (verdict.Assessed && verdict.Converged && Su2DiagnosticsExtractor.IsStationary(history, metricMap))
+                    return history.Iterations;
+
+                if (endRow == dataCount) break;
+                endRow = Math.Min(dataCount, endRow + stepSize);
+            }
+
+            return null;
         }
     }
 }

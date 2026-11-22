@@ -52,18 +52,31 @@ namespace FluidForge.Core
 
             Console.WriteLine();
             SimulationLog.Detail("VALIDATION: Testing champion stability...");
-            var sortedCandidates = candidates.OrderByDescending(r => r.Fitness).ToList();
+            var sortedCandidates = candidates
+                .OrderByDescending(r => r.Feasible && !r.SimulationFailed)
+                .ThenByDescending(r => r.Fitness)
+                .ToList();
 
             float tolerance = config.BouncerTolerance;
 
             foreach (var candidate in sortedCandidates)
             {
+                if (candidate.SimulationFailed || !candidate.Feasible || candidate.IsPreConstraintInfeasible)
+                    continue;
+
+                if (_fitness is IObjectiveEvaluator objectiveEvaluator && candidate.Objectives.Count > 0)
+                {
+                    if (ValidateCandidateByObjectives(candidate, objectiveEvaluator, config, tolerance, resimulate))
+                        return candidate;
+                    continue;
+                }
+
                 if (candidate.Fitness < MinimumFitnessToTest) break;
 
                 float originalFitness = candidate.Fitness;
                 SimulationLog.Detail($"Testing Variant {candidate.Variant} (Reference Fitness: {originalFitness:F4})");
 
-                var testParams = JitterParameters(candidate.ActiveParameters, config.BouncerJitter);
+                var (testParams, _, _) = JitterParametersWithInfo(candidate.ActiveParameters, config.BouncerJitter);
 
                 try
                 {
@@ -95,15 +108,11 @@ namespace FluidForge.Core
                         return candidate;
                     }
 
-                    SimulationLog.Detail("[REJECTED] Model is unstable. Disqualified.");
-                    candidate.Fitness = DisqualifiedFitness;
-                    candidate.Disqualified = true;
+                    Disqualify(candidate, "[REJECTED] Model is unstable. Disqualified.");
                 }
                 catch (Exception)
                 {
-                    SimulationLog.Detail($"{OutputConventions.ErrorTag} Validation failed. Disqualified.");
-                    candidate.Fitness = DisqualifiedFitness;
-                    candidate.Disqualified = true;
+                    Disqualify(candidate, $"{OutputConventions.ErrorTag} Validation failed. Disqualified.");
                 }
             }
 
@@ -111,27 +120,122 @@ namespace FluidForge.Core
             return sortedCandidates[0];
         }
 
+        private bool ValidateCandidateByObjectives(
+            ModelRecord candidate,
+            IObjectiveEvaluator objectiveEvaluator,
+            SimulationConfig config,
+            float tolerance,
+            Func<Dictionary<string, float>, ModelRecord> resimulate)
+        {
+            string refSummary = string.Join(", ", candidate.Objectives.Select(o => $"{o.Name}={o.Value:F4}"));
+            SimulationLog.Detail($"Testing Variant {candidate.Variant} (Reference Objectives: {refSummary})");
+
+            var (testParams, jitteredKey, delta) = JitterParametersWithInfo(candidate.ActiveParameters, config.BouncerJitter);
+
+            try
+            {
+                ModelRecord validationResult = resimulate(testParams);
+
+                // If jitter stepped just past a pre-CFD geometry boundary, retry once in the opposite
+                // direction so CFD stability is evaluated within the feasible domain.
+                if (validationResult.IsPreConstraintInfeasible && jitteredKey != null && delta != 0f)
+                {
+                    var retryParams = new Dictionary<string, float>(candidate.ActiveParameters);
+                    float opposite = retryParams[jitteredKey] - delta;
+                    if (_parameterBounds != null && _parameterBounds.TryGetValue(jitteredKey, out var bounds) && bounds.Max > bounds.Min)
+                    {
+                        opposite = Math.Clamp(opposite, bounds.Min, bounds.Max);
+                    }
+                    retryParams[jitteredKey] = opposite;
+                    SimulationLog.Detail($"{OutputConventions.WarningTag} Validation jitter hit pre-CFD constraint; retrying opposite direction on '{jitteredKey}'.");
+                    validationResult = resimulate(retryParams);
+                }
+
+                _fitness.CalculateFitness(validationResult, config);
+
+                if (validationResult.SimulationFailed || validationResult.IsPreConstraintInfeasible || validationResult.Objectives.Count == 0)
+                {
+                    Disqualify(candidate, "[REJECTED] Validation failed or violated pre-CFD constraints. Disqualified.");
+                    return false;
+                }
+
+                float maxDeviation = 0f;
+                var summaryParts = new List<string>(candidate.Objectives.Count);
+
+                foreach (ObjectiveValue origObj in candidate.Objectives)
+                {
+                    ObjectiveValue? newObj = validationResult.Objectives.FirstOrDefault(
+                        o => string.Equals(o.Name, origObj.Name, StringComparison.OrdinalIgnoreCase));
+                    if (newObj == null || !float.IsFinite(origObj.Value) || !float.IsFinite(newObj.Value))
+                    {
+                        Disqualify(candidate, "[REJECTED] Validation objectives incomplete or non-finite. Disqualified.");
+                        return false;
+                    }
+
+                    float dev = MathF.Abs(newObj.Value - origObj.Value) / MathF.Max(MathF.Abs(origObj.Value), 1e-6f);
+                    if (dev > maxDeviation) maxDeviation = dev;
+                    summaryParts.Add($"{origObj.Name}: {origObj.Value:F4} -> {newObj.Value:F4} ({dev * 100:F1}%)");
+                }
+
+                IReadOnlyCollection<string> metrics = objectiveEvaluator.RawComparisonMetrics.Count > 0
+                    ? objectiveEvaluator.RawComparisonMetrics
+                    : (_fitness.RequiredMetrics ?? (IReadOnlyCollection<string>)Array.Empty<string>());
+                MetricUncertainty.TryGetFitness(candidate, metrics, out double uncertaintyOriginal);
+                MetricUncertainty.TryGetFitness(validationResult, metrics, out double uncertaintyValidation);
+                float allowed = MetricTolerance.WithUncertainty(tolerance, uncertaintyOriginal, uncertaintyValidation);
+                string widened = allowed > tolerance + 1e-6f
+                    ? $", allowed {allowed * 100:F1}% due to flow oscillation"
+                    : string.Empty;
+
+                SimulationLog.Detail($"Validation Objectives: {string.Join(", ", summaryParts)} (Max Deviation: {maxDeviation * 100:F1}%{widened})");
+
+                if (maxDeviation <= allowed)
+                {
+                    SimulationLog.Detail("[OK] Stable. Champion confirmed.");
+                    return true;
+                }
+
+                Disqualify(candidate, "[REJECTED] Model is unstable. Disqualified.");
+                return false;
+            }
+            catch (Exception)
+            {
+                Disqualify(candidate, $"{OutputConventions.ErrorTag} Validation failed. Disqualified.");
+                return false;
+            }
+        }
+
+        private static void Disqualify(ModelRecord candidate, string message)
+        {
+            SimulationLog.Detail(message);
+            candidate.Fitness = DisqualifiedFitness;
+            candidate.Disqualified = true;
+        }
+
         /// <summary>
         /// Perturbs one randomly chosen parameter by +/- <paramref name="jitter"/> (relative to ParameterBounds if present, otherwise absolute).
         /// </summary>
-        private Dictionary<string, float> JitterParameters(Dictionary<string, float> parameters, float jitter)
+        private (Dictionary<string, float> Params, string? JitteredKey, float Delta) JitterParametersWithInfo(
+            Dictionary<string, float> parameters, float jitter)
         {
             var testParams = new Dictionary<string, float>(parameters);
-            if (testParams.Count == 0) return testParams;
+            if (testParams.Count == 0) return (testParams, null, 0f);
 
             string keyToJitter = testParams.Keys.ElementAt(_random.Next(testParams.Count));
             float sign = _random.NextDouble() > 0.5 ? 1.0f : -1.0f;
+            float delta;
             if (_parameterBounds != null && _parameterBounds.TryGetValue(keyToJitter, out var bounds) && bounds.Max > bounds.Min)
             {
                 float range = bounds.Max - bounds.Min;
-                float delta = sign * jitter * range;
+                delta = sign * jitter * range;
                 testParams[keyToJitter] = Math.Clamp(testParams[keyToJitter] + delta, bounds.Min, bounds.Max);
             }
             else
             {
-                testParams[keyToJitter] += sign * jitter;
+                delta = sign * jitter;
+                testParams[keyToJitter] += delta;
             }
-            return testParams;
+            return (testParams, keyToJitter, delta);
         }
     }
 }

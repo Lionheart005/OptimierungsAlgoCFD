@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FluidForge Su2SolverOptions",
+  "description": "SU2 CFD solver settings (solvers/su2.json).",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor validation and autocomplete."
+    },
+    "AngleOfAttackDeg": {
+      "type": "number",
+      "default": 0
+    },
+    "AutoRestartOnDrift": {
+      "type": "boolean",
+      "default": true
+    },
+    "CflAdapt": {
+      "type": "boolean",
+      "default": true
+    },
+    "CflAdaptFactorDown": {
+      "type": "number",
+      "default": 0.5
+    },
+    "CflAdaptFactorUp": {
+      "type": "number",
+      "default": 1.2
+    },
+    "CflAdaptMax": {
+      "type": "number",
+      "default": 50
+    },
+    "CflAdaptMin": {
+      "type": "number",
+      "default": 1
+    },
+    "CflNumber": {
+      "type": "number",
+      "default": 5
+    },
+    "ConvergenceField": {
+      "type": "string",
+      "default": "DRAG"
+    },
+    "Density": {
+      "type": "number",
+      "default": 1025
+    },
+    "Dimensions": {
+      "type": "integer",
+      "default": 3
+    },
+    "DynamicViscosity": {
+      "type": "number",
+      "default": 0.001001
+    },
+    "FreestreamVelocity": {
+      "type": "number",
+      "default": 2
+    },
+    "HistoryOutput": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "MaxConvergenceRestarts": {
+      "type": "integer",
+      "default": 3
+    },
+    "OperatingPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "AngleOfAttackDeg": {
+            "type": "number",
+            "default": 0
+          },
+          "Name": {
+            "type": "string",
+            "default": ""
+          },
+          "Velocity": {
+            "type": "number"
+          },
+          "Weight": {
+            "type": "number",
+            "default": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "OscillationWarnLimit": {
+      "type": "number",
+      "default": 0.05
+    },
+    "ReferenceAreaMetric": {
+      "type": "string",
+      "default": "FrontalArea"
+    },
+    "ReferenceLength": {
+      "type": "number",
+      "default": 0.01
+    },
+    "ResultAveraging": {
+      "type": "string",
+      "default": "TailMean"
+    },
+    "ResultMetrics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "SpeedOfSound": {
+      "type": "number",
+      "default": 343.2
+    },
+    "SymmetryPlane": {
+      "type": "string",
+      "default": "None"
+    },
+    "TargetYPlus": {
+      "type": "number",
+      "default": 1.5
+    },
+    "TimeDomain": {
+      "type": "object",
+      "properties": {
+        "AveragingStartFraction": {
+          "type": "number",
+          "default": 0.5
+        },
+        "Enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "InnerIterations": {
+          "type": "integer",
+          "default": 30
+        },
+        "RestartIteration": {
+          "type": "integer",
+          "default": 0
+        },
+        "StepsPerPeriod": {
+          "type": "integer",
+          "default": 50
+        },
+        "StrouhalEstimate": {
+          "type": "number",
+          "default": 0.2
+        },
+        "TimeIterations": {
+          "type": "integer",
+          "default": 1000
+        },
+        "TimeStep": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "TreatUnconvergedAsFailed": {
+      "type": "boolean",
+      "default": true
+    },
+    "TurbulenceModel": {
+      "type": "string",
+      "default": "SA"
+    },
+    "YPlusWarnFactor": {
+      "type": "number",
+      "default": 3
+    }
+  },
+  "additionalProperties": false
+}

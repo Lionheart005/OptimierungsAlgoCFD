@@ -197,7 +197,7 @@ namespace FluidForge.Tests
         // ---------------------------------------------------------------- CSV column
 
         [Fact]
-        public void The_Csv_Has_The_Disqualified_Column_At_The_End()
+        public void The_Csv_Has_The_Disqualified_And_Feasibility_Columns_At_The_End()
         {
             var bounced = Record(2, 90f, 18f);
             bounced.Disqualified = true;
@@ -206,9 +206,9 @@ namespace FluidForge.Tests
             context.ExportToCsv();
 
             string[] lines = File.ReadAllLines(Path.Combine(Root, OutputConventions.ResultsCsvFileName));
-            Assert.EndsWith(";SimulationFailed;Disqualified", lines[0]);
-            Assert.EndsWith(";0;0", lines[1]);
-            Assert.EndsWith(";0;1", lines[2]);
+            Assert.EndsWith(";SimulationFailed;Disqualified;Feasible;FailedStage", lines[0]);
+            Assert.EndsWith(";0;0;1;None", lines[1]);
+            Assert.EndsWith(";0;1;1;None", lines[2]);
         }
     }
 }

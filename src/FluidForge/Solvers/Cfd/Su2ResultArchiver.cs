@@ -85,13 +85,14 @@ namespace FluidForge.Solvers.Cfd
             string meshPath,
             ModelRecord record,
             string historyPath,
-            string configPath)
+            string configPath,
+            string? archiveSuffix = null)
         {
             string analysisResultsDir = Path.Combine(workingDirectory, OutputConventions.AnalysisDirectory);
             Directory.CreateDirectory(analysisResultsDir);
 
-            // Include tag (Cal1..5, Fine, Recheck) so control runs do not overwrite the variant's own files.
-            string archiveBase = ArchiveBaseNameFromMesh(meshPath, record);
+            // Include tag (Cal1..5, Fine, Recheck) and optional operating-point suffix (_OP1) so runs do not overwrite one another.
+            string archiveBase = ArchiveBaseNameFromMesh(meshPath, record) + (archiveSuffix ?? string.Empty);
 
             string defaultSurfaceVtu = Path.Combine(workingDirectory, "surface.vtu");
             string savedSurfaceVtu = Path.Combine(analysisResultsDir, $"Surface_{archiveBase}.vtu");
@@ -118,12 +119,13 @@ namespace FluidForge.Solvers.Cfd
             ModelRecord record,
             string historyPath,
             string configPath,
-            string? su2Output)
+            string? su2Output,
+            string? archiveSuffix = null)
         {
             string errorLogDirectory = Path.Combine(workingDirectory, OutputConventions.ErrorLogsDirectory);
             Directory.CreateDirectory(errorLogDirectory);
 
-            string modelName = Path.GetFileNameWithoutExtension(meshPath);
+            string modelName = Path.GetFileNameWithoutExtension(meshPath) + (archiveSuffix ?? string.Empty);
             string errorLogPath = Path.Combine(errorLogDirectory, $"SU2_Error_{modelName}.txt");
             File.WriteAllText(
                 errorLogPath,
@@ -134,7 +136,7 @@ namespace FluidForge.Solvers.Cfd
             Console.WriteLine();
 
             record.SimulationFailed = true;
-            string errorBase = ArchiveBaseNameFromMesh(meshPath, record);
+            string errorBase = ArchiveBaseNameFromMesh(meshPath, record) + (archiveSuffix ?? string.Empty);
             TryCopyArchiveFile(historyPath, Path.Combine(errorLogDirectory, $"History_{errorBase}.csv"));
             TryCopyArchiveFile(configPath, Path.Combine(errorLogDirectory, $"Config_{errorBase}.cfg"));
         }

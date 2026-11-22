@@ -15,11 +15,21 @@ namespace FluidForge.Core
         public double Back(double value) => Log ? Math.Exp(value) : value;
     }
 
+    internal sealed class ConstraintSlot
+    {
+        public string Name = "";
+        public ISurrogateModel Model = null!;
+        public bool IsPreSolve;
+    }
+
     internal sealed class FittedEnsemble
     {
         public List<SurrogateSlot> Slots = new();
+        public List<ConstraintSlot> ConstraintSlots = new();
+        public bool HasFeasibleIncumbent = true;
         public bool FitnessLog;
         public double BestTransformed;
+        public double InitialBestTransformed;
 
         /// <summary>
         /// How far below the current best (in transformed units) a point is still considered "plausibly good":
@@ -49,7 +59,7 @@ namespace FluidForge.Core
     /// </summary>
     internal sealed class SurrogateModelEnsemble
     {
-        internal const int FullSamples = 64;
+        internal const int FullSamples = 128;
         private const double ImprovementOffset = 0.01;
 
         private readonly IFitnessCalculator _fitness;
@@ -136,13 +146,21 @@ namespace FluidForge.Core
         public FittedEnsemble FitModels(SurrogateTrainingSet training, List<int> selected, int dimension)
         {
             var fit = new FittedEnsemble();
-            double bestFitness = training.Records.Max(r => r.Fitness);
+            bool hasConstraints = training.AllConstraintRecords.Count > 0;
+            fit.HasFeasibleIncumbent = !hasConstraints || training.FeasibleRecords.Count > 0;
+
+            double bestFitness = hasConstraints && fit.HasFeasibleIncumbent
+                ? training.FeasibleRecords.Max(r => r.Fitness)
+                : training.Records.Max(r => r.Fitness);
             bool allPositive = training.Records.All(r => r.Fitness > 0);
             fit.FitnessLog = allPositive;
             fit.BestTransformed = fit.T(bestFitness);
+            fit.InitialBestTransformed = fit.BestTransformed;
             double fitnessSpread = Math.Sqrt(Variance(training.Records.Select(r => (double)r.Fitness).ToList()));
             fit.PlausibleGap = allPositive ? Math.Log(2.0) : 0.5 * fitnessSpread;
-            fit.MeaningfulImprovement = allPositive ? 0.002 : 0.002 * fitnessSpread;
+            fit.MeaningfulImprovement = fit.HasFeasibleIncumbent
+                ? (allPositive ? 0.002 : 0.002 * fitnessSpread)
+                : 0.0;
 
             if (ActiveMode == SurrogateTargetMode.Fitness)
             {
@@ -201,9 +219,108 @@ namespace FluidForge.Core
                 fit.Offset = 0.0;
             }
 
+            if (hasConstraints)
+            {
+                FitConstraintModels(training, fit);
+            }
+
             fit.Relevance = CombineRelevance(fit, dimension);
             _lastRelevance = fit.Relevance;
             return fit;
+        }
+
+        /// <summary>
+        /// Fits only the constraint surrogate models when too few CFD evaluations succeeded
+        /// (e.g., many initial DoE points violated a PreConstraint), allowing Bayes to steer
+        /// immediately toward the feasible region via P(feasible).
+        /// </summary>
+        public FittedEnsemble FitConstraintOnly(SurrogateTrainingSet training, int dimension)
+        {
+            var fit = new FittedEnsemble
+            {
+                HasFeasibleIncumbent = false,
+                PlausibleGap = 1.0,
+                MeaningfulImprovement = 0.0
+            };
+
+            FitConstraintModels(training, fit);
+            if (fit.ConstraintSlots.Count == 0)
+            {
+                throw new SurrogateFitException("No constraint has at least 3 valid margin observations.");
+            }
+
+            fit.Relevance = CombineConstraintRelevance(fit, dimension);
+            _lastRelevance = fit.Relevance;
+            return fit;
+        }
+
+        private void FitConstraintModels(SurrogateTrainingSet training, FittedEnsemble fit)
+        {
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ModelRecord record in training.AllConstraintRecords)
+            {
+                foreach (ConstraintEvaluation c in record.Constraints)
+                {
+                    if (seen.Add(c.Name)) names.Add(c.Name);
+                }
+            }
+
+            foreach (string name in names)
+            {
+                var inputs = new List<double[]>();
+                var margins = new List<double>();
+                bool isPreSolve = false;
+
+                for (int i = 0; i < training.AllConstraintRecords.Count; i++)
+                {
+                    ModelRecord record = training.AllConstraintRecords[i];
+                    ConstraintEvaluation? match = null;
+                    foreach (ConstraintEvaluation c in record.Constraints)
+                    {
+                        if (string.Equals(c.Name, name, StringComparison.Ordinal))
+                        {
+                            match = c;
+                            break;
+                        }
+                    }
+
+                    if (match != null && float.IsFinite(match.Margin))
+                    {
+                        inputs.Add(training.AllConstraintInputs[i]);
+                        margins.Add(match.Margin);
+                        if (match.IsPreSolve) isPreSolve = true;
+                    }
+                }
+
+                if (inputs.Count < 3) continue;
+
+                ISurrogateModel model = ModelFor($"__Constraint_{name}");
+                model.Fit(inputs, margins);
+                fit.ConstraintSlots.Add(new ConstraintSlot
+                {
+                    Name = name,
+                    Model = model,
+                    IsPreSolve = isPreSolve
+                });
+            }
+        }
+
+        private static double[] CombineConstraintRelevance(FittedEnsemble fit, int dimension)
+        {
+            var sums = new double[dimension];
+            int models = 0;
+            foreach (ConstraintSlot slot in fit.ConstraintSlots)
+            {
+                IReadOnlyList<double>? relevance = slot.Model.ParameterRelevance;
+                for (int i = 0; i < dimension; i++)
+                    sums[i] += relevance != null && relevance.Count == dimension ? relevance[i] : 1.0;
+                models++;
+            }
+
+            if (models == 0) return Enumerable.Repeat(1.0, dimension).ToArray();
+            for (int i = 0; i < dimension; i++) sums[i] /= models;
+            return sums;
         }
 
         public void FitSuccessModel(SurrogateTrainingSet training, FittedEnsemble fit)

@@ -1,65 +1,10 @@
 {
-  // MyProject2D -- SU2 Solver. Plain-text reference: src/projects/BEDIENHANDBUCH.md
-  //
-  // Lists every key with its code default (Solvers/Cfd/Su2SolverOptions.cs).
-  // In a real project, keep only overrides.
-
-  // --- Fluid (default seawater; air: 1.225 kg/m^3 and 1.81e-5 Pa*s) ---
-  "Density": 1025.0,            // kg/m^3
-  "DynamicViscosity": 0.001001, // Pa*s
-  "TurbulenceModel": "SA",      // SA or SST
-  "SpeedOfSound": 343.2,        // m/s (air), only used when FreestreamVelocity = 0
-
-  // Freestream velocity in m/s (e.g. Naca2D: air, 51.48). 0 = MachNumber x SpeedOfSound.
-  "FreestreamVelocity": 2.0,
-
-  // --- Dimension, angle of attack, reference values ---
-  // Dimensions is forced to 2 at runtime in the 2D pipeline; reference area in 2D is chord ("Chord").
-  "Dimensions": 3,
+  // MyProject2D -- SU2 2D Solver. Fluid, velocity, and metrics overrides; solver/y+ defaults come from Preset.
+  "$schema": "../../../../schemas/su2.schema.json",
+  "Density": 1.225,
+  "DynamicViscosity": 1.81e-5,
+  "FreestreamVelocity": 51.48,
   "AngleOfAttackDeg": 0.0,
-  "ReferenceLength": 0.01,
-  "ReferenceAreaMetric": "FrontalArea",
-
-  // --- Result metrics (left: fitness formula key, right: history.csv column) ---
-  "ResultMetrics": {
-    "Drag": "CD"
-  },
-
-  "ConvergenceField": "DRAG",
-  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
-
-  // --- Convergence evaluation ---
-  // True tail-window drift = failed; pure oscillation (vortex shedding) remains valid.
-  // TailMean = average over tail window; OscillationWarnLimit is a warning threshold only.
-  "OscillationWarnLimit": 0.05,
-  "TreatUnconvergedAsFailed": true,
-  "AutoRestartOnDrift": true,
-  "MaxConvergenceRestarts": 3,
-  "ResultAveraging": "TailMean",
-
-  // --- CFL ---
-  "CflNumber": 5.0,
-  "CflAdapt": true,
-  "CflAdaptFactorDown": 0.5,
-  "CflAdaptFactorUp": 1.2,
-  "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0,
-
-  // --- y+ check (2D default: TargetYPlus 1.0 x YPlusWarnFactor 3.0 = limit 3.0 for YPlus_P95) ---
-  // In MeshCalibration.Mode = "Auto", this is the hard acceptance limit (YPlus_Ok).
-  // Keep TargetYPlus in sync with solvers/gmsh.json; global MeshRefinementFactor does not shrink y1.
-  "TargetYPlus": 1.0,
-  "YPlusWarnFactor": 3.0,
-
-  // --- Time-accurate URANS ---
-  "TimeDomain": {
-    "Enabled": false,
-    "TimeStep": 0.0,
-    "StepsPerPeriod": 50,
-    "StrouhalEstimate": 0.2,
-    "TimeIterations": 1000,
-    "InnerIterations": 30,
-    "AveragingStartFraction": 0.5,
-    "RestartIteration": 0
-  }
+  "ReferenceAreaMetric": "Chord",
+  "ResultMetrics": { "Drag": "CD", "Lift": "CL" }
 }

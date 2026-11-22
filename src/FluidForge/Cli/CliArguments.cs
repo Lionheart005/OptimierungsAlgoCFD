@@ -15,17 +15,29 @@ namespace FluidForge.Cli
 
         public const string ListProjectsFlag = "--list-projects";
         public const string PrintConfigFlag = "--print-config";
+        public const string OriginsFlag = "--origins";
+        public const string DumpPresetFlag = "--dump-preset";
+        public const string ExportSchemasFlag = "--export-schemas";
+        public const string OutFlag = "--out";
         public const string CalibrateFlag = "--calibrate";
         public const string RecheckFlag = "--recheck";
         public const string UnsteadyFlag = "--unsteady";
         public const string ResumeFlag = "--resume";
+        public const string SmokeTestFlag = "--smoke-test";
 
         public bool ListProjects { get; init; }
         public bool PrintConfig { get; init; }
+        public bool Origins { get; init; }
+        public bool DumpPreset { get; init; }
+        public string? DumpPresetName { get; init; }
+        public bool ExportSchemas { get; init; }
+        public string ExportSchemasDirectory { get; init; } = "schemas";
+        public string? OutDirectory { get; init; }
         public bool Calibrate { get; init; }
         public bool Recheck { get; init; }
         public bool Unsteady { get; init; }
         public bool Resume { get; init; }
+        public bool SmokeTest { get; init; }
         public string? RecheckVariant { get; init; }
         public int RecheckFiner { get; init; } = 1;
         public string[] Positional { get; init; } = Array.Empty<string>();
@@ -40,6 +52,11 @@ namespace FluidForge.Cli
 
             bool isCalibrate = false;
             bool isRecheck = false;
+            bool isDumpPreset = false;
+            string? dumpPresetName = null;
+            bool isExportSchemas = false;
+            string exportSchemasDir = "schemas";
+            string? outDirectory = null;
             string? recheckVariant = null;
             int recheckFiner = 1;
             var positionalList = new List<string>();
@@ -50,6 +67,44 @@ namespace FluidForge.Cli
                 if (a.Equals(CalibrateFlag, StringComparison.OrdinalIgnoreCase))
                 {
                     isCalibrate = true;
+                }
+                else if (a.Equals(DumpPresetFlag, StringComparison.OrdinalIgnoreCase))
+                {
+                    isDumpPreset = true;
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        dumpPresetName = args[++i].Trim();
+                    }
+                }
+                else if (a.StartsWith(DumpPresetFlag + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    isDumpPreset = true;
+                    dumpPresetName = a.Substring((DumpPresetFlag + "=").Length).Trim();
+                }
+                else if (a.Equals(ExportSchemasFlag, StringComparison.OrdinalIgnoreCase))
+                {
+                    isExportSchemas = true;
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        exportSchemasDir = args[++i].Trim();
+                    }
+                }
+                else if (a.StartsWith(ExportSchemasFlag + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    isExportSchemas = true;
+                    string dirVal = a.Substring((ExportSchemasFlag + "=").Length).Trim();
+                    if (!string.IsNullOrEmpty(dirVal)) exportSchemasDir = dirVal;
+                }
+                else if (a.Equals(OutFlag, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        outDirectory = args[++i].Trim();
+                    }
+                }
+                else if (a.StartsWith(OutFlag + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    outDirectory = a.Substring((OutFlag + "=").Length).Trim();
                 }
                 else if (a.Equals(RecheckFlag, StringComparison.OrdinalIgnoreCase))
                 {
@@ -86,10 +141,17 @@ namespace FluidForge.Cli
             {
                 ListProjects = flags.Contains(ListProjectsFlag),
                 PrintConfig = flags.Contains(PrintConfigFlag),
+                Origins = flags.Contains(OriginsFlag),
+                DumpPreset = isDumpPreset,
+                DumpPresetName = dumpPresetName,
+                ExportSchemas = isExportSchemas,
+                ExportSchemasDirectory = exportSchemasDir,
+                OutDirectory = outDirectory,
                 Calibrate = isCalibrate,
                 Recheck = isRecheck,
                 Unsteady = flags.Contains(UnsteadyFlag),
                 Resume = flags.Contains(ResumeFlag),
+                SmokeTest = flags.Contains(SmokeTestFlag),
                 RecheckVariant = recheckVariant,
                 RecheckFiner = recheckFiner,
                 Positional = positionalList.ToArray()

@@ -65,11 +65,38 @@ namespace FluidForge.Core
         /// detailing key origins and machine-specific overrides.
         /// </summary>
         public static ConfigLoadResult<T> LoadWithReport<T>(T defaults, params string[] jsonFilePaths) where T : class
+            => LoadWithPreset(defaults, presetName: null, presetOverlay: null, jsonFilePaths);
+
+        /// <summary>
+        /// Overlays an optional Layer 1.5 <paramref name="presetOverlay"/> onto <paramref name="defaults"/>
+        /// and then applies <paramref name="jsonFilePaths"/> in order, returning the effective value
+        /// and its <see cref="ConfigLoadReport"/>.
+        /// </summary>
+        public static ConfigLoadResult<T> LoadWithPreset<T>(
+            T defaults,
+            string? presetName,
+            JsonObject? presetOverlay,
+            params string[] jsonFilePaths) where T : class
+            => LoadWithPresetCore(defaults, presetName, presetOverlay, printOrigins: true, jsonFilePaths);
+
+        internal static ConfigLoadResult<T> LoadWithPresetCore<T>(
+            T defaults,
+            string? presetName,
+            JsonObject? presetOverlay,
+            bool printOrigins,
+            params string[] jsonFilePaths) where T : class
         {
             var report = new ConfigLoadReport();
 
             JsonNode merged = JsonSerializer.SerializeToNode(defaults, SerializerOptions)
                               ?? new JsonObject();
+
+            if (!string.IsNullOrWhiteSpace(presetName) && presetOverlay != null && presetOverlay.Count > 0 && merged is JsonObject presetTarget)
+            {
+                string presetLabel = $"preset:{presetName}";
+                ConfigSchema.Validate(typeof(T), presetOverlay, presetLabel);
+                Merge(presetTarget, presetOverlay, prefix: string.Empty, presetLabel, report, machineSpecific: false);
+            }
 
             foreach (string path in jsonFilePaths)
             {
@@ -77,7 +104,8 @@ namespace FluidForge.Core
 
                 if (!File.Exists(path))
                 {
-                    Console.WriteLine($"{OutputConventions.ConfigTag} {label}: not found, skipped.");
+                    if (printOrigins)
+                        Console.WriteLine($"{OutputConventions.ConfigTag} {label}: not found, skipped.");
                     continue;
                 }
 
@@ -115,7 +143,8 @@ namespace FluidForge.Core
             if (result == null)
                 throw new InvalidOperationException($"{OutputConventions.ConfigTag} Failed to deserialize configuration of type {typeof(T).Name}.");
 
-            report.PrintOrigins();
+            if (printOrigins)
+                report.PrintOrigins();
 
             return new ConfigLoadResult<T>(result, report);
         }
@@ -177,6 +206,78 @@ namespace FluidForge.Core
             string relativeName,
             string projectDirectory,
             string? configDirectory = null) where T : class
+            => LoadForProjectWithPreset(defaults, relativeName, projectDirectory, presetName: null, presetOverlay: null, configDirectory);
+
+        /// <summary>
+        /// Loads a project configuration file across all layers, inserting an optional Layer 1.5
+        /// <paramref name="presetOverlay"/> between code defaults and project JSON files.
+        /// </summary>
+        public static ConfigLoadResult<T> LoadForProjectWithPreset<T>(
+            T defaults,
+            string relativeName,
+            string projectDirectory,
+            string? presetName,
+            JsonObject? presetOverlay,
+            string? configDirectory = null) where T : class
+        {
+            string[] layers = BuildProjectLayers(relativeName, projectDirectory, configDirectory);
+            return LoadWithPreset(defaults, presetName, presetOverlay, layers);
+        }
+
+        /// <summary>
+        /// Reads the last occurring string value for <paramref name="keyName"/> across existing
+        /// JSON files in <paramref name="jsonFilePaths"/> (case-insensitive). Returns <c>null</c>
+        /// if no file defines the key.
+        /// </summary>
+        public static string? PeekStringKey(string keyName, params string[] jsonFilePaths)
+        {
+            string? found = null;
+
+            foreach (string path in jsonFilePaths)
+            {
+                if (!File.Exists(path)) continue;
+
+                JsonNode? node;
+                try
+                {
+                    node = JsonNode.Parse(
+                        File.ReadAllText(path),
+                        documentOptions: new JsonDocumentOptions
+                        {
+                            CommentHandling = JsonCommentHandling.Skip,
+                            AllowTrailingCommas = true
+                        });
+                }
+                catch (JsonException ex)
+                {
+                    throw new InvalidOperationException($"{OutputConventions.ConfigTag} '{path}' is not valid JSON: {ex.Message}", ex);
+                }
+
+                if (node is not JsonObject obj) continue;
+
+                foreach (KeyValuePair<string, JsonNode?> entry in obj)
+                {
+                    if (!string.Equals(entry.Key, keyName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (entry.Value is JsonValue val && val.TryGetValue(out string? text))
+                        found = text;
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// Reads the effective string value for <paramref name="keyName"/> across all project layers
+        /// (project JSON, config/*.local.json, project/*.local.json).
+        /// </summary>
+        public static string? PeekProjectStringKey(
+            string keyName,
+            string relativeName,
+            string projectDirectory,
+            string? configDirectory = null)
+            => PeekStringKey(keyName, BuildProjectLayers(relativeName, projectDirectory, configDirectory));
+
+        private static string[] BuildProjectLayers(string relativeName, string projectDirectory, string? configDirectory)
         {
             string[] segments = relativeName.Split('/', '\\');
 
@@ -194,7 +295,7 @@ namespace FluidForge.Core
             // Layer 4: this project, this machine. Highest precedence.
             layers.Add(MachineVariantOf(layers[0]));
 
-            return LoadWithReport(defaults, layers.ToArray());
+            return layers.ToArray();
         }
 
         /// <summary>
@@ -247,6 +348,10 @@ namespace FluidForge.Core
         {
             foreach (KeyValuePair<string, JsonNode?> entry in source)
             {
+                // Root-level "$schema" is editor metadata and must not enter merged values or origins.
+                if (string.IsNullOrEmpty(prefix) && string.Equals(entry.Key, "$schema", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 string keyPath = prefix + entry.Key;
 
                 if (entry.Value is JsonObject sourceObject && target[entry.Key] is JsonObject targetObject)

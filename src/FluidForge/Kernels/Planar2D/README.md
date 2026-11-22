@@ -3,7 +3,7 @@
 > **Related Documentation:**
 > - **Creating a new 2D/3D project:** [`src/projects/README.md`](../../../projects/README.md) (Template: [`src/projects/_Template2D/`](../../../projects/_Template2D/README.md), Example: [`src/projects/Naca2D/`](../../../projects/Naca2D/))
 > - **3D Geometry with PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../PicoGk/README.md)
-> - **All 2D Meshing & Solver Settings:** [`src/projects/BEDIENHANDBUCH.md`](../../../projects/BEDIENHANDBUCH.md)
+> - **All 2D Meshing & Solver Settings:** [`docs/config-reference.md`](../../../../docs/config-reference.md) | [`docs/physics-presets.md`](../../../../docs/physics-presets.md)
 
 The `Planar2D` kernel (`FluidForge.Kernels.Planar2D`) is an analytical 2D geometry kernel written specifically for this framework on top of **Clipper2**.
 

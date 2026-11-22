@@ -186,6 +186,58 @@ namespace FluidForge.Core
             => Measure(triangles).FrontalProjectedArea;
 
         /// <summary>
+        /// Counts boundary (open, shared by only 1 triangle) and non-manifold (shared by &gt; 2 triangles)
+        /// undirected edges in a triangle mesh. A closed watertight 2-manifold shell returns (0, 0).
+        /// </summary>
+        public static (int OpenEdges, int NonManifoldEdges) CountBoundaryAndNonManifoldEdges(IReadOnlyList<StlTriangle> triangles)
+        {
+            ArgumentNullException.ThrowIfNull(triangles);
+            if (triangles.Count == 0) return (0, 0);
+
+            var edgeCounts = new Dictionary<UndirectedEdgeKey, int>(triangles.Count * 3 / 2);
+
+            foreach (StlTriangle tri in triangles)
+            {
+                AddEdge(edgeCounts, tri.A, tri.B);
+                AddEdge(edgeCounts, tri.B, tri.C);
+                AddEdge(edgeCounts, tri.C, tri.A);
+            }
+
+            int openEdges = 0;
+            int nonManifoldEdges = 0;
+            foreach (int count in edgeCounts.Values)
+            {
+                if (count == 1) openEdges++;
+                else if (count > 2) nonManifoldEdges++;
+            }
+
+            return (openEdges, nonManifoldEdges);
+        }
+
+        private static void AddEdge(Dictionary<UndirectedEdgeKey, int> counts, Vector3 p, Vector3 q)
+        {
+            var a = NormalizeVertex(p);
+            var b = NormalizeVertex(q);
+            if (a.Equals(b)) return;
+
+            var key = CompareVertex(a, b) <= 0 ? new UndirectedEdgeKey(a, b) : new UndirectedEdgeKey(b, a);
+            counts[key] = counts.TryGetValue(key, out int existing) ? existing + 1 : 1;
+        }
+
+        private static (float X, float Y, float Z) NormalizeVertex(Vector3 v) =>
+            (v.X == 0f ? 0f : v.X, v.Y == 0f ? 0f : v.Y, v.Z == 0f ? 0f : v.Z);
+
+        private static int CompareVertex((float X, float Y, float Z) a, (float X, float Y, float Z) b)
+        {
+            int c = a.X.CompareTo(b.X);
+            if (c != 0) return c;
+            c = a.Y.CompareTo(b.Y);
+            return c != 0 ? c : a.Z.CompareTo(b.Z);
+        }
+
+        private readonly record struct UndirectedEdgeKey((float X, float Y, float Z) A, (float X, float Y, float Z) B);
+
+        /// <summary>
         /// Reads the number of volume elements (cells) from the header of an SU2 mesh file (.su2)
         /// by locating the first <c>NELEM=</c> line. Returns 0 if missing or unreadable.
         /// </summary>
@@ -296,7 +348,8 @@ namespace FluidForge.Core
                                 break;
 
                             bool skipMarker = markerTag.Equals("Farfield", StringComparison.OrdinalIgnoreCase)
-                                              || markerTag.Equals("Fluid", StringComparison.OrdinalIgnoreCase);
+                                              || markerTag.Equals("Fluid", StringComparison.OrdinalIgnoreCase)
+                                              || markerTag.Equals("Symmetry", StringComparison.OrdinalIgnoreCase);
 
                             for (int e = 0; e < markerElems; e++)
                             {

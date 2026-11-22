@@ -81,9 +81,10 @@ namespace FluidForge.Solvers.Cfd
             IDictionary<string, float> metrics)
         {
             float safeScale = SanitizeScaleFactor(scaleFactor);
+            SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(_options.SymmetryPlane);
             TunnelSpec spec = ResolveEffectiveTunnel(modelBoundsPicoGk, safeScale, realFrontalAreaMm2);
 
-            bool isDefaultPlainFile = !spec.WasExpanded && MathF.Abs(safeScale - 1.0f) < 1e-6f;
+            bool isDefaultPlainFile = !spec.WasExpanded && MathF.Abs(safeScale - 1.0f) < 1e-6f && symAxis == SymmetryAxis.None;
             string tunnelPath;
             string header;
             if (isDefaultPlainFile)
@@ -93,7 +94,7 @@ namespace FluidForge.Solvers.Cfd
             }
             else
             {
-                string hash = ComputeTunnelHash(spec, safeScale);
+                string hash = ComputeTunnelHash(spec, safeScale, symAxis);
                 tunnelPath = Path.Combine(workingDirectory, $"Static_Windtunnel_{hash}.stl");
                 header = $"FluidForge STL mm {hash}";
             }
@@ -128,6 +129,7 @@ namespace FluidForge.Solvers.Cfd
             float? realFrontalAreaMm2 = null)
         {
             float safeScale = SanitizeScaleFactor(scaleFactor);
+            SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(_options.SymmetryPlane);
             string shape = (_options.TunnelShape ?? string.Empty).Replace(" ", string.Empty).Trim();
             bool isCylinder = shape.Equals("Cylinder", StringComparison.OrdinalIgnoreCase);
 
@@ -136,18 +138,31 @@ namespace FluidForge.Solvers.Cfd
                 Console.WriteLine($"{OutputConventions.WarningTag} Unknown wind-tunnel shape '{_options.TunnelShape}' — using 'Box'.");
             }
 
+            if (isCylinder && symAxis != SymmetryAxis.None)
+            {
+                SimulationLog.Detail($"{OutputConventions.WarningTag} TunnelShape='Cylinder' with SymmetryPlane='{symAxis}' — falling back to half-Box wind tunnel.");
+                isCylinder = false;
+            }
+
+            bool cylinderConfigSource = shape.Equals("Cylinder", StringComparison.OrdinalIgnoreCase);
             float cfgCenterX = _options.TunnelCenterX;
             float cfgCenterY = _options.TunnelCenterY;
             float cfgCenterZ = _options.TunnelCenterZ;
 
-            float cfgLenX = isCylinder ? _options.TunnelLength : _options.TunnelSizeX;
-            float cfgWidthY = isCylinder ? _options.TunnelDiameter : _options.TunnelSizeY;
-            float cfgHeightZ = isCylinder ? _options.TunnelDiameter : _options.TunnelSizeZ;
+            float cfgLenX = cylinderConfigSource ? _options.TunnelLength : _options.TunnelSizeX;
+            float cfgWidthY = cylinderConfigSource ? _options.TunnelDiameter : _options.TunnelSizeY;
+            float cfgHeightZ = cylinderConfigSource ? _options.TunnelDiameter : _options.TunnelSizeZ;
             float cfgRadius = _options.TunnelDiameter * 0.5f;
 
             float cfgMinX = cfgCenterX - cfgLenX * 0.5f, cfgMaxX = cfgCenterX + cfgLenX * 0.5f;
-            float cfgMinY = cfgCenterY - cfgWidthY * 0.5f, cfgMaxY = cfgCenterY + cfgWidthY * 0.5f;
-            float cfgMinZ = cfgCenterZ - cfgHeightZ * 0.5f, cfgMaxZ = cfgCenterZ + cfgHeightZ * 0.5f;
+            float cfgMinY = symAxis == SymmetryAxis.Y0 ? 0f : cfgCenterY - cfgWidthY * 0.5f;
+            float cfgMaxY = symAxis == SymmetryAxis.Y0
+                ? MathF.Max(cfgCenterY + cfgWidthY * 0.5f, cfgWidthY * 0.5f)
+                : cfgCenterY + cfgWidthY * 0.5f;
+            float cfgMinZ = symAxis == SymmetryAxis.Z0 ? 0f : cfgCenterZ - cfgHeightZ * 0.5f;
+            float cfgMaxZ = symAxis == SymmetryAxis.Z0
+                ? MathF.Max(cfgCenterZ + cfgHeightZ * 0.5f, cfgHeightZ * 0.5f)
+                : cfgCenterZ + cfgHeightZ * 0.5f;
 
             float effMinX = cfgMinX, effMaxX = cfgMaxX;
             float effMinY = cfgMinY, effMaxY = cfgMaxY;
@@ -177,13 +192,35 @@ namespace FluidForge.Solvers.Cfd
                     frontalAreaMm2 = modelB * modelH;
                 }
 
+                bool inputWasFullAlongSym = symAxis switch
+                {
+                    SymmetryAxis.Y0 => realMin.Y < -MathF.Max(1e-4f * MathF.Max(modelB, 1e-3f), 1e-5f) && realMax.Y > 0f,
+                    SymmetryAxis.Z0 => realMin.Z < -MathF.Max(1e-4f * MathF.Max(modelH, 1e-3f), 1e-5f) && realMax.Z > 0f,
+                    _ => false
+                };
+
+                if (symAxis != SymmetryAxis.None && inputWasFullAlongSym)
+                {
+                    // Half-model tunnel sees half the frontal area against half the cross-section (same blockage).
+                    frontalAreaMm2 *= 0.5f;
+                }
+
+                float fullBForClearance = symAxis == SymmetryAxis.Y0 && !inputWasFullAlongSym
+                    ? 2.0f * Math.Max(0f, realMax.Y)
+                    : modelB;
+                float fullHForClearance = symAxis == SymmetryAxis.Z0 && !inputWasFullAlongSym
+                    ? 2.0f * Math.Max(0f, realMax.Z)
+                    : modelH;
+
                 float upFactor = Math.Max(0f, _options.TunnelMinUpstreamFactor);
                 float downFactor = Math.Max(0f, _options.TunnelMinDownstreamFactor);
                 float latFactor = Math.Max(0f, _options.TunnelMinLateralFactor);
 
                 float reqMinX = realMin.X - upFactor * modelL, reqMaxX = realMax.X + downFactor * modelL;
-                float reqMinY = realMin.Y - latFactor * modelB, reqMaxY = realMax.Y + latFactor * modelB;
-                float reqMinZ = realMin.Z - latFactor * modelH, reqMaxZ = realMax.Z + latFactor * modelH;
+                float reqMinY = symAxis == SymmetryAxis.Y0 ? 0f : realMin.Y - latFactor * fullBForClearance;
+                float reqMaxY = realMax.Y + latFactor * fullBForClearance;
+                float reqMinZ = symAxis == SymmetryAxis.Z0 ? 0f : realMin.Z - latFactor * fullHForClearance;
+                float reqMaxZ = realMax.Z + latFactor * fullHForClearance;
 
                 effMinX = Math.Min(cfgMinX, reqMinX);
                 effMaxX = Math.Max(cfgMaxX, reqMaxX);
@@ -218,8 +255,10 @@ namespace FluidForge.Solvers.Cfd
                 }
                 else
                 {
-                    effMinY = Math.Min(cfgMinY, reqMinY); effMaxY = Math.Max(cfgMaxY, reqMaxY);
-                    effMinZ = Math.Min(cfgMinZ, reqMinZ); effMaxZ = Math.Max(cfgMaxZ, reqMaxZ);
+                    effMinY = symAxis == SymmetryAxis.Y0 ? 0f : Math.Min(cfgMinY, reqMinY);
+                    effMaxY = Math.Max(cfgMaxY, reqMaxY);
+                    effMinZ = symAxis == SymmetryAxis.Z0 ? 0f : Math.Min(cfgMinZ, reqMinZ);
+                    effMaxZ = Math.Max(cfgMaxZ, reqMaxZ);
 
                     wasExpandedForClearance =
                         effMinX < cfgMinX - 1e-4f || effMaxX > cfgMaxX + 1e-4f ||
@@ -237,12 +276,32 @@ namespace FluidForge.Solvers.Cfd
                         {
                             double reqArea = (double)frontalAreaMm2 / (_options.TunnelMaxBlockagePercent / 100.0);
                             double scaleYZ = Math.Sqrt((reqArea * (1.0 + 1e-5)) / areaAfterClearance);
-                            float cy = 0.5f * (effMinY + effMaxY);
-                            float cz = 0.5f * (effMinZ + effMaxZ);
-                            float halfY = 0.5f * (float)(sizeYAfterClearance * scaleYZ);
-                            float halfZ = 0.5f * (float)(sizeZAfterClearance * scaleYZ);
-                            effMinY = cy - halfY; effMaxY = cy + halfY;
-                            effMinZ = cz - halfZ; effMaxZ = cz + halfZ;
+
+                            if (symAxis == SymmetryAxis.Y0)
+                            {
+                                effMinY = 0f;
+                                effMaxY = (float)(sizeYAfterClearance * scaleYZ);
+                                float cz = 0.5f * (effMinZ + effMaxZ);
+                                float halfZ = 0.5f * (float)(sizeZAfterClearance * scaleYZ);
+                                effMinZ = cz - halfZ; effMaxZ = cz + halfZ;
+                            }
+                            else if (symAxis == SymmetryAxis.Z0)
+                            {
+                                float cy = 0.5f * (effMinY + effMaxY);
+                                float halfY = 0.5f * (float)(sizeYAfterClearance * scaleYZ);
+                                effMinY = cy - halfY; effMaxY = cy + halfY;
+                                effMinZ = 0f;
+                                effMaxZ = (float)(sizeZAfterClearance * scaleYZ);
+                            }
+                            else
+                            {
+                                float cy = 0.5f * (effMinY + effMaxY);
+                                float cz = 0.5f * (effMinZ + effMaxZ);
+                                float halfY = 0.5f * (float)(sizeYAfterClearance * scaleYZ);
+                                float halfZ = 0.5f * (float)(sizeZAfterClearance * scaleYZ);
+                                effMinY = cy - halfY; effMaxY = cy + halfY;
+                                effMinZ = cz - halfZ; effMaxZ = cz + halfZ;
+                            }
                             wasExpandedForBlockage = true;
                         }
                     }
@@ -338,10 +397,10 @@ namespace FluidForge.Solvers.Cfd
                 : TunnelGeometry.CreateBox(new Vector3(spec.SizeX, spec.SizeY, spec.SizeZ) * safeScale, centerPico);
         }
 
-        private static string ComputeTunnelHash(TunnelSpec spec, float safeScale)
+        private static string ComputeTunnelHash(TunnelSpec spec, float safeScale, SymmetryAxis symAxis)
         {
             string canonical = string.Create(CultureInfo.InvariantCulture,
-                $"{(spec.IsCylinder ? "C" : "B")}|{spec.CenterX:G9}|{spec.CenterY:G9}|{spec.CenterZ:G9}|{spec.SizeX:G9}|{spec.SizeY:G9}|{spec.SizeZ:G9}|{spec.Diameter:G9}|{spec.Length:G9}|{spec.Segments}|{safeScale:G9}");
+                $"{(spec.IsCylinder ? "C" : "B")}|{symAxis}|{spec.CenterX:G9}|{spec.CenterY:G9}|{spec.CenterZ:G9}|{spec.SizeX:G9}|{spec.SizeY:G9}|{spec.SizeZ:G9}|{spec.Diameter:G9}|{spec.Length:G9}|{spec.Segments}|{safeScale:G9}");
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
             return Convert.ToHexString(hash, 0, 6).ToLowerInvariant();
         }

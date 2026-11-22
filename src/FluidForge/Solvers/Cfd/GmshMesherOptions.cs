@@ -166,5 +166,11 @@ namespace FluidForge.Solvers.Cfd
 
         /// <summary>Angle threshold in degrees for Gmsh ClassifySurfaces when remeshing the part surface (default 40.0).</summary>
         public float ClassifyAngleDeg { get; set; } = 40.0f;
+
+        /// <summary>
+        /// Symmetry plane for half-model 3D meshing: <c>"None"</c> (default), <c>"Y0"</c> (keeps Y &gt;= 0),
+        /// or <c>"Z0"</c> (keeps Z &gt;= 0). Case-insensitive; synchronized with <c>solvers/su2.json</c>.
+        /// </summary>
+        public string SymmetryPlane { get; set; } = "None";
     }
 }

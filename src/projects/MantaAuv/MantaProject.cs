@@ -23,6 +23,10 @@ namespace FluidForge.Projects.MantaAuv
         public override IGeometryGenerator CreateGeometry(ProjectContext context)
             => new MantaGeometryGenerator();
 
+        /// <inheritdoc/>
+        public override IGeometryConstraintEvaluator? CreateGeometryConstraints(ProjectContext context)
+            => new MantaGeometryConstraints();
+
         /// <summary>
         /// Validates required optimization targets in the constructor so missing keys
         /// fail immediately rather than hours into a run.

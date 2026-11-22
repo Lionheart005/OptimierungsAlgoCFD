@@ -194,6 +194,14 @@ namespace FluidForge.Core
                 return;
             }
 
+            if (record.IsPreConstraintInfeasible)
+            {
+                string violatedPre = FormatViolatedConstraints(record.Constraints.Where(c => !c.IsSatisfied));
+                string suffix = string.IsNullOrEmpty(violatedPre) ? "" : $": {violatedPre}";
+                WriteLineColored($"│  ⚠ Result:    INFEASIBLE (PreConstraint{suffix})", ConsoleColor.Yellow);
+                return;
+            }
+
             var priorityKeys = new[] { "Drag", "Lift", "GlideRatio", "SideForce", "Volume", "FrontalArea", "MaxThickness", "Area" };
             var foundMetrics = new List<string>();
 
@@ -220,16 +228,27 @@ namespace FluidForge.Core
             }
 
             string metricsPart = foundMetrics.Count > 0 ? $"   ({string.Join(" | ", foundMetrics)})" : "";
+            if (!record.Feasible)
+            {
+                string violatedPost = FormatViolatedConstraints(record.Constraints.Where(c => !c.IsSatisfied));
+                string suffix = string.IsNullOrEmpty(violatedPost) ? "" : $": {violatedPost}";
+                WriteLineColored($"│  ⚠ Result:    INFEASIBLE (PostConstraint{suffix}){metricsPart}", ConsoleColor.Yellow);
+                return;
+            }
+
             string resultLine = $"│  ★ Result:    Fitness = {record.Fitness.ToString("0.###", CultureInfo.InvariantCulture)}{metricsPart}";
             WriteLineColored(resultLine, ConsoleColor.Green);
         }
+
+        private static string FormatViolatedConstraints(IEnumerable<ConstraintEvaluation> violated)
+            => string.Join(", ", violated.Select(c => $"{c.Name} (margin {c.Margin.ToString("0.###", CultureInfo.InvariantCulture)})"));
 
         /// <summary>
         /// Subtle diagnostics line (mesh cells, y+, convergence, Reynolds number).
         /// </summary>
         public static void PrintVariantDiagnostics(ModelRecord record)
         {
-            if (record.SimulationFailed) return;
+            if (record.SimulationFailed || record.IsPreConstraintInfeasible) return;
 
             var diagItems = new List<string>();
 
@@ -427,19 +446,25 @@ namespace FluidForge.Core
 
                 string statusStr;
                 if (r.SimulationFailed) statusStr = "✖ ERROR";
+                else if (r.IsPreConstraintInfeasible) statusStr = "⚠ PRE-CON";
+                else if (!r.Feasible) statusStr = "⚠ INFEAS";
                 else if (isWinner) statusStr = "★ CHAMPION";
-                else if (r.Fitness > 0f && r.Fitness <= 0.0002f) statusStr = "⚠ REJECTED";
+                else if (r.Disqualified || (r.Fitness > 0f && r.Fitness <= 0.0002f)) statusStr = "⚠ REJECTED";
                 else statusStr = "OK";
                 rowCells.Add(" " + statusStr.PadRight(colStatus - 1));
 
                 string rowLine = "│" + string.Join("│", rowCells) + "│";
-                if (isWinner)
+                if (isWinner && r.Feasible && !r.SimulationFailed)
                 {
                     WriteLineColored(rowLine, ConsoleColor.Green);
                 }
                 else if (r.SimulationFailed)
                 {
                     WriteLineColored(rowLine, ConsoleColor.Red);
+                }
+                else if (!r.Feasible)
+                {
+                    WriteLineColored(rowLine, ConsoleColor.Yellow);
                 }
                 else
                 {

@@ -42,6 +42,11 @@ namespace FluidForge.Core
         public (double Median, double Low, double High) PredictFitnessBand(
             FittedEnsemble fit, double[] x, Dictionary<string, float> parameters)
         {
+            if (fit.Slots.Count == 0)
+            {
+                return (double.NaN, double.NaN, double.NaN);
+            }
+
             if (_ensemble.ActiveMode == SurrogateTargetMode.Fitness)
             {
                 SurrogateSlot slot = fit.Slots[0];
@@ -77,15 +82,26 @@ namespace FluidForge.Core
 
             if (samples.Count == 0) return (median, median, median);
             samples.Sort();
-            double low = samples[(int)Math.Floor(0.025 * (samples.Count - 1))];
-            double high = samples[(int)Math.Ceiling(0.975 * (samples.Count - 1))];
+            double low = LinearQuantile(samples, 0.025);
+            double high = LinearQuantile(samples, 0.975);
             return (median, Math.Min(low, median), Math.Max(high, median));
+        }
+
+        private static double LinearQuantile(List<double> sorted, double q)
+        {
+            if (sorted.Count == 1) return sorted[0];
+            double pos = q * (sorted.Count - 1);
+            int lo = (int)Math.Floor(pos);
+            int hi = (int)Math.Ceiling(pos);
+            double frac = pos - lo;
+            return sorted[lo] * (1.0 - frac) + sorted[hi] * frac;
         }
 
         public static void AttachPrediction(
             ModelRecord record, IReadOnlyDictionary<(int Iteration, int Variant), BayesProposal> issued)
         {
             if (!issued.TryGetValue((record.Iteration, record.Variant), out BayesProposal? proposal)) return;
+            if (!double.IsFinite(proposal.Median)) return;
             if (!SameParameters(record.ActiveParameters, proposal.Parameters)) return;
 
             record.PassiveParameters[BayesOptimizationAlgorithm.PredictedFitnessKey] = (float)proposal.Median;

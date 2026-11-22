@@ -122,9 +122,10 @@ namespace FluidForge.Core
         /// <summary>Diagnostics only: median fitness prediction of the last fitted model at a parameter point.</summary>
         public double? PredictFitnessAt(IReadOnlyDictionary<string, float> parameters)
         {
-            if (_lastFit == null || _space == null) return null;
+            if (_lastFit == null || _space == null || _lastFit.Slots.Count == 0) return null;
             double[] unit = _space.ToUnit(parameters);
-            return _reporter.PredictFitnessBand(_lastFit, unit, _space.FromUnit(unit)).Median;
+            double median = _reporter.PredictFitnessBand(_lastFit, unit, _space.FromUnit(unit)).Median;
+            return double.IsFinite(median) ? median : null;
         }
 
         /// <summary>Number of initial DoE evaluations after resolving auto-sizing.</summary>
@@ -229,7 +230,7 @@ namespace FluidForge.Core
                 BayesDiagnosticsReporter.AttachPrediction(record, _issued);
             }
 
-            return records.OrderByDescending(r => r.Fitness).First();
+            return WorkflowController.SelectBestRecord(records) ?? records.First();
         }
 
         public void PrepareNextIteration(SimulationContext context, List<ModelRecord> currentRecords, ModelRecord bestRecord)
@@ -267,11 +268,14 @@ namespace FluidForge.Core
 
             if (remaining > 0)
             {
-                if (usable >= d + 2)
+                bool canFitObjective = usable >= d + 2;
+                bool canFitConstraintsOnly = !canFitObjective && training.AllConstraintRecords.Count >= d + 2;
+
+                if (canFitObjective || canFitConstraintsOnly)
                 {
                     try
                     {
-                        diagnostics = ProposeFromModel(context, training, remaining, proposals);
+                        diagnostics = ProposeFromModel(context, training, remaining, proposals, constraintOnly: !canFitObjective);
                         modelUsed = true;
                     }
                     catch (Exception ex)
@@ -294,9 +298,14 @@ namespace FluidForge.Core
             _acquisition.LastRoundHadModelPoints = modelUsed;
 
             int iterationNumber = currentRecords.Count > 0 ? currentRecords[0].Iteration : _reporter.HistoryRowCount + 1;
-            double? bestFitness = training.Records.Count > 0 ? training.Records.Max(r => r.Fitness) : null;
+            double? bestFitness = training.FeasibleRecords.Count > 0
+                ? training.FeasibleRecords.Max(r => r.Fitness)
+                : (training.Records.Count > 0 ? training.Records.Max(r => r.Fitness) : null);
+            string modeLabel = modelUsed
+                ? (usable >= d + 2 ? ActiveMode.ToString() : "ConstraintOnly")
+                : "DoE";
             _reporter.AppendHistoryRow(
-                context, _space, iterationNumber, modelUsed ? ActiveMode.ToString() : "DoE",
+                context, _space, iterationNumber, modeLabel,
                 usable, TrustRegionLength, accuracy, bestFitness, diagnostics);
         }
 
@@ -304,21 +313,37 @@ namespace FluidForge.Core
             new() { Unit = unit, Parameters = _space!.FromUnit(unit), FromModel = fromModel, Explorer = explorer };
 
         private BayesDiagnostics ProposeFromModel(
-            SimulationContext context, SurrogateTrainingSet training, int count, List<BayesProposal> output)
+            SimulationContext context, SurrogateTrainingSet training, int count, List<BayesProposal> output, bool constraintOnly)
         {
             ParameterSpace space = _space!;
             int d = space.Dimension;
             int variants = Math.Max(1, context.Config.VariantsPerIteration);
 
-            if (ActiveMode == SurrogateTargetMode.Metrics) _ensemble.VerifyMetricsMode(training);
+            if (!constraintOnly && ActiveMode == SurrogateTargetMode.Metrics) _ensemble.VerifyMetricsMode(training);
             _acquisition.UpdateTrustRegionCounters(training);
 
-            double[] bestPoint = training.Inputs[BestIndex(training)];
-            double[] capCenter = _acquisition.TrustCenter ?? bestPoint;
-            List<int> selected = _ensemble.SelectTrainingIndices(training, capCenter);
+            double[] bestPoint;
+            int trainedCount;
+            FittedEnsemble fit;
 
-            FittedEnsemble fit = _ensemble.FitModels(training, selected, d);
-            LastTrainingPointCount = selected.Count;
+            if (constraintOnly)
+            {
+                bestPoint = training.AllConstraintInputs[0];
+                trainedCount = training.AllConstraintRecords.Count;
+                fit = _ensemble.FitConstraintOnly(training, d);
+            }
+            else
+            {
+                bestPoint = training.FeasibleInputs.Count > 0
+                    ? training.FeasibleInputs[BestIndex(training.FeasibleRecords)]
+                    : training.Inputs[BestIndex(training.Records)];
+                double[] capCenter = _acquisition.TrustCenter ?? bestPoint;
+                List<int> selected = _ensemble.SelectTrainingIndices(training, capCenter);
+                trainedCount = selected.Count;
+                fit = _ensemble.FitModels(training, selected, d);
+            }
+
+            LastTrainingPointCount = trainedCount;
             _lastFit = fit;
 
             fit.Excluded = training.ExcludedPoints;
@@ -327,15 +352,10 @@ namespace FluidForge.Core
             _ensemble.FitSuccessModel(training, fit);
             fit.RepulsionRadius = 0.05 * Math.Sqrt(d);
 
-            // Common random numbers for Monte Carlo integration, generated once per iteration.
+            // Common random numbers for Monte Carlo integration via Sobol-QMC, generated once per iteration.
             if (fit.Slots.Count > 0 && ActiveMode == SurrogateTargetMode.Metrics)
             {
-                fit.Z = new double[SurrogateModelEnsemble.FullSamples][];
-                for (int s = 0; s < SurrogateModelEnsemble.FullSamples; s++)
-                {
-                    fit.Z[s] = new double[fit.Slots.Count];
-                    for (int m = 0; m < fit.Slots.Count; m++) fit.Z[s][m] = NormalDistribution.Sample(_random);
-                }
+                fit.Z = SobolSequence.GenerateNormalSamples(SurrogateModelEnsemble.FullSamples, fit.Slots.Count, _random);
             }
 
             // Trust region and candidate pool
@@ -343,7 +363,7 @@ namespace FluidForge.Core
             double[][] pool = _acquisition.BuildPool(training, lo, hi, _tuning.CandidatePool);
 
             var chosen = fit.Chosen;
-            var known = training.Inputs.ToList();
+            var known = training.Inputs.Concat(training.PreConstraintPoints).ToList();
             for (int slot = 0; slot < count; slot++)
             {
                 bool explorer = variants >= ExplorerMinimumVariants && slot == count - 1;
@@ -355,7 +375,14 @@ namespace FluidForge.Core
                 x ??= LatinHypercube.Sample(1, d, _random)[0];
 
                 BayesProposal proposal = MakeProposal(x, fromModel: true, explorer: explorer);
-                (proposal.Median, proposal.Low, proposal.High) = _reporter.PredictFitnessBand(fit, x, proposal.Parameters);
+                if (fit.Slots.Count > 0)
+                {
+                    (proposal.Median, proposal.Low, proposal.High) = _reporter.PredictFitnessBand(fit, x, proposal.Parameters);
+                }
+                else
+                {
+                    proposal.Median = proposal.Low = proposal.High = double.NaN;
+                }
                 if (fromFallback) proposal.FromModel = false;
 
                 output.Add(proposal);
@@ -363,15 +390,15 @@ namespace FluidForge.Core
                 _acquisition.Believe(fit, x, proposal.Parameters);
             }
 
-            _reporter.LogSummary(fit, selected.Count, space);
-            return new BayesDiagnostics { TrainingPoints = selected.Count, Relevance = fit.Relevance };
+            _reporter.LogSummary(fit, trainedCount, space);
+            return new BayesDiagnostics { TrainingPoints = trainedCount, Relevance = fit.Relevance };
         }
 
-        private static int BestIndex(SurrogateTrainingSet training)
+        private static int BestIndex(IReadOnlyList<ModelRecord> records)
         {
             int best = 0;
-            for (int i = 1; i < training.Records.Count; i++)
-                if (training.Records[i].Fitness > training.Records[best].Fitness) best = i;
+            for (int i = 1; i < records.Count; i++)
+                if (records[i].Fitness > records[best].Fitness) best = i;
             return best;
         }
     }

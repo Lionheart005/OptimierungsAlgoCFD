@@ -46,6 +46,10 @@ namespace FluidForge.Core
 
             foreach (KeyValuePair<string, JsonNode?> entry in overlay)
             {
+                // Allow root-level "$schema" metadata for IDE / VS Code schema validation.
+                if (string.IsNullOrEmpty(prefix) && string.Equals(entry.Key, "$schema", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 // Case-insensitive match — matching the JSON deserializer.
                 PropertyInfo? property = properties.FirstOrDefault(
                     candidate => string.Equals(candidate.Name, entry.Key, StringComparison.OrdinalIgnoreCase));
@@ -56,12 +60,47 @@ namespace FluidForge.Core
                     continue;
                 }
 
-                // Only recurse into real objects. A Dictionary has free-form keys: "Length"
-                // under BaseParameters is a parameter name, not a property name, just as
-                // "Drag" under ResultMetrics is a metric name.
+                // Only recurse into real objects or arrays of objects with their own named properties.
+                // A Dictionary has free-form keys ("Length" under BaseParameters, "Drag" under ResultMetrics).
                 if (entry.Value is JsonObject nested && HasOwnProperties(property.PropertyType))
+                {
                     Collect(property.PropertyType, nested, prefix + property.Name + ".", problems);
+                }
+                else if (entry.Value is JsonArray array
+                         && TryGetSequenceElementType(property.PropertyType, out Type? elementType)
+                         && HasOwnProperties(elementType!))
+                {
+                    for (int i = 0; i < array.Count; i++)
+                    {
+                        if (array[i] is JsonObject elementObj)
+                        {
+                            Collect(elementType!, elementObj, $"{prefix}{property.Name}[{i}].", problems);
+                        }
+                    }
+                }
             }
+        }
+
+        private static bool TryGetSequenceElementType(Type type, out Type? elementType)
+        {
+            elementType = null;
+            if (type == typeof(string)) return false;
+            if (type.IsArray)
+            {
+                elementType = type.GetElementType();
+                return elementType != null;
+            }
+
+            foreach (Type iface in new[] { type }.Concat(type.GetInterfaces()))
+            {
+                if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                {
+                    elementType = iface.GetGenericArguments()[0];
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

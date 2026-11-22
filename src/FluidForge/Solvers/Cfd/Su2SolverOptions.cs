@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using FluidForge.Core;
 
@@ -50,6 +51,18 @@ namespace FluidForge.Solvers.Cfd
         /// INC_VELOCITY_INIT is rotated (in the xy-plane for 2D, xz-plane for 3D).
         /// </summary>
         public float AngleOfAttackDeg { get; set; } = 0.0f;
+
+        /// <summary>
+        /// Symmetry plane for 3D half-model simulations: <c>"None"</c> (default), <c>"Y0"</c>, or <c>"Z0"</c>.
+        /// Emits <c>MARKER_SYM= ( Symmetry )</c> and halves <c>REF_AREA</c> when clipped from a full body.
+        /// </summary>
+        public string SymmetryPlane { get; set; } = "None";
+
+        /// <summary>
+        /// Optional multi-point operating conditions evaluated sequentially on the same mesh.
+        /// When empty, the single-point <see cref="FreestreamVelocity"/> / <see cref="AngleOfAttackDeg"/> path runs.
+        /// </summary>
+        public List<OperatingPointOptions> OperatingPoints { get; set; } = new();
 
         // --- Reference values ---
         /// <summary>SU2 REF_LENGTH.</summary>
@@ -177,8 +190,35 @@ namespace FluidForge.Solvers.Cfd
             var copy = (Su2SolverOptions)MemberwiseClone();
             copy.ResultMetrics = new Dictionary<string, string>(ResultMetrics);
             copy.HistoryOutput = (string[])HistoryOutput.Clone();
+            copy.OperatingPoints = OperatingPoints == null
+                ? new List<OperatingPointOptions>()
+                : OperatingPoints.Select(op => op == null ? new OperatingPointOptions() : new OperatingPointOptions
+                {
+                    Name = op.Name,
+                    Velocity = op.Velocity,
+                    AngleOfAttackDeg = op.AngleOfAttackDeg,
+                    Weight = op.Weight
+                }).ToList();
             return copy;
         }
+    }
+
+    /// <summary>
+    /// Single operating point in a multi-point SU2 evaluation (<see cref="Su2SolverOptions.OperatingPoints"/>).
+    /// </summary>
+    public sealed class OperatingPointOptions
+    {
+        /// <summary>Optional display label (e.g. <c>"CruiseLow"</c>).</summary>
+        public string Name { get; set; } = "";
+
+        /// <summary>Optional freestream velocity in m/s; <c>null</c> inherits <see cref="Su2SolverOptions.FreestreamVelocity"/>.</summary>
+        public float? Velocity { get; set; }
+
+        /// <summary>Angle of attack in degrees for this operating point.</summary>
+        public float AngleOfAttackDeg { get; set; } = 0.0f;
+
+        /// <summary>Positive aggregation weight for objective/metric averaging (normalized automatically).</summary>
+        public float Weight { get; set; } = 1.0f;
     }
 
     /// <summary>

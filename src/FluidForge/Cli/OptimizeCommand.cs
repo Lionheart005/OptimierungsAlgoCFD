@@ -29,7 +29,25 @@ namespace FluidForge.Cli
 
             Console.WriteLine($"{OutputConventions.ConfigTag} Project directory: {JsonConfigLoader.Label(projectDirectory)}");
 
-            var simulation = JsonConfigLoader.LoadForProject(SimulationConfig.CreateDefault(), "simulation.json", projectDirectory);
+            string? requestedPreset = JsonConfigLoader.PeekProjectStringKey("Preset", "simulation.json", projectDirectory);
+            PresetDefinition? preset = SimulationPresets.Resolve(requestedPreset);
+            if (preset != null)
+            {
+                Console.WriteLine($"{OutputConventions.ConfigTag} Active preset (Layer 1.5): {preset.Name}");
+                if (preset.IsPlaceholder)
+                {
+                    Console.WriteLine(
+                        $"{OutputConventions.ConfigTag} Notice: '{preset.Name}' is a Phase 3 placeholder (OpenFOAM); "
+                        + "only budget/convergence defaults apply.");
+                }
+            }
+
+            var simulation = JsonConfigLoader.LoadForProjectWithPreset(
+                SimulationConfig.CreateDefault(),
+                "simulation.json",
+                projectDirectory,
+                preset?.Name,
+                preset?.SimulationOverrides);
             simulation.Report.PrintMachineOverrideWarning(name);
 
             var project = JsonConfigLoader.LoadForProject(
@@ -78,8 +96,9 @@ namespace FluidForge.Cli
                 context.Simulation.OptimizationAlgorithm, fitness, RunSeed.ForOptimizer(seed));
             (optimizer as IOptimizationPreflight)?.Preflight(simulationContext);
 
+            IGeometryConstraintEvaluator? geometryConstraints = definition.CreateGeometryConstraints(context);
             var controller = new WorkflowController(
-                geometry, stages, validator, optimizer, simulationContext, fitness.RequiredMetrics, journal)
+                geometry, stages, validator, optimizer, simulationContext, fitness.RequiredMetrics, journal, geometryConstraints)
             {
                 MeshDimensions = CalibrationCommand.ResolveMeshDimensions(context)
             };

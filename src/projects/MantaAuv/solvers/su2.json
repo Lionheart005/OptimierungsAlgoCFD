@@ -1,79 +1,32 @@
 {
-  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
+  "$schema": "../../../../schemas/su2.schema.json",
+  // Full key reference: docs/config-reference.md | Presets: docs/physics-presets.md
   // ===================================================================
-  //  MantaAuv -- SU2 Solver
+  //  MantaAuv -- SU2 Solver (3D Y0 Symmetry)
   // ===================================================================
-  //
-  // Anything omitted here falls back to defaults in Solvers/Cfd/Su2SolverOptions.cs.
-  // An unknown key aborts startup -- except inside "ResultMetrics", where keys are metric names.
-  //
-  // Configured in ../simulation.json instead: MachNumber (only if FreestreamVelocity = 0),
-  // Su2MaxIterations, CauchyElements, CauchyTolerance, MpiCores, and tool paths.
-  //
-  // Machine-specific overrides belong in su2.local.json (gitignored).
-  // Target state is that none exist.
-  //
-  // Boundary conditions (farfield on tunnel, no-slip wall on model) and equations
-  // (incompressible RANS, SA) are generated in Solvers/Cfd/Su2ConfigGenerator.cs.
 
-  // --- Fluid properties ---
-  "Density": 1025.0,          // kg/m^3, seawater
-  "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
+  "SymmetryPlane": "Y0",
+
+  // --- Fluid properties (seawater) ---
+  "Density": 1025.0,
+  "DynamicViscosity": 0.001001,
   "TurbulenceModel": "SA",
-  "SpeedOfSound": 343.2,      // m/s, only used for legacy MachNumber path (see below)
-
-  // Freestream velocity in m/s. When > 0, this is used directly and MachNumber in
-  // ../simulation.json is ignored. 2.0 m/s (~4 kn) is a typical AUV cruise speed
-  // (Re ~ 1e5 at 50 mm body length).
+  "SpeedOfSound": 343.2,
   "FreestreamVelocity": 2.0,
 
   // --- Reference values ---
   "ReferenceLength": 0.01,
-  // Geometry metric (in mm^2) used to compute SU2 REF_AREA.
-  // If missing at runtime, the solver warns because CD would be misscaled.
   "ReferenceAreaMetric": "FrontalArea",
 
-  // --- Result metrics: how SU2 columns map to PassiveParameters ---
-  // Left: name read by the fitness formula in PassiveParameters.
-  // Right: column name in SU2 history.csv.
-  //
-  // Available coefficients from AERO_COEFF:
-  //   CD  Drag      CL  Lift      CSF Side force
-  //   CMx Roll      CMy Pitch     CMz Yaw
-  //
-  // THREE PITFALLS:
-  // 1. Objects merge ADDITIVELY: specifying {"Lift": "CL"} keeps "Drag" from code defaults.
-  // 2. A configured but missing column is an ERROR (variant is marked failed).
-  // 3. REF_AREA normalizes ALL coefficients, including CL. FrontalArea is right for drag;
-  //    for lift optimization, consider whether wing planform area is more appropriate.
+  // --- Result metrics ---
   "ResultMetrics": {
     "Drag": "CD"
   },
-
-  // Quantity used by SU2 for Cauchy convergence monitoring (CONV_FIELD).
-  // Set to "LIFT" when optimizing for lift.
   "ConvergenceField": "DRAG",
 
-  // Automatic restart on early Cauchy stop with remaining drift (RESTART_SOL= YES)
+  // --- Convergence & y+ check ---
   "AutoRestartOnDrift": true,
   "MaxConvergenceRestarts": 3,
-
-  // Column groups written by SU2 to history.csv (HISTORY_OUTPUT).
-  // AERO_COEFF provides all aerodynamic coefficients.
-  "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
-
-  // --- y+ check (consistent with gmsh.json and _Template3D) ---
-  // TargetYPlus x YPlusWarnFactor (1.5 x 3.0 = 4.5) is both a warning threshold and the hard
-  // P95 acceptance limit (YPlus_Ok) during auto-calibration. Keep TargetYPlus in sync with
-  // solvers/gmsh.json; refining the global mesh factor does not shrink y1.
   "TargetYPlus": 1.5,
-  "YPlusWarnFactor": 3.0,
-
-  // --- CFL control ---
-  "CflNumber": 5.0,
-  "CflAdapt": true,
-  "CflAdaptFactorDown": 0.5,
-  "CflAdaptFactorUp": 1.2,
-  "CflAdaptMin": 1.0,
-  "CflAdaptMax": 50.0
+  "YPlusWarnFactor": 3.0
 }

@@ -128,12 +128,22 @@ namespace FluidForge.Core
             // Exclude passive keys that share a name with an active parameter (e.g., AngleOfAttackDeg)
             // so we do not emit duplicate column headers.
             var passiveKeys = History.SelectMany(r => r.PassiveParameters.Keys).Distinct().Where(k => !activeKeys.Contains(k)).ToList();
+            var objectiveNames = History.SelectMany(r => r.Objectives.Select(o => o.Name)).Distinct(StringComparer.Ordinal).ToList();
+            var constraintNames = History.SelectMany(r => r.Constraints.Select(c => c.Name)).Distinct(StringComparer.Ordinal).ToList();
 
             // Header
             string header = "Iteration;Variant;" +
                             string.Join(";", activeKeys) + ";" +
                             string.Join(";", passiveKeys) + ";" +
-                            "Fitness;StlPath;MeshPath;SimulationFailed;Disqualified";
+                            "Fitness;StlPath;MeshPath;SimulationFailed;Disqualified;Feasible;FailedStage";
+            if (objectiveNames.Count > 0)
+            {
+                header += ";" + string.Join(";", objectiveNames.Select(n => $"Obj_{n}"));
+            }
+            if (constraintNames.Count > 0)
+            {
+                header += ";" + string.Join(";", constraintNames.Select(n => $"Con_{n}_Margin"));
+            }
             csvBuilder.AppendLine(header);
 
             // Data rows. Invariant culture ensures "." decimal separators regardless of OS locale.
@@ -147,7 +157,29 @@ namespace FluidForge.Core
                               $"{string.Join(";", activeVals)};" +
                               $"{string.Join(";", passiveVals)};" +
                               $"{record.Fitness.ToString("F5", inv)};{record.StlPath};{record.MeshPath};" +
-                              $"{(record.SimulationFailed ? 1 : 0)};{(record.Disqualified ? 1 : 0)}";
+                              $"{(record.SimulationFailed ? 1 : 0)};{(record.Disqualified ? 1 : 0)};" +
+                              $"{(record.Feasible ? 1 : 0)};{record.FailedStage}";
+
+                if (objectiveNames.Count > 0)
+                {
+                    var objVals = objectiveNames.Select(n =>
+                    {
+                        ObjectiveValue? obj = record.Objectives.FirstOrDefault(o => string.Equals(o.Name, n, StringComparison.Ordinal));
+                        return obj != null ? obj.Value.ToString("F5", inv) : "";
+                    });
+                    line += ";" + string.Join(";", objVals);
+                }
+
+                if (constraintNames.Count > 0)
+                {
+                    var conVals = constraintNames.Select(n =>
+                    {
+                        ConstraintEvaluation? con = record.Constraints.FirstOrDefault(c => string.Equals(c.Name, n, StringComparison.Ordinal));
+                        return con != null ? con.Margin.ToString("F5", inv) : "";
+                    });
+                    line += ";" + string.Join(";", conVals);
+                }
+
                 csvBuilder.AppendLine(line);
             }
 

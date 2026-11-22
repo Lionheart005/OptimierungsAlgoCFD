@@ -1,7 +1,8 @@
 # Project & Component Guide (`src/projects/`)
 
 > **Related Documentation:**
-> - **Legacy User Manual & Full JSON Reference:** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md) *(currently still in German; will be replaced by modular English `docs/` in Phase 2)*
+> - **Creating a Project Guide:** [`docs/creating-a-project.md`](../../docs/creating-a-project.md)
+> - **Physics Presets & Full JSON Reference:** [`docs/physics-presets.md`](../../docs/physics-presets.md) | [`docs/config-reference.md`](../../docs/config-reference.md)
 > - **3D Modeling with PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../FluidForge/Kernels/PicoGk/README.md)
 > - **2D Modeling with the `Planar2D` Kernel:** [`src/FluidForge/Kernels/Planar2D/README.md`](../FluidForge/Kernels/Planar2D/README.md)
 > - **Framework Architecture & C# Development:** [`src/FluidForge/README.md`](../FluidForge/README.md)
@@ -61,13 +62,13 @@ Propeller/
 
 **No further registration is needed.** `ProjectRegistry` discovers the new class at startup via reflection: no `switch`, no list, no entry in `Program.cs`.
 
-### 2. Define Parameters
+### 2. Define Parameters (`project.json` — Single Source of Truth)
 
-In `project.json` — and with matching defaults in `CreateDefaults()` in `PropellerProject.cs`:
+In `project.json` (no C# `CreateDefaults()` duplication required — `MaxDeviations` is auto-derived from `ParameterBounds` if omitted):
 
 ```jsonc
+"$schema": "../../../schemas/project.schema.json",
 "BaseParameters":  { "Length": 50.0, "Width": 30.0 },   // initial values in mm
-"MaxDeviations":   { "Length": 5.0,  "Width": 3.0  },   // initial mutation step (used by IdwBaseline)
 "ParameterBounds": {
   "Length": { "Min": 20.0, "Max": 100.0 },              // hard bounds
   "Width":  { "Min": 10.0, "Max": 80.0  }
@@ -120,13 +121,11 @@ Constants for the formula live in `OptimizationTargets` in `project.json`. List 
 
 > **Beware of "reward hacking".** Optimizers are relentless. Without a lower volume bound, the optimizer will shrink the component to dust because tiny bodies have the lowest drag. Hard bounds and penalties are essential.
 
-### 5. Trim Configuration Noise
+### 5. Presets & Minimal Overrides
 
-The template `simulation.json` and `solvers/*.json` list **every** key with its code default as a reference. In a real project, **delete everything you do not override** — keeping default values is noise that goes stale on framework updates.
+The templates select a curated `Preset` in `simulation.json` (`"External3D:StandardRans"` or `"External2D:StandardRans"`) and only override project-specific budget, cores, or fluid properties. Use `dotnet run --project src\FluidForge -- --dump-preset External3D:StandardRans` to inspect all inherited preset values.
 
-Two settings intentionally differ from defaults in the templates: `MaxIterations = 5` and `VariantsPerIteration = 5` (instead of 10 × 10) to keep the first run small. `MeshRefinementFactor` is also omitted because `MeshCalibration` is set to `"Auto"`. In 3D, auto-calibration takes hours; for a quick smoke test ("does PicoGK → STL → Gmsh → SU2 → Fitness run end-to-end?"), set `Mode` to `"Manual"` and specify `MeshRefinementFactor`.
-
-For details on every JSON key, see the legacy manual [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).
+For details on every JSON key, see [`docs/config-reference.md`](../../docs/config-reference.md) and [`docs/physics-presets.md`](../../docs/physics-presets.md).
 
 ### 6. Run
 

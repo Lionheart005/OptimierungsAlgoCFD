@@ -8,22 +8,13 @@ namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
     /// Aerodynamic fitness evaluator for the 2D NACA airfoil.
-    /// Maximizes the lift-to-drag ratio E = CL / CD:
-    /// <code>Fitness = CL / safeDrag (glide ratio Lift / Drag)</code>
+    /// Maximizes the single-point or multi-point weighted lift-to-drag ratio <c>E = CL / CD</c>
+    /// while enforcing <c>Lift &gt;= MinLift</c> as a post-CFD constraint.
     /// </summary>
-    public sealed class Naca2DFitnessCalculator : IFitnessCalculator
+    public sealed class Naca2DFitnessCalculator : ObjectiveEvaluatorBase
     {
-        /// <summary>
-        /// Fallback fitness for non-evaluable models (failed simulation, missing or invalid
-        /// lift/drag, or negative lift).
-        /// </summary>
-        private const float FailedFitness = 0.0001f;
-
-        /// <summary>
-        /// Required target keys from <c>OptimizationTargets</c>.
-        /// Empty because glide ratio is computed purely from CFD coefficients.
-        /// </summary>
-        private static readonly string[] RequiredTargets = Array.Empty<string>();
+        /// <summary>Default minimum lift coefficient enforced as a post-CFD constraint.</summary>
+        public const float DefaultMinLift = 0.1f;
 
         /// <summary>
         /// Metrics from <c>PassiveParameters</c> required for fitness evaluation.
@@ -31,60 +22,97 @@ namespace FluidForge.Projects.Naca2D
         /// </summary>
         private static readonly string[] RequiredMetricNames = { "Drag", "Lift" };
 
-        /// <summary>
-        /// Validates required targets immediately in the constructor.
-        /// </summary>
-        public Naca2DFitnessCalculator(ProjectConfig project)
+        private static readonly string[] ComparisonMetricNames = { "Drag", "Lift", "GlideRatio" };
+
+        private readonly float _minLift;
+        private readonly float[]? _normalizedWeights;
+
+        public Naca2DFitnessCalculator(ProjectConfig project, IReadOnlyList<float>? operatingPointWeights = null)
         {
-            var missing = RequiredTargets
-                .Where(key => !project.OptimizationTargets.ContainsKey(key))
-                .ToList();
+            if (project == null) throw new ArgumentNullException(nameof(project));
 
-            if (missing.Count > 0)
+            _minLift = project.OptimizationTargets.TryGetValue("MinLift", out float configuredMinLift)
+                ? configuredMinLift
+                : DefaultMinLift;
+
+            if (operatingPointWeights != null && operatingPointWeights.Count > 0)
             {
-                string present = project.OptimizationTargets.Count > 0
-                    ? string.Join(", ", project.OptimizationTargets.Keys)
-                    : "(none)";
-
-                throw new InvalidOperationException(
-                    $"{OutputConventions.ConfigTag} Project '{project.ProjectName}': missing OptimizationTargets "
-                    + $"{string.Join(", ", missing)}. Present: {present}. "
-                    + $"Add them in src/projects/{project.ProjectName}/project.json.");
+                double sum = operatingPointWeights.Where(w => float.IsFinite(w) && w > 0f).Sum(w => (double)w);
+                if (sum > 0.0 && operatingPointWeights.All(w => float.IsFinite(w) && w > 0f))
+                {
+                    _normalizedWeights = operatingPointWeights.Select(w => (float)(w / sum)).ToArray();
+                }
             }
         }
 
         /// <inheritdoc/>
-        public IReadOnlyCollection<string> RequiredMetrics => RequiredMetricNames;
+        public override IReadOnlyCollection<string> RequiredMetrics => RequiredMetricNames;
 
         /// <inheritdoc/>
-        public void CalculateFitness(ModelRecord record, SimulationConfig config)
-        {
-            if (record.SimulationFailed)
-            {
-                record.Fitness = FailedFitness;
-                return;
-            }
+        public override IReadOnlyCollection<string> RawComparisonMetrics => ComparisonMetricNames;
 
+        /// <inheritdoc/>
+        public override EvaluationOutcome EvaluateObjectives(ModelRecord record, SimulationConfig config)
+        {
             bool hasDrag = record.PassiveParameters.TryGetValue("Drag", out float drag);
             bool hasLift = record.PassiveParameters.TryGetValue("Lift", out float lift);
 
             if (!hasDrag || !hasLift ||
-                float.IsNaN(drag) || float.IsInfinity(drag) ||
-                float.IsNaN(lift) || float.IsInfinity(lift))
+                !float.IsFinite(drag) || !float.IsFinite(lift))
             {
-                record.Fitness = FailedFitness;
-                return;
+                return new EvaluationOutcome { ScalarFitnessOverride = DefaultFailedFitness };
             }
 
-            // Guard drag coefficient against sign and division by (near) zero:
-            float safeDrag = Math.Max(Math.Abs(drag), 0.001f);
-
-            // Aerodynamic lift-to-drag ratio E = CL / CD:
-            float glideRatio = lift / safeDrag;
+            float glideRatio = ComputeGlideRatio(record, drag, lift);
             record.PassiveParameters["GlideRatio"] = glideRatio;
 
-            // Clamp lower bound at FailedFitness:
-            record.Fitness = Math.Max(glideRatio, FailedFitness);
+            return new EvaluationOutcome
+            {
+                Objectives =
+                {
+                    new ObjectiveValue("GlideRatio", glideRatio, OptimizationDirection.Maximize)
+                },
+                Constraints =
+                {
+                    ConstraintEvaluation.AtLeast("MinLift", lift, _minLift)
+                },
+                ScalarFitnessOverride = glideRatio < DefaultFailedFitness ? DefaultFailedFitness : null
+            };
+        }
+
+        private float ComputeGlideRatio(ModelRecord record, float aggregatedDrag, float aggregatedLift)
+        {
+            var opGlides = new List<float>();
+            for (int idx = 1; ; idx++)
+            {
+                if (!record.PassiveParameters.TryGetValue($"Drag_OP{idx}", out float opDrag) ||
+                    !record.PassiveParameters.TryGetValue($"Lift_OP{idx}", out float opLift) ||
+                    !float.IsFinite(opDrag) || !float.IsFinite(opLift))
+                {
+                    break;
+                }
+
+                float opGlide = opLift / Math.Max(Math.Abs(opDrag), 0.001f);
+                record.PassiveParameters[$"GlideRatio_OP{idx}"] = opGlide;
+                opGlides.Add(opGlide);
+            }
+
+            if (opGlides.Count == 0)
+            {
+                return aggregatedLift / Math.Max(Math.Abs(aggregatedDrag), 0.001f);
+            }
+
+            double weightedSum = 0.0;
+            bool useConfiguredWeights = _normalizedWeights != null && _normalizedWeights.Length == opGlides.Count;
+            double uniformWeight = 1.0 / opGlides.Count;
+
+            for (int j = 0; j < opGlides.Count; j++)
+            {
+                double w = useConfiguredWeights ? _normalizedWeights![j] : uniformWeight;
+                weightedSum += w * opGlides[j];
+            }
+
+            return (float)weightedSum;
         }
     }
 }
