@@ -1,5 +1,37 @@
 # FluidForge — Automated CFD Shape Optimization
 
+## Preface
+
+Inspired by various ideas across the internet and in publications — not least by LEAP 71 — I really wanted to explore what an optimization framework could look like that generates and optimizes complex shapes purely through code, completely independent of bulky CAD programs and cumbersome GUI menus.
+What mattered most to me was keeping the optimization pipeline free from proprietary third-party black boxes so it can scale to arbitrary complexity. There are no artificial limits on the number of parameters, the objective function, model complexity, runtime, or choice of algorithm. Looking ahead, the long-term vision is to hook up a neural network / LLM that writes the C# geometry code for PicoGK itself, while taking over the evaluation of $n$-dimensional optimization problems that are far too complex for deterministic brute-force methods.
+
+Naturally, a lot of this was built with the help of AI — I'm not a software developer by trade, and that's why I'm very open to feedback and constructive criticism.
+
+### How it works
+
+You describe the shape you want to optimize in C# code and define the variables you want the optimizer to tune — for example length and height, or much more complex mathematical functions (in theory, you could just as well optimize a Mandelbrot set, for whatever reason you might want to do that). Next, you define passive parameters that aren't tuned directly but result from the generated shape, such as volume, surface area, or frontal area.
+Then you decide what objective function (`Objectives` / `Fitness`) the algorithm should optimize for — plus optional constraints. Here you really have to think carefully about what you actually want. A classic example would be `Fitness = Volume / Drag` (i.e., maximizing volume while keeping drag as low as possible). Because squeezing everything into a single function can be quite unwieldy, an upcoming feature will let you evaluate all relevant parameters independently and then look for the best compromise.
+
+Now you send your component through the optimization loop, and at the end the algorithm outputs the parameter values that achieve the best score (fitness) among all feasible designs:
+
+`--> "Our component works best at 30 cm length and 5 cm height to achieve the optimal ratio of volume to drag."`
+And you immediately get the printable `.stl` model right along with it!
+
+The optimization algorithms and the physics solvers are modular and interchangeable, while the underlying principle stays the same. Right now, you can choose between **Bayesian Optimization** (`Bayes`, default) and an **Inverse-Distance-Weighting baseline** (`IdwBaseline`; the older evolutionary optimizer was retired after falling behind in benchmarks). `Bayes` learns a surrogate model from previous evaluations. You can calibrate your complexity level along the classic trade-off: **Speed vs. Accuracy**. Running at lower accuracy saves expensive CFD compute time while still evaluating every candidate with real physics and validating the best results at the end. I try to keep the core framework as problem-independent as possible; up to now, 2D and 3D fluid simulations in a virtual wind/water tunnel are implemented.
+
+For all the technical details, check out the guides and `.md` files linked below. They cover everything you need to know about configuration and settings. (And hallelujah, there are a lot of them by now — I even lost track myself in a few places, which is why we now have physics presets like `External3D:StandardRans` so you can get started with just a handful of settings and only touch the deep knobs when you want to.)
+
+For my work so far, I have used **SU2** and **Gmsh** for meshing and CFD simulation. The 3D geometry kernel is **PicoGK**, and the 2D kernel (`Planar2D`) is custom-written (...prompted) and tries to stay as close as possible to PicoGK in how its commands feel.
+The **OpenFOAM** update is coming soon — along with even bigger plans!
+
+I'm happy about any ideas, feedback, and interest!
+
+~ Leonardo Pleißner
+
+---
+
+## Technical Overview
+
 FluidForge is a code-first optimization framework that couples parametric C# geometry generation (3D voxel modeling via PicoGK and analytical 2D contours via `Planar2D`), automated meshing (`Gmsh`), and CFD flow solving (`SU2`) with online Bayesian optimization (`Bayes`) and an inverse-distance-weighted baseline (`IdwBaseline`).
 
 Every project lives in its own folder under `src/projects/<Name>/` with clean JSON configuration files, curated physics presets, and JSON Schema autocomplete for VS Code.
