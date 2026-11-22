@@ -1,6 +1,6 @@
 # Projektpläne & Roadmap v2 (Einstiegspunkt für KI-Sessions)
 
-> **Stand: 21.11.2026** — Große Überarbeitung & strategische Neuausrichtung auf **Plan A** (Open-Source Verifiable Computational Engineering Platform: `PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`/`SU2` + Hybrid-Optimierer + später LLM-Code-Evolution) beschlossen.  
+> **Stand: 22.11.2026** — Große Überarbeitung & strategische Neuausrichtung auf **Plan A** (Open-Source Verifiable Computational Engineering Platform: `PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`/`SU2` + Hybrid-Optimierer + später LLM-Code-Evolution) beschlossen. **Phase 1 vollständig abgeschlossen** (Projekt umbenannt in **`FluidForge`**, Code/Logs/CSVs/Skripte/READMEs/Tests komplett auf Englisch, Build 0 Warnungen, 848 Unit- + 3 Integrationstests + realer 100-Varianten-`Naca2D`-Serverlauf auf `BIC_12` grün).  
 > **Schritt 0 abgeschlossen:** Der 7-Tage-Serverlauf `MantaAuv` auf `BIC_12` ist sauber gestoppt und doppelt archiviert (`~/Archive/MantaAuv_2026-11-21_final/` auf `BIC_12` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/` lokal).  
 > **Sprachregel:** Pläne und Diskussionen hier unter `.plans/` bleiben bewusst **auf Deutsch**. Der Produktcode, Logs, CSVs, Tests und Nutzer-Doku werden ab Phase 1 konsequent auf **Englisch** umgestellt.
 
@@ -42,9 +42,10 @@ Neue Sessions und KI-Agenten orientieren sich ausschließlich an diesen aktiven 
 
 ## 3. Aktueller Systemstatus (Stand 22.11.2026)
 
-* **Phase 1 — Etappe 1 (`AP 1.1` & `AP 1.2`) ✔ erledigt:** Alle 7 gefundenen Code-/Physik-Bugs & Hygiene-Punkte behoben, `Core/` vollständig von `Solvers.Cfd`/`Kernels`/`PicoGK` entkoppelt und durch `ArchitectureBoundaryTests.cs` dauerhaft abgesichert.
-* **Phase 1 — Etappe 2 (`AP 1.3`, `AP 1.4`, `AP 1.5`) ✔ erledigt:** Alle 4 God-Classes (`BayesOptimizationAlgorithm`, `GmshCfdMesher`/`Gmsh2DMesher`, `Su2Solver`, `MeshCalibration`) sowie `Program.cs` in schlanke Komponenten (≤ 487 L) zerlegt, `CfdProjectDefinitionBase` vereinheitlicht, `EvolutionaryAlgorithm` entfernt, `RsmOptimizationAlgorithm` ehrlich zu `IdwBaselineAlgorithm` (`Idw*`-Keys + Legacy-Alias `"Rsm"`) bereinigt, und 3 echte ungemockte Integrationstests (`PicoGK`, `NACA0012 2D → Gmsh2D → SU2`, `Gmsh3D Prism`) unter `[Trait("Category", "Integration")]` etabliert und real bestanden.
-* **Build & Tests:** **848/848 Unit-Tests** (`Category!=Integration`) + **3/3 echte Integrationstests** (`Category=Integration`) grün, 0 Warnungen, 0 Fehler.
-* **Server `BIC_12`:** Kein aktiver Lauf (Lauf `MantaAuv` am 21.11.2026 gestoppt & doppelt archiviert).
-* **Projektname (entschieden 22.11.2026):** **`FluidForge`**
-* **Nächster konkreter Schritt:** **Etappe 3 von [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md)** (`AP 1.6` Umbenennung auf `FluidForge` & komplette Englisch-Umstellung + Restpunkte zum Abschluss von Phase 1) starten.
+* **Phase 1 (`AP 1.1`–`AP 1.6`) ✔ vollständig abgeschlossen:**
+  - **Etappe 1 (`AP 1.1` & `AP 1.2`):** Alle Code-/Physik-Bugs & Hygiene-Punkte behoben, `Core/` vollständig isoliert (`ArchitectureBoundaryTests.cs`), alte Git-Branches (`WindschiffProjekt`, `KI_Integration`) und veraltetes `~/Documents/Automatisierung_v2` auf `BIC_12` bereinigt.
+  - **Etappe 2 (`AP 1.3`–`AP 1.5`):** Alle 4 God-Classes & `Program.cs` zerlegt (≤ 487 L), `EvolutionaryAlgorithm` entfernt, `IdwBaselineAlgorithm` bereinigt, 3 echte Integrationstests (`PicoGK`, `NACA0012 2D → Gmsh2D → SU2`, `Gmsh3D Prism`) etabliert.
+  - **Etappe 3 (`AP 1.6`):** Komplettumbenennung auf **`FluidForge`** (`FluidForge.sln`, `src/FluidForge/`, `tests/FluidForge.Tests/`, `_Template3D`/`_Template2D`, `Documents/FluidForge`), zentrale `OutputConventions`, vollständige Englisch-Umstellung von Code, Logs, Output-Ordnern, CSV-Headern, Skripten, aktiven READMEs & allen Tests.
+* **Build & Tests:** **848/848 Unit-Tests** (`Category!=Integration`) + **3/3 echte Integrationstests** (`Category=Integration`) grün, **0 Warnungen, 0 Fehler**.
+* **Server `BIC_12` (`~/Documents/FluidForge`):** Deploy + Linux-Build (`0 Warnungen`), `sim.ps1 doctor` grün; vollständiger 10×10-`Naca2D`-Lauf (100 Varianten + 5-Stufen-Kalibrierung + Fine-Verifikation, Champion `GlideRatio = 59.14`, Exit-Code 0) inkl. `RunTimeEstimator`/`sim.ps1 status` real verifiziert. Aktuell kein aktiver Lauf.
+* **Nächster konkreter Schritt:** **Phase 2 ([`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md))** starten (`AP 2.1` Konfigurations-Diät mit Presets & modulare englische `docs/` als Ersatz für `BEDIENHANDBUCH.md`, Objectives & Constraints, Bouncer-Entkopplung, Symmetrieebene, `--smoke-test`, C#-Bayes-Feinschliff).

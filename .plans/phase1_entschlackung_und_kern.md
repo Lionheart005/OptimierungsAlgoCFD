@@ -1,6 +1,6 @@
 # Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch-Basis
 
-> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation) sowie Etappe 2 (`AP 1.3` God-Class-Zerlegung, `AP 1.4` Optimierer-Bereinigung, `AP 1.5` echte Integrations-Test-Suite) abgeschlossen und verifiziert (848/848 Unit-Tests + 3/3 echte Integrationstests grün, 0 Warnungen). Projektname final entschieden: `FluidForge` (22.11.2026).** Offen: Etappe 3 (`AP 1.6` Umbenennung zu `FluidForge` & Englisch-Umstellung) sowie Server-/Branch-Cleanup (`AP 1.1`).  
+> **Status:** ✔ **Abgeschlossen am 22.11.2026** — Alle 3 Etappen (`AP 1.1` bis `AP 1.6`) inklusive Umbenennung zu **`FluidForge`**, vollständiger Englisch-Umstellung, Server-/Branch-Cleanup und realem 10×10-`Naca2D`-End-to-End-Lauf auf `BIC_12` vollständig umgesetzt und verifiziert (**0 Warnungen, 848/848 Unit-Tests + 3/3 echte Integrationstests lokal + realer 100-Varianten-Serverlauf Exit-Code 0**). Bereit für **Phase 2 (`phase2_bedienung_physik_und_ziele.md`)**.  
 > **Sprache dieses Plans:** Deutsch (Arbeits- & Planungssprache). **Zielsprache im Code/Repo:** Englisch (AP 1.6).  
 > **Voraussetzung:** Schritt 0 (`MantaAuv`-Lauf auf `BIC_12` gestoppt & vollständig archiviert) ist abgeschlossen (`~/Archive/MantaAuv_2026-11-21_final/` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`).
 
@@ -44,9 +44,10 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 - [x] **Deploy- & Repo-Hygiene (Code/Repo) bereinigt:**
   - `src/projects/MantaAuv/OptimierungsAlgoTestlaufBericht.pdf` (2,9 MB) nach `docs/archive/MantaAuv_TestlaufBericht_v1.pdf` verschoben; `.pdf` in `scripts/sim.ps1` (`Get-DeployFiles`) explizit ausgeschlossen.
   - Benutzerspezifische absolute Pfade (`/home/lpleissner/...`) aus `MantaAuv/simulation.json` und `Naca2D/simulation.json` entfernt.
-- [ ] **Offene Server-/Git-Aufräumpunkte (bei nächstem Server-Kontakt / nach Commit):**
-  - Alte Git-Branches (`WindschiffProjekt`, `MajorPhysikFixes`, `KI_Integration`) nach Prüfung bereinigen; auf `BIC_12` veralteten Ordner `src/Automatisierung_v2` aufräumen.
-  - `RunTimeEstimator` & `sim.ps1 status`-Prognose (aus `.old/zeitschaetzung.md`) einmalig auf `BIC_12` beim nächsten Test-Deploy verifizieren.
+- [x] **Server-/Git-Aufräumpunkte abgeschlossen (22.11.2026):**
+  - Vollständig gemergte lokale Branches `WindschiffProjekt` (`dcfbe17`) und `KI_Integration` (`a48dbe2`) gelöscht (`MajorPhysikFixes` existierte bereits nicht mehr).
+  - Veralteten Server-Ordner `~/Documents/Automatisierung_v2` auf `BIC_12` entfernt (`~/Documents/AutomatisierungCleanVersion` und `~/Archive/` bewusst unangetastet belassen).
+  - `FluidForge` nach `~/Documents/FluidForge` auf `BIC_12` deployed (`0 Warnungen`), `sim.ps1 doctor` grün und `RunTimeEstimator` + `sim.ps1 status`-Prognose (`[FORECAST]`) real in einem vollständigen 10×10-`Naca2D`-Lauf (100 Varianten + 5-Stufen-Kalibrierung + Fine-Verifikation, Exit-Code 0 in ~21 min) verifiziert.
 
 ### AP 1.2: `Core/`-Schichtenisolation reparieren & per Architektur-Test erzwingen
 - [x] **`MeshCalibration.cs` entkoppelt:** `using OptimierungsAlgoCFD.Solvers.Cfd` entfernt; neue Core-Interfaces `ICalibrationSolverOptions` & `ICalibrationMesherOptions` (`Core/Interfaces/ICalibrationOptionsMetadata.cs`) explizit auf `Su2SolverOptions`, `GmshMesherOptions` und `Gmsh2DMesherOptions` implementiert; `ComputeFingerprint` hasht generisch alle `solvers/*.json` (inkl. `*.local.json`) alphabetisch; generischer JSON-Fallback für `ResolveYPlusLimits` & `ResolveMonitoredMetrics`.
@@ -86,13 +87,17 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 
 ### AP 1.6: Projekt-Umbenennung zu `FluidForge` & komplette Englisch-Umstellung
 - [x] **Namensentscheidung finalisiert (22.11.2026):** **`FluidForge`**
-- [ ] **Solution, Ordner, `.csproj`, Namespaces & Skripte auf `FluidForge` umbenennen** (`FluidForge.sln`, `src/FluidForge/`, `tests/FluidForge.Tests/`, `FluidForge.*`-Namespaces, `-RemoteDir` in `scripts/sim.ps1`, `scripts/new-project.ps1`, Vorlagen `_Vorlage3D`/`_Vorlage2D` → englische Template-Namen sofern sauber konsistent).
-- [ ] **Code, Logs & Fehlermeldungen auf Englisch:**
-  - Alle Konsolenausgaben, Log-Meldungen, CSV-Spaltennamen (`Iteration`, `Variant`, `MeshCells`, `Duration_s`, `Bayes_History.csv` etc.), Fehlertexte und Code-Kommentare auf klares technisches Englisch umstellen.
-  - Zentrale Meldungskonstanten/Ressourcen nutzen, damit Tests gegen strukturierte Fehlercodes/Keys statt gegen fragile deutsche Sätze prüfen.
-  - Alle ~850 Unit- & Integrationstests sauber auf `FluidForge` und die englischen Texte/Codes anpassen (`dotnet test --filter Category!=Integration` & `Category=Integration` 100 % grün, 0 Warnungen).
-- [ ] **Aktive READMEs auf Englisch umstellen** (`README.md`, `src/FluidForge/README.md`, Projekt-READMEs; das alte 88-KB-`BEDIENHANDBUCH.md` bewusst **nicht** komplett übersetzen — wird in Phase 2 `AP 2.1` direkt durch modulare englische `docs/` ersetzt, lediglich `HandbookCoverageTests` grün halten).
-- [ ] **Hinweis:** `.plans/` bleibt ausdrücklich **auf Deutsch**!
+- [x] **Solution, Ordner, `.csproj`, Namespaces, Vorlagen & Skripte auf `FluidForge` umbenannt:**
+  - `FluidForge.sln`, `src/FluidForge/FluidForge.csproj`, `tests/FluidForge.Tests/FluidForge.Tests.csproj`, sämtliche `FluidForge.*`-Namespaces, `ArchitectureBoundaryTests.cs`.
+  - Vorlagen umbenannt: `src/projects/_Template3D/` (`MyProject*`) und `src/projects/_Template2D/` (`MyProject2D*`); `scripts/new-project.ps1`, `scripts/sim.ps1` (`-RemoteDir = 'Documents/FluidForge'`, `-Out = 'server-results'`), `scripts/sim-runner.sh` (`FluidForge.csproj`/`FluidForge.dll`, englische Output-Pfade).
+  - `.gitignore` ergänzt um `server-results/`, `__pycache__/`, `*.pyc` (lokales Bestandsarchiv `Serverergebnisse/` bleibt unangetastet & ignoriert).
+- [x] **Code, Logs, Output-Pfade, JSONs & CSV-Header vollständig auf Englisch:**
+  - Neue zentrale Konventionsklasse `src/FluidForge/Core/Logging/OutputConventions.cs` (`results/`, `error-logs/`, `analysis/histories/`, `calibration/`, `resume/`, `source-snapshot/`, `results.csv`, `Bayes_History.csv`, `verification.csv`, `OVERALL CHAMPION`, strukturierte Log-Tags `[WARNING]`, `[ERROR]`, `[CALIBRATION]`, etc.).
+  - Englische CSV-Header (`Bayes_History.csv`, `calibration.csv`, `results.csv`, `verification.csv`), englische `run-info.json`- & `effective-config.json`-Keys, englische Run-Tags (`Cal1`..`Cal5`, `Fine*`, `Su2ResultArchiver.IsControlRunTag`).
+  - Python-Plotskripte (`plot_calibration.py`, `plot_history.py`, `plot_optimization.py`) vollständig englisch **mit automatischem Abwärtskompatibilitäts-Fallback** für alte deutsche Archive (`Simulation_Results.csv`, `Analyseergebnisse/Verlaeufe`, alte Spaltennamen).
+  - Alle **848 Unit-Tests** (`Category!=Integration`) und **3 Integrationstests** (`Category=Integration`) auf `FluidForge` & englische Verträge umgestellt und 100 % grün (0 Warnungen, 0 Fehler).
+- [x] **Aktive READMEs & Projekt-JSON-Kommentare auf Englisch umgestellt:** `README.md`, `THIRD_PARTY_NOTICES.md`, `src/FluidForge/README.md`, `scripts/README.md`, `config/README.md`, `src/projects/README.md`, `src/projects/_Template3D/README.md`, `src/projects/_Template2D/README.md`, `Kernels/PicoGk/README.md`, `Kernels/Planar2D/README.md` sowie sämtliche JSONC-Kommentare unter `src/projects/`. Das Bestands-Handbuch `src/projects/BEDIENHANDBUCH.md` (90 KB) blieb wie vereinbart unangetastet (`HandbookCoverageTests` grün; Ablösung durch modulare englische `docs/` in Phase 2 `AP 2.1`).
+- [x] **Hinweis:** `.plans/` blieb vollständig **auf Deutsch** (`.plans/Anmerkungen.txt` unangetastet).
 
 ---
 
@@ -126,7 +131,21 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
   - **Hinweis `Core/Utilities/`:** `StlWriter.cs`, `StlSmoother.cs` und `RubberBandScaler.cs` sind bereits reines `Core` (`System.Numerics`), kein Verschieben erforderlich.
 - **Verifikation:** `dotnet build OptimierungsAlgoCFD.sln` (0 Warnungen, 0 Fehler), `dotnet test --filter Category!=Integration` (**848/848 bestanden**), `dotnet test --filter Category=Integration` (**3/3 real bestanden** in ~3,5 s).
 
-### Nächste Schritte (Etappe 3 — Abschluss von Phase 1)
-- **Projektname steht fest:** **`FluidForge`** (entschieden am 22.11.2026).
-- **Etappe 3 (`AP 1.6`):** Umbenennung von Solution/Namespaces/Ordnern/`scripts/sim.ps1 -RemoteDir` auf `FluidForge` + Umstellung von Code, Logs, Fehlermeldungen, CSV-Spaltennamen, aktiven READMEs und allen Tests auf konsistentes technisches Englisch (`.plans/` bleibt Deutsch; das alte 88-KB-`BEDIENHANDBUCH.md` bewusst **nicht** komplett übersetzen, sondern nur kompatibel für `HandbookCoverageTests` halten — Ersatz erfolgt in Phase 2 `AP 2.1`).
-- **Offener Restpunkt aus `AP 1.1` (optional mit abschließen, sofern Server erreichbar / lokal prüfbar):** Alte Git-Branches (`WindschiffProjekt`, `KI_Integration`) prüfen/bereinigen (nach kurzer Rückfrage/Check), auf `BIC_12` `src/Automatisierung_v2` aufräumen und `RunTimeEstimator`/`sim.ps1 status` verifizieren.
+### Etappe 3 (`AP 1.6` + offene `AP 1.1`-Server-/Git-Punkte) — ✔ Abgeschlossen am 22.11.2026
+- **Entscheidungen & Erkenntnisse:**
+  - **Zentrale Konventionen (`Core/Logging/OutputConventions.cs`):** Alle Output-Ordner (`results`, `error-logs`, `analysis`, `histories`, `calibration`, `resume`, `source-snapshot`), Dateinamen (`results.csv`, `Bayes_History.csv`, `verification.csv`, `journal.jsonl`, `effective-config.json`, `run-info.json`) und Log-Tags (`[WARNING]`, `[ERROR]`, `[CALIBRATION]`, `OVERALL CHAMPION`, etc.) liegen zentral an einer Stelle statt als verstreute Literale.
+  - **Echte Funde beim Live-Deploy auf `BIC_12`:**
+    1. `scripts/sim.ps1` brach beim allerersten Deploy in ein noch nicht existierendes `$RemoteDir` (`Documents/FluidForge`) ab, weil `Invoke-Remote -Quiet` unter PowerShell 5.1 (`$ErrorActionPreference = 'Stop'`) bei `stderr` von `cd` eine terminierende Exception warf. Behoben durch `Test-RemoteDeployed`-Guard in `Invoke-Deploy` sowie temporäres `ErrorActionPreference = 'Continue'` in `Invoke-Remote -Quiet` / `Test-RemoteDeployed`.
+    2. `Write-RemoteDeployInfo` in `scripts/sim.ps1` schrieb `DeployTime` statt `DeployedAt` (`RunInfoWriter.DeployInfo`). Angeglichen — `run-info.json` auf `BIC_12` enthält jetzt den exakten `DeployedAt`-Zeitstempel.
+    3. `Su2ResultArchiver.IsControlRunTag` prüfte noch `"Kal"`/`"Fein"` statt `"Cal"`/`"Fine"` — durch `ConvergenceAndToleranceTests` sofort gefangen und auf `"Cal"`/`"Fine"`/`"Recheck"` umgestellt.
+    4. `scripts/__pycache__/*.pyc` wurde per `.gitignore` ausgeschlossen und aus dem Repo entfernt.
+  - **Abwärtskompatible Plot-Skripte:** `scripts/plot_calibration.py`, `plot_history.py` und `plot_optimization.py` lesen primär die neuen englischen Dateinamen/Header, unterstützen aber weiterhin als Fallback die alten deutschen Archive (`Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`).
+  - **Hygiene-Audit:** 0 verbleibende deutsche Umlaute im Code/Skripten/Tests (außer Eigennamen `Möller–Trumbore` / `Leonardo Pleißner` und Link-Anker auf das Bestands-`BEDIENHANDBUCH.md`), 0 Treffer für `lpleissner` außerhalb `.plans/`/`BEDIENHANDBUCH.md`, reine LF-Zeilenenden in `scripts/sim-runner.sh` und `src/FluidForge/setup_server.sh`.
+- **Verifikation:**
+  - Lokal: `dotnet build FluidForge.sln --no-incremental` (**0 Warnungen, 0 Fehler**), `dotnet test --filter "Category!=Integration"` (**848/848 bestanden**), `dotnet test --filter "Category=Integration"` (**3/3 real bestanden** in 2 s).
+  - Server `BIC_12` (`~/Documents/FluidForge`): Deploy + Linux-Build (**0 Warnungen**), `sim.ps1 doctor` grün, vollständiger **10×10-`Naca2D`-End-to-End-Lauf** (5-Stufen-Netzkalibrierung + 100 Bayes-Varianten + Bouncer + Fine-Verifikation + Boundary-Hint + ParaView-VTUs, Champion `GlideRatio = 59.14`, Exit-Code 0, Laufzeit ~21 min) inkl. Live-Verifikation von `RunTimeEstimator` & `sim.ps1 status` (`[FORECAST]`) sowie aller englischen CSV-/JSON-Artefakte.
+
+### Nächste Schritte (Übergabe an Phase 2)
+- **Phase 1 ist zu 100 % abgeschlossen.**
+- Nächster Arbeitsschritt: **[`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md)** starten (`AP 2.1` Konfigurations-Diät mit Presets & modulare englische `docs/` als Ersatz für `BEDIENHANDBUCH.md`, `AP 2.2` Trennung Objectives + Pre-/Post-CFD-Constraints, `AP 2.3` Bouncer-Entkopplung, `AP 2.4` Symmetrieebene/SU2-Konvergenz/Multi-Point/`--smoke-test`, `AP 2.5` C#-Bayes-Feinschliff).
+- *Hinweis für nachfolgende Modelle:* Dieser Plan gilt als abgeschlossen; für die nächste `/delegate`-Session direkt `phase2_bedienung_physik_und_ziele.md` als Startpunkt laden.
