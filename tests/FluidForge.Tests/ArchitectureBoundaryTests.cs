@@ -36,7 +36,7 @@ namespace FluidForge.Tests
             get
             {
                 string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
-                Assert.True(projectsRoot != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
+                Assert.True(projectsRoot != null, "Directory src/projects/ was not found.");
                 return Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot)!)!;
             }
         }
@@ -53,8 +53,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Entfernt C#-Kommentare (// und /* ... */), respektiert dabei String-Literale,
-        /// sodass echte Typ-/Using-Referenzen zuverlässig erkannt werden.
+        /// Strips C# comments (// and /* ... */) while respecting string literals
+        /// so that actual type and using references are reliably detected.
         /// </summary>
         private static string StripComments(string source)
         {
@@ -188,7 +188,7 @@ namespace FluidForge.Tests
         public void Core_Has_No_Dependency_On_Outer_Layers()
         {
             string coreDir = Path.Combine(RepoRoot, "src", "FluidForge", "Core");
-            Assert.True(Directory.Exists(coreDir), $"Core-Verzeichnis nicht gefunden: {coreDir}");
+            Assert.True(Directory.Exists(coreDir), $"Core directory not found: {coreDir}");
 
             var forbiddenPatterns = new[]
             {
@@ -198,7 +198,7 @@ namespace FluidForge.Tests
             };
 
             List<string> files = EnumerateCsFiles(coreDir).ToList();
-            Assert.True(files.Count >= 30, $"Zu wenige Core-Dateien gefunden ({files.Count}).");
+            Assert.True(files.Count >= 30, $"Too few Core files found ({files.Count}).");
 
             var violations = new List<string>();
             foreach (string file in files)
@@ -218,7 +218,7 @@ namespace FluidForge.Tests
             }
 
             Assert.True(violations.Count == 0,
-                "Core/ darf keine Abhängigkeiten auf Solvers, Kernels, Composition, Projects oder PicoGK besitzen:\n  "
+                "Core/ must not depend on Solvers, Kernels, Composition, Projects, or PicoGK:\n  "
                 + string.Join("\n  ", violations));
         }
 
@@ -245,7 +245,7 @@ namespace FluidForge.Tests
             }
 
             Assert.True(violations.Count == 0,
-                "Dateien unter Kernels/ oder Solvers/ dürfen keinen Namespace FluidForge.Core deklarieren:\n  "
+                "Files under Kernels/ or Solvers/ must not declare namespace FluidForge.Core:\n  "
                 + string.Join("\n  ", violations));
         }
 

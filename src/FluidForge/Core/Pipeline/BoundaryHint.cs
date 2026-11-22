@@ -6,34 +6,35 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Erkennt, ob der Gewinner an einer Parametergrenze liegt (<c>ParameterBounds</c> in <c>project.json</c>).
+    /// Detects whether the champion lies at a parameter bound (<c>ParameterBounds</c> in <c>project.json</c>).
     ///
     /// <para>
-    /// Liegt das Optimum am Rand des erlaubten Bereichs, ist das Ergebnis durch die Grenze bestimmt, und ein
-    /// besserer Wert liegt möglicherweise dahinter. Das Framework erweitert Grenzen <b>nie</b> von selbst
-    /// (Physik, Festigkeit und Baubarkeit kennt nur der Nutzer); es weist am Ende des Laufs sichtbar darauf hin.
-    /// Anlass: Im 10 × 10-Vergleich vom 08.11.2026 lagen alle Bayes-Sieger bei der größten erlaubten Wölbung und
-    /// der kleinsten erlaubten Dicke.
+    /// If the optimum sits on the boundary of the allowed range, the result is constrained by that bound
+    /// and a better value may lie beyond it. The framework <b>never</b> widens bounds automatically
+    /// (only the user knows the physics, structural limits, and manufacturability); it prints a visible
+    /// notice at the end of the run instead.
+    /// Background: in the 10x10 benchmark of 08.11.2026, all Bayesian winners hit maximum camber and
+    /// minimum thickness.
     /// </para>
     /// </summary>
     public static class BoundaryHint
     {
-        /// <summary>Ein Parameter gilt als „an der Grenze“, wenn er höchstens diesen Bruchteil der Spanne davon entfernt ist.</summary>
+        /// <summary>A parameter counts as "at the bound" if its distance to the limit is at most this fraction of the span.</summary>
         public const double RelativeMargin = 0.01;
 
-        /// <summary>Ein Parameter des Gewinners, der an einer Grenze liegt.</summary>
+        /// <summary>A parameter of the winner that lies on a bound.</summary>
         public sealed record Finding(string Parameter, float Value, float Bound, bool IsUpper)
         {
             public string Describe()
             {
                 CultureInfo inv = CultureInfo.InvariantCulture;
-                return $"{Parameter} = {Value.ToString("0.##", inv)} ({(IsUpper ? "obere" : "untere")} Grenze {Bound.ToString("0.##", inv)})";
+                return $"{Parameter} = {Value.ToString("0.##", inv)} ({(IsUpper ? "upper" : "lower")} bound {Bound.ToString("0.##", inv)})";
             }
         }
 
         /// <summary>
-        /// Alle aktiven Parameter des Gewinners, die an einer Grenze liegen. Feste Parameter (Min = Max) und
-        /// Parameter ohne Grenzen zählen nicht.
+        /// All active parameters of the winner that lie on a bound. Fixed parameters (Min = Max) and
+        /// unbounded parameters are excluded.
         /// </summary>
         public static IReadOnlyList<Finding> Find(
             IReadOnlyDictionary<string, float> parameters,
@@ -57,15 +58,15 @@ namespace FluidForge.Core
             return findings;
         }
 
-        /// <summary>Die Zeilen der Ausgabe am Ende des Laufs; leer, wenn kein Parameter an einer Grenze liegt.</summary>
+        /// <summary>Output lines shown at the end of the run; empty if no parameter lies on a bound.</summary>
         public static IReadOnlyList<string> Lines(IReadOnlyList<Finding> findings)
         {
             if (findings.Count == 0) return Array.Empty<string>();
 
-            var lines = new List<string> { "⚠ HINWEIS: Das Optimum liegt an der Grenze des Suchraums" };
+            var lines = new List<string> { "⚠ HINT: The optimum lies at the boundary of the search space" };
             lines.AddRange(findings.Select(f => "   " + f.Describe()));
-            lines.Add("   Das Ergebnis ist durch diese Grenze bestimmt, ein besserer Wert liegt möglicherweise dahinter.");
-            lines.Add("   Grenzen werden nie automatisch erweitert. Bei Bedarf in project.json unter \"ParameterBounds\" anpassen und neu rechnen.");
+            lines.Add("   The result is constrained by this bound; a better value may lie beyond it.");
+            lines.Add("   Bounds are never widened automatically. Adjust \"ParameterBounds\" in project.json and re-run if desired.");
             return lines;
         }
     }

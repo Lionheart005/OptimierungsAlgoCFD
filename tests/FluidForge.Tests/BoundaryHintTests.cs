@@ -7,8 +7,8 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Am Ende eines Laufs weist das Framework sichtbar darauf hin, wenn der Gewinner an einer Parametergrenze liegt.
-    /// Die Grenzen selbst ändert es nie.
+    /// At the end of a run, the framework visibly warns when the winner lies on a parameter bound.
+    /// It never changes the bounds themselves.
     /// </summary>
     public class BoundaryHintTests
     {
@@ -35,7 +35,7 @@ namespace FluidForge.Tests
         [Fact]
         public void A_Value_Within_One_Percent_Of_The_Span_Counts_As_On_The_Bound_But_Not_Two_Percent()
         {
-            // Spanne 8: ein Prozent = 0,08.
+            // Span 8: one percent = 0.08.
             Assert.Single(BoundaryHint.Find(new Dictionary<string, float> { ["MaxCamber"] = 7.95f }, Bounds));
             Assert.Empty(BoundaryHint.Find(new Dictionary<string, float> { ["MaxCamber"] = 7.80f }, Bounds));
         }
@@ -54,7 +54,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Fixed_Parameters_And_Parameters_Without_Bounds_Are_Ignored()
         {
-            var winner = new Dictionary<string, float> { ["Fixed"] = 5f, ["Unbekannt"] = 100f };
+            var winner = new Dictionary<string, float> { ["Fixed"] = 5f, ["Unknown"] = 100f };
 
             Assert.Empty(BoundaryHint.Find(winner, Bounds));
             Assert.Empty(BoundaryHint.Find(winner, null));
@@ -67,9 +67,9 @@ namespace FluidForge.Tests
 
             string text = string.Join("\n", BoundaryHint.Lines(findings));
 
-            Assert.Contains("HINWEIS", text);
-            Assert.Contains("MaxCamber = 8 (obere Grenze 8)", text);
-            Assert.Contains("nie automatisch erweitert", text);
+            Assert.Contains("HINT", text);
+            Assert.Contains("MaxCamber = 8 (upper bound 8)", text);
+            Assert.Contains("never widened automatically", text);
             Assert.Contains("ParameterBounds", text);
         }
     }

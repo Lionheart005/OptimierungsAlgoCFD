@@ -1,53 +1,47 @@
 {
-  // MyProject -- SU2-Solver. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  // MyProject -- SU2 Solver. Plain-text reference: src/projects/BEDIENHANDBUCH.md
   //
-  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Solvers/Cfd/Su2SolverOptions.cs).
-  // In einem echten Projekt bleibt nur stehen, was abweicht. Ein unbekannter Schluessel bricht den
-  // Start ab, ausser innerhalb von "ResultMetrics". Rechnerspezifisches gehoert in su2.local.json.
-  // Nicht hier, sondern in ../simulation.json: Su2MaxIterations, Cauchy-Werte, MpiCores, Programmpfade.
+  // Lists every key with its code default (Solvers/Cfd/Su2SolverOptions.cs).
+  // In a real project, keep only overrides. Machine-specific overrides belong in su2.local.json.
+  // Su2MaxIterations, Cauchy settings, MpiCores, and tool paths live in ../simulation.json.
 
-  // --- Fluid (Standard Meerwasser; Luft: 1.225 kg/m3 und 1.81e-5 Pa*s) ---
-  "Density": 1025.0,            // kg/m3
+  // --- Fluid (default seawater; air: 1.225 kg/m^3 and 1.81e-5 Pa*s) ---
+  "Density": 1025.0,            // kg/m^3
   "DynamicViscosity": 0.001001, // Pa*s
-  "TurbulenceModel": "SA",      // SA oder SST
-  "SpeedOfSound": 343.2,        // m/s, Luftwert; nur fuer den Mach-Weg unten
+  "TurbulenceModel": "SA",      // SA or SST
+  "SpeedOfSound": 343.2,        // m/s (air), only used when FreestreamVelocity = 0
 
-  // Anstroemgeschwindigkeit in m/s (2.0 = uebliche AUV-Reisegeschwindigkeit).
-  // 0 = MachNumber x SpeedOfSound; das waere in Wasser unrealistisch (34 m/s).
+  // Freestream velocity in m/s (2.0 = typical AUV cruise speed).
+  // 0 = MachNumber x SpeedOfSound.
   "FreestreamVelocity": 2.0,
 
-  // --- Dimension, Anstellwinkel, Referenzwerte ---
+  // --- Dimension, angle of attack, reference values ---
   "Dimensions": 3,
   "AngleOfAttackDeg": 0.0,
   "ReferenceLength": 0.01,
-  // Name einer Metrik des Geometrie-Generators (AddMetric, in mm2), aus der SU2 die Bezugsflaeche bildet.
+  // Geometry metric (from AddMetric, in mm^2) used for SU2 REF_AREA.
   "ReferenceAreaMetric": "FrontalArea",
 
-  // --- Ergebnisgroessen ---
-  // Links: Name, unter dem die Fitness-Formel den Wert liest. Rechts: Spalte der SU2-history.csv
-  // (verfuegbar: CD, CL, CSF, CMx, CMy, CMz). Stolpersteine:
-  //  - Eintraege werden zum Code-Standard hinzugefuegt, nicht ersetzt; "Drag" bleibt immer.
-  //  - Eine konfigurierte, aber fehlende Spalte ist ein Fehler (Variante gilt als fehlgeschlagen).
-  //  - Die Bezugsflaeche normiert alle Beiwerte; fuer Auftrieb passt oft eine Fluegelflaeche besser.
+  // --- Result metrics (left: PassiveParameters key, right: SU2 history.csv column) ---
+  // Note: nested objects merge additively with code defaults, so "Drag" is always included.
   "ResultMetrics": {
     "Drag": "CD"
   },
 
-  // Groesse, an der SU2 die Konvergenz misst (bei Auftriebsoptimierung "LIFT").
+  // Quantity monitored by SU2 for convergence (use "LIFT" for lift optimization).
   "ConvergenceField": "DRAG",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- Konvergenzbewertung ---
-  // Echte Drift im Endfenster = fehlgeschlagen; reines Schwingen (Wirbelabloesung) bleibt gueltig.
-  // TailMean = Mittel des Endfensters statt Endwert; OscillationWarnLimit ist nur eine Warnschwelle.
-  // AutoRestartOnDrift setzt bei fruehem Cauchy-Stopp mit Rest-Drift automatisch per RESTART_SOL fort.
+  // --- Convergence evaluation ---
+  // True tail-window drift = failed; pure oscillation (vortex shedding) remains valid.
+  // TailMean = average over tail window; OscillationWarnLimit is a warning threshold only.
   "OscillationWarnLimit": 0.05,
   "TreatUnconvergedAsFailed": true,
   "AutoRestartOnDrift": true,
   "MaxConvergenceRestarts": 3,
   "ResultAveraging": "TailMean",
 
-  // --- CFL (divergiert SU2, zuerst CflNumber halbieren) ---
+  // --- CFL (if SU2 diverges, halve CflNumber first) ---
   "CflNumber": 5.0,
   "CflAdapt": true,
   "CflAdaptFactorDown": 0.5,
@@ -55,17 +49,13 @@
   "CflAdaptMin": 1.0,
   "CflAdaptMax": 50.0,
 
-  // --- y+-Pruefung (Standard: TargetYPlus 1.5 x YPlusWarnFactor 3.0 = Limit 4.5 fuer YPlus_P95) ---
-  // WICHTIG: Dieses Limit ist nicht nur eine Log-Warnung! Bei MeshCalibration.Mode = "Auto" bricht der Lauf
-  // auf der feinsten Referenzstufe ab, sobald YPlus_P95 > TargetYPlus x YPlusWarnFactor liegt.
-  // Wann das passiert & wie verhindern:
-  //  1. TargetYPlus MUSS synchron zu solvers/gmsh.json bleiben (gmsh.json baut daraus die reale Zellhoehe y1, su2.json prueft dagegen).
-  //  2. BoundaryLayerMode = "Threshold" (y+ ~ 30-70) nicht mit Auto-Kalibrierung & niedrigem Limit mischen (bricht beim Start ab -> "Prism" nutzen oder Mode: "Manual").
-  //  3. Scheitert die Kalibrierung trotz "Prism" an y+, hilft ein feinerer Netzfaktor NICHT (y1 skaliert nicht mit dem Faktor) -> TargetYPlus in beiden Dateien pruefen oder YPlusWarnFactor begruendet anheben.
+  // --- y+ check (default: TargetYPlus 1.5 x YPlusWarnFactor 3.0 = limit 4.5 for YPlus_P95) ---
+  // In MeshCalibration.Mode = "Auto", exceeding this limit fails the finest reference level.
+  // Keep TargetYPlus in sync with solvers/gmsh.json.
   "TargetYPlus": 1.5,
   "YPlusWarnFactor": 3.0,
 
-  // --- Zeitgenaue Rechnung (URANS) fuer instationaere Stroemungen; meist nur ueber `sim.ps1 recheck -Unsteady` ---
+  // --- Time-accurate URANS for unsteady flows; typically enabled via `sim.ps1 recheck -Unsteady` ---
   "TimeDomain": {
     "Enabled": false,
     "TimeStep": 0.0,

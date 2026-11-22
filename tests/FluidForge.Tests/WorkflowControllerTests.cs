@@ -11,8 +11,8 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-15: der "ABSOLUTE CHAMPION" am Ende des Laufs muss der beste Record der
-    /// gesamten History sein — vorher war es der Gewinner der letzten Iteration.
+    /// TODO-15: the "OVERALL CHAMPION" at the end of the run must be the best record
+    /// in the entire history — previously it was the winner of the last iteration.
     /// </summary>
     public class WorkflowControllerChampionTests
     {
@@ -29,9 +29,9 @@ namespace FluidForge.Tests
             var history = new List<ModelRecord>
             {
                 Record(1, 1, 5.0f),
-                Record(1, 2, 42.0f),   // bester Lauf, liegt aber nicht am Ende
+                Record(1, 2, 42.0f),   // best run, but not at the end
                 Record(2, 1, 7.0f),
-                Record(2, 2, 9.0f)     // Gewinner der letzten Iteration
+                Record(2, 2, 9.0f)     // winner of the last iteration
             };
 
             var best = WorkflowController.SelectBestRecord(history);
@@ -43,8 +43,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Disqualifizierte (Bouncer) und fehlgeschlagene Modelle tragen eine sehr kleine
-        /// Fitness — sie dürfen nie gewinnen, solange ein gültiges Modell existiert.
+        /// Disqualified (bouncer) and failed models carry a very small fitness —
+        /// they must never win as long as a valid model exists.
         /// </summary>
         [Fact]
         public void Ignores_Disqualified_And_Failed_Records()
@@ -55,7 +55,7 @@ namespace FluidForge.Tests
             var history = new List<ModelRecord>
             {
                 failed,
-                Record(1, 2, 0.0001f),  // vom ChampionValidator disqualifiziert
+                Record(1, 2, 0.0001f),  // disqualified by ChampionValidator
                 Record(1, 3, 1.5f)
             };
 
@@ -64,7 +64,7 @@ namespace FluidForge.Tests
             Assert.Equal(3, best!.Variant);
         }
 
-        /// <summary>Bei Gleichstand gewinnt der frühere Eintrag — sonst wäre die Auswahl zufällig.</summary>
+        /// <summary>On a tie, the earlier entry wins — otherwise selection would be arbitrary.</summary>
         [Fact]
         public void Ties_Go_To_The_Earlier_Record()
         {
@@ -87,10 +87,10 @@ namespace FluidForge.Tests
     }
 
     /// <summary>
-    /// TODO-19: Orchestrierung des Controllers mit ausschließlich gemockten Interfaces —
-    /// ohne PicoGK, Gmsh oder SU2. Geprüft wird, was der Controller selbst verantwortet:
-    /// Reihenfolge der Solver-Kette, Übernahme der Metriken, Mesh-Cache und das Verhalten
-    /// bei Fehlern in Vernetzung oder Solver.
+    /// TODO-19: Controller orchestration using exclusively mocked interfaces —
+    /// without PicoGK, Gmsh, or SU2. Tests what the controller itself owns:
+    /// solver-chain ordering, metric adoption, mesh caching, and behavior on
+    /// meshing or solver failures.
     /// </summary>
     public class WorkflowControllerOrchestrationTests : IDisposable
     {
@@ -130,7 +130,7 @@ namespace FluidForge.Tests
             return new SimulationContext(config, project, _workingDirectory);
         }
 
-        /// <summary>Geometrie-Attrappe: schreibt nichts, liefert feste Metriken.</summary>
+        /// <summary>Geometry stub: writes nothing, returns fixed metrics.</summary>
         private static IGeometryGenerator Geometry(params (string Name, float Value, MetricScaling Scaling)[] metrics)
         {
             var mock = new Mock<IGeometryGenerator>();
@@ -147,11 +147,11 @@ namespace FluidForge.Tests
             return mock.Object;
         }
 
-        /// <summary>Optimierer-Attrappe: gibt die Basisparameter zurück und bewertet nach Variantennummer.</summary>
+        /// <summary>Optimizer stub: returns base parameters and scores by variant number.</summary>
         private static IOptimizationAlgorithm Optimizer()
         {
             var mock = new Mock<IOptimizationAlgorithm>();
-            mock.SetupGet(o => o.Name).Returns("Test-Optimierer");
+            mock.SetupGet(o => o.Name).Returns("Test-Optimizer");
             mock.Setup(o => o.GenerateParameters(
                     It.IsAny<SimulationContext>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
                 .Returns((SimulationContext ctx, int iter, int var_, int max) =>
@@ -165,7 +165,7 @@ namespace FluidForge.Tests
             return mock.Object;
         }
 
-        /// <summary>Validator-Attrappe: bestätigt immer den Kandidaten mit der höchsten Fitness.</summary>
+        /// <summary>Validator stub: always confirms the candidate with the highest fitness.</summary>
         private static IModelValidator PassthroughValidator()
         {
             var mock = new Mock<IModelValidator>();
@@ -184,7 +184,7 @@ namespace FluidForge.Tests
                 .Returns((MeshRequest req) =>
                 {
                     log.Add(name);
-                    if (throws) throw new InvalidOperationException($"{name} kann dieses Modell nicht vernetzen");
+                    if (throws) throw new InvalidOperationException($"{name} cannot mesh this model");
                     return $"{name}_{req.Iteration}_{req.Variant}.su2";
                 });
             return mock.Object;
@@ -200,7 +200,7 @@ namespace FluidForge.Tests
                 .Callback((string mesh, ModelRecord record, SimulationConfig c, string dir) =>
                 {
                     log.Add(name);
-                    if (throws) throw new InvalidOperationException($"{name} ist abgestürzt");
+                    if (throws) throw new InvalidOperationException($"{name} crashed");
                     record.PassiveParameters[name + "Result"] = 1f;
                 });
             return mock.Object;
@@ -224,14 +224,14 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Stufen, die sich eine Mesher-INSTANZ teilen, vernetzen nur einmal (TODO-4).
-        /// Der Record führt den Pfad der ersten Stufe.
+        /// Stages sharing a mesher INSTANCE mesh only once (TODO-4).
+        /// The record carries the path from the first stage.
         /// </summary>
         [Fact]
         public void Shared_Mesher_Instance_Meshes_Only_Once()
         {
             var log = new List<string>();
-            var shared = Mesher(log, "Gemeinsam");
+            var shared = Mesher(log, "Shared");
             var stages = new[]
             {
                 new SolverStage(shared, Solver(log, "SolverA")),
@@ -242,13 +242,13 @@ namespace FluidForge.Tests
             new WorkflowController(Geometry(), stages, PassthroughValidator(), Optimizer(), context)
                 .RunOptimization();
 
-            Assert.Equal(new[] { "Gemeinsam", "SolverA", "SolverB" }, log);
-            Assert.Equal("Gemeinsam_1_1.su2", context.History[0].MeshPath);
+            Assert.Equal(new[] { "Shared", "SolverA", "SolverB" }, log);
+            Assert.Equal("Shared_1_1.su2", context.History[0].MeshPath);
         }
 
         /// <summary>
-        /// Die vom Projekt deklarierten Metriken landen im Record — samt Rückskalierung.
-        /// Bei abgeschaltetem Scaler ist die Rückskalierung die Identität.
+        /// Metrics declared by the project land in the record — including rescaling.
+        /// With the scaler disabled, rescaling is the identity.
         /// </summary>
         [Fact]
         public void Geometry_Metrics_Land_In_The_Record()
@@ -269,15 +269,15 @@ namespace FluidForge.Tests
             Assert.Equal(4200f, record.PassiveParameters["Volume"], 3);
             Assert.Equal(850f, record.PassiveParameters["FrontalArea"], 3);
             Assert.Equal(1.25f, record.PassiveParameters["TailTaper"], 3);
-            Assert.Equal(1f, record.PassiveParameters["ScaleFactor"], 5);   // Scaler aus
+            Assert.Equal(1f, record.PassiveParameters["ScaleFactor"], 5);   // scaler off
             Assert.Equal("model_1_1.stl", record.StlPath);
-            Assert.Equal(1f, record.PassiveParameters["SResult"], 5);        // vom Solver geschrieben
+            Assert.Equal(1f, record.PassiveParameters["SResult"], 5);        // written by solver
             Assert.False(record.SimulationFailed);
         }
 
         /// <summary>
-        /// Eingeschalteter Scaler: der Controller schrumpft die Parameter für die Geometrie
-        /// und rechnet die Metriken dimensionsgerecht zurück.
+        /// Scaler enabled: the controller shrinks parameters for geometry generation
+        /// and rescales metrics dimension-aware back to full size.
         /// </summary>
         [Fact]
         public void Metrics_Are_Restored_Dimension_Aware_When_The_Scaler_Runs()
@@ -285,7 +285,7 @@ namespace FluidForge.Tests
             var log = new List<string>();
             var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S")) };
 
-            // Length = 101 (Variante 1), Zielgröße 50 -> ShrinkFactor ~0.495
+            // Length = 101 (variant 1), target size 50 -> ShrinkFactor ~0.495
             var geometry = Geometry(
                 ("Volume", 1f, MetricScaling.Volume),
                 ("Area", 1f, MetricScaling.Area),
@@ -303,12 +303,12 @@ namespace FluidForge.Tests
             Assert.Equal(MathF.Pow(1f / shrink, 3), record.PassiveParameters["Volume"], 3);
             Assert.Equal(MathF.Pow(1f / shrink, 2), record.PassiveParameters["Area"], 3);
             Assert.Equal(1f / shrink, record.PassiveParameters["Length"], 3);
-            Assert.Equal(1f, record.PassiveParameters["Ratio"], 5);   // dimensionslos
+            Assert.Equal(1f, record.PassiveParameters["Ratio"], 5);   // dimensionless
         }
 
         /// <summary>
-        /// Ein Fehler im Mesher darf den ganzen Lauf nicht abbrechen: der Record wird als
-        /// fehlgeschlagen markiert, die Schleife läuft weiter (TODO-2).
+        /// A mesher failure must not abort the entire run: the record is marked
+        /// failed and the loop continues (TODO-2).
         /// </summary>
         [Fact]
         public void Failing_Mesher_Marks_The_Record_But_Does_Not_Abort_The_Run()
@@ -323,7 +323,7 @@ namespace FluidForge.Tests
 
             Assert.Equal(4, context.History.Count);
             Assert.All(context.History, r => Assert.True(r.SimulationFailed));
-            Assert.DoesNotContain("S", log);                        // Solver lief nie
+            Assert.DoesNotContain("S", log);                        // solver never ran
             Assert.All(context.History, r => Assert.Equal(10f, r.PassiveParameters["Volume"], 3));
         }
 
@@ -342,7 +342,7 @@ namespace FluidForge.Tests
             Assert.All(context.History, r => Assert.True(r.SimulationFailed));
         }
 
-        /// <summary>Alle Varianten aller Iterationen landen in der History und im CSV.</summary>
+        /// <summary>All variants of all iterations are recorded in History and exported to CSV.</summary>
         [Fact]
         public void Every_Variant_Is_Recorded_And_Exported()
         {
@@ -358,14 +358,14 @@ namespace FluidForge.Tests
             Assert.Equal(new[] { 1, 2, 3 }, context.History.Select(r => r.Iteration).Distinct());
             Assert.Equal(new[] { 1, 2, 3, 4 }, context.History.Select(r => r.Variant).Distinct());
 
-            string csv = Path.Combine(_workingDirectory, "Simulation_Results.csv");
-            Assert.True(File.Exists(csv), "Simulation_Results.csv wurde nicht geschrieben.");
-            Assert.Equal(13, File.ReadAllLines(csv).Length);   // Kopfzeile + 12 Datensätze
+            string csv = Path.Combine(_workingDirectory, OutputConventions.ResultsCsvFileName);
+            Assert.True(File.Exists(csv), $"{OutputConventions.ResultsCsvFileName} was not written.");
+            Assert.Equal(13, File.ReadAllLines(csv).Length);   // header + 12 records
         }
 
         /// <summary>
-        /// Der Validator bekommt genau die Records der laufenden Iteration — nicht die History —
-        /// und sein Re-Simulations-Callback fährt dieselbe Pipeline unter Variante 99.
+        /// The validator receives only the records of the current iteration — not the full history —
+        /// and its re-simulation callback runs the same pipeline under variant 99.
         /// </summary>
         [Fact]
         public void Validator_Sees_The_Current_Iteration_And_Can_Resimulate()
@@ -391,19 +391,19 @@ namespace FluidForge.Tests
             new WorkflowController(Geometry(), stages, validator.Object, Optimizer(), context)
                 .RunOptimization();
 
-            Assert.Equal(new[] { 3, 3 }, seenCounts);              // je Iteration nur deren Varianten
+            Assert.Equal(new[] { 3, 3 }, seenCounts);              // per iteration only its variants
             Assert.NotNull(resimulated);
             Assert.Equal(99, resimulated!.Variant);                // ValidationVariantNumber
-            Assert.Equal(6, context.History.Count);                // Validierungsläufe zählen nicht mit
+            Assert.Equal(6, context.History.Count);                // validation runs do not count
         }
 
         // -------------------------------------------------------------------
-        // TODO-26: Pflicht-Metriken der Fitness
+        // TODO-26: Required fitness metrics
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Fehlt eine Metrik, die die Fitness-Formel braucht, bricht der Lauf nach der ersten
-        /// Variante ab — statt stundenlang mit einer Ersatz-Fitness weiterzurechnen.
+        /// If a metric required by the fitness formula is missing, the run aborts after the first
+        /// variant — instead of running for hours with a fallback fitness.
         /// </summary>
         [Fact]
         public void A_Missing_Required_Metric_Stops_The_Run_After_The_First_Variant()
@@ -411,7 +411,7 @@ namespace FluidForge.Tests
             var log = new List<string>();
             var stages = new[] { new SolverStage(Mesher(log, "M"), Solver(log, "S")) };
 
-            // Die Geometrie meldet Volume, aber kein SensorDistance.
+            // Geometry reports Volume, but no SensorDistance.
             var geometry = Geometry(("Volume", 4200f, MetricScaling.Volume));
             var context = Context(iterations: 5, variants: 4);
 
@@ -422,8 +422,8 @@ namespace FluidForge.Tests
             var error = Assert.Throws<InvalidOperationException>(() => controller.RunOptimization());
 
             Assert.Contains("SensorDistance", error.Message);
-            Assert.Contains("Vorhanden ist:", error.Message);
-            // Genau eine Variante gerechnet, nicht 5 x 4 = 20.
+            Assert.Contains("Present:", error.Message);
+            // Exactly one variant computed, not 5 x 4 = 20.
             Assert.Equal(1, log.Count(entry => entry == "S"));
         }
 
@@ -448,7 +448,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ohne Angabe wird nichts geprüft — bestehende Verdrahtungen bleiben unverändert.
+        /// Without specification nothing is checked — existing wiring remains unchanged.
         /// </summary>
         [Fact]
         public void Without_Required_Metrics_Nothing_Is_Checked()
@@ -464,19 +464,19 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein abgestürzter Solver ist kein Konfigurationsfehler: die Prüfung wartet auf die
-        /// erste Variante, die wirklich durchgelaufen ist. Sonst würde ein einzelner
-        /// SU2-Absturz in Variante 1 als fehlende Metrik gemeldet.
+        /// A crashed solver is not a configuration error: the check waits for the first
+        /// variant that actually succeeded. Otherwise a single SU2 crash in variant 1
+        /// would be reported as a missing metric.
         /// </summary>
         [Fact]
         public void A_Failed_First_Variant_Does_Not_Trigger_The_Check()
         {
             var log = new List<string>();
 
-            // Der Solver wirft nur beim allerersten Aufruf.
+            // The solver throws only on the very first call.
             int calls = 0;
             var solver = new Mock<ISimulationSolver>();
-            solver.SetupGet(s => s.Name).Returns("Wackelig");
+            solver.SetupGet(s => s.Name).Returns("Flaky");
             solver.Setup(s => s.Solve(
                     It.IsAny<string>(), It.IsAny<ModelRecord>(),
                     It.IsAny<SimulationConfig>(), It.IsAny<string>()))
@@ -484,7 +484,7 @@ namespace FluidForge.Tests
                 {
                     calls++;
                     log.Add("S");
-                    if (calls == 1) throw new InvalidOperationException("SU2 ist abgestürzt");
+                    if (calls == 1) throw new InvalidOperationException("SU2 crashed");
                     record.PassiveParameters["Drag"] = 0.5f;
                 });
 
@@ -496,7 +496,7 @@ namespace FluidForge.Tests
                     new[] { "Drag" })
                 .RunOptimization();
 
-            // Variante 1 ist fehlgeschlagen und wurde übersprungen; Variante 2 liefert Drag.
+            // Variant 1 failed and was skipped; variant 2 provides Drag.
             Assert.True(context.History[0].SimulationFailed);
             Assert.Equal(3, context.History.Count);
         }

@@ -11,8 +11,8 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Der STL-Writer ersetzt <c>Mesh.SaveToStlFile</c> aus PicoGK (TODO-11). Er muss ein
-    /// binäres STL schreiben, das Gmsh unverändert einliest.
+    /// The STL writer replaces <c>Mesh.SaveToStlFile</c> from PicoGK (TODO-11). It must write
+    /// a binary STL that Gmsh reads without modification.
     /// </summary>
     public class StlWriterTests
     {
@@ -29,7 +29,7 @@ namespace FluidForge.Tests
 
                 byte[] raw = File.ReadAllBytes(path);
 
-                // 80 Byte Kopf + 4 Byte Anzahl + 50 Byte je Dreieck
+                // 80-byte header + 4-byte count + 50 bytes per triangle
                 Assert.Equal(84 + 50 * box.Count, raw.Length);
                 Assert.Equal((uint)box.Count, BitConverter.ToUInt32(raw, 80));
             }
@@ -40,7 +40,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Beginnt der Kopf mit "solid", halten Leser die Datei für ein ASCII-STL.
+        /// If the header starts with "solid", readers treat the file as an ASCII STL.
         /// </summary>
         [Fact]
         public void Header_Does_Not_Start_With_Solid()
@@ -80,8 +80,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die geschriebenen Ecken und Normalen müssen wieder herauskommen — sonst
-        /// vernetzt Gmsh eine andere Domäne, als hier berechnet wurde.
+        /// The written vertices and normals must round-trip cleanly — otherwise
+        /// Gmsh meshes a different domain than was computed here.
         /// </summary>
         [Fact]
         public void Round_Trip_Keeps_Vertices_And_Normals()
@@ -120,7 +120,7 @@ namespace FluidForge.Tests
             Assert.Equal(Vector3.Zero, degenerate.Normal);
         }
 
-        // --- Hilfsfunktionen ------------------------------------------------
+        // --- Helper functions -----------------------------------------------
 
         internal static List<(Vector3 Normal, StlTriangle Triangle)> ReadBinaryStl(string path)
         {

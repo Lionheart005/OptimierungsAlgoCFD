@@ -1,88 +1,75 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  MantaAuv -- SU2-Solver
+  //  MantaAuv -- SU2 Solver
   // ===================================================================
   //
-  // Was hier fehlt, kommt aus den Standardwerten in
-  // Solvers/Cfd/Su2SolverOptions.cs. Ein unbekannter Schluessel bricht den Start
-  // ab -- ausser innerhalb von "ResultMetrics", wo die Schluessel Metriknamen sind.
+  // Anything omitted here falls back to defaults in Solvers/Cfd/Su2SolverOptions.cs.
+  // An unknown key aborts startup -- except inside "ResultMetrics", where keys are metric names.
   //
-  // Nicht hier, sondern in ../simulation.json: MachNumber (nur falls FreestreamVelocity = 0),
-  // Su2MaxIterations, CauchyElements, CauchyTolerance, MpiCores und die Programmpfade.
+  // Configured in ../simulation.json instead: MachNumber (only if FreestreamVelocity = 0),
+  // Su2MaxIterations, CauchyElements, CauchyTolerance, MpiCores, and tool paths.
   //
-  // Abweichungen fuer einen einzelnen Rechner gehoeren in su2.local.json daneben
-  // (gitignored). Sollstand ist, dass es keine gibt.
+  // Machine-specific overrides belong in su2.local.json (gitignored).
+  // Target state is that none exist.
   //
-  // Randbedingungen (Fernfeld am Kanal, Haftwand am Modell) und Gleichungen
-  // (inkompressible RANS, SA) werden im Code erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+  // Boundary conditions (farfield on tunnel, no-slip wall on model) and equations
+  // (incompressible RANS, SA) are generated in Solvers/Cfd/Su2ConfigGenerator.cs.
 
-  // --- Fluideigenschaften ---
-  "Density": 1025.0,          // kg/m³, Meerwasser
-  "DynamicViscosity": 0.001001, // Pa·s (1.001e-3)
+  // --- Fluid properties ---
+  "Density": 1025.0,          // kg/m^3, seawater
+  "DynamicViscosity": 0.001001, // Pa*s (1.001e-3)
   "TurbulenceModel": "SA",
-  "SpeedOfSound": 343.2,      // m/s, nur fuer den alten Weg ueber MachNumber (siehe unten)
+  "SpeedOfSound": 343.2,      // m/s, only used for legacy MachNumber path (see below)
 
-  // Anstroemgeschwindigkeit in m/s. Gesetzt (> 0) gilt sie, und MachNumber aus
-  // ../simulation.json wird fuer die Anstroemung NICHT mehr verwendet.
-  // Vorher kam die Geschwindigkeit aus MachNumber 0.1 x SpeedOfSound 343.2 m/s
-  // (Schall in LUFT) = 34.3 m/s -- fuer ein AUV in Wasser unrealistisch (~67 kn).
-  // 2.0 m/s (~4 kn) ist eine uebliche AUV-Reisegeschwindigkeit; Re bei 50 mm
-  // Koerperlaenge damit ~1e5. Die Ergebnisse sind mit Laeufen vor dem 04.11.2026
-  // nicht mehr vergleichbar.
+  // Freestream velocity in m/s. When > 0, this is used directly and MachNumber in
+  // ../simulation.json is ignored. 2.0 m/s (~4 kn) is a typical AUV cruise speed
+  // (Re ~ 1e5 at 50 mm body length).
   "FreestreamVelocity": 2.0,
 
-  // --- Referenzwerte ---
+  // --- Reference values ---
   "ReferenceLength": 0.01,
-  // Metrik aus der Geometrie (in mm²), aus der SU2 REF_AREA gebildet wird.
-  // Fehlt sie zur Laufzeit, warnt der Solver — der CD-Wert wäre sonst still falsch.
+  // Geometry metric (in mm^2) used to compute SU2 REF_AREA.
+  // If missing at runtime, the solver warns because CD would be misscaled.
   "ReferenceAreaMetric": "FrontalArea",
 
-  // --- Ergebnisgrößen: welche Zahl kommt unter welchem Namen an? ---
-  // Links: unter welchem Namen die Fitness-Formel den Wert in PassiveParameters sieht.
-  // Rechts: wie die Spalte in der SU2-history.csv heisst.
-  // "Lift dazunehmen" ist damit eine Zeile hier und kein Eingriff in Solvers/.
+  // --- Result metrics: how SU2 columns map to PassiveParameters ---
+  // Left: name read by the fitness formula in PassiveParameters.
+  // Right: column name in SU2 history.csv.
   //
-  // Verfuegbar sind alle Beiwerte aus AERO_COEFF (siehe HistoryOutput weiter unten):
-  //   CD  Widerstand      CL  Auftrieb       CSF Seitenkraft
-  //   CMx Rollmoment      CMy Nickmoment     CMz Giermoment
+  // Available coefficients from AERO_COEFF:
+  //   CD  Drag      CL  Lift      CSF Side force
+  //   CMx Roll      CMy Pitch     CMz Yaw
   //
-  // DREI STOLPERSTEINE:
-  // 1. Objekte werden ADDITIV gemerged. Schreibt ein Projekt nur {"Lift": "CL"},
-  //    bekommt es "Drag" aus dem Code-Standard dazu. Eine Groesse wieder loszuwerden
-  //    geht nur ueber Su2SolverOptions.ResultMetrics im Code.
-  // 2. Eine konfigurierte, aber fehlende Spalte ist ein FEHLER: der Solver nennt die
-  //    tatsaechlich vorhandenen Spalten und wertet das Modell als fehlgeschlagen.
-  // 3. REF_AREA normiert ALLE Beiwerte, auch CL. Die oben gewaehlte Frontalflaeche ist
-  //    fuer den Widerstand richtig; wer auf Auftrieb optimiert, sollte pruefen, ob nicht
-  //    eine Fluegelflaeche die passendere Bezugsgroesse waere. Und CL haengt an der
-  //    Anstroemrichtung (FREESTREAM_VELOCITY) und an REF_ORIGIN_MOMENT_* -- beim ersten
-  //    Auftriebslauf einmal gegen eine bekannte Geometrie pruefen.
+  // THREE PITFALLS:
+  // 1. Objects merge ADDITIVELY: specifying {"Lift": "CL"} keeps "Drag" from code defaults.
+  // 2. A configured but missing column is an ERROR (variant is marked failed).
+  // 3. REF_AREA normalizes ALL coefficients, including CL. FrontalArea is right for drag;
+  //    for lift optimization, consider whether wing planform area is more appropriate.
   "ResultMetrics": {
     "Drag": "CD"
   },
 
-  // Groesse, an der SU2 seine Konvergenz misst (CONV_FIELD). Wer auf Auftrieb
-  // optimiert, will hier "LIFT" statt "DRAG".
+  // Quantity used by SU2 for Cauchy convergence monitoring (CONV_FIELD).
+  // Set to "LIFT" when optimizing for lift.
   "ConvergenceField": "DRAG",
 
-  // Automatischer Restart bei fruehem Cauchy-Stopp mit Rest-Drift (RESTART_SOL= YES)
+  // Automatic restart on early Cauchy stop with remaining drift (RESTART_SOL= YES)
   "AutoRestartOnDrift": true,
   "MaxConvergenceRestarts": 3,
 
-  // Welche Spaltengruppen SU2 ueberhaupt in die history.csv schreibt (HISTORY_OUTPUT).
-  // AERO_COEFF liefert saemtliche Beiwerte -- wer die Gruppe entfernt, nimmt damit
-  // jeder Zuordnung in ResultMetrics die Grundlage.
+  // Column groups written by SU2 to history.csv (HISTORY_OUTPUT).
+  // AERO_COEFF provides all aerodynamic coefficients.
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- y+-Pruefung (konsistent zu gmsh.json und _Template3D) ---
-  // TargetYPlus x YPlusWarnFactor (1.5 x 3.0 = 4.5) ist nicht nur Warnschwelle, sondern in der Auto-Kalibrierung das
-  // harte P95-Akzeptanzlimit (YPlus_Ok). TargetYPlus MUSS synchron zu solvers/gmsh.json bleiben; feineres Gesamtnetz
-  // veraendert y1 nicht. Bei "Threshold" (y+ ~ 30-70) statt "Prism" bricht Auto-Kalibrierung ab (dann Mode: "Manual").
+  // --- y+ check (consistent with gmsh.json and _Template3D) ---
+  // TargetYPlus x YPlusWarnFactor (1.5 x 3.0 = 4.5) is both a warning threshold and the hard
+  // P95 acceptance limit (YPlus_Ok) during auto-calibration. Keep TargetYPlus in sync with
+  // solvers/gmsh.json; refining the global mesh factor does not shrink y1.
   "TargetYPlus": 1.5,
   "YPlusWarnFactor": 3.0,
 
-  // --- CFL-Steuerung ---
+  // --- CFL control ---
   "CflNumber": 5.0,
   "CflAdapt": true,
   "CflAdaptFactorDown": 0.5,

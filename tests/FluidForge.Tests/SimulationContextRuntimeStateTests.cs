@@ -8,10 +8,10 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-17: Arbeitspunkt und Mutationsstärke sind Laufzeitzustand und gehören in den
-    /// <see cref="SimulationContext"/>. Die <see cref="ProjectConfig"/> kommt aus JSON und
-    /// darf während des Laufs nicht verändert werden — sonst startet ein zweiter Lauf im
-    /// selben Prozess mit den Endwerten des ersten.
+    /// TODO-17: operating point and mutation strength are runtime state and belong in
+    /// <see cref="SimulationContext"/>. <see cref="ProjectConfig"/> comes from JSON and
+    /// must not be mutated during a run — otherwise a second run in the same process
+    /// starts with the final values of the first.
     /// </summary>
     public class SimulationContextRuntimeStateTests
     {
@@ -39,13 +39,13 @@ namespace FluidForge.Tests
             Assert.Equal(project.BaseParameters, context.CurrentBaseParameters);
             Assert.Equal(project.MaxDeviations, context.CurrentDeviations);
 
-            // Kopie, keine geteilte Referenz
+            // Copy, not a shared reference
             context.CurrentBaseParameters["Length"] = 99f;
             Assert.Equal(50f, project.BaseParameters["Length"]);
         }
 
         /// <summary>
-        /// Auch der Bayes-Optimierer und die IDW-Baseline fassen die ProjectConfig nicht an.
+        /// Neither the Bayes optimizer nor the IDW baseline touches ProjectConfig.
         /// </summary>
         [Fact]
         public void BayesAlgorithm_Does_Not_Mutate_The_ProjectConfig()
@@ -87,7 +87,7 @@ namespace FluidForge.Tests
             Assert.Equal("", context.CurrentRunTag);
 
             context.EffectiveMeshRefinementFactor = 0.25f;
-            context.CurrentRunTag = "Kal1";
+            context.CurrentRunTag = "Cal1";
 
             context.ResetRuntimeState();
 
@@ -96,7 +96,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Auch die IDW-Baseline sampelt um den Laufzeit-Arbeitspunkt und fasst die Konfiguration nicht an.
+        /// The IDW baseline also samples around the runtime operating point and does not touch the configuration.
         /// </summary>
         [Fact]
         public void IdwBaselineAlgorithm_Reads_The_Runtime_Base_Parameters()

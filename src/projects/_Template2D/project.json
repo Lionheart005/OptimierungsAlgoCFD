@@ -1,30 +1,30 @@
 {
-  // MyProject2D -- Projektvorgaben. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  // MyProject2D -- Project Settings. Plain-text reference: src/projects/BEDIENHANDBUCH.md
   //
-  // Der Projektname steht nur im Ordnernamen, nicht in dieser Datei.
-  // Was hier fehlt, kommt aus MyProject2DProject.CreateDefaults(); beide sind deckungsgleich.
+  // The project name comes from the folder name only, never from this file.
+  // Anything omitted here falls back to MyProject2DProject.CreateDefaults(); both are kept in sync.
 
-  // --- Startwerte der Parameter (mm); die Namen sind der Vertrag mit MyProject2DGeometryGenerator ---
+  // --- Initial parameter values (mm); names form the contract with MyProject2DGeometryGenerator ---
   "BaseParameters": {
     "Chord": 50.0,
     "Thickness": 6.0
   },
 
-  // --- Anfaengliche Streuung je Parameter (Faustregel: etwa ein Zehntel der Spanne) ---
+  // --- Initial step size per parameter (rule of thumb: ~1/10 of range) ---
   "MaxDeviations": {
     "Chord": 5.0,
     "Thickness": 0.6
   },
 
-  // --- Harte Grenzen; der Algorithmus verlaesst sie nie ---
+  // --- Hard bounds; the optimizer never leaves this box ---
   "ParameterBounds": {
     "Chord": { "Min": 20.0, "Max": 100.0 },
     "Thickness": { "Min": 2.0, "Max": 25.0 }
   },
 
-  // --- Optimierungsziele fuer die Fitness-Formel (leer: die Vorlage minimiert nur den Widerstand) ---
+  // --- Optimization targets for the fitness formula (empty: template minimizes drag only) ---
   "OptimizationTargets": {},
 
-  // --- Parameter, die eine Laenge sind (werden mitskaliert) ---
+  // --- Length parameters (scaled by RubberBandScaler) ---
   "DimensionalParameters": [ "Chord", "Thickness" ]
 }

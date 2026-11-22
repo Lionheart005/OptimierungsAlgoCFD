@@ -7,7 +7,7 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-54: der mathematische Kern des Bayes-Optimierers. Feste Seeds, keine Zeitgrenzen (F22).
+    /// TODO-54: the mathematical core of the Bayesian optimizer. Fixed seeds, no time limits (F22).
     /// </summary>
     public class GaussianProcessTests
     {
@@ -36,7 +36,7 @@ namespace FluidForge.Tests
             {
                 double row = 0;
                 for (int j = 0; j < 3; j++) row += full[i][j] * x[j];
-                Assert.True(Math.Abs(row - b[i]) < 1e-10, $"Restfehler in Zeile {i}: {row - b[i]}");
+                Assert.True(Math.Abs(row - b[i]) < 1e-10, $"Residual in row {i}: {row - b[i]}");
             }
 
             // ln det A = ln((2·1·3)²) = ln 36
@@ -69,12 +69,12 @@ namespace FluidForge.Tests
         [Fact]
         public void Cholesky_Uses_The_Jitter_Ladder_For_A_Singular_Matrix()
         {
-            // Zwei identische Punkte: exakt singulär.
+            // Two identical points: exactly singular.
             double[][] a = { new[] { 1.0 }, new[] { 1.0, 1.0 } };
 
             double[][] l = DenseCholesky.Factor(a, out double jitter);
 
-            Assert.True(jitter > 0 && jitter <= 1e-4, $"Zuschlag {jitter}");
+            Assert.True(jitter > 0 && jitter <= 1e-4, $"Jitter {jitter}");
             Assert.True(l[1][1] > 0);
         }
 
@@ -85,7 +85,7 @@ namespace FluidForge.Tests
             Assert.Throws<SurrogateFitException>(() => DenseCholesky.Factor(a, out _));
         }
 
-        // ------------------------------------------------------------------ Normalverteilung
+        // ------------------------------------------------------------------ Normal distribution
 
         [Theory]
         [InlineData(0.0, 0.5)]
@@ -99,7 +99,7 @@ namespace FluidForge.Tests
         {
             double actual = NormalDistribution.Cdf(z);
             Assert.True(Math.Abs(actual - expected) <= 1e-7 * Math.Max(expected, 1e-300) + 1e-15,
-                $"Φ({z}) = {actual}, erwartet {expected}");
+                $"Φ({z}) = {actual}, expected {expected}");
         }
 
         [Fact]
@@ -116,8 +116,8 @@ namespace FluidForge.Tests
             var values = Enumerable.Range(0, 20000).Select(_ => NormalDistribution.Sample(random)).ToList();
             double mean = values.Average();
             double variance = values.Sum(v => (v - mean) * (v - mean)) / values.Count;
-            Assert.True(Math.Abs(mean) < 0.03, $"Mittel {mean}");
-            Assert.True(Math.Abs(variance - 1.0) < 0.05, $"Varianz {variance}");
+            Assert.True(Math.Abs(mean) < 0.03, $"Mean {mean}");
+            Assert.True(Math.Abs(variance - 1.0) < 0.05, $"Variance {variance}");
         }
 
         // ------------------------------------------------------------------ Latin Hypercube
@@ -144,7 +144,7 @@ namespace FluidForge.Tests
             Assert.Equal(a.SelectMany(p => p), b.SelectMany(p => p));
         }
 
-        // ------------------------------------------------------------------ Gauß-Prozess
+        // ------------------------------------------------------------------ Gaussian Process
 
         private static (List<double[]> X, List<double> Y) Sine1D(int n)
         {
@@ -175,7 +175,7 @@ namespace FluidForge.Tests
             }
             error /= checks;
 
-            Assert.True(error < 0.05, $"mittlerer Fehler {error}");
+            Assert.True(error < 0.05, $"mean error {error}");
         }
 
         [Fact]
@@ -189,8 +189,8 @@ namespace FluidForge.Tests
             double near = gp.Predict(new[] { 0.15 }).Variance;
             double far = gp.Predict(new[] { 0.95 }).Variance;
 
-            Assert.True(far > 10 * near, $"nah {near}, fern {far}");
-            // Weit weg nähert sich die Varianz der Signalvarianz (in Ausgabeeinheiten).
+            Assert.True(far > 10 * near, $"near {near}, far {far}");
+            // Far away, variance approaches the signal variance (in output units).
             double scale = Math.Sqrt(y.Sum(v => (v - y.Average()) * (v - y.Average())) / y.Count);
             Assert.InRange(far, 0.5 * gp.SignalVariance * scale * scale, 1.001 * gp.SignalVariance * scale * scale);
         }
@@ -224,7 +224,7 @@ namespace FluidForge.Tests
                                   - GaussianProcess.LogMarginalLikelihood(x, ys, minus, null)) / (2 * h);
 
                 double relative = Math.Abs(gradient[i] - numeric) / Math.Max(1e-8, Math.Abs(numeric));
-                Assert.True(relative < 1e-4, $"Hyperparameter {i}: analytisch {gradient[i]}, numerisch {numeric}");
+                Assert.True(relative < 1e-4, $"Hyperparameter {i}: analytic {gradient[i]}, numeric {numeric}");
             }
         }
 
@@ -249,7 +249,7 @@ namespace FluidForge.Tests
 
             var relevance = gp.ParameterRelevance!;
             Assert.Equal(1.0, relevance[0], 9);
-            Assert.True(relevance[1] < 0.2, $"Relevanz x2 = {relevance[1]}");
+            Assert.True(relevance[1] < 0.2, $"Relevance x2 = {relevance[1]}");
         }
 
         [Fact]
@@ -266,12 +266,12 @@ namespace FluidForge.Tests
             var (mean, variance) = two.Predict(new[] { 0.5 });
             Assert.True(double.IsFinite(mean) && variance > 0);
 
-            // konstante Ausgaben
+            // constant outputs
             var constant = new GaussianProcess(new Random(1));
             constant.Fit(new List<double[]> { new[] { 0.1 }, new[] { 0.5 }, new[] { 0.9 } }, new List<double> { 7.0, 7.0, 7.0 });
             Assert.Equal(7.0, constant.Predict(new[] { 0.3 }).Mean, 3);
 
-            // doppelte Punkte
+            // duplicate points
             var duplicates = new GaussianProcess(new Random(1));
             duplicates.Fit(
                 new List<double[]> { new[] { 0.2 }, new[] { 0.2 }, new[] { 0.8 }, new[] { 0.8 } },
@@ -285,7 +285,7 @@ namespace FluidForge.Tests
             var gp = new GaussianProcess(new Random(1));
             var ex = Assert.Throws<ArgumentException>(() => gp.Fit(
                 new List<double[]> { new[] { 0.1 }, new[] { 0.5 } }, new List<double> { 1.0, double.NaN }));
-            Assert.Contains("nicht endlich", ex.Message);
+            Assert.Contains("non-finite", ex.Message);
         }
 
         [Fact]
@@ -324,7 +324,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Gp_With_400_Points_In_20_Dimensions_Runs_Through()
         {
-            // Rauchprobe ohne Zeitgrenze (F22).
+            // Smoke test without time limit (F22).
             var random = new Random(21);
             var x = new List<double[]>();
             var y = new List<double>();
@@ -355,7 +355,7 @@ namespace FluidForge.Tests
             {
                 double xi = i / 24.0;
                 x.Add(new[] { xi });
-                // Deutliches Messrauschen um eine glatte Funktion
+                // Significant measurement noise around a smooth function
                 double noise = (rng.NextDouble() - 0.5) * 0.8;
                 y.Add(Math.Sin(4.0 * xi) + noise);
             }

@@ -9,12 +9,12 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-23: der <c>switch</c> in Program.cs ist weg. Ein Projektname wird über die
-    /// <see cref="ProjectRegistry"/> aufgelöst, die ihre Definitionen per Reflection findet.
+    /// TODO-23: the <c>switch</c> in Program.cs is gone. A project name is resolved via
+    /// <see cref="ProjectRegistry"/>, which discovers its definitions via reflection.
     /// </summary>
     public class ProjectRegistryTests
     {
-        /// <summary>Attrappe: ein Projekt, das nichts tut, aber einen Namen hat.</summary>
+        /// <summary>Stub: a project that does nothing, but has a name.</summary>
         private sealed class FakeProject : IProjectDefinition
         {
             public FakeProject(string name) => Name = name;
@@ -29,12 +29,12 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Auflösen
+        // Resolution
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Der Ersatz für <c>case "MantaAuv":</c> — das Projekt muss ohne eine Zeile in
-        /// Program.cs gefunden werden.
+        /// Replacement for <c>case "MantaAuv":</c> — the project must be found without a single
+        /// line in Program.cs.
         /// </summary>
         [Fact]
         public void MantaAuv_Is_Discovered_In_The_Assembly()
@@ -56,7 +56,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein unbekannter Name muss sagen, was es stattdessen gibt — sonst rät der Nutzer.
+        /// An unknown name must tell the user what exists instead — otherwise they have to guess.
         /// </summary>
         [Fact]
         public void An_Unknown_Name_Names_The_Available_Projects()
@@ -67,14 +67,14 @@ namespace FluidForge.Tests
                 new FakeProject("Propeller")
             });
 
-            var error = Assert.Throws<InvalidOperationException>(() => registry.Resolve("Wärmetauscher"));
+            var error = Assert.Throws<InvalidOperationException>(() => registry.Resolve("HeatExchanger"));
 
-            Assert.Contains("Wärmetauscher", error.Message);
+            Assert.Contains("HeatExchanger", error.Message);
             Assert.Contains("MantaAuv", error.Message);
             Assert.Contains("Propeller", error.Message);
         }
 
-        /// <summary>Kein Name ist kein stiller Standard mehr, sondern ein Abbruch mit der Liste.</summary>
+        /// <summary>No name is no longer a silent default, but an abort listing the projects.</summary>
         [Theory]
         [InlineData(null)]
         [InlineData("")]
@@ -89,12 +89,12 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Doppelte Namen
+        // Duplicate names
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Zwei Definitionen mit demselben Namen müssen beim Start auffallen: welche gewinnt,
-        /// hinge sonst an der Reihenfolge der Reflection.
+        /// Two definitions with the same name must be caught at startup: otherwise which one
+        /// wins would depend on reflection order.
         /// </summary>
         [Fact]
         public void Duplicate_Names_Are_Rejected_At_Startup()
@@ -109,7 +109,7 @@ namespace FluidForge.Tests
             Assert.Contains(nameof(FakeProject), error.Message);
         }
 
-        /// <summary>Der Ordnername entscheidet, und Dateisysteme unterscheiden sich in der Groß-/Kleinschreibung.</summary>
+        /// <summary>The folder name decides, and filesystems differ in case sensitivity.</summary>
         [Fact]
         public void Duplicate_Names_Are_Detected_Ignoring_Case()
         {
@@ -134,7 +134,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Abgleich mit den Ordnern
+        // Matching against folders
         // -------------------------------------------------------------------
 
         [Fact]
@@ -152,8 +152,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Eine Definition ohne Ordner findet ihre JSON-Dateien nicht und rechnet klaglos mit
-        /// den Code-Standards weiter — der Fehler wäre also still.
+        /// A definition without a folder cannot find its JSON files and would silently continue
+        /// with code defaults — the bug would go unnoticed.
         /// </summary>
         [Fact]
         public void A_Definition_Without_A_Folder_Is_Rejected()
@@ -172,7 +172,7 @@ namespace FluidForge.Tests
             Assert.Contains("Propeller", error.Message);
         }
 
-        /// <summary>Ein Ordner ohne Definition wird beim Start nie angeboten — ebenfalls still.</summary>
+        /// <summary>A folder without a definition is never offered at startup — also silent.</summary>
         [Fact]
         public void A_Folder_Without_A_Definition_Is_Rejected()
         {
@@ -187,7 +187,7 @@ namespace FluidForge.Tests
             Assert.Contains("IProjectDefinition", error.Message);
         }
 
-        /// <summary>Die Vorlage ist kein Projekt und darf den Abgleich nicht auslösen.</summary>
+        /// <summary>The template is not a project and must not trigger the mismatch check.</summary>
         [Fact]
         public void The_Template_Folder_Does_Not_Need_A_Definition()
         {
@@ -199,25 +199,25 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ohne vorhandenes src/projects/ entfällt der Abgleich — bis TODO-24 die Ordner
-        /// angelegt hat, gibt es schlicht nichts abzugleichen.
+        /// Without an existing src/projects/ directory, the check is skipped — until TODO-24
+        /// creates the folders, there is simply nothing to match against.
         /// </summary>
         [Fact]
         public void Without_A_Projects_Directory_Nothing_Is_Checked()
         {
             var registry = ProjectRegistry.FromDefinitions(new[] { new FakeProject("Propeller") });
 
-            registry.AssertFoldersMatchDefinitions(Path.Combine(Path.GetTempPath(), "gibtsnicht_" + Guid.NewGuid()));
+            registry.AssertFoldersMatchDefinitions(Path.Combine(Path.GetTempPath(), "nonexistent_" + Guid.NewGuid()));
         }
 
         // -------------------------------------------------------------------
-        // Die Verdrahtung des Manta-Projekts
+        // Manta project wiring
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Was vorher der <c>case</c> in Program.cs zusammensteckte: PicoGK, Gmsh, SU2 und die
-        /// Manta-Klassen. Der Kernel wird nicht gebaut — PicoGK gibt es auf dem
-        /// Entwicklungsrechner nicht.
+        /// What the <c>case</c> in Program.cs used to wire together: PicoGK, Gmsh, SU2, and the
+        /// Manta classes. The kernel is not constructed — PicoGK is not installed on the
+        /// development machine.
         /// </summary>
         [Fact]
         public void MantaProject_Wires_Geometry_Fitness_And_The_Cfd_Chain()
@@ -248,7 +248,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein temporäres Repo-Gerüst mit <c>src/projects/&lt;Name&gt;/</c>-Ordnern.
+        /// A temporary repo scaffold with <c>src/projects/&lt;Name&gt;/</c> folders.
         /// </summary>
         private sealed class FakeRepository : IDisposable
         {

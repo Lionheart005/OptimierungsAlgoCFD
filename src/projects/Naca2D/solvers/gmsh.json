@@ -1,50 +1,50 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  Naca2D -- Gmsh 2D-Vernetzer
+  //  Naca2D -- Gmsh 2D Mesher
   // ===================================================================
   //
-  // Optionen für Gmsh2DMesher (TODO-45/47).
-  // Erzeugt ein kreisförmiges Fernfeld um die 2D-Profilkontur mit strukturierter
-  // Quad-Grenzschicht (BoundaryLayer-Feld) und Nachlauf-Box stromabwärts.
+  // Options for Gmsh2DMesher.
+  // Generates a circular farfield around the 2D airfoil contour with a structured
+  // quad boundary layer (BoundaryLayer field) and a downstream wake box.
 
-  // --- Fernfeld (Simulationsdomäne) ---
-  // Kreisförmiges Fernfeld als Vielfaches der Sehne c (in 2D mind. 50 c).
-  // 500 wie die NASA-TMR-Gitter; die Zellen wachsen nach aussen, das Fernfeld kostet nur wenige tausend Zellen.
+  // --- Farfield (simulation domain) ---
+  // Circular farfield radius as a multiple of chord c (in 2D at least 50 c).
+  // 500 matches NASA TMR grids; cells grow outward so the farfield costs only a few thousand cells.
   "FarfieldRadiusFactor": 500.0,
   "FarfieldCircleSegments": 64,
 
-  // --- Grenzschicht-Auflösung (BoundaryLayer Field) ---
-  // Ziel-y+ für die erste Wandzelle und Wachstumsrate:
+  // --- Boundary layer resolution (BoundaryLayer Field) ---
+  // Target y+ for the first wall cell and growth rate:
   "TargetYPlus": 1.0,
   "BoundaryLayerGrowthRate": 1.2,
   "BoundaryLayerMinLayers": 4,
   "BoundaryLayerLayers": 0,
 
-  // --- Zellgrößen relativ zur Sehne c ---
+  // --- Cell sizes relative to chord c ---
   "SurfaceCellSizeFactor": 0.005,
   "SurfaceCellSizeMm": 0.0,
   "NearfieldCellSizeFactor": 0.02,
-  // Faustregel: Radius / 20.
+  // Rule of thumb: Radius / 20.
   "FarfieldCellSizeFactor": 25.0,
-  // Abstand (x c), ueber den die Zellgroesse bis zur Fernfeldgroesse waechst; 0 = automatisch 0,4 x Radius.
+  // Distance (x c) over which cell size grows to farfield size; 0 = automatic 0.4 x radius.
   "NearfieldGrowthDistanceFactor": 0.0,
 
-  // --- Nachlauf-Verfeinerung (Wake Box) ---
+  // --- Wake refinement box ---
   "WakeRefinement": true,
   "WakeLengthFactor": 3.0,
   "WakeWidthFactor": 0.6,
   "WakeCellSizeFactor": 0.02,
 
-  // --- Detailbox um und hinter dem Profil (TODO-W6) ---
-  // Sehr feine Box fuer Nachlauf und Wirbel in Modellnaehe; gilt fuer jede Rechnung, skaliert mit dem Netzfaktor.
+  // --- Detail box around and behind the airfoil ---
+  // Fine box for near-wake and vortices; active on every run, scales with mesh factor.
   "DetailBox": true,
   "DetailBoxLengthFactor": 1.0,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxCellSizeFactor": 0.01,
 
-  // --- Vorder- und Hinterkante (TODO-W6) ---
-  // Wandzellgroesse dort = EdgeRefinementFactor x Konturzellgroesse (1 = keine Sonderverfeinerung).
+  // --- Leading and trailing edges ---
+  // Wall cell size there = EdgeRefinementFactor x contour cell size (1 = no extra refinement).
   "EdgeRefinementFactor": 0.25,
   "EdgeRefinementDistanceFactor": 0.1
 }

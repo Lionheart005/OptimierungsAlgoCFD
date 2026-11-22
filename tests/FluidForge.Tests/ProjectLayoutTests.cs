@@ -7,13 +7,13 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-24: alles, was für ein Projekt eingestellt werden muss, liegt in genau einem Ordner.
-    /// Diese Tests halten die Struktur-Entscheidungen fest — sie sind billig und schlagen an,
-    /// bevor jemand aus Versehen ein zweites Stellrad einbaut.
+    /// TODO-24: everything that must be configured for a project lives in a single folder.
+    /// These tests lock down the structural decisions — they are cheap and fail before
+    /// someone accidentally introduces a second configuration knob.
     /// </summary>
     public class ProjectLayoutTests
     {
-        /// <summary>Alle vier JSON-Dateien liegen im Projektordner, keine mehr in config/.</summary>
+        /// <summary>All four JSON files live in the project folder, none in config/ anymore.</summary>
         [Theory]
         [InlineData("project.json")]
         [InlineData("simulation.json")]
@@ -25,12 +25,12 @@ namespace FluidForge.Tests
                 MantaProjectFiles.Directory,
                 relativeName.Replace('/', Path.DirectorySeparatorChar));
 
-            Assert.True(File.Exists(file), $"src/projects/MantaAuv/{relativeName} fehlt.");
+            Assert.True(File.Exists(file), $"src/projects/MantaAuv/{relativeName} is missing.");
         }
 
         /// <summary>
-        /// Die Geometrie und die Fitness liegen neben ihren Zahlen — das ist der Kern des
-        /// Umbaus: ein Ordner, C# und JSON nebeneinander.
+        /// Geometry and fitness live right next to their numbers — that is the core of the
+        /// restructuring: one folder, C# and JSON side by side.
         /// </summary>
         [Theory]
         [InlineData("MantaProject.cs")]
@@ -41,12 +41,12 @@ namespace FluidForge.Tests
         {
             Assert.True(
                 File.Exists(Path.Combine(MantaProjectFiles.Directory, fileName)),
-                $"src/projects/MantaAuv/{fileName} fehlt.");
+                $"src/projects/MantaAuv/{fileName} is missing.");
         }
 
         /// <summary>
-        /// Der Projektname steht NUR im Ordnernamen (Entscheidung 1). Ein Feld in der Datei
-        /// wäre eine zweite Stelle, die mit dem Ordner auseinanderlaufen kann.
+        /// The project name is ONLY in the folder name (Decision 1). A field in the file
+        /// would be a second place that could drift out of sync with the folder.
         /// </summary>
         [Fact]
         public void The_Manifest_Does_Not_Carry_The_Project_Name()
@@ -54,7 +54,7 @@ namespace FluidForge.Tests
             string manifest = File.ReadAllText(
                 Path.Combine(MantaProjectFiles.Directory, ProjectPaths.ManifestFileName));
 
-            // In den Kommentaren darf der Name vorkommen — als Schlüssel nicht.
+            // The name may appear in comments — just not as a key.
             string withoutComments = string.Join('\n', manifest
                 .Split('\n')
                 .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
@@ -63,15 +63,15 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Der <b>Code-Standard</b> muss PATH-relativ bleiben. Er gilt für jedes Projekt, das
-        /// nichts einträgt — stünde hier die Installation eines bestimmten Servers, erbte sie
-        /// jeder fremde Nutzer, ohne es zu merken.
+        /// The <b>code default</b> must stay PATH-relative. It applies to any project that does
+        /// not specify paths — if a specific server's installation lived here, every external
+        /// user would inherit it without noticing.
         ///
         /// <para>
-        /// Ein einzelnes Projekt darf davon abweichen: MantaAuv trägt in seiner
-        /// simulation.json absolute Pfade, weil der Hochschulserver die Programme nicht über
-        /// den PATH findet. Das ist genau die Aufgabenteilung der Schichten — die Ausnahme
-        /// steht beim Projekt, nicht im Framework.
+        /// A single project may override this: MantaAuv specifies absolute paths in its
+        /// simulation.json because the university server does not expose the tools on PATH.
+        /// That is the exact division of responsibilities across layers — the exception lives
+        /// with the project, not in the framework.
         /// </para>
         /// </summary>
         [Fact]
@@ -85,9 +85,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein Projekt, das die drei Schlüssel nicht nennt, bekommt den PATH-relativen
-        /// Code-Standard. Das ist der Weg zurück für jeden anderen Server: die drei Zeilen aus
-        /// der simulation.json löschen, fertig.
+        /// A project that omits the three keys receives the PATH-relative code default.
+        /// That is the path back for any other server: remove the three lines from
+        /// simulation.json, done.
         /// </summary>
         [Fact]
         public void A_Project_Without_Path_Keys_Falls_Back_To_The_Relative_Default()
@@ -114,16 +114,15 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die globale Basis-Schicht ist ersatzlos entfallen (Entscheidung 3). Läge in config/
-        /// wieder eine eingecheckte JSON, hätte sie keinerlei Wirkung — sie wird gar nicht mehr
-        /// gelesen — und wäre damit die schlimmste Sorte Konfiguration: eine, die aussieht,
-        /// als würde sie gelten.
+        /// The global base layer was removed without replacement (Decision 3). If a checked-in
+        /// JSON remained in config/, it would have no effect — it is no longer read — and would
+        /// thus be the worst kind of configuration: one that looks as if it applies.
         /// </summary>
         [Fact]
         public void The_Config_Folder_Holds_No_Checked_In_Json()
         {
             string? configDirectory = JsonConfigLoader.ResolveConfigDirectory(null);
-            if (configDirectory == null) return;   // auf einem frischen Rechner gar nicht vorhanden
+            if (configDirectory == null) return;   // not present on a fresh machine
 
             var checkedIn = Directory
                 .EnumerateFiles(configDirectory, "*.json", SearchOption.AllDirectories)
@@ -132,9 +131,9 @@ namespace FluidForge.Tests
                 .ToList();
 
             Assert.True(checkedIn.Count == 0,
-                "config/ enthält eingecheckte JSON-Dateien, die niemand mehr liest: "
+                "config/ contains checked-in JSON files that nothing reads anymore: "
                 + string.Join(", ", checkedIn)
-                + ". Projekteinstellungen gehören nach src/projects/<Name>/.");
+                + ". Project settings belong in src/projects/<Name>/.");
         }
     }
 }

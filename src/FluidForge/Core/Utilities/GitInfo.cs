@@ -5,13 +5,13 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Liest Commit und Branch direkt aus den Dateien unter <c>.git</c> (TODO-50).
+    /// Reads commit and branch directly from the files under <c>.git</c>.
     ///
     /// <para>
-    /// Bewusst ohne git-Programm: lokal liegt git nur im Ordner von GitHub Desktop und nicht im
-    /// PATH, auf dem Server gibt es gar kein <c>.git</c>. Gelesen werden nur <c>HEAD</c>,
-    /// <c>refs/heads/&lt;Branch&gt;</c> und <c>packed-refs</c>. Ob es nicht-committete
-    /// Änderungen gibt, lässt sich so nicht sagen — das steht dann als „unbekannt" da.
+    /// Intentionally avoids spawning a git process: locally git may not be in PATH, and on the
+    /// server <c>.git</c> does not exist at all. Reads only <c>HEAD</c>,
+    /// <c>refs/heads/&lt;Branch&gt;</c>, and <c>packed-refs</c>. Uncommitted changes cannot
+    /// be determined this way and are therefore reported as "unknown".
     /// </para>
     /// </summary>
     public sealed class GitInfo
@@ -22,15 +22,15 @@ namespace FluidForge.Core
             Branch = branch;
         }
 
-        /// <summary>Volle Commit-Kennung (40 Hex-Zeichen).</summary>
+        /// <summary>Full commit hash (40 hex characters).</summary>
         public string Commit { get; }
 
-        /// <summary>Branch-Name, <c>null</c> bei abgekoppeltem HEAD.</summary>
+        /// <summary>Branch name, or <c>null</c> for a detached HEAD.</summary>
         public string? Branch { get; }
 
         /// <summary>
-        /// Liest den Stand des Repositorys in <paramref name="repositoryRoot"/>. <c>null</c>, wenn
-        /// es dort kein lesbares <c>.git</c> gibt. Wirft nie.
+        /// Reads repository state in <paramref name="repositoryRoot"/>. Returns <c>null</c> if
+        /// no readable <c>.git</c> exists there. Never throws.
         /// </summary>
         public static GitInfo? Read(string? repositoryRoot)
         {
@@ -65,8 +65,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// <c>.git</c> ist normalerweise ein Ordner. Bei einem Worktree ist es eine Datei mit
-        /// <c>gitdir: &lt;Pfad&gt;</c>.
+        /// <c>.git</c> is normally a directory; in a worktree it is a file containing
+        /// <c>gitdir: &lt;path&gt;</c>.
         /// </summary>
         private static string? ResolveGitDirectory(string dotGit)
         {
@@ -93,7 +93,7 @@ namespace FluidForge.Core
                 if (IsCommitId(loose)) return loose;
             }
 
-            // Bei einem Worktree liegen die Branches im gemeinsamen Verzeichnis.
+            // In a worktree, refs live in the common git directory.
             string commonFile = Path.Combine(gitDirectory, "commondir");
             if (File.Exists(commonFile))
             {

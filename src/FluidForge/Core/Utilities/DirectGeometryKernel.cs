@@ -3,15 +3,15 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Kernel ohne eigene Laufzeitumgebung: führt den Programmablauf direkt aus.
+    /// Geometry kernel without a host runtime: executes the workflow callback directly.
     ///
-    /// Für Projekte, deren Geometrie-Erzeugung keinen Start-Mechanismus braucht
-    /// (reine Mesh-Bibliotheken, CAD-Exporte, vorgefertigte STL-Dateien) — und für
-    /// Tests, die den <see cref="WorkflowController"/> ohne PicoGK durchlaufen lassen.
+    /// Used by projects whose geometry generation does not require a host environment
+    /// (mesh libraries, CAD exports, pre-built STL files) and by unit tests running
+    /// <see cref="WorkflowController"/> without PicoGK.
     /// </summary>
     public class DirectGeometryKernel : IGeometryKernel
     {
-        public string Name => "Direkt (ohne eigene Laufzeitumgebung)";
+        public string Name => "Direct (no host runtime)";
 
         public void RunHosted(float voxelResolution, Action body) => body();
     }

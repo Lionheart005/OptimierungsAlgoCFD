@@ -8,15 +8,15 @@ using System.Text;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Feine Nachrechnung der Champions auf verfeinertem Netz (TODO-43).
-    /// Überprüft die Netzunabhängigkeit der Optimierungsergebnisse.
+    /// Fine-mesh re-evaluation of champions (TODO-43).
+    /// Verifies mesh independence of optimization results.
     /// </summary>
     public static class ChampionFineVerifier
     {
-        public const string VerificationCsvFileName = "Verifikation.csv";
+        public const string VerificationCsvFileName = OutputConventions.VerificationCsvFileName;
 
         /// <summary>
-        /// Berechnet den feinen Netzfaktor: wirksamer Faktor / (√2 ^ RefinementSteps).
+        /// Computes the fine mesh factor: effectiveFactor / (√2 ^ RefinementSteps).
         /// </summary>
         public static float CalculateFineFactor(float effectiveFactor, int refinementSteps = 1)
         {
@@ -25,7 +25,7 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Berechnet die maximale relative Abweichung aller überwachten Kennwerte zwischen normalem und feinem Lauf.
+        /// Computes the maximum relative deviation across all monitored metrics between the normal and fine runs.
         /// </summary>
         public static float ComputeMaxRelativeDeviation(
             ModelRecord normalRecord,
@@ -40,15 +40,15 @@ namespace FluidForge.Core
             }
             else
             {
-                // Fallback: alle numerischen passiven Parameter, die keine Framework-Metadaten sind
+                // Fallback: all numeric passive parameters that are not framework metadata
                 var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                     "ScaleFactor", "MeshCells", "MeshRefinementFactor", "FineVerified", "FineDeviation",
                     "BoundaryLayerHexShare", "ReynoldsNumber"
                 };
 
-                // Su2_* (Iterationen, Konvergenz, Schwingung, iterativer Fehler) und YPlus_* sind
-                // Rechnungs-Metadaten, keine Kennwerte der Geometrie.
+                // Su2_* (iterations, convergence, oscillation, iterative error) and YPlus_* are
+                // solver diagnostics, not geometry performance metrics.
                 metricsToCheck.AddRange(normalRecord.PassiveParameters.Keys.Where(k =>
                     !excluded.Contains(k)
                     && !ModelRecord.IsMeshMetadataKey(k)
@@ -77,9 +77,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Größte <b>normierte</b> Abweichung (TODO-W1): <c>|fein − normal| / (Toleranz·|normal| + Mindestbetrag)</c>
-        /// über alle Kennwerte; höchstens 1 = innerhalb der Toleranz. Bei Werten nahe 0 zählt der Mindestbetrag
-        /// aus <see cref="MetricTolerance"/>, bei großen Werten die relative Abweichung. Ohne Kennwerte: Fitness.
+        /// Maximum <b>normalized</b> deviation (TODO-W1): <c>|fine - normal| / (tolerance * |normal| + absoluteFloor)</c>
+        /// across all metrics; at most 1 = within tolerance. Near 0, the absolute floor from
+        /// <see cref="MetricTolerance"/> dominates; for larger values, the relative deviation dominates.
+        /// Without metrics: evaluates Fitness.
         /// </summary>
         public static float ComputeMaxNormalizedDeviation(
             ModelRecord normalRecord,
@@ -105,7 +106,7 @@ namespace FluidForge.Core
                 if (!normalRecord.PassiveParameters.TryGetValue(metric, out float qNormal)) continue;
                 float qFine = fineRecord.PassiveParameters.TryGetValue(metric, out float qf) ? qf : 0f;
 
-                // Schwankende Rechnungen (Wirbelablösung): die zulässige Abweichung wächst mit der Unsicherheit beider Werte.
+                // Oscillating runs (vortex shedding): allowable deviation grows with the uncertainty of both values.
                 MetricUncertainty.TryGet(normalRecord, metric, out double uA);
                 MetricUncertainty.TryGet(fineRecord, metric, out double uB);
                 float n = MetricTolerance.Normalized(
@@ -116,8 +117,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Führt die Verifikation nach einer Iteration durch (Mode = "EachIteration").
-        /// Ändert weder die Auswahl noch die History (Regel F7).
+        /// Runs per-iteration fine verification (Mode = "EachIteration").
+        /// Does not alter selection or history (Rule F7).
         /// </summary>
         public static void VerifyIterationWinner(
             ModelRecord winner,
@@ -134,9 +135,9 @@ namespace FluidForge.Core
                 context.EffectiveMeshRefinementFactor,
                 context.Config.ChampionVerification.RefinementSteps);
 
-            string tag = $"Fein_Gen{iteration}";
+            string tag = $"Fine_Gen{iteration}";
 
-            SimulationLog.Detail($"[VERIFIKATION] Iterationssieger Gen {iteration} wird fein nachgerechnet (Faktor: {fineFactor:0.00}, Tag: {tag})...");
+            SimulationLog.Detail($"{OutputConventions.VerificationTag} Fine-verifying iteration winner Gen {iteration} (factor: {fineFactor:0.00}, tag: {tag})...");
 
             ModelRecord fineRecord = resimulate(winner.ActiveParameters, fineFactor, tag);
             evaluateFitness(fineRecord);
@@ -145,22 +146,22 @@ namespace FluidForge.Core
             float maxNorm = ComputeMaxNormalizedDeviation(winner, fineRecord, monitoredMetrics,
                 context.Config.ChampionVerification.Tolerance, context.Config.MeshCalibration.AbsoluteTolerances);
 
-            // Dokumentation am Record
+            // Document on record
             winner.PassiveParameters["FineVerified"] = 1f;
             winner.PassiveParameters["FineDeviation"] = maxRelDev;
 
-            SimulationLog.Detail($"Normale Fitness: {winner.Fitness:F4} | Feine Fitness: {fineRecord.Fitness:F4} | Max. Kennwert-Abweichung: {maxRelDev * 100:0.0} %");
+            SimulationLog.Detail($"Normal Fitness: {winner.Fitness:F4} | Fine Fitness: {fineRecord.Fitness:F4} | Max. Metric Deviation: {maxRelDev * 100:0.0} %");
 
             if (maxNorm > 1.0f)
             {
                 SimulationLog.Warning(
-                    $"Ergebnis netzabhängig – Abweichung im feinen Netz beträgt {maxRelDev * 100:0.0} % "
-                    + $"(Erlaubt: {context.Config.ChampionVerification.Tolerance * 100:0.0} % plus Mindestbetrag; normiert {maxNorm:0.0}, erlaubt höchstens 1) – Kalibrierung prüfen!");
+                    $"Result is mesh-dependent - fine-mesh deviation is {maxRelDev * 100:0.0} % "
+                    + $"(allowed: {context.Config.ChampionVerification.Tolerance * 100:0.0} % plus floor; normalized {maxNorm:0.0}, allowed <= 1) - check calibration!");
             }
         }
 
         /// <summary>
-        /// Führt die finale Verifikation am Ende der Optimierung durch (Mode = "Final" oder "FinalTopN").
+        /// Runs final verification at the end of optimization (Mode = "Final" or "FinalTopN").
         /// </summary>
         public static void VerifyFinal(
             SimulationContext context,
@@ -199,19 +200,19 @@ namespace FluidForge.Core
             if (itemsToVerify.Count == 0) return;
 
             SimulationLog.PrintBanner(
-                $"FINALE GEWINNER-VERIFIKATION (Modus: {mode})",
-                $"Feiner Netzfaktor: {fineFactor:0.00} (Verfeinerungsstufen: {context.Config.ChampionVerification.RefinementSteps})",
-                $"Zu prüfende Kandidaten: {itemsToVerify.Count}");
+                $"FINAL CHAMPION VERIFICATION (Mode: {mode})",
+                $"Fine mesh factor: {fineFactor:0.00} (refinement steps: {context.Config.ChampionVerification.RefinementSteps})",
+                $"Candidates to verify: {itemsToVerify.Count}");
 
             var results = new List<VerificationRow>();
 
             for (int i = 0; i < itemsToVerify.Count; i++)
             {
                 var candidate = itemsToVerify[i];
-                // Der Tag nennt den Kandidaten (Fein1_Gen5_Var1): sonst hießen alle Dateien Gen99_Var99_Fein1.
-                string tag = $"Fein{i + 1}_Gen{candidate.Iteration}_Var{candidate.Variant}";
+                // Tag identifies the candidate (Fine1_Gen5_Var1); otherwise all files would be named Gen99_Var99_Fine1.
+                string tag = $"Fine{i + 1}_Gen{candidate.Iteration}_Var{candidate.Variant}";
 
-                SimulationLog.Detail($"[VERIFIKATION] Prüfe Kandidat {i + 1}/{itemsToVerify.Count}: Iteration {candidate.Iteration}, Variante {candidate.Variant}...");
+                SimulationLog.Detail($"{OutputConventions.VerificationTag} Verifying candidate {i + 1}/{itemsToVerify.Count}: Iteration {candidate.Iteration}, Variant {candidate.Variant}...");
 
                 ModelRecord fineRecord = resimulate(candidate.ActiveParameters, fineFactor, tag);
                 evaluateFitness(fineRecord);
@@ -220,8 +221,8 @@ namespace FluidForge.Core
                 float maxNorm = ComputeMaxNormalizedDeviation(candidate, fineRecord, monitoredMetrics,
                     context.Config.ChampionVerification.Tolerance, context.Config.MeshCalibration.AbsoluteTolerances);
 
-                // Eine gescheiterte feine Rechnung (Vernetzung oder SU2) verifiziert nichts.
-                // Vorher stand dann FineVerified = 1 und "Rangfolge hält" (Servertest 06.11.2026).
+                // A failed fine evaluation (meshing or SU2) verifies nothing.
+                // Previously FineVerified = 1 and "ranking holds" were reported (server test 06.11.2026).
                 candidate.PassiveParameters["FineVerified"] = fineRecord.SimulationFailed ? 0f : 1f;
                 candidate.PassiveParameters["FineDeviation"] = maxDev;
 
@@ -237,7 +238,7 @@ namespace FluidForge.Core
                 });
             }
 
-            // Rangfolge im feinen Netz bestimmen
+            // Determine ranking on fine mesh
             var fineRanked = results.OrderByDescending(r => r.FineFitness).ToList();
             for (int r = 0; r < fineRanked.Count; r++)
             {
@@ -247,30 +248,30 @@ namespace FluidForge.Core
             int failedFine = results.Count(r => r.FineRecord.SimulationFailed);
             bool rankingHolds = failedFine == 0 && results.All(r => r.NormalRank == r.FineRank);
 
-            // Verifikation.csv schreiben
+            // Write verification.csv
             WriteVerificationCsv(Path.Combine(context.WorkingDirectory, VerificationCsvFileName), results, rankingHolds, monitoredMetrics);
 
-            // Simulation_Results.csv mit FineVerified/FineDeviation aktualisieren
+            // Update results.csv with FineVerified/FineDeviation
             context.ExportToCsv();
 
-            // Konsolenausgabe
-            SimulationLog.PrintBanner("VERIFIKATIONSERGEBNIS");
+            // Console output
+            SimulationLog.PrintBanner("VERIFICATION RESULT");
             if (failedFine > 0)
             {
-                SimulationLog.Warning($"{failedFine} von {results.Count} feinen Rechnungen sind gescheitert – für sie ist nichts verifiziert (FineVerified = 0).");
+                SimulationLog.Warning($"{failedFine} of {results.Count} fine evaluation(s) failed - nothing verified for them (FineVerified = 0).");
             }
-            
-            string rankingText = rankingHolds ? "JA (Rangfolge hält)" : failedFine > 0 ? "NICHT PRÜFBAR (feine Rechnung gescheitert)" : "NEIN (Rangfolge geändert)";
+
+            string rankingText = rankingHolds ? "YES (ranking holds)" : failedFine > 0 ? "NOT CHECKABLE (fine evaluation failed)" : "NO (ranking changed)";
             if (rankingHolds)
             {
-                SimulationLog.Success($"Rangfolge stabil im feinen Netz: {rankingText}");
+                SimulationLog.Success($"Ranking stable on fine mesh: {rankingText}");
             }
             else
             {
-                SimulationLog.Warning($"Rangfolge stabil im feinen Netz: {rankingText}");
+                SimulationLog.Warning($"Ranking stable on fine mesh: {rankingText}");
             }
 
-            Console.WriteLine("Iter | Var | Normal-Rang | Fein-Rang | Normal-Score | Fein-Score | Max. Abw. | normiert (<= 1 ok)");
+            Console.WriteLine("Iter | Var | Normal-Rank | Fine-Rank | Normal-Score | Fine-Score | Max. Dev. | normalized (<= 1 ok)");
             Console.WriteLine("--------------------------------------------------------------------------------------------------");
 
             bool anyWarning = false;
@@ -290,8 +291,8 @@ namespace FluidForge.Core
             {
                 Console.WriteLine();
                 SimulationLog.Warning(
-                    $"Ergebnis netzabhängig – Abweichung im feinen Netz übersteigt die Toleranz "
-                    + $"von {context.Config.ChampionVerification.Tolerance * 100:0.0} % – Kalibrierung prüfen!");
+                    $"Result is mesh-dependent - fine-mesh deviation exceeds tolerance "
+                    + $"of {context.Config.ChampionVerification.Tolerance * 100:0.0} % - check calibration!");
             }
             Console.WriteLine("==================================================\n");
         }

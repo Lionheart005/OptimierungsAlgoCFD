@@ -8,9 +8,9 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests fuer TODO-34: Die generierte SU2-Konfiguration (.cfg) und das Gmsh-.geo-Skript
-    /// enthalten erklaerende Kommentarbloecke zu physikalischen Gleichungen, Randbedingungen,
-    /// Markern und Abbruchkriterien, ohne die aktiven Schluesselzeilen zu veraendern (Regression).
+    /// Tests for TODO-34: The generated SU2 configuration (.cfg) and Gmsh .geo script
+    /// contain explanatory comment blocks on physical equations, boundary conditions,
+    /// markers, and stopping criteria without altering the active key lines (regression).
     /// </summary>
     public class Su2ConfigCommentTests
     {
@@ -29,23 +29,23 @@ namespace FluidForge.Tests
 
                 Assert.NotEmpty(commentLines);
 
-                // Physikalische Gleichungen (RANS, SA)
-                Assert.Contains(commentLines, l => l.Contains("Inkompressible RANS-Gleichungen", StringComparison.OrdinalIgnoreCase));
+                // Physical equations (RANS, SA)
+                Assert.Contains(commentLines, l => l.Contains("Incompressible RANS equations", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("Spalart-Allmaras", StringComparison.OrdinalIgnoreCase) || l.Contains("SA", StringComparison.OrdinalIgnoreCase));
 
-                // Randbedingungen & Marker (Farfield, Wall, Haftwand, Fernfeld)
-                Assert.Contains(commentLines, l => l.Contains("MARKER_FAR", StringComparison.OrdinalIgnoreCase) && l.Contains("Fernfeld", StringComparison.OrdinalIgnoreCase));
+                // Boundary conditions & markers (Farfield, Wall, no-slip)
+                Assert.Contains(commentLines, l => l.Contains("MARKER_FAR", StringComparison.OrdinalIgnoreCase) && l.Contains("farfield", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("MARKER_HEATFLUX", StringComparison.OrdinalIgnoreCase) && l.Contains("no-slip", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("MARKER_MONITORING", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("MARKER_PLOTTING", StringComparison.OrdinalIgnoreCase));
 
-                // Freistromturbulenz Vorgabewerte SU2 7.5.1
+                // Freestream turbulence default values SU2 7.5.1
                 Assert.Contains(commentLines, l => l.Contains("FREESTREAM_TURBULENCEINTENSITY= 0.05", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("FREESTREAM_TURB2LAMVISCRATIO= 10.0", StringComparison.OrdinalIgnoreCase));
 
-                // Numerik & Abbruchkriterien
+                // Numerics & stopping criteria
                 Assert.Contains(commentLines, l => l.Contains("FDS", StringComparison.OrdinalIgnoreCase) && l.Contains("MUSCL", StringComparison.OrdinalIgnoreCase));
-                Assert.Contains(commentLines, l => l.Contains("ABBRUCHKRITERIEN", StringComparison.OrdinalIgnoreCase));
+                Assert.Contains(commentLines, l => l.Contains("STOPPING CRITERIA", StringComparison.OrdinalIgnoreCase));
             }
             finally
             {
@@ -66,8 +66,8 @@ namespace FluidForge.Tests
                 string[] lines = File.ReadAllLines(path);
                 foreach (string line in lines.Where(l => l.TrimStart().StartsWith("%")))
                 {
-                    Assert.True(line.Length <= 100, $"Kommentarzeile zu lang ({line.Length} Zeichen): {line}");
-                    Assert.All(line, ch => Assert.True(ch <= 127, $"Unerlaubtes Nicht-ASCII-Zeichen '{ch}' in: {line}"));
+                    Assert.True(line.Length <= 100, $"Comment line too long ({line.Length} chars): {line}");
+                    Assert.All(line, ch => Assert.True(ch <= 127, $"Disallowed non-ASCII character '{ch}' in: {line}"));
                 }
             }
             finally
@@ -155,20 +155,20 @@ namespace FluidForge.Tests
 
                 string[] lines = File.ReadAllLines(path);
 
-                int farfieldCommentIdx = Array.FindIndex(lines, l => l.Contains("Dieser Name ist der SU2-Marker: Farfield -> MARKER_FAR"));
+                int farfieldCommentIdx = Array.FindIndex(lines, l => l.Contains("SU2 marker name: Farfield -> MARKER_FAR"));
                 int farfieldLineIdx = Array.FindIndex(lines, l => l.Contains("Physical Surface(\"Farfield\")"));
-                Assert.True(farfieldCommentIdx >= 0, "Kommentar für Farfield-Marker fehlt im .geo-Skript.");
-                Assert.True(farfieldLineIdx == farfieldCommentIdx + 1, "Kommentar für Farfield-Marker muss direkt vor Physical Surface(\"Farfield\") stehen.");
+                Assert.True(farfieldCommentIdx >= 0, "Comment for Farfield marker missing in .geo script.");
+                Assert.True(farfieldLineIdx == farfieldCommentIdx + 1, "Comment for Farfield marker must precede Physical Surface(\"Farfield\") directly.");
 
-                int wallCommentIdx = Array.FindIndex(lines, l => l.Contains("Dieser Name ist der SU2-Marker: Wall -> MARKER_HEATFLUX"));
+                int wallCommentIdx = Array.FindIndex(lines, l => l.Contains("SU2 marker name: Wall -> MARKER_HEATFLUX"));
                 int wallLineIdx = Array.FindIndex(lines, l => l.Contains("Physical Surface(\"Wall\")"));
-                Assert.True(wallCommentIdx >= 0, "Kommentar für Wall-Marker fehlt im .geo-Skript.");
-                Assert.True(wallLineIdx == wallCommentIdx + 1, "Kommentar für Wall-Marker muss direkt vor Physical Surface(\"Wall\") stehen.");
+                Assert.True(wallCommentIdx >= 0, "Comment for Wall marker missing in .geo script.");
+                Assert.True(wallLineIdx == wallCommentIdx + 1, "Comment for Wall marker must precede Physical Surface(\"Wall\") directly.");
 
-                // Alle Zeilen ASCII-only
+                // All lines ASCII-only
                 foreach (string line in lines)
                 {
-                    Assert.All(line, ch => Assert.True(ch <= 127, $"Unerlaubtes Nicht-ASCII-Zeichen '{ch}' im .geo-Skript: {line}"));
+                    Assert.All(line, ch => Assert.True(ch <= 127, $"Disallowed non-ASCII character '{ch}' in .geo script: {line}"));
                 }
             }
             finally

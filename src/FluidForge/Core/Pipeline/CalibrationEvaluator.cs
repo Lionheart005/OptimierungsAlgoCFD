@@ -6,7 +6,7 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Daten einer einzelnen Stufe der Netzkalibrierung (TODO-42).
+    /// Data for a single mesh calibration level (TODO-42).
     /// </summary>
     public sealed record CalibrationStageData(
         int LevelIndex,
@@ -35,7 +35,7 @@ namespace FluidForge.Core
         float YPlusLimit = float.NaN);
 
     /// <summary>
-    /// Ergebnis der Grid Convergence Index (GCI) Berechnung nach Celik et al. (2008).
+    /// Result of the Grid Convergence Index (GCI) calculation per Celik et al. (2008).
     /// </summary>
     public sealed record GciResult(
         float ObservedOrderP,
@@ -48,7 +48,7 @@ namespace FluidForge.Core
         bool IsAsymptotic = true);
 
     /// <summary>
-    /// Entscheidung und vollständige Auswertung einer Netzkalibrierung (TODO-42).
+    /// Decision and full evaluation of a mesh calibration run (TODO-42).
     /// </summary>
     public sealed record CalibrationDecision(
         bool Success,
@@ -62,24 +62,24 @@ namespace FluidForge.Core
         CalibrationStageData? FallbackStage = null);
 
     /// <summary>
-    /// Reine Bewertungslogik für die Netzkalibrierung (Abbruchkriterium, GCI, Monotonie).
-    /// Frei von I/O für optimale Testbarkeit.
+    /// Pure evaluation logic for mesh calibration (stopping criterion, GCI, monotonicity).
+    /// Free of I/O for clean unit testability.
     /// </summary>
     public static class CalibrationEvaluator
     {
         /// <summary>
-        /// Die fünf Standard-Verfeinerungsstufen mit konstantem Verhältnis r = √2 ≈ 1.414.
+        /// The five standard refinement levels with constant ratio r = √2 ≈ 1.414.
         /// </summary>
         public static readonly float[] StandardFactors = { 2.0f, 1.41f, 1.0f, 0.71f, 0.5f };
 
         /// <summary>
-        /// Berechnet den Grid Convergence Index (GCI) nach Celik et al. (2008), ASME J. Fluids Eng.
+        /// Computes the Grid Convergence Index (GCI) per Celik et al. (2008), ASME J. Fluids Eng.
         /// </summary>
-        /// <param name="f3Coarse">Ergebnisgröße auf dem groben Netz.</param>
-        /// <param name="f2Medium">Ergebnisgröße auf dem mittleren Netz.</param>
-        /// <param name="f1Fine">Ergebnisgröße auf dem feinen Referenznetz.</param>
-        /// <param name="r">Verfeinerungsverhältnis (Standard √2 ≈ 1.41421356f).</param>
-        /// <param name="safetyFactorFs">Sicherheitsfaktor (Standard 1.25 für 3 Gitterweiten).</param>
+        /// <param name="f3Coarse">Result quantity on the coarse mesh.</param>
+        /// <param name="f2Medium">Result quantity on the medium mesh.</param>
+        /// <param name="f1Fine">Result quantity on the fine reference mesh.</param>
+        /// <param name="r">Refinement ratio (default √2 ≈ 1.41421356f).</param>
+        /// <param name="safetyFactorFs">Safety factor (default 1.25 for 3 grids).</param>
         public static GciResult ComputeGci(
             float f3Coarse,
             float f2Medium,
@@ -90,7 +90,7 @@ namespace FluidForge.Core
             float eps32 = f3Coarse - f2Medium;
             float eps21 = f2Medium - f1Fine;
 
-            // Exakter Konvergenz-Sonderfall: alle drei Stufen liefern denselben Wert.
+            // Exact convergence special case: all three levels yield the identical value.
             if (Math.Abs(eps21) <= 1e-9f && Math.Abs(eps32) <= 1e-9f)
             {
                 return new GciResult(
@@ -104,9 +104,9 @@ namespace FluidForge.Core
                     IsAsymptotic: true);
             }
 
-            // Monotonie- und Asymptotikprüfung nach Celik et al. (2008):
-            // Vorzeichenwechsel der Differenzen => nicht monoton; |eps32 / eps21| <= 1 => Differenzen
-            // nehmen beim Verfeinern nicht ab, nicht im asymptotischen Konvergenzbereich.
+            // Monotonicity and asymptotic range check per Celik et al. (2008):
+            // Sign flip of differences => non-monotonic; |eps32 / eps21| <= 1 => differences
+            // do not decrease under refinement, so not in the asymptotic convergence range.
             bool isMonotonic = (eps32 * eps21 > 0f);
             float ratio = Math.Abs(eps21) > 1e-9f ? Math.Abs(eps32 / eps21) : float.PositiveInfinity;
             bool isAsymptotic = isMonotonic && ratio > 1.0f;
@@ -114,8 +114,8 @@ namespace FluidForge.Core
             if (!isAsymptotic)
             {
                 string nonAsymptoticWarning = !isMonotonic
-                    ? "Konvergenzfolge ist nicht monoton (Vorzeichenwechsel der Differenzen) – GCI und Richardson-Extrapolation nicht anwendbar."
-                    : "Konvergenzfolge nicht im asymptotischen Bereich (Differenzen nehmen beim Verfeinern nicht ab, |eps32/eps21| <= 1) – GCI und Richardson-Extrapolation nicht anwendbar.";
+                    ? "Convergence sequence is not monotonic (sign change in differences) - GCI and Richardson extrapolation not applicable."
+                    : "Convergence sequence is not in the asymptotic range (differences do not decrease with refinement, |eps32/eps21| <= 1) - GCI and Richardson extrapolation not applicable.";
 
                 return new GciResult(
                     ObservedOrderP: float.NaN,
@@ -128,21 +128,21 @@ namespace FluidForge.Core
                     IsAsymptotic: false);
             }
 
-            // Beobachtete Ordnung p: für konstantes Verfeinerungsverhältnis r = r21 = r32
+            // Observed order p: for constant refinement ratio r = r21 = r32
             float p = float.IsFinite(ratio)
                 ? Math.Clamp(MathF.Log(ratio) / MathF.Log(r), 0.5f, 8.0f)
                 : 8.0f;
 
-            // Relative scheinbare Fehler e_a
+            // Relative apparent errors e_a
             float ea21 = Math.Abs(f1Fine - f2Medium) / Math.Max(Math.Abs(f1Fine), 1e-7f);
             float ea32 = Math.Abs(f2Medium - f3Coarse) / Math.Max(Math.Abs(f2Medium), 1e-7f);
 
-            // GCI_fine und GCI_selected (in Prozent)
+            // GCI_fine and GCI_selected (in percent)
             float denom = MathF.Pow(r, p) - 1.0f;
             float gciFine = (denom > 1e-9f) ? (safetyFactorFs * ea21 / denom) * 100.0f : 0f;
             float gciSelected = (denom > 1e-9f) ? (safetyFactorFs * ea32 / denom) * 100.0f : 0f;
 
-            // Richardson-Extrapolation: Schätzung des netzunabhängigen Werts aus den zwei feinsten Stufen.
+            // Richardson extrapolation: estimate of the grid-independent value from the two finest levels.
             float extrapolated = float.NaN;
             float extrapolatedDeviation = float.NaN;
             if (denom > 1e-9f)
@@ -155,8 +155,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Abweichungen aller Stufen zur Referenzstufe: relativ (für Berichte) und normiert nach
-        /// <see cref="MetricTolerance"/> (für die Entscheidung; höchstens 1 = in Ordnung, TODO-W1).
+        /// Deviations of all levels relative to the reference level: relative (for reports) and normalized
+        /// per <see cref="MetricTolerance"/> (for the selection decision; at most 1 = within tolerance, TODO-W1).
         /// </summary>
         public static (Dictionary<int, IReadOnlyDictionary<string, float>> Relative,
                        Dictionary<int, IReadOnlyDictionary<string, float>> Normalized)
@@ -180,7 +180,7 @@ namespace FluidForge.Core
                     float stageVal = stage.Metrics.TryGetValue(metric, out float sv) ? sv : 0f;
                     rel[metric] = MetricTolerance.Relative(stageVal, refVal);
 
-                    // Schwankende Rechnungen (Wirbelablösung): die zulässige Abweichung wächst mit der Unsicherheit beider Stufen.
+                    // Oscillating runs (vortex shedding): allowable deviation grows with the uncertainty of both levels.
                     float uStage = 0f, uRef = 0f;
                     stage.Uncertainty?.TryGetValue(metric, out uStage);
                     refStage.Uncertainty?.TryGetValue(metric, out uRef);
@@ -196,8 +196,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Wertet eine Kalibrierungsfolge aus und wählt die gröbste Stufe, die innerhalb der Toleranz liegt.
-        /// Zulässig ist <c>|Δ| ≤ Toleranz · |Referenz| + Mindestbetrag</c> (<see cref="MetricTolerance"/>).
+        /// Evaluates a calibration sequence and selects the coarsest level within tolerance.
+        /// Allowed deviation is <c>|Δ| ≤ tolerance · |reference| + absoluteFloor</c> (<see cref="MetricTolerance"/>).
         /// </summary>
         public static CalibrationDecision EvaluateCalibration(
             IReadOnlyList<CalibrationStageData> stages,
@@ -206,18 +206,18 @@ namespace FluidForge.Core
             IReadOnlyDictionary<string, float>? absoluteTolerances = null)
         {
             if (stages == null || stages.Count == 0)
-                throw new InvalidOperationException("[KALIBRIERUNG] Keine Stufen zur Auswertung übergeben.");
+                throw new InvalidOperationException($"{OutputConventions.CalibrationTag} No levels supplied for evaluation.");
 
             var metricsToMonitor = (monitoredMetrics != null && monitoredMetrics.Count > 0)
                 ? monitoredMetrics.ToList()
                 : new List<string> { "Drag" };
 
-            // Referenzstufe ist standardmäßig die feinste gerechnete Stufe (kleinster Faktor)
+            // Default reference level is the finest computed level (smallest factor)
             var refStage = stages.OrderBy(s => s.Factor).First();
 
-            // Falls die feinste Stufe ungültig ist, prüfe zuerst, ob in stages eine andere gültige Stufe existiert,
-            // die feiner als die gröbste Stufe ist. Nur wenn weniger als 2 Stufen existieren oder die feinste Stufe
-            // der 5 Grundstufen ungültig ist (ohne gültige Zusatzstufe), bleibt es beim Fehler "Referenzstufe fehlgeschlagen".
+            // If the finest level is invalid, check whether another valid level exists in stages that is finer
+            // than the coarsest level. Only if fewer than 2 levels exist or the finest level of the 5 base levels
+            // is invalid (without a valid extra level) do we fail with "reference level failed".
             if (!refStage.Converged || !refStage.YPlusOk)
             {
                 float coarsestFactor = stages.Max(s => s.Factor);
@@ -226,20 +226,20 @@ namespace FluidForge.Core
                     .OrderBy(s => s.Factor)
                     .FirstOrDefault();
 
-                bool hasValidZusatzstufe = stages.Any(s => s.Factor < 0.5f && s.Converged && s.YPlusOk);
+                bool hasValidExtraStage = stages.Any(s => s.Factor < 0.5f && s.Converged && s.YPlusOk);
                 bool baseStage5Valid = stages.Any(s => Math.Abs(s.Factor - 0.5f) < 0.05f && s.Converged && s.YPlusOk);
-                bool baseStage5InvalidWithoutZusatz = !baseStage5Valid && !hasValidZusatzstufe;
+                bool baseStage5InvalidWithoutExtra = !baseStage5Valid && !hasValidExtraStage;
 
-                if (stages.Count >= 2 && !baseStage5InvalidWithoutZusatz && alternativeRef != null)
+                if (stages.Count >= 2 && !baseStage5InvalidWithoutExtra && alternativeRef != null)
                 {
                     refStage = alternativeRef;
                 }
             }
 
-            // Abweichungen aller Stufen zur Referenz: relativ (Bericht) und normiert (Entscheidung)
+            // Deviations of all levels relative to reference: relative (report) and normalized (decision)
             var (deviations, normalizedDeviations) = ComputeDeviations(stages, refStage, metricsToMonitor, tolerance, absoluteTolerances);
 
-            // GCI berechnen, falls mindestens 3 Stufen vorliegen
+            // Compute GCI when at least 3 levels are available
             GciResult? gci = null;
             if (stages.Count >= 3)
             {
@@ -267,10 +267,10 @@ namespace FluidForge.Core
                 }
             }
 
-            // Gültigkeit der Referenzstufe: Nicht konvergiert oder y+ verletzt -> Kalibrierung fehlgeschlagen
+            // Reference level validity: not converged or y+ violated -> calibration failed
             if (!refStage.Converged || !refStage.YPlusOk)
             {
-                string reason = FormatReferenceFailureReason(refStage, "Referenzstufe");
+                string reason = FormatReferenceFailureReason(refStage, "reference level");
 
                 return new CalibrationDecision(
                     false,
@@ -279,11 +279,11 @@ namespace FluidForge.Core
                     stages,
                     deviations,
                     gci,
-                    $"[KALIBRIERUNG] Kalibrierung fehlgeschlagen: {reason}",
+                    $"{OutputConventions.CalibrationTag} Calibration failed: {reason}",
                     normalizedDeviations);
             }
 
-            // Kandidatensuche von grob nach fein (unter Ausschluss der Referenzstufe selbst)
+            // Candidate search from coarse to fine (excluding the reference level itself)
             CalibrationStageData? selected = null;
             var candidates = stages
                 .Where(s => s.Factor > refStage.Factor)
@@ -309,18 +309,18 @@ namespace FluidForge.Core
                 if (withinTolerance)
                 {
                     selected = candidate;
-                    break; // Gröbste Stufe gefunden, die alle Kriterien erfüllt!
+                    break; // Coarsest level found that satisfies all criteria.
                 }
             }
 
             if (selected != null)
             {
-                string msg = $"Stufe {selected.LevelIndex} (Faktor {selected.Factor:0.00}) erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber Referenzstufe {refStage.Factor:0.00}.";
+                string msg = $"Level {selected.LevelIndex} (factor {selected.Factor:0.00}) meets {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.";
                 return new CalibrationDecision(true, selected, refStage, stages, deviations, gci, msg, normalizedDeviations);
             }
             else
             {
-                string msg = $"Keine Grobstufe erreicht die Toleranz von {tolerance * 100:0.0} % gegenüber der Referenzstufe {refStage.Factor:0.00}.";
+                string msg = $"No coarse level achieves {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.";
                 var fallback = stages
                     .Where(s => s.Factor > refStage.Factor && s.Converged && s.YPlusOk)
                     .OrderBy(s => s.Factor)
@@ -330,8 +330,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Berechnet die 3 Bestätigungsfaktoren für die 3D-Bestätigung um den 2D-Kalibrierungsfaktor f2D (TODO-48).
-        /// Geordnet von grob nach fein: { f2D * √2, f2D, f2D / √2 }.
+        /// Computes the 3 confirmation factors for 3D confirmation around the 2D calibration factor f2D (TODO-48).
+        /// Ordered from coarse to fine: { f2D * √2, f2D, f2D / √2 }.
         /// </summary>
         public static float[] Build3DConfirmationFactors(float factor2D)
         {
@@ -342,10 +342,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Wertet die dreistufige 3D-Bestätigung um f2D aus (TODO-48).
-        /// Feinste der drei Stufen ist die 3D-Referenz.
-        /// Erfüllt die grobe Stufe (f2D * √2) die Kriterien (Konvergiert, YPlusOk, innerhalb Toleranz),
-        /// wird diese gewählt. Sonst f2D. Erfüllt keine die Toleranz, ist Success = false.
+        /// Evaluates the 3-level 3D confirmation around f2D (TODO-48).
+        /// The finest of the three levels is the 3D reference.
+        /// If the coarse level (f2D * √2) satisfies the criteria (Converged, YPlusOk, within tolerance),
+        /// it is selected; otherwise f2D. If neither meets tolerance, Success = false.
         /// </summary>
         public static CalibrationDecision EvaluateConfirmation3D(
             float factor2D,
@@ -355,19 +355,19 @@ namespace FluidForge.Core
             IReadOnlyDictionary<string, float>? absoluteTolerances = null)
         {
             if (stages3D == null || stages3D.Count == 0)
-                throw new InvalidOperationException("[KALIBRIERUNG 3D] Keine 3D-Stufen zur Auswertung übergeben.");
+                throw new InvalidOperationException("[CALIBRATION 3D] No 3D levels supplied for evaluation.");
 
             var metricsToMonitor = (monitoredMetrics != null && monitoredMetrics.Count > 0)
                 ? monitoredMetrics.ToList()
                 : new List<string> { "Drag" };
 
-            // Sortierung aufsteigend nach Faktor: feinstes Netz zuerst
+            // Sort ascending by factor: finest mesh first
             var sortedAsc = stages3D.OrderBy(s => s.Factor).ToList();
-            var refStage = sortedAsc[0]; // feinste Stufe (kleinster Faktor, ca. f2D / √2)
+            var refStage = sortedAsc[0]; // finest level (smallest factor, approx. f2D / √2)
 
             var (deviations, normalizedDeviations) = ComputeDeviations(stages3D, refStage, metricsToMonitor, tolerance, absoluteTolerances);
 
-            // GCI berechnen aus den 3 Stufen
+            // Compute GCI from the 3 levels
             GciResult? gci = null;
             if (stages3D.Count >= 3)
             {
@@ -389,10 +389,10 @@ namespace FluidForge.Core
                 }
             }
 
-            // Gültigkeit der 3D-Referenzstufe
+            // 3D reference level validity
             if (!refStage.Converged || !refStage.YPlusOk)
             {
-                string reason = FormatReferenceFailureReason(refStage, "3D-Referenzstufe");
+                string reason = FormatReferenceFailureReason(refStage, "3D reference level");
 
                 return new CalibrationDecision(
                     false,
@@ -401,12 +401,12 @@ namespace FluidForge.Core
                     stages3D,
                     deviations,
                     gci,
-                    $"[KALIBRIERUNG 3D] 3D-Bestätigung fehlgeschlagen: {reason}",
+                    $"[CALIBRATION 3D] 3D confirmation failed: {reason}",
                     normalizedDeviations);
             }
 
-            // Stufen identifizieren: coarse (größter Faktor) und medium (mittlerer Faktor)
-            // Kandidatensuche von grob nach fein
+            // Identify levels: coarse (largest factor) and medium (middle factor)
+            // Candidate search from coarse to fine
             CalibrationStageData? coarseStage = sortedAsc.Count >= 3 ? sortedAsc[^1] : null;
             CalibrationStageData? mediumStage = sortedAsc.Count >= 2 ? sortedAsc[^2] : null;
 
@@ -424,17 +424,17 @@ namespace FluidForge.Core
 
             if (coarseStage != null && StageMatches(coarseStage))
             {
-                string msg = $"Grobe 3D-Stufe (Faktor {coarseStage.Factor:0.00}, Stufe {coarseStage.LevelIndex}) erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
+                string msg = $"Coarse 3D level (factor {coarseStage.Factor:0.00}, level {coarseStage.LevelIndex}) meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
                 return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
             }
 
             if (mediumStage != null && StageMatches(mediumStage))
             {
-                string msg = $"2D-Stufe (Faktor {mediumStage.Factor:0.00}, Stufe {mediumStage.LevelIndex}) in 3D bestätigt: erfüllt Toleranz von {tolerance * 100:0.0} % gegenüber 3D-Referenzstufe {refStage.Factor:0.00}.";
+                string msg = $"2D level (factor {mediumStage.Factor:0.00}, level {mediumStage.LevelIndex}) confirmed in 3D: meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
                 return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
             }
 
-            string failMsg = $"Weder die grobe 3D-Stufe noch der 2D-Faktor ({factor2D:0.00}) erreichen in 3D die Toleranz von {tolerance * 100:0.0} % gegenüber der 3D-Referenzstufe {refStage.Factor:0.00}.";
+            string failMsg = $"Neither the coarse 3D level nor the 2D factor ({factor2D:0.00}) achieves {tolerance * 100:0.0} % tolerance in 3D relative to 3D reference level {refStage.Factor:0.00}.";
             var fallback3D = (mediumStage != null && mediumStage.Converged && mediumStage.YPlusOk) ? mediumStage : refStage;
             return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations, fallback3D);
         }
@@ -442,15 +442,15 @@ namespace FluidForge.Core
         private static string FormatReferenceFailureReason(CalibrationStageData refStage, string stageLabel)
         {
             if (!refStage.Converged)
-                return $"{stageLabel} (feinstes Netz) ist numerisch nicht konvergiert.";
+                return $"{stageLabel} (finest mesh) did not converge numerically.";
 
             string yPlusDetails = refStage.YPlusP95 > 0f
                 ? (float.IsFinite(refStage.YPlusLimit) && refStage.YPlusLimit > 0f
-                    ? $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)} > Limit {refStage.YPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} aus TargetYPlus × YPlusWarnFactor)"
+                    ? $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)} > limit {refStage.YPlusLimit.ToString("0.00", CultureInfo.InvariantCulture)} from TargetYPlus * YPlusWarnFactor)"
                     : $" (P95 = {refStage.YPlusP95.ToString("0.00", CultureInfo.InvariantCulture)})")
                 : string.Empty;
 
-            return $"y+ der {stageLabel}{yPlusDetails} liegt außerhalb der Toleranz.";
+            return $"y+ of {stageLabel}{yPlusDetails} is out of tolerance.";
         }
     }
 }

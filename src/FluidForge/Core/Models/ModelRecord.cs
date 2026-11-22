@@ -4,25 +4,26 @@ using System.Text.Json.Serialization;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Datenmodell für ein einzelnes Modell (Variante).
+    /// Data record for a single evaluated model (variant).
     /// </summary>
     public class ModelRecord
     {
         /// <summary>
-        /// Schlüssel in <see cref="PassiveParameters"/>: 1, wenn die Vernetzung scheiterte (<see cref="MeshGenerationException"/>).
-        /// Ein Vernetzungsfehler ist kein Strömungsabsturz; das Bayes-Erfolgsmodell lernt daraus nicht.
+        /// Key in <see cref="PassiveParameters"/>: 1 if meshing failed (<see cref="MeshGenerationException"/>).
+        /// A meshing error is not a solver crash; the Bayesian success model does not learn from it.
         /// </summary>
         public const string MeshFailedKey = "MeshFailed";
 
-        /// <summary>Schlüssel in <see cref="PassiveParameters"/>: 1, wenn das Netz über der Zellgrenze lag und SU2 nicht lief.</summary>
+        /// <summary>Key in <see cref="PassiveParameters"/>: 1 if the mesh exceeded the cell limit and SU2 was skipped.</summary>
         public const string CellLimitExceededKey = "CellLimitExceeded";
 
-        /// <summary>Schlüssel in <see cref="PassiveParameters"/>: 1 bei Ersatznetz (Wandschicht überall verdünnt, Stufe C der Rückfall-Leiter).</summary>
+        /// <summary>Key in <see cref="PassiveParameters"/>: 1 if a fallback mesh was used (uniformly thinned boundary layer).</summary>
         public const string MeshFallbackKey = "MeshFallback";
 
         /// <summary>
-        /// Netz-Metadaten in <see cref="PassiveParameters"/> (Wandschicht-Kennwerte, Ersatznetz, Vernetzungsfehler, Zellgrenze):
-        /// keine Kennwerte der Geometrie und deshalb aus Kennwert-Vergleichen und Log-Auswahl ausgenommen.
+        /// Mesh metadata keys in <see cref="PassiveParameters"/> (boundary layer metrics, fallback,
+        /// meshing failures, cell limit): not geometry/flow metrics and therefore excluded from
+        /// metric comparisons and log summaries.
         /// </summary>
         public static bool IsMeshMetadataKey(string key)
             => key.StartsWith("BoundaryLayer", System.StringComparison.OrdinalIgnoreCase)
@@ -35,24 +36,22 @@ namespace FluidForge.Core
         public int Iteration { get; set; }
         public int Variant { get; set; }
         
-        // Aktive Parameter (werden vom Algorithmus gesteuert/mutiert)
+        // Active parameters (controlled/mutated by the optimization algorithm)
         public Dictionary<string, float> ActiveParameters { get; set; } = new Dictionary<string, float>();
         
-        // Passive Parameter / Metriken (Resultate aus der Simulation, z.B. Volumen, Drag)
+        // Passive parameters / metrics (simulation outputs, e.g., Volume, Drag)
         public Dictionary<string, float> PassiveParameters { get; set; } = new Dictionary<string, float>();
 
         /// <summary>
-        /// Generischer Fehler-Marker: Vernetzung oder Solver-Kette sind abgebrochen,
-        /// die passiven Parameter sind also unvollständig. Der Kern kennt keine
-        /// Metriknamen — der <see cref="IFitnessCalculator"/> entscheidet, was das bedeutet.
+        /// Generic failure flag: meshing or solver chain aborted, so passive parameters are
+        /// incomplete. The core knows no metric names — <see cref="IFitnessCalculator"/> decides what this means.
         /// </summary>
         public bool SimulationFailed { get; set; }
 
         /// <summary>
-        /// Vom Türsteher (<see cref="ChampionValidator"/>) als instabil verworfen (TODO-53).
-        /// Die Fitness bleibt dabei auf dem niedrigen Strafwert, damit die IDW-Baseline wie
-        /// bisher rechnet. Das Kennzeichen ist rein informativ; nur der Bayes-Optimierer
-        /// nutzt es, um solche Rechnungen nicht als Lerndaten zu verwenden.
+        /// Rejected as unstable by the bouncer (<see cref="ChampionValidator"/>).
+        /// Fitness remains at the penalty value for IDW compatibility; Bayesian optimization
+        /// excludes disqualified records from surrogate training.
         /// </summary>
         public bool Disqualified { get; set; }
 
@@ -61,13 +60,13 @@ namespace FluidForge.Core
         public string MeshPath { get; set; } = "";
 
         /// <summary>
-        /// Generischer Alias für <see cref="StlPath"/> (z. B. auch für 2D-Kontur- oder OpenFOAM-Geometriedateien).
+        /// Generic alias for <see cref="StlPath"/> (e.g., for 2D contours or OpenFOAM geometry files).
         /// </summary>
         [JsonIgnore]
         public string GeometryPath { get => StlPath; set => StlPath = value; }
 
         /// <summary>
-        /// Dateipfade für benannte Stufen-Übergaben (z. B. OpenFOAM-Cases oder FEM-Ergebnisse).
+        /// File paths for named stage handoffs (e.g., OpenFOAM cases or FEM results).
         /// </summary>
         public Dictionary<string, string> Artifacts { get; set; } = new Dictionary<string, string>();
     }

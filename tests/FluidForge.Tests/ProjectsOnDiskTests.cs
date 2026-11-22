@@ -11,38 +11,38 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Prüft <b>jedes</b> Projekt, das wirklich unter <c>src/projects/</c> liegt — nicht ein
-    /// bestimmtes.
+    /// Checks <b>every</b> project that actually resides under <c>src/projects/</c> — not a
+    /// specific one.
     ///
     /// <para>
-    /// <b>Warum generisch:</b> die übrigen Projekt-Tests nennen <c>MantaAuv</c> beim Namen und
-    /// sind damit wertlos für jedes zweite Projekt. Ein Test, der über die vorhandenen Ordner
-    /// läuft, deckt ein neu angelegtes Projekt ab dem Moment mit ab, in dem es existiert — und
-    /// verschwindet mit ihm wieder, ohne rot zu werden. Genau das ist der Fall, den dieses
-    /// Framework können soll: Projekte kommen und gehen, das Gerüst bleibt.
+    /// <b>Why generic:</b> the other project tests name <c>MantaAuv</c> explicitly and are
+    /// therefore useless for any second project. A test that iterates over existing folders
+    /// covers a newly created project from the moment it exists — and disappears with it
+    /// without turning red. That is exactly what this framework is designed for: projects
+    /// come and go, the scaffolding stays.
     /// </para>
     /// </summary>
     public class ProjectsOnDiskTests
     {
-        /// <summary>Die Projektnamen aus dem Dateisystem, als xUnit-Testdaten.</summary>
+        /// <summary>Project names from the filesystem, as xUnit test data.</summary>
         public static IEnumerable<object[]> ProjectNames =>
             ProjectPaths.ListProjectNames().Select(name => new object[] { name });
 
         /// <summary>
-        /// Der Abgleich, den auch <c>Program.cs</c> beim Start fährt — hier gegen das echte
-        /// Repo. Ein neuer Ordner ohne Definition (oder mit abweichendem <c>Name</c>) fällt
-        /// damit im Test auf und nicht erst beim ersten Lauf auf dem Server.
+        /// The same check that <c>Program.cs</c> runs at startup — here against the real
+        /// repository. A new folder without a definition (or with a mismatched <c>Name</c>) is
+        /// caught in the test rather than on the first server run.
         /// </summary>
         [Fact]
         public void Every_Folder_Has_A_Definition_And_Every_Definition_A_Folder()
         {
             var registry = ProjectRegistry.Discover(typeof(MantaProject).Assembly);
 
-            // Wirft mit einer Meldung, die beide Richtungen und den fehlenden Namen nennt.
+            // Throws with a message naming both directions and the missing name.
             registry.AssertFoldersMatchDefinitions();
         }
 
-        /// <summary>Zu jedem Ordner muss die Registry den Namen auch auflösen können.</summary>
+        /// <summary>For every folder, the registry must be able to resolve its name.</summary>
         [Theory]
         [MemberData(nameof(ProjectNames))]
         public void Every_Project_Can_Be_Resolved(string name)
@@ -53,9 +53,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die beiden Pflichtdateien müssen da sein und sich laden lassen. Ein unbekannter
-        /// Schlüssel oder ein Syntaxfehler in der JSONC wirft dabei — das ist der eigentliche
-        /// Zweck: ein Tippfehler in einer Projektdatei soll nicht erst auf dem Server auffallen.
+        /// Both required files must exist and load cleanly. An unknown key or syntax error in
+        /// JSONC throws here — which is the actual purpose: a typo in a project file should not
+        /// only show up on the server.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectNames))]
@@ -64,26 +64,25 @@ namespace FluidForge.Tests
             string directory = DirectoryOf(name);
 
             Assert.True(File.Exists(Path.Combine(directory, "simulation.json")),
-                $"src/projects/{name}/simulation.json fehlt.");
+                $"src/projects/{name}/simulation.json is missing.");
             Assert.True(File.Exists(Path.Combine(directory, ProjectPaths.ManifestFileName)),
-                $"src/projects/{name}/{ProjectPaths.ManifestFileName} fehlt.");
+                $"src/projects/{name}/{ProjectPaths.ManifestFileName} is missing.");
 
             var simulation = JsonConfigLoader.Load(
                 SimulationConfig.CreateDefault(), Path.Combine(directory, "simulation.json"));
 
-            // Plausibilität, keine Zahlenprüfung: ein Lauf mit 0 Varianten rechnet nichts.
-            Assert.True(simulation.MaxIterations >= 1, $"{name}: MaxIterations muss mindestens 1 sein.");
-            Assert.True(simulation.VariantsPerIteration >= 1, $"{name}: VariantsPerIteration muss mindestens 1 sein.");
-            Assert.False(string.IsNullOrWhiteSpace(simulation.MpiRunPath), $"{name}: MpiRunPath ist leer.");
-            Assert.False(string.IsNullOrWhiteSpace(simulation.Su2Path), $"{name}: Su2Path ist leer.");
-            Assert.False(string.IsNullOrWhiteSpace(simulation.GmshPath), $"{name}: GmshPath ist leer.");
+            // Plausibility, not a numerical check: a run with 0 variants computes nothing.
+            Assert.True(simulation.MaxIterations >= 1, $"{name}: MaxIterations must be at least 1.");
+            Assert.True(simulation.VariantsPerIteration >= 1, $"{name}: VariantsPerIteration must be at least 1.");
+            Assert.False(string.IsNullOrWhiteSpace(simulation.MpiRunPath), $"{name}: MpiRunPath is empty.");
+            Assert.False(string.IsNullOrWhiteSpace(simulation.Su2Path), $"{name}: Su2Path is empty.");
+            Assert.False(string.IsNullOrWhiteSpace(simulation.GmshPath), $"{name}: GmshPath is empty.");
         }
 
         /// <summary>
-        /// Die Solver-Dateien laufen über <see cref="ProjectContext.LoadSolverOptions{T}"/> —
-        /// denselben Weg wie im Lauf. Eine Datei, die nur aus Kommentaren besteht, ist dabei
-        /// ausdrücklich erlaubt: sie heißt „hier weicht nichts ab", und dann müssen die
-        /// Code-Standards gelten.
+        /// Solver files go through <see cref="ProjectContext.LoadSolverOptions{T}"/> — the same
+        /// path as at runtime. A file consisting solely of comments is explicitly allowed: it
+        /// means "nothing deviates here", and code defaults must apply.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectNames))]
@@ -98,9 +97,9 @@ namespace FluidForge.Tests
             var su2 = context.LoadSolverOptions<Su2SolverOptions>("su2");
 
 
-            // Ohne Referenzfläche wäre jeder Beiwert um Größenordnungen falsch (TODO-12),
-            // und ohne eine einzige Ergebnisgröße käme aus dem Solver gar nichts an (TODO-26).
-            Assert.False(string.IsNullOrWhiteSpace(su2.ReferenceAreaMetric), $"{name}: ReferenceAreaMetric ist leer.");
+            // Without a reference area every coefficient would be off by orders of magnitude (TODO-12),
+            // and without at least one result metric nothing would come back from the solver (TODO-26).
+            Assert.False(string.IsNullOrWhiteSpace(su2.ReferenceAreaMetric), $"{name}: ReferenceAreaMetric is empty.");
             Assert.NotEmpty(su2.ResultMetrics);
             Assert.NotEmpty(su2.HistoryOutput);
 
@@ -108,23 +107,23 @@ namespace FluidForge.Tests
             if (definition is Cfd2DProjectDefinition)
             {
                 var gmsh2d = context.LoadSolverOptions<Gmsh2DMesherOptions>("gmsh");
-                Assert.True(gmsh2d.FarfieldRadiusFactor > 0f, $"{name}: FarfieldRadiusFactor muss > 0 sein.");
+                Assert.True(gmsh2d.FarfieldRadiusFactor > 0f, $"{name}: FarfieldRadiusFactor must be > 0.");
             }
             else
             {
                 var gmsh = context.LoadSolverOptions<GmshMesherOptions>("gmsh");
                 Assert.True(gmsh.TunnelSizeX > 0f && gmsh.TunnelSizeY > 0f && gmsh.TunnelSizeZ > 0f,
-                    $"{name}: Der Windkanal hat keine Ausdehnung.");
+                    $"{name}: Wind tunnel has no extent.");
             }
 
 
         }
 
         /// <summary>
-        /// Jeder Parameter braucht Startwert, Streuung und Grenzen — und der Startwert muss
-        /// innerhalb der Grenzen liegen. Fehlt eine Streuung, mutiert der Algorithmus den
-        /// Parameter nie; fehlen die Grenzen, verstellt er ihn beliebig weit. Beides fällt im
-        /// Lauf nicht auf, es käme nur ein schlechtes Ergebnis heraus.
+        /// Every parameter needs a base value, deviation, and bounds — and the base value must lie
+        /// within the bounds. If deviation is missing, the algorithm never mutates the parameter;
+        /// if bounds are missing, it can move it arbitrarily far. Neither fails loudly during a run,
+        /// it would just produce poor results.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectNames))]
@@ -143,23 +142,23 @@ namespace FluidForge.Tests
             foreach (KeyValuePair<string, float> parameter in project.BaseParameters)
             {
                 Assert.True(project.MaxDeviations.ContainsKey(parameter.Key),
-                    $"{name}: MaxDeviations fehlt für '{parameter.Key}'.");
+                    $"{name}: MaxDeviations missing for '{parameter.Key}'.");
                 Assert.True(project.ParameterBounds.ContainsKey(parameter.Key),
-                    $"{name}: ParameterBounds fehlt für '{parameter.Key}'.");
+                    $"{name}: ParameterBounds missing for '{parameter.Key}'.");
 
                 (float min, float max) = project.ParameterBounds[parameter.Key];
 
-                Assert.True(min <= max, $"{name}: '{parameter.Key}' hat Min > Max.");
+                Assert.True(min <= max, $"{name}: '{parameter.Key}' has Min > Max.");
                 Assert.InRange(parameter.Value, min, max);
             }
 
-            // Ein dimensionsbehafteter Parameter, den es nicht gibt, ist ein Tippfehler: der
-            // RubberBandScaler würde ihn stillschweigend ignorieren.
+            // A dimensional parameter that does not exist is a typo: the RubberBandScaler
+            // would silently ignore it.
             foreach (string dimensional in project.DimensionalParameters)
             {
                 Assert.True(project.BaseParameters.ContainsKey(dimensional),
-                    $"{name}: DimensionalParameters nennt '{dimensional}', das es in "
-                    + "BaseParameters nicht gibt.");
+                    $"{name}: DimensionalParameters lists '{dimensional}', which does not exist in "
+                    + "BaseParameters.");
             }
         }
 
@@ -167,7 +166,7 @@ namespace FluidForge.Tests
         {
             string? directory = ProjectPaths.ResolveProjectDirectory(name);
 
-            Assert.True(directory != null, $"Der Ordner src/projects/{name}/ wurde nicht gefunden.");
+            Assert.True(directory != null, $"Folder src/projects/{name}/ was not found.");
 
             return directory!;
         }

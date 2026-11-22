@@ -5,19 +5,19 @@ using System.Runtime.InteropServices;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Löst Pfade zu externen Werkzeugen (SU2, Gmsh, MPI) auf.
-    /// Unterstützt Tilde-Expansion (~/), Prüfung gegen PATH und Fallback auf Standard-Installationspfade.
+    /// Resolves paths to external executables (SU2, Gmsh, MPI).
+    /// Supports tilde expansion (~/), PATH lookup, and fallback to standard installation paths.
     /// </summary>
     public static class ExecutableResolver
     {
         /// <summary>
-        /// Löst einen konfigurierten Programmpfad auf.
+        /// Resolves a configured executable path or command name.
         /// </summary>
-        /// <param name="configuredPath">Der aus der Konfiguration gelesene Pfad oder Befehlsname.</param>
-        /// <param name="toolKind">Optional: Werkzeug-Art ("gmsh", "su2", "mpi"). Wenn null, wird sie aus dem Namen abgeleitet.</param>
-        /// <param name="output">Optional: Ausgabe-Writer für Log-Meldungen bei Fallbacks (Standard: Console.Out).</param>
-        /// <param name="homeOverride">Nur für Tests: Ersatz für das Benutzerverzeichnis.</param>
-        /// <returns>Der aufgelöste Pfad oder Befehl.</returns>
+        /// <param name="configuredPath">The path or command name read from configuration.</param>
+        /// <param name="toolKind">Optional tool kind ("gmsh", "su2", "mpi"). Derived from the name if null.</param>
+        /// <param name="output">Optional writer for fallback log messages (defaults to Console.Out).</param>
+        /// <param name="homeOverride">For tests only: overrides the user home directory.</param>
+        /// <returns>The resolved executable path or command.</returns>
         public static string Resolve(string configuredPath, string? toolKind = null, TextWriter? output = null, string? homeOverride = null)
         {
             if (string.IsNullOrWhiteSpace(configuredPath))
@@ -26,34 +26,33 @@ namespace FluidForge.Core
             string expanded = ExpandHome(configuredPath);
             string home = homeOverride ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-            // MPI: Das offizielle SU2-Binary ist mit MPICH gebaut, unter OpenMPI startet jeder Kern eine eigene serielle
-            // Kopie. Heißt das Programm nur "mpirun" oder "mpiexec", gewinnt deshalb das MPICH-Environment, wenn es
-            // existiert (legt setup_server.sh an), noch vor dem PATH, in dem auf dem Server das OpenMPI liegt.
-            // Ein ausdrücklich eingetragener Pfad bleibt unangetastet.
+            // MPI: The official SU2 binary is built with MPICH; under OpenMPI each rank spawns an
+            // independent serial copy. For bare "mpirun" or "mpiexec", prefer the MPICH environment
+            // if present before falling back to PATH. Explicit paths are left untouched.
             if (IsBareMpiName(toolKind, expanded))
             {
                 string mpich = MpichMpiexec(home);
                 if (File.Exists(mpich))
                 {
-                    (output ?? Console.Out).WriteLine($"[RESOLVER] '{configuredPath}' -> MPICH-Environment: {mpich}");
+                    (output ?? Console.Out).WriteLine($"[RESOLVER] '{configuredPath}' -> MPICH environment: {mpich}");
                     return mpich;
                 }
             }
 
-            // 1. Wenn der Pfad Pfadtrenner enthält und File.Exists(expanded) wahr ist -> direkt zurückgeben
+            // 1. If the path contains directory separators and exists on disk -> return directly
             bool hasPathSeparators = expanded.Contains('/') || expanded.Contains('\\');
             if (hasPathSeparators && File.Exists(expanded))
             {
                 return expanded;
             }
 
-            // 2. Wenn der Befehl über PATH gefunden wird -> gib expanded zurück
+            // 2. If the command is found in PATH -> return expanded
             if (FindInPath(expanded) != null)
             {
                 return expanded;
             }
 
-            // 3. Andernfalls Standard-Server-Fallback-Pfade unter ~ prüfen
+            // 3. Otherwise check standard server fallback paths under ~
             string toolIdentifier = toolKind ?? configuredPath;
             string[]? candidates = GetToolCandidates(toolIdentifier, home);
 
@@ -64,18 +63,18 @@ namespace FluidForge.Core
                     if (File.Exists(candidate))
                     {
                         var writer = output ?? Console.Out;
-                        writer.WriteLine($"[RESOLVER] '{configuredPath}' nicht im PATH gefunden -> verwende Fallback: {candidate}");
+                        writer.WriteLine($"[RESOLVER] '{configuredPath}' not found in PATH -> using fallback: {candidate}");
                         return candidate;
                     }
                 }
             }
 
-            // 4. Wenn keiner existiert (z.B. unter Windows oder in Unit-Tests mit Dummy-Namen), expanded unverändert zurückgeben
+            // 4. If none exists (e.g., on Windows or in unit tests with dummy names), return expanded unchanged
             return expanded;
         }
 
         /// <summary>
-        /// Expandiert führendes ~/ oder ~\ zum Benutzerverzeichnis.
+        /// Expands a leading ~/ or ~\ to the user's home directory.
         /// </summary>
         public static string ExpandHome(string path)
         {
@@ -99,13 +98,13 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prüft, ob ein Befehl in den Verzeichnissen der PATH-Umgebungsvariable liegt.
+        /// Checks whether a command exists in any directory of the PATH environment variable.
         /// </summary>
         public static string? FindInPath(string command)
         {
             if (string.IsNullOrWhiteSpace(command)) return null;
 
-            // Falls bereits ein vollständiger Pfad übergeben wurde und existiert:
+            // If a full path was already provided and exists:
             if ((command.Contains('/') || command.Contains('\\')) && File.Exists(command))
             {
                 return command;

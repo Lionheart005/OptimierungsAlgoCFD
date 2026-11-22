@@ -1,16 +1,16 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Optionale Ergänzung zu <see cref="IOptimizationAlgorithm"/>: Verfahren, die Voraussetzungen
-    /// haben (z. B. vollständige Parametergrenzen), prüfen sie damit <b>vor</b> der ersten teuren
-    /// Rechnung, also noch vor der Netzkalibrierung (Fail-fast wie TODO-16 und TODO-26).
+    /// Optional extension to <see cref="IOptimizationAlgorithm"/>: algorithms with prerequisites
+    /// (e.g., complete parameter bounds) validate them <b>before</b> the first expensive
+    /// evaluation or mesh calibration (fail-fast).
     /// </summary>
     public interface IOptimizationPreflight
     {
         /// <summary>
-        /// Prüft die Voraussetzungen.
+        /// Validates prerequisites.
         /// </summary>
-        /// <exception cref="System.InvalidOperationException">Voraussetzung nicht erfüllt; die Meldung nennt, was wo einzutragen ist.</exception>
+        /// <exception cref="System.InvalidOperationException">Prerequisite not met; message states what is missing and where to configure it.</exception>
         void Preflight(SimulationContext context);
     }
 }

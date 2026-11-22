@@ -7,8 +7,8 @@ using System.Numerics;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Der Hüllquader eines Dreiecksnetzes (mm). Aus <see cref="Size"/> kommt die
-    /// Spannweite: das Framework strömt entlang X an, quer dazu ist also <c>Size.Y</c>.
+    /// Axis-aligned bounding box of a triangle mesh (mm). <see cref="Size"/> provides
+    /// overall extents: flow is along +X, so spanwise extent is <c>Size.Y</c>.
     /// </summary>
     public readonly struct MeshBounds
     {
@@ -21,29 +21,27 @@ namespace FluidForge.Core
             _hasPoints = true;
         }
 
-        /// <summary>Kleinste Ecke.</summary>
+        /// <summary>Minimum corner.</summary>
         public Vector3 Min { get; }
 
-        /// <summary>Größte Ecke.</summary>
+        /// <summary>Maximum corner.</summary>
         public Vector3 Max { get; }
 
         /// <summary>
-        /// Kein einziger Punkt — der Quader ist nicht bloß klein, sondern <b>nicht
-        /// vorhanden</b>. <see cref="Min"/>, <see cref="Max"/> und <see cref="Size"/> sind
-        /// dann Null, was sich von einem entarteten Netz nicht unterscheiden ließe; deshalb
-        /// dieses Feld.
+        /// True when the mesh had zero points (distinct from a degenerate zero-size mesh
+        /// where <see cref="Min"/> and <see cref="Max"/> happen to coincide).
         /// </summary>
         public bool IsEmpty => !_hasPoints;
 
-        /// <summary>Kantenlängen des Quaders.</summary>
+        /// <summary>Edge lengths of the bounding box.</summary>
         public Vector3 Size => _hasPoints ? Max - Min : Vector3.Zero;
 
-        /// <summary>Mittelpunkt des Quaders.</summary>
+        /// <summary>Center point of the bounding box.</summary>
         public Vector3 Center => _hasPoints ? (Min + Max) * 0.5f : Vector3.Zero;
     }
 
     /// <summary>
-    /// Alles, was sich in einem Durchgang über ein Netz sagen lässt.
+    /// Single-pass geometric measurements of a triangle mesh.
     /// </summary>
     public readonly struct MeshMeasurement
     {
@@ -62,54 +60,50 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Volumen mit Vorzeichen (mm³). <b>Negativ heißt: die Dreiecke sind nach innen
-        /// gedreht.</b> Das ist keine Spielerei — eine umgedrehte Hülle rechnet Gmsh
-        /// entweder gar nicht oder falsch, und im Betrag sieht man den Fehler nicht.
+        /// Signed volume (mm³). <b>Negative means triangle normals point inward.</b>
+        /// An inverted shell will cause Gmsh to fail or produce invalid meshes.
         /// </summary>
         public float SignedVolume { get; }
 
-        /// <summary>Volumen als Betrag (mm³) — der Wert für eine Metrik.</summary>
+        /// <summary>Unsigned volume (mm³) — the value reported as a metric.</summary>
         public float Volume => Math.Abs(SignedVolume);
 
-        /// <summary>Oberfläche (mm²).</summary>
+        /// <summary>Surface area (mm²).</summary>
         public float SurfaceArea { get; }
 
-        /// <summary>Hüllquader; daraus die Spannweite.</summary>
+        /// <summary>Axis-aligned bounding box.</summary>
         public MeshBounds Bounds { get; }
 
-        /// <summary>Anzahl der Dreiecke.</summary>
+        /// <summary>Triangle count.</summary>
         public int TriangleCount { get; }
 
         /// <summary>
-        /// Angeströmte Fläche als Rechteck aus dem Hüllquader (mm²), quer zur X-Achse. Das ist
-        /// die einfache Hüllquader-Näherung: nicht die wahre projizierte Fläche, sondern das
-        /// umschließende Rechteck (<c>Size.Y × Size.Z</c>).
+        /// Bounding-box frontal area (mm²) perpendicular to the X axis (<c>Size.Y × Size.Z</c>).
+        /// Simple rectangular approximation rather than the true projected silhouette.
         /// </summary>
         public float FrontalBoxArea => Bounds.Size.Y * Bounds.Size.Z;
 
         /// <summary>
-        /// Wahre projizierte Stirnfläche / Silhouette (mm²) in der YZ-Ebene quer zur
-        /// Anströmrichtung (X-Achse).
+        /// True projected frontal area / silhouette (mm²) in the YZ plane perpendicular to
+        /// flow direction (X axis).
         /// <para>
-        /// Anders als <see cref="FrontalBoxArea"/> wird hier der tatsächliche 2D-Schattenwurf
-        /// des Netzes bestimmt: schräge dünne Stäbe, Flügel-Rumpf-Kombinationen oder
-        /// hintereinanderliegende Bauteile erhalten ihre echte Querschnittsfläche statt des
-        /// aufgespannten Hüllrechtecks.
+        /// Unlike <see cref="FrontalBoxArea"/>, this computes the actual 2D shadow area
+        /// of the mesh so swept struts, wing-body combinations, or tandem parts get their
+        /// true cross-sectional area rather than the enclosing rectangle.
         /// </para>
         /// </summary>
         public float FrontalProjectedArea { get; }
 
         /// <summary>
-        /// Liefert je nach Schalter entweder die echte projizierte Stirnfläche
-        /// (<see cref="FrontalProjectedArea"/>, Standard) oder das Hüllquader-Rechteck
-        /// (<see cref="FrontalBoxArea"/>).
+        /// Returns either the true projected frontal area (<see cref="FrontalProjectedArea"/>, default)
+        /// or the bounding-box rectangle (<see cref="FrontalBoxArea"/>).
         /// </summary>
         public float GetFrontalArea(bool useProjected = true)
             => useProjected ? FrontalProjectedArea : FrontalBoxArea;
     }
 
     /// <summary>
-    /// Aufschlüsselung einer SU2-Netzdatei nach Volumen- und Wand-Oberflächen-Zellklassen.
+    /// Breakdown of an SU2 mesh file by volume and wall-surface element classes.
     /// </summary>
     public sealed record Su2CellBreakdown(
         int TotalVolumeCells,
@@ -122,42 +116,19 @@ namespace FluidForge.Core
         int SurfaceLines);
 
     /// <summary>
-    /// Maße eines Dreiecksnetzes: Volumen, Oberfläche, Hüllquader (TODO-29).
+    /// Measurements of a triangle mesh: volume, surface area, bounding box, and projected frontal area.
     ///
     /// <para>
-    /// <b>Warum das im Framework steht:</b> PicoGKs <c>CalculateProperties</c> liefert Volumen
-    /// und Hüllquader, die <b>Oberfläche nicht</b> — die muss aus dem Dreiecksnetz summiert
-    /// werden. Diese Schleife wäre in jedem Projekt dieselbe, und die Fehler darin wären in
-    /// jedem Projekt dieselben (Faktor 2 vergessen, Kreuzprodukt falsch herum).
-    /// </para>
-    ///
-    /// <para>
-    /// <b>Rein additiv:</b> kein bestehendes Projekt muss das benutzen. MantaAuv rechnet
-    /// weiterhin mit <c>CalculateProperties</c> und bekommt damit exakt die Zahlen wie vorher.
-    /// Der Unterschied ist echt, wenn auch klein: PicoGK misst das <b>Voxelfeld</b>, diese
-    /// Klasse das daraus gewonnene <b>Netz</b>.
-    /// </para>
-    ///
-    /// <para>
-    /// Bewusst auf <see cref="StlTriangle"/> und nicht auf einem Kernel-Typ: <c>Core/</c> hat
-    /// kein <c>using PicoGK</c> und soll keines bekommen (TODO-20). Wer ein PicoGK-Netz
-    /// messen will, nimmt <c>Kernels/PicoGk/PicoGkMeshMetrics</c> — das ist die Schicht, die
-    /// PicoGK kennen darf.
-    /// </para>
-    ///
-    /// <para>
-    /// Alle Summen laufen in <c>double</c> und werden erst am Ende auf <c>float</c> gebracht.
-    /// Ein Netz mit 100.000 Dreiecken und Volumen in der Größenordnung 1e7 mm³ verliert in
-    /// <c>float</c> (etwa sieben gültige Stellen) sonst sichtbar Genauigkeit.
+    /// Operates purely on <see cref="StlTriangle"/> so <c>Core/</c> has no dependency on any
+    /// geometry kernel. All accumulations use <c>double</c> precision before converting to <c>float</c>.
     /// </para>
     /// </summary>
     public static class MeshMetrics
     {
         /// <summary>
-        /// Alles in einem Durchgang — der übliche Weg, weil ein Projekt meist mehrere
-        /// Metriken meldet.
+        /// Computes all mesh metrics in a single pass.
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="triangles"/> ist <c>null</c>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="triangles"/> is <c>null</c>.</exception>
         public static MeshMeasurement Measure(IReadOnlyList<StlTriangle> triangles)
         {
             if (triangles == null) throw new ArgumentNullException(nameof(triangles));
@@ -188,37 +159,35 @@ namespace FluidForge.Core
                 (float)volume, (float)area, bounds, triangles.Count, frontalProjectedArea);
         }
 
-        /// <summary>Oberfläche (mm²) als Summe der Dreiecksflächen.</summary>
+        /// <summary>Surface area (mm²) as sum of triangle areas.</summary>
         public static float SurfaceArea(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).SurfaceArea;
 
         /// <summary>
-        /// Volumen (mm³) als Betrag. Setzt eine <b>geschlossene</b> Hülle voraus: bei einem
-        /// Netz mit Löchern ist das Ergebnis eine Zahl, aber keine Aussage.
+        /// Unsigned volume (mm³). Assumes a <b>closed</b> watertight shell.
         /// </summary>
         public static float Volume(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).Volume;
 
         /// <summary>
-        /// Volumen mit Vorzeichen (mm³) — negativ bei nach innen gedrehten Dreiecken.
+        /// Signed volume (mm³) — negative if triangle normals point inward.
         /// </summary>
         public static float SignedVolume(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).SignedVolume;
 
-        /// <summary>Hüllquader des Netzes.</summary>
+        /// <summary>Bounding box of the mesh.</summary>
         public static MeshBounds Bounds(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).Bounds;
 
         /// <summary>
-        /// Wahre projizierte Stirnfläche (mm²) in der YZ-Ebene quer zur X-Achse.
+        /// True projected frontal area (mm²) in the YZ plane perpendicular to the X axis.
         /// </summary>
         public static float FrontalProjectedArea(IReadOnlyList<StlTriangle> triangles)
             => Measure(triangles).FrontalProjectedArea;
 
         /// <summary>
-        /// Liest die Anzahl der Volumenelemente (Zellen) aus dem Kopf einer SU2-Netzdatei (.su2).
-        /// Sucht zeilenweise nach der ersten Zeile mit "NELEM=" und parst die Zahl dahinter.
-        /// Gibt 0 zurück, wenn die Datei nicht existiert oder kein NELEM gefunden wurde.
+        /// Reads the number of volume elements (cells) from the header of an SU2 mesh file (.su2)
+        /// by locating the first <c>NELEM=</c> line. Returns 0 if missing or unreadable.
         /// </summary>
         public static int ReadSu2CellCount(string su2MeshPath)
         {
@@ -246,7 +215,7 @@ namespace FluidForge.Core
             }
             catch
             {
-                // Bei Lesefehlern oder gesperrter Datei defensiv 0 zurückgeben
+                // Return 0 defensively on I/O or lock errors
                 return 0;
             }
 
@@ -254,8 +223,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Parst <c>NELEM=</c> (Volumen-/2D-Elementtypen) und <c>NMARK=</c> (alle Wand-Marker außer
-        /// <c>Farfield</c> und <c>Fluid</c>, case-insensitive) aus einer ASCII-<c>.su2</c>-Datei.
+        /// Parses <c>NELEM=</c> (volume/2D element types) and <c>NMARK=</c> (all wall markers except
+        /// <c>Farfield</c> and <c>Fluid</c>, case-insensitive) from an ASCII <c>.su2</c> file.
         /// </summary>
         public static Su2CellBreakdown? ReadSu2CellBreakdown(string su2MeshPath)
         {
@@ -301,7 +270,7 @@ namespace FluidForge.Core
                                     case 14: pyramids++; break;
                                     case 5:
                                     case 9:
-                                        // 2D-Volumenzellen (Dreiecke/Vierecke) sind in TotalVolumeCells erfasst.
+                                        // 2D volume cells (triangles/quads) are included in TotalVolumeCells.
                                         break;
                                 }
                             }
@@ -369,7 +338,7 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Liest Gesamt- und Elementklassen-Zellzahlen aus einer SU2-Netzdatei und schreibt sie in
+        /// Reads total and element-class cell counts from an SU2 mesh file and writes them into
         /// <paramref name="target"/> (<c>MeshCells</c>, <c>MeshCells_Tri</c>, <c>MeshCells_Quad</c>,
         /// <c>MeshCells_Prism</c>, <c>MeshCells_Hexa</c>, <c>MeshCells_Tet</c>, <c>MeshCells_Pyramid</c>).
         /// </summary>
@@ -446,13 +415,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Das mit Vorzeichen versehene Volumen des Tetraeders Ursprung–A–B–C.
-        ///
-        /// <para>
-        /// Über alle Dreiecke einer geschlossenen Hülle summiert ergibt das deren Volumen
-        /// (Divergenzsatz) — die Beiträge außerhalb des Körpers heben sich paarweise auf.
-        /// Deshalb ist der Bezugspunkt frei wählbar, und der Ursprung ist der bequemste.
-        /// </para>
+        /// Signed volume of the tetrahedron Origin–A–B–C.
+        /// Summed over all triangles of a closed shell, exterior contributions cancel out
+        /// by the divergence theorem.
         /// </summary>
         private static double TetrahedronVolume(StlTriangle triangle)
         {
@@ -465,7 +430,7 @@ namespace FluidForge.Core
             return (a.X * x + a.Y * y + a.Z * z) / 6.0;
         }
 
-        /// <summary>Fläche eines Dreiecks: halbe Länge des Kreuzprodukts zweier Kantenvektoren.</summary>
+        /// <summary>Area of a triangle: half the magnitude of the cross product of two edge vectors.</summary>
         private static double TriangleArea(StlTriangle triangle)
         {
             Vector3 u = triangle.B - triangle.A;
@@ -485,14 +450,12 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Berechnet die wahre projizierte Stirnfläche (Silhouette in der YZ-Ebene quer zur X-Achse)
-        /// über einen schnellen, lückenfreien 2D-Scanline-Schattenwurf auf einem 512×512-Bitgitter.
+        /// Computes the true projected frontal area (silhouette in the YZ plane perpendicular to X)
+        /// via a fast, gap-free 2D scanline rasterization on a 512×512 bitgrid.
         /// <para>
-        /// Warum ein 2D-Bitgitter statt reiner Normalensummation (<c>0.5 * Σ |n_x| A_i</c>):
-        /// Bei nicht-konvexen Körpern, hintereinanderliegenden Flügeln/Streben oder konkaven Taschen
-        /// würde die Normalensumme verdeckte Flächen mehrfach zählen. Das Bitgitter vereinigt
-        /// überlappende Projektionen exakt per logischem ODER (<c>|=</c>) und braucht dafür nur 32 KB
-        /// Speicher im L1-Cache.
+        /// Using a bitgrid instead of summing normal projections (<c>0.5 * Σ |n_x| A_i</c>) avoids
+        /// double-counting occluded surfaces on non-convex bodies or tandem components, while fitting
+        /// in 32 KB of L1 cache.
         /// </para>
         /// </summary>
         private static float ComputeFrontalProjectedArea(IReadOnlyList<StlTriangle> triangles, MeshBounds bounds)
@@ -509,7 +472,7 @@ namespace FluidForge.Core
                 return 0f;
 
             const int GridResolution = 512;
-            const int WordsPerRow = GridResolution / 64; // 8 ulongs je Zeile
+            const int WordsPerRow = GridResolution / 64; // 8 ulongs per row
             const double Eps = 1e-9;
 
             ulong[] grid = new ulong[GridResolution * WordsPerRow];
@@ -526,7 +489,7 @@ namespace FluidForge.Core
                 double u2 = (tri.C.Y - minY) * scaleY;
                 double v2 = (tri.C.Z - minZ) * scaleZ;
 
-                // Entartete 2D-Projektionen (z.B. Seitenwände exakt parallel zur X-Achse) überspringen
+                // Skip degenerate 2D projections (e.g., faces parallel to the X axis)
                 double cross2D = (u1 - u0) * (v2 - v0) - (v1 - v0) * (u2 - u0);
                 if (Math.Abs(cross2D) <= 1e-12)
                     continue;

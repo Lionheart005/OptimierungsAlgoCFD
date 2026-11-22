@@ -1,43 +1,41 @@
 {
-  // MyProject -- Projektvorgaben. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  // MyProject -- Project Settings. Plain-text reference: src/projects/BEDIENHANDBUCH.md
   //
-  // Der Projektname steht nur im Ordnernamen, nicht in dieser Datei. Gestartet wird mit
-  // `.\scripts\sim.ps1 run -Project <Ordnername>`.
-  // Was hier fehlt, kommt aus MyProjectProject.CreateDefaults(); beide sind absichtlich deckungsgleich
-  // (ein Test haelt sie zusammen). Ein unbekannter Schluessel bricht den Start ab, ausser innerhalb
-  // der Zuordnungen unten (dort sind die Schluessel frei waehlbare Parameternamen).
-  // Das Optimierungsverfahren steht in simulation.json, Geometrie und Fitness-Formel sind C#-Code nebenan.
+  // The project name comes from the folder name only, never from this file.
+  // Launch with `.\scripts\sim.ps1 run -Project <FolderName>`.
+  // Anything omitted here falls back to MyProjectProject.CreateDefaults(); both are kept
+  // in sync by a template test. An unknown key aborts startup (except user-defined parameter
+  // names inside the dictionaries below).
+  // Optimization algorithm is configured in simulation.json; geometry and fitness are C# code.
 
-  // --- Startwerte der Parameter (mm) ---
-  // Die Namen sind der Vertrag mit MyProjectGeometryGenerator: wer hier umbenennt, benennt dort mit,
-  // sonst rechnet der Generator still mit einem Ersatzwert.
+  // --- Initial parameter values (mm) ---
+  // Names form the contract with MyProjectGeometryGenerator.
   "BaseParameters": {
     "Length": 50.0,
     "Width": 30.0,
     "Height": 20.0
   },
 
-  // --- Anfaengliche Streuung je Parameter (Faustregel: etwa ein Zehntel der Spanne) ---
+  // --- Initial step size per parameter (rule of thumb: ~1/10 of range) ---
   "MaxDeviations": {
     "Length": 5.0,
     "Width": 3.0,
     "Height": 2.0
   },
 
-  // --- Harte Grenzen; der Algorithmus verlaesst sie nie ---
+  // --- Hard bounds; the optimizer never leaves this box ---
   "ParameterBounds": {
     "Length": { "Min": 20.0, "Max": 100.0 },
     "Width": { "Min": 10.0, "Max": 80.0 },
     "Height": { "Min": 5.0, "Max": 50.0 }
   },
 
-  // --- Optimierungsziele fuer die Fitness-Formel ---
-  // Leer, weil die Vorlagen-Fitness nur den Widerstand minimiert (1 / Drag). Ein Ziel dazunehmen:
-  // hier eintragen, in MyProjectProject.CreateDefaults() denselben Wert setzen und den Namen in
-  // MyProjectFitnessCalculator unter RequiredTargets aufnehmen (fehlt er, bricht der Lauf sofort ab).
+  // --- Optimization targets for the fitness formula ---
+  // Empty because the template minimizes drag only (1 / Drag). To add a target:
+  // add it here, in MyProjectProject.CreateDefaults(), and in MyProjectFitnessCalculator.RequiredTargets.
   "OptimizationTargets": {},
 
-  // --- Parameter, die eine Laenge sind (werden mitskaliert) ---
-  // Verhaeltnisse, Winkel und Zaehlwerte gehoeren nicht hierher, sie wuerden falsch mitskaliert.
+  // --- Length parameters (scaled by RubberBandScaler) ---
+  // Ratios, angles, and counts do not belong here.
   "DimensionalParameters": [ "Length", "Width", "Height" ]
 }

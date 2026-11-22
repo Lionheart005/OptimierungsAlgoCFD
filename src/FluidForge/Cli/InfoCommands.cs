@@ -8,20 +8,20 @@ using FluidForge.Core;
 namespace FluidForge.Cli
 {
     /// <summary>
-    /// Informations-Befehle ohne Simulationsstart (<c>--list-projects</c>, <c>--print-config</c>).
+    /// Informational commands that do not start a simulation (<c>--list-projects</c>, <c>--print-config</c>).
     /// </summary>
     internal static class InfoCommands
     {
         /// <summary>
-        /// Listet auf, was startbar ist — und was daneben liegt, ohne es zu sein. Ein Ordner ohne
-        /// Definition ist der häufigste Fall beim Anlegen eines neuen Projekts.
+        /// Lists runnable projects as well as orphan folders that cannot be launched.
+        /// A folder without a project definition is the most common mistake when creating a new project.
         /// </summary>
         public static void PrintProjects(ProjectRegistry registry, string? projectDirectoryArgument)
         {
-            Console.WriteLine("Startbare Projekte:");
+            Console.WriteLine("Runnable projects:");
 
             if (registry.Definitions.Count == 0)
-                Console.WriteLine("  (keine)");
+                Console.WriteLine("  (none)");
 
             foreach (IProjectDefinition definition in registry.Definitions)
                 Console.WriteLine($"  {definition.Name}   ({definition.GetType().Name})");
@@ -34,15 +34,15 @@ namespace FluidForge.Cli
             if (orphans.Count == 0) return;
 
             Console.WriteLine();
-            Console.WriteLine("Ordner ohne Projektdefinition (nicht startbar):");
+            Console.WriteLine("Folders without a project definition (not runnable):");
             foreach (string folder in orphans)
                 Console.WriteLine($"  {folder}");
         }
 
         /// <summary>
-        /// Gibt die wirksame Framework-Konfiguration als <c>SCHLÜSSEL=WERT</c> aus, eine Zeile je
-        /// Eintrag. Bewusst dieses stumpfe Format und kein JSON: <c>sim-runner.sh</c> soll den
-        /// Wert mit <c>grep</c> herausziehen können, ohne einen JSON-Parser zu brauchen.
+        /// Prints the effective framework configuration as <c>KEY=VALUE</c>, one entry per line.
+        /// Deliberately flat instead of JSON so <c>sim-runner.sh</c> can extract values with
+        /// <c>grep</c> without requiring a JSON parser.
         /// </summary>
         public static void PrintConfiguration(ProjectContext context)
         {
@@ -51,8 +51,8 @@ namespace FluidForge.Cli
         }
 
         /// <summary>
-        /// Verschachtelte Abschnitte (<c>MeshCalibration</c>, <c>ControlRuns</c> …) erscheinen mit Punkt-Schreibweise,
-        /// z. B. <c>MeshCalibration.Mode=Auto</c> — sonst stünde dort nur der Typname.
+        /// Nested sections (<c>MeshCalibration</c>, <c>ControlRuns</c> ...) are printed in dotted
+        /// notation, e.g. <c>MeshCalibration.Mode=Auto</c> — otherwise only the type name would appear.
         /// </summary>
         private static void PrintProperties(object instance, string prefix, bool autoMesh)
         {
@@ -65,8 +65,8 @@ namespace FluidForge.Cli
 
                 if (prefix.Length == 0 && property.Name == nameof(SimulationConfig.MeshRefinementFactor) && autoMesh)
                 {
-                    // Im Auto-Modus gilt der Wert aus dem Code-Standard nicht; der Lauf kalibriert den Faktor selbst.
-                    Console.WriteLine($"{name}=(wird am Laufanfang kalibriert)");
+                    // In Auto mode the code default does not apply; the run calibrates the factor itself.
+                    Console.WriteLine($"{name}=(calibrated at run start)");
                 }
                 else if (value != null && IsSection(property.PropertyType))
                 {
@@ -79,11 +79,11 @@ namespace FluidForge.Cli
             }
         }
 
-        /// <summary>Eigener Konfigurationsabschnitt (Klasse des Programms), kein Text, keine Zahl, keine Liste.</summary>
+        /// <summary>Configuration section class defined by the application, not a string, number, or collection.</summary>
         private static bool IsSection(Type type) =>
             type.IsClass && type != typeof(string) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(type);
 
-        /// <summary>Kultur-unabhängig formatieren — sonst steht auf einem deutschen Rechner 0,5 statt 0.5.</summary>
+        /// <summary>Format culture-invariantly so localized machines do not output 0,5 instead of 0.5.</summary>
         private static string Format(object? value) => value switch
         {
             null => string.Empty,

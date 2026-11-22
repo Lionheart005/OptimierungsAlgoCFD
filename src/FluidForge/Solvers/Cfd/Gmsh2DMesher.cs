@@ -6,11 +6,10 @@ using FluidForge.Kernels.Planar2D;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// 2D-CFD-Mesher basierend auf Gmsh (TODO-45). Erzeugt ein 2D-Flächennetz in der xy-Ebene
-    /// für zweidimensionale SU2-Simulationen.
-    /// Liest Konturdaten über <see cref="Shape2D.LoadContour"/>, erzeugt ein kreisförmiges
-    /// Fernfeld, eine strukturierte Quader-Grenzschicht (BoundaryLayer Field) und Hintergrundfelder
-    /// für Nahfeld und Nachlauf (Wake Box).
+    /// 2D CFD mesher based on Gmsh. Generates a 2D surface mesh in the xy-plane
+    /// for two-dimensional SU2 simulations.
+    /// Reads contour data via <see cref="Shape2D.LoadContour"/>, creates a circular farfield,
+    /// a structured quad boundary layer (BoundaryLayer Field), and background fields for nearfield and wake.
     /// </summary>
     public class Gmsh2DMesher : IMeshGenerator, IMeshMetricsSource
     {
@@ -18,11 +17,11 @@ namespace FluidForge.Solvers.Cfd
         private readonly FlowConditions? _flow;
         private Dictionary<string, float> _lastMetrics = new();
 
-        /// <summary>Kennwerte des letzten erzeugten 2D-Netzes (Zellzahlen je Elementklasse).</summary>
+        /// <summary>Metrics of the last generated 2D mesh (cell counts per element class).</summary>
         public IReadOnlyDictionary<string, float> LastMeshMetrics => _lastMetrics;
 
-        /// <param name="options">Vorgabedaten aus solvers/gmsh.json; ohne Angabe gelten Standardwerte.</param>
-        /// <param name="flow">Physikalische Strömungsbedingungen für die Grenzschichtberechnung.</param>
+        /// <param name="options">Configuration from solvers/gmsh.json; defaults apply if omitted.</param>
+        /// <param name="flow">Physical flow conditions for boundary-layer calculations.</param>
         public Gmsh2DMesher(Gmsh2DMesherOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new Gmsh2DMesherOptions();
@@ -32,10 +31,10 @@ namespace FluidForge.Solvers.Cfd
         public Gmsh2DMesherOptions Options => _options;
         public FlowConditions? Flow => _flow;
 
-        /// <summary>Kleinster Anteil der berechneten Wandschichtdicke, der noch versucht wird (1 → ½ → ¼ → ⅛ → 1/16).</summary>
+        /// <summary>Smallest fraction of computed wall-layer thickness attempted (1 → 1/2 → 1/4 → 1/8 → 1/16).</summary>
         public const float MinThicknessScale = 0.0625f;
 
-        /// <summary>Name der Fluid-Gruppe im .geo-Skript; in der .su2-Datei kein gültiger Rand.</summary>
+        /// <summary>Name of the fluid group in the .geo script; not a valid boundary marker in the .su2 file.</summary>
         public const string FluidMarkerName = Gmsh2DGeoScriptBuilder.FluidMarkerName;
 
         public string GenerateMesh(
@@ -53,9 +52,9 @@ namespace FluidForge.Solvers.Cfd
             string outputMeshPath = Path.Combine(request.WorkingDirectory, $"Model_{suffix}.su2");
             string geoScriptPath = Path.Combine(request.WorkingDirectory, $"Meshing_{suffix}.geo");
 
-            // Schlägt Gmsh fehl ("Edge not recovered": die Wandschicht kollidiert an dünnen Stellen
-            // wie der Hinterkante mit sich selbst), wird mit halber, dann viertel Schichtdicke
-            // wiederholt. y1 und damit y+ bleiben gleich.
+            // If Gmsh fails ("Edge not recovered": boundary layer collides with itself at thin regions
+            // like the trailing edge), retry with half, then quarter layer thickness.
+            // y1 and thus y+ remain unchanged.
             float thicknessScale = 1.0f;
             while (true)
             {
@@ -79,30 +78,30 @@ namespace FluidForge.Solvers.Cfd
 
                 if (thicknessScale <= MinThicknessScale)
                 {
-                    GmshProcessRunner.CopyGeoToFehlerLogs(geoScriptPath, request.WorkingDirectory, "2D-Meshing");
-                    throw new MeshGenerationException($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {run.ExitCode}, auch mit {thicknessScale * 100f:0} % Wandschichtdicke). .geo-Skript nach FehlerLogs kopiert.");
+                    GmshProcessRunner.CopyGeoToErrorLogs(geoScriptPath, request.WorkingDirectory, "2D-Meshing");
+                    throw new MeshGenerationException($"Gmsh failed to create {Path.GetFileName(outputMeshPath)} (ExitCode {run.ExitCode}, even at {thicknessScale * 100f:0}% boundary-layer thickness). .geo script copied to {OutputConventions.ErrorLogsDirectory}.");
                 }
 
                 thicknessScale *= 0.5f;
-                SimulationLog.Detail($"[WARNUNG] Wandschicht ließ sich nicht vernetzen (meist Kollision an der Hinterkante) – neuer Versuch mit {thicknessScale * 100f:0} % der Schichtdicke.");
+                SimulationLog.Detail($"{OutputConventions.WarningTag} Boundary layer failed to mesh (likely trailing-edge self-intersection) — retrying with {thicknessScale * 100f:0}% layer thickness.");
             }
 
             RemoveMarker(outputMeshPath, FluidMarkerName);
             MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
 
-            SimulationLog.Detail("[OK] 2D-Flächennetz generiert");
+            SimulationLog.Detail("[OK] 2D surface mesh generated");
             return outputMeshPath;
         }
 
         /// <summary>
-        /// Entfernt einen Marker-Block (MARKER_TAG + MARKER_ELEMS + Elementzeilen) aus einer
-        /// .su2-Datei und zählt NMARK herunter.
+        /// Removes a marker block (MARKER_TAG + MARKER_ELEMS + element lines) from an
+        /// .su2 file and decrements NMARK.
         /// </summary>
         public static bool RemoveMarker(string su2Path, string markerTag)
             => Gmsh2DGeoScriptBuilder.RemoveMarker(su2Path, markerTag);
 
         /// <summary>
-        /// Schreibt das .geo-Skript für Gmsh im 2D-Modus in die Datei.
+        /// Writes the 2D Gmsh .geo script to disk.
         /// </summary>
         public void WriteGeoScript(
             string geoScriptPath,

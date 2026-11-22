@@ -1,66 +1,65 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  Naca2D -- Framework-Einstellungen dieses Projekts
+  //  Naca2D -- Framework Settings for This Project
   // ===================================================================
   //
-  // 2D-CFD-Optimierung und NASA-TMR-Validierung (TODO-47).
-  // Pfade für den Hochschulserver (BIC_12).
+  // 2D CFD optimization and NASA TMR validation.
+  // Configured for the Linux compute server (BIC_12).
 
-  // --- Pfade zu externer Software ---
-  // Es gilt der PATH-relative Code-Standard ("mpirun", "SU2_CFD", "gmsh"); auf dem Server
-  // loesen scripts/sim-runner.sh und ExecutableResolver die Werkzeuge auf, maschinenspezifische
-  // Ausnahmen gehoeren in eine gitignored simulation.local.json.
+  // --- External tool paths ---
+  // Uses PATH-relative code defaults ("mpirun", "SU2_CFD", "gmsh"); on the server,
+  // scripts/sim-runner.sh and ExecutableResolver resolve the executables.
+  // Machine-specific overrides belong in a gitignored simulation.local.json.
 
-  // --- Zeit & Umfang ---
+  // --- Iterations & budget ---
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
 
-  // --- Automatisches Ende: aus (Standard). Zum Einschalten die letzte Zeile einkommentieren ---
-  // Der Lauf endet frueher, wenn sich der Bestwert in den letzten WindowVariants Varianten um weniger
-  // als MinImprovement (0.01 = 1 %) verbessert hat; MaxIterations x VariantsPerIteration bleibt die
-  // Obergrenze. Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // --- Auto-stop: off by default. Uncomment the last line to enable ---
+  // Ends the run early if the best fitness improves by less than MinImprovement (0.01 = 1%)
+  // over the last WindowVariants variants; MaxIterations x VariantsPerIteration remains the cap.
   // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
 
   // --- CFD & SU2 ---
-  // MeshRefinementFactor steht hier bewusst NICHT: im Auto-Modus (MeshCalibration unten) kalibriert der Lauf
-  // den Netzfaktor am Anfang selbst.
+  // MeshRefinementFactor is intentionally omitted: in Auto mode (MeshCalibration below),
+  // the run calibrates the mesh factor automatically at startup.
   //
-  // Normale Varianten: moderate Konvergenz. Kontrollrechnungen (Kalibrierung, Feinpruefung, Recheck) rechnen mit
-  // dem strengen Profil "ControlRuns" (Vorgabe: bis 20000 Iterationen, Fenster 500, Cauchy "1e-5", iterativer Fehler <= 1/10).
-  // Seit TODO-W3 entscheidet die Drift der Kennwerte im Endfenster, ob eine Rechnung konvergiert ist; bei Rest-Drift setzt AutoRestartOnDrift automatisch fort.
+  // Regular variants: moderate convergence. Control runs (calibration, verification, recheck)
+  // use the strict "ControlRuns" profile (up to 20000 iterations, window 500, Cauchy "1e-5",
+  // iterative error <= 1/10). Tail-window drift determines convergence; AutoRestartOnDrift
+  // automatically continues on remaining drift.
   "Su2MaxIterations": 3000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: nichts eingetragen, es gilt der Standard "Bayes" (10 x 10-Vergleich 08.11.2026) ---
+  // --- Optimization algorithm: omitted, uses default "Bayes" ---
 
-  // --- IdwBaseline (IDW-Interpolations-Baseline, kein echtes RSM) ---
+  // --- IdwBaseline (inverse-distance-weighted baseline) ---
   "IdwVirtualSimulations": 50000,
   "IdwPower": 3.0,
   "IdwExploitationRatio": 0.7,
   "IdwExploitationSigma": 0.1,
 
-  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
-  // Meist nicht noetig: "Bayes" laeuft ohne Einstellung. Jeder Parameter braucht Grenzen in
-  // project.json (ParameterBounds); MaxDeviations wirkt bei "Bayes" nicht. Erklaerung der Schluessel:
-  // src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // --- Bayesian optimizer (only when "OptimizationAlgorithm": "Bayes", all optional) ---
+  // Usually not needed: "Bayes" runs without settings. Every parameter needs bounds in
+  // project.json (ParameterBounds); MaxDeviations has no effect in "Bayes" mode.
   // "Bayes": {
   //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
-  //   "InitialSamples": 0          // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
+  //   "InitialSamples": 0          // 0 = automatic: max(VariantsPerIteration, 2 x free params + 2)
   // },
 
-  // --- Netzkalibrierung am Laufanfang (TODO-42, TODO-W5) ---
-  // Auto: die Kalibrierung rechnet Stufen 2.0 ... 0.5 und verfeinert bei Bedarf weiter (0.35, 0.25, ...),
-  // bis eine groebere Stufe die Toleranz gegenueber der feinsten haelt (kombinierte Toleranz mit Mindestbetrag).
+  // --- Mesh calibration at startup ---
+  // Auto: evaluates levels 2.0 ... 0.5 and refines further if needed (0.35, 0.25, ...)
+  // until a coarser level stays within the combined tolerance relative to the finest level.
   "MeshCalibration": {
     "Mode": "Auto",
     "Tolerance": 0.05
   },
 
-  // --- Feine Nachrechnung der besten Varianten (TODO-43) ---
+  // --- Fine verification of top variants ---
   "ChampionVerification": {
     "Mode": "FinalTopN",
     "TopN": 3,
@@ -68,7 +67,7 @@
     "Tolerance": 0.05
   },
 
-  // --- Validierung des Champions (Bouncer) ---
+  // --- Champion validation (bouncer) ---
   "BouncerTolerance": 0.10,
   "BouncerJitter": 0.01
 }

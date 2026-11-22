@@ -8,48 +8,38 @@ using System.Text.Json.Nodes;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Lädt Konfiguration aus JSON-Dateien und legt sie über die einkompilierten Standardwerte.
+    /// Loads configuration from JSON files and overlays them onto compiled-in defaults.
     ///
     /// <para>
-    /// Jede Stufe überschreibt nur die Schlüssel, die sie tatsächlich enthält. Eine fehlende
-    /// Datei ist kein Fehler — dann gilt, was die Stufe davor ergeben hat. Ein
-    /// <b>unbekannter</b> Schlüssel ist dagegen ein Abbruch (Entscheidung 8, TODO-22):
-    /// vorher fiel ein Tippfehler beim Lesen einfach weg.
+    /// Each layer overrides only the keys it explicitly defines. A missing file is not an error —
+    /// values from earlier layers remain in effect. An <b>unknown</b> key, however, aborts startup
+    /// so typos are caught immediately.
     /// </para>
     ///
-    /// <para>Die Schichten, von allgemein nach spezifisch:</para>
+    /// <para>Layers, from general to specific:</para>
     /// <list type="number">
-    ///   <item>Code-Standards (<c>CreateDefault()</c> bzw. <c>new T()</c>) — gelten für alles</item>
-    ///   <item><c>src/projects/&lt;Name&gt;/…json</c> — dieses Projekt, alle Rechner</item>
-    ///   <item><c>config/…local.json</c> — alle Projekte, dieser Rechner <i>(Notausgang)</i></item>
-    ///   <item><c>src/projects/&lt;Name&gt;/…local.json</c> — dieses Projekt, dieser Rechner <i>(Notausgang)</i></item>
+    ///   <item>Code defaults (<c>CreateDefault()</c> / <c>new T()</c>) — apply to all runs</item>
+    ///   <item><c>src/projects/&lt;Name&gt;/…json</c> — this project, all machines</item>
+    ///   <item><c>config/…local.json</c> — all projects, this machine <i>(escape hatch)</i></item>
+    ///   <item><c>src/projects/&lt;Name&gt;/…local.json</c> — this project, this machine <i>(escape hatch)</i></item>
     /// </list>
     ///
     /// <para>
-    /// Regel in einem Satz: <b>je spezifischer, desto später — und gitignoriert schlägt
-    /// eingecheckt.</b> Schicht 3 gewinnt über Schicht 2, damit ein Projekt dem Rechner nicht
-    /// seinen <c>Su2Path</c> überschreiben kann; Schicht 4 gewinnt über alles.
-    /// </para>
-    ///
-    /// <para>
-    /// <b>Sollstand ist, dass es die Schichten 3 und 4 nirgends gibt.</b> Der Mechanismus
-    /// bleibt als Notausgang für Rechner mit exotischer Installation — jede vorhandene Datei
-    /// wird beim Start gemeldet, samt jedem Schlüssel, den sie dem Projekt aushebelt.
+    /// Rule of thumb: <b>more specific wins — and gitignored beats committed.</b>
+    /// Ideally layers 3 and 4 do not exist; any present <c>*.local.json</c> is reported at startup.
     /// </para>
     /// </summary>
     public static class JsonConfigLoader
     {
-        /// <summary>Standard-Verzeichnisname der Konfiguration, relativ zum Repo-Root.</summary>
+        /// <summary>Default config directory name relative to the repository root.</summary>
         public const string DefaultConfigDirectoryName = "config";
 
         /// <summary>
-        /// Endung der maschinenspezifischen Ausnahmedateien. Dasselbe Muster steht in der
-        /// <c>.gitignore</c> und im Upload-Filter von <c>sim.ps1</c> — eine solche Datei
-        /// überlebt dadurch jedes Deploy und wird von keinem überschrieben.
+        /// Suffix for machine-specific override files (excluded via <c>.gitignore</c> and deploy filters).
         /// </summary>
         public const string MachineSpecificSuffix = ".local.json";
 
-        /// <summary>Wie viele Ebenen nach oben nach dem config-Verzeichnis gesucht wird.</summary>
+        /// <summary>Maximum parent directory levels to search upward for the config directory.</summary>
         private const int MaxParentLevelsToSearch = 6;
 
         private static readonly JsonSerializerOptions SerializerOptions = new JsonSerializerOptions
@@ -61,24 +51,18 @@ namespace FluidForge.Core
         };
 
         /// <summary>
-        /// Legt die angegebenen JSON-Dateien der Reihe nach über <paramref name="defaults"/>.
-        /// Nicht vorhandene Dateien werden übersprungen.
+        /// Overlays the specified JSON files in order onto <paramref name="defaults"/>.
+        /// Missing files are skipped.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Eine vorhandene Datei ist kein gültiges JSON oder nennt einen unbekannten Schlüssel.
+        /// An existing file is invalid JSON or contains an unknown key.
         /// </exception>
         public static T Load<T>(T defaults, params string[] jsonFilePaths) where T : class
             => LoadWithReport(defaults, jsonFilePaths).Value;
 
         /// <summary>
-        /// Wie <see cref="Load{T}"/>, liefert aber zusätzlich den Bericht: welcher Schlüssel aus
-        /// welcher Datei gewonnen hat und welche <c>*.local.json</c> dem Projekt dazwischenfunkt.
-        ///
-        /// <para>
-        /// Ob eine Datei als maschinenspezifisch gilt, entscheidet allein ihr Name
-        /// (<see cref="MachineSpecificSuffix"/>) — dasselbe Kriterium wie in der
-        /// <c>.gitignore</c> und im Upload-Filter von <c>sim.ps1</c>.
-        /// </para>
+        /// Like <see cref="Load{T}"/>, but also returns the <see cref="ConfigLoadReport"/>
+        /// detailing key origins and machine-specific overrides.
         /// </summary>
         public static ConfigLoadResult<T> LoadWithReport<T>(T defaults, params string[] jsonFilePaths) where T : class
         {
@@ -93,7 +77,7 @@ namespace FluidForge.Core
 
                 if (!File.Exists(path))
                 {
-                    Console.WriteLine($"[CONFIG] {label}: nicht vorhanden, übersprungen.");
+                    Console.WriteLine($"{OutputConventions.ConfigTag} {label}: not found, skipped.");
                     continue;
                 }
 
@@ -110,13 +94,12 @@ namespace FluidForge.Core
                 }
                 catch (JsonException ex)
                 {
-                    throw new InvalidOperationException($"[CONFIG] '{path}' ist kein gültiges JSON: {ex.Message}", ex);
+                    throw new InvalidOperationException($"{OutputConventions.ConfigTag} '{path}' is not valid JSON: {ex.Message}", ex);
                 }
 
                 if (merged is not JsonObject target || overlay is not JsonObject source) continue;
 
-                // Erst prüfen, dann übernehmen: ein Tippfehler soll die Zahlen gar nicht
-                // erreichen, sondern den Lauf sofort anhalten (Entscheidung 8).
+                // Validate before merging so typos fail immediately.
                 ConfigSchema.Validate(typeof(T), source, path);
 
                 bool machineSpecific = IsMachineSpecific(path);
@@ -130,7 +113,7 @@ namespace FluidForge.Core
 
             T? result = merged.Deserialize<T>(SerializerOptions);
             if (result == null)
-                throw new InvalidOperationException($"[CONFIG] Konfiguration vom Typ {typeof(T).Name} konnte nicht gelesen werden.");
+                throw new InvalidOperationException($"{OutputConventions.ConfigTag} Failed to deserialize configuration of type {typeof(T).Name}.");
 
             report.PrintOrigins();
 
@@ -138,14 +121,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Wie eine Datei im Log und im Warnblock heißt: relativ zum Arbeitsverzeichnis, wenn sie
-        /// darunter liegt, sonst absolut. Immer mit Schrägstrichen.
-        ///
-        /// <para>
-        /// Bewusst <b>nicht</b> nur der Dateiname: <c>config/simulation.local.json</c> und
-        /// <c>src/projects/MantaAuv/simulation.local.json</c> heißen gleich, und der Warnblock
-        /// soll sagen, welche der beiden zu löschen ist.
-        /// </para>
+        /// Formats a file path for logs and warnings: relative to the current working directory
+        /// if underneath it, otherwise absolute. Always uses forward slashes.
         /// </summary>
         public static string Label(string path)
         {
@@ -163,14 +140,14 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Ist das eine maschinenspezifische Ausnahmedatei? Entscheidet allein der Dateiname.
+        /// Returns whether the path refers to a machine-specific override file based on its suffix.
         /// </summary>
         public static bool IsMachineSpecific(string path)
             => Path.GetFileName(path).EndsWith(MachineSpecificSuffix, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Der maschinenspezifische Nachbar einer Konfigurationsdatei:
-        /// <c>simulation.json</c> â†’ <c>simulation.local.json</c>.
+        /// Returns the machine-specific sibling path for a config file:
+        /// <c>simulation.json</c> → <c>simulation.local.json</c>.
         /// </summary>
         public static string MachineVariantOf(string jsonFilePath)
         {
@@ -183,18 +160,17 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Lädt eine Konfigurationsdatei eines Projekts über alle vier Schichten (TODO-22).
+        /// Loads a project configuration file across all four layers.
         /// </summary>
-        /// <param name="defaults">Schicht 1 — die Code-Standards.</param>
+        /// <param name="defaults">Layer 1 — code defaults.</param>
         /// <param name="relativeName">
-        /// Dateiname relativ zum Projektordner, z.B. <c>project.json</c> oder
-        /// <c>solvers/su2.json</c>. Schrägstriche sind erlaubt und werden umgesetzt.
+        /// Filename relative to the project folder, e.g., <c>project.json</c> or
+        /// <c>solvers/su2.json</c>. Forward slashes are supported.
         /// </param>
-        /// <param name="projectDirectory">Der Ordner des Projekts (Schichten 2 und 4).</param>
+        /// <param name="projectDirectory">Project folder (layers 2 and 4).</param>
         /// <param name="configDirectory">
-        /// Das <c>config/</c>-Verzeichnis für Schicht 3. <c>null</c> = suchen; wird keines
-        /// gefunden, entfällt die Schicht ersatzlos — auf einem frischen Rechner ist der Ordner
-        /// leer und damit in git gar nicht vorhanden.
+        /// The <c>config/</c> directory for layer 3. <c>null</c> searches upward; if none is
+        /// found, layer 3 is skipped.
         /// </param>
         public static ConfigLoadResult<T> LoadForProject<T>(
             T defaults,
@@ -206,30 +182,24 @@ namespace FluidForge.Core
 
             var layers = new List<string>
             {
-                // Schicht 2: dieses Projekt, alle Rechner.
+                // Layer 2: this project, all machines.
                 Path.Combine(new[] { projectDirectory }.Concat(segments).ToArray())
             };
 
-            // Schicht 3: alle Projekte, dieser Rechner. Steht bewusst VOR Schicht 4 und damit
-            // über dem Projekt — ein Projekt soll dem Rechner nicht seine Pfade umbiegen.
+            // Layer 3: all projects, this machine. Applied before layer 4.
             string? resolvedConfig = ResolveConfigDirectory(configDirectory);
             if (resolvedConfig != null)
                 layers.Add(MachineVariantOf(Path.Combine(new[] { resolvedConfig }.Concat(segments).ToArray())));
 
-            // Schicht 4: dieses Projekt, dieser Rechner. Gewinnt über alles.
+            // Layer 4: this project, this machine. Highest precedence.
             layers.Add(MachineVariantOf(layers[0]));
 
             return LoadWithReport(defaults, layers.ToArray());
         }
 
         /// <summary>
-        /// Schreibt ein Konfigurationsobjekt als JSON — nützlich, um eine Vorlagedatei
-        /// mit den aktuellen Standardwerten zu erzeugen.
-        ///
-        /// <para>
-        /// <b>Nicht</b> für die mitgelieferten Dateien benutzen: das Ergebnis hat keine
-        /// Kommentare, und genau die Erklärungen tragen einen neuen Nutzer.
-        /// </para>
+        /// Serializes a configuration object to JSON — useful for generating a template
+        /// with current defaults. Do not use on hand-authored project files, as comments are stripped.
         /// </summary>
         public static void Save<T>(T configuration, string jsonFilePath) where T : class
         {
@@ -240,10 +210,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Sucht das Konfigurationsverzeichnis: absoluter Pfad wird direkt genommen, ein
-        /// relativer erst im Arbeitsverzeichnis und dann in den übergeordneten Verzeichnissen.
-        /// Letzteres, weil <c>dotnet run</c> im Projektverzeichnis startet, die Konfiguration
-        /// aber im Repo-Root liegt. Gibt <c>null</c> zurück, wenn nichts gefunden wurde.
+        /// Locates the config directory: uses rooted paths directly, or searches the current
+        /// working directory and parent directories. Returns <c>null</c> if not found.
         /// </summary>
         public static string? ResolveConfigDirectory(string? configDirectory)
         {
@@ -265,16 +233,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Rekursives Zusammenführen: verschachtelte Objekte werden verschmolzen, alles andere
-        /// ersetzt. Ein Projekt, das nur <c>{"Lift":"CL"}</c> schreibt, bekommt <c>Drag</c> aus
-        /// der Stufe davor also dazu — gewollt, aber es heißt auch, dass man einen Eintrag nur
-        /// über den Code-Standard wieder loswird.
-        ///
-        /// <para>
-        /// Nebenbei wird protokolliert, welche Datei welchen Schlüssel gewonnen hat, und ob eine
-        /// maschinenspezifische Datei einen Wert tatsächlich <b>verändert</b>. Wertgleiche
-        /// Einträge zählen nicht: sie hebeln nichts aus und würden den Warnblock zumüllen.
-        /// </para>
+        /// Recursively merges <paramref name="source"/> into <paramref name="target"/>:
+        /// nested objects are merged, all other values are replaced. Records key origins and
+        /// any actual changes introduced by machine-specific override files.
         /// </summary>
         private static void Merge(
             JsonObject target,
@@ -306,12 +267,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Ein JSON-Wert, wie ihn ein Mensch im Warnblock lesen will: Zeichenketten ohne
-        /// Anführungszeichen, alles andere so, wie es in der Datei steht.
+        /// Formats a JSON value for human-readable override warnings.
         /// </summary>
         private static string Describe(JsonNode? node)
         {
-            if (node == null) return "(nicht gesetzt)";
+            if (node == null) return "(not set)";
 
             if (node is JsonValue value && value.TryGetValue(out string? text)) return text ?? "(null)";
 

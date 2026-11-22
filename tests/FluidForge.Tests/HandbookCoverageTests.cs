@@ -11,13 +11,12 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-49: <c>src/projects/BEDIENHANDBUCH.md</c> erklärt jede Einstellung und jeden Befehl.
+    /// TODO-49: <c>src/projects/BEDIENHANDBUCH.md</c> explains every setting and every command.
     ///
     /// <para>
-    /// Ein Handbuch, das eine Einstellung verschweigt, ist schlimmer als keines: man verlässt sich
-    /// darauf und sucht dann an der falschen Stelle. Deshalb bricht hier jeder neue Schlüssel und
-    /// jeder neue <c>sim.ps1</c>-Befehl den Test, bis er im Handbuch steht — als <c>`Name`</c>
-    /// geschrieben, so wie es das Handbuch überall tut.
+    /// A handbook that omits a setting is worse than none: you rely on it and then look in the wrong place.
+    /// Therefore every new key and every new <c>sim.ps1</c> command breaks this test until it is documented
+    /// in the handbook — written as <c>`Name`</c>, just as the handbook does everywhere.
     /// </para>
     /// </summary>
     public class HandbookCoverageTests
@@ -29,10 +28,10 @@ namespace FluidForge.Tests
             get
             {
                 string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
-                Assert.True(projectsRoot != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
+                Assert.True(projectsRoot != null, "Directory src/projects/ was not found.");
 
                 string file = Path.Combine(projectsRoot!, HandbookFileName);
-                Assert.True(File.Exists(file), $"src/projects/{HandbookFileName} fehlt.");
+                Assert.True(File.Exists(file), $"src/projects/{HandbookFileName} is missing.");
 
                 return File.ReadAllText(file);
             }
@@ -62,8 +61,8 @@ namespace FluidForge.Tests
                 .ToList();
 
             Assert.True(missing.Count == 0,
-                $"Im Bedienhandbuch fehlt/fehlen Einstellung(en) aus {file}: {string.Join(", ", missing)}. "
-                + $"Bitte in src/projects/{HandbookFileName}, Abschnitt 4, erklären.");
+                $"Handbook is missing setting(s) from {file}: {string.Join(", ", missing)}. "
+                + $"Please document in src/projects/{HandbookFileName}, Section 4.");
         }
 
         [Fact]
@@ -76,7 +75,7 @@ namespace FluidForge.Tests
                 Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot!)!)!, "scripts", "sim.ps1"));
 
             Match set = Regex.Match(sim, @"\[ValidateSet\(([^\)]*)\)\]");
-            Assert.True(set.Success, "Die Befehlsliste (ValidateSet) in scripts/sim.ps1 wurde nicht gefunden.");
+            Assert.True(set.Success, "Command list (ValidateSet) in scripts/sim.ps1 was not found.");
 
             string[] commands = Regex.Matches(set.Groups[1].Value, "'([^']+)'")
                 .Select(match => match.Groups[1].Value)
@@ -88,7 +87,7 @@ namespace FluidForge.Tests
             var missing = commands.Where(command => !handbook.Contains($"`{command}`")).ToList();
 
             Assert.True(missing.Count == 0,
-                $"Im Bedienhandbuch fehlt/fehlen Befehl(e): {string.Join(", ", missing)} (Abschnitt 6).");
+                $"Handbook is missing command(s): {string.Join(", ", missing)} (Section 6).");
         }
     }
 }

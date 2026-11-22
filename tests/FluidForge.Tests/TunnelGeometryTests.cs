@@ -10,16 +10,16 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Der Windkanal kommt seit TODO-11 nicht mehr aus PicoGK. Diese Tests sichern ab,
-    /// dass der Standardfall exakt der alte Quader bleibt — ändert er sich, ändert sich
-    /// die Simulationsdomäne und damit der gemessene Drag.
+    /// Since TODO-11, the wind tunnel no longer comes from PicoGK. These tests ensure
+    /// that the default case remains the exact same box — if it changes, the simulation
+    /// domain and therefore the measured drag changes.
     /// </summary>
     public class TunnelGeometryTests
     {
         /// <summary>
-        /// Die 12 Dreiecke von <c>PicoGK.Utils.mshCreateCube(new Vector3(600,300,300), Vector3.Zero)</c>,
-        /// abgelesen aus der PicoGK-Ausgabe. Reihenfolge und Orientierung müssen übereinstimmen,
-        /// damit Gmsh dieselbe Farfield-Topologie erzeugt wie vor dem Umbau.
+        /// The 12 triangles of <c>PicoGK.Utils.mshCreateCube(new Vector3(600,300,300), Vector3.Zero)</c>,
+        /// captured from PicoGK output. Ordering and orientation must match so that Gmsh
+        /// generates the same farfield topology as before the refactoring.
         /// </summary>
         private static readonly float[][] PicoGkCubeTriangles =
         {
@@ -88,8 +88,8 @@ namespace FluidForge.Tests
 
             Assert.Equal(-300f, min.X, 3);
             Assert.Equal(300f, max.X, 3);
-            // Der Mantel ist ein Polygonzug: quer zur Achse liegt er innerhalb des Kreises,
-            // erreicht den Radius aber an den Stützstellen.
+            // The mantle is a polygon approximation: transverse to the axis it lies inside the circle,
+            // but reaches the radius at the sample points.
             Assert.Equal(150f, max.Y, 3);
             Assert.Equal(-150f, min.Y, 3);
             Assert.True(max.Z <= 150.001f && max.Z > 149.0f, $"max.Z = {max.Z}");
@@ -106,9 +106,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Eine geschlossene Hülle benutzt jede Kante genau zweimal, und zwar in
-        /// entgegengesetzter Richtung. Fehlt ein Deckel oder ist ein Dreieck verdreht,
-        /// fällt es hier auf — und Gmsh könnte aus dem Tunnel kein Volumen bilden.
+        /// A closed hull uses each edge exactly twice, in opposite directions.
+        /// If a cap is missing or a triangle is flipped, it fails here — and Gmsh
+        /// would not be able to build a volume from the tunnel.
         /// </summary>
         [Theory]
         [InlineData(3)]
@@ -147,7 +147,7 @@ namespace FluidForge.Tests
                 () => TunnelGeometry.CreateCylinder(300f, -1f, Vector3.Zero, 16));
         }
 
-        // --- Hilfsfunktionen ------------------------------------------------
+        // --- Helper functions -----------------------------------------------
 
         internal static (Vector3 Min, Vector3 Max) BoundingBox(IReadOnlyList<StlTriangle> triangles)
         {
@@ -174,7 +174,7 @@ namespace FluidForge.Tests
                 Vector3 centroid = (t.A + t.B + t.C) / 3.0f;
                 float outward = Vector3.Dot(t.Normal, centroid - center);
 
-                Assert.True(outward > 0.0f, $"Dreieck {i} zeigt nach innen (Skalarprodukt {outward}).");
+                Assert.True(outward > 0.0f, $"Triangle {i} points inward (dot product {outward}).");
             }
         }
 
@@ -199,7 +199,7 @@ namespace FluidForge.Tests
             {
                 Assert.Equal(1, edge.Value);
                 Assert.True(edges.ContainsKey((edge.Key.To, edge.Key.From)),
-                    $"Kante {edge.Key.From} → {edge.Key.To} hat keine Gegenkante.");
+                    $"Edge {edge.Key.From} → {edge.Key.To} has no opposite edge.");
             }
         }
     }

@@ -10,11 +10,11 @@ using System.Text.Json.Nodes;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Berichtserstellung, Metrik-Extraktion und Konsolenausgabe für <see cref="MeshCalibration"/>.
+    /// Report generation, metric extraction, and console summary output for <see cref="MeshCalibration"/>.
     /// </summary>
     internal static class MeshCalibrationReporter
     {
-        /// <summary>Überwachte Größen aus <see cref="ICalibrationSolverOptions.MonitoredMetricNames"/> oder generisch aus <c>solvers/*.json</c>, sonst "Drag".</summary>
+        /// <summary>Monitored metrics from <see cref="ICalibrationSolverOptions.MonitoredMetricNames"/> or generically from <c>solvers/*.json</c>, defaulting to "Drag".</summary>
         public static List<string> ResolveMonitoredMetrics(ProjectContext context)
         {
             var list = new List<string>();
@@ -42,8 +42,8 @@ namespace FluidForge.Core
                     {
                         try
                         {
-                            // Die Projektdateien tragen //-Kommentare. Ohne CommentHandling scheiterte
-                            // das Parsen still, und es wurde nur "Drag" ueberwacht (Servertest 06.11.2026).
+                            // Project JSON files contain //-comments. Without CommentHandling, parsing
+                            // failed silently and only "Drag" was monitored (server test 06.11.2026).
                             var node = JsonNode.Parse(
                                 File.ReadAllText(file),
                                 documentOptions: new JsonDocumentOptions
@@ -85,9 +85,9 @@ namespace FluidForge.Core
         public static void SaveCsvReport(string csvPath, CalibrationDecision decision, List<string> metrics)
         {
             var csv = new StringBuilder();
-            csv.Append("Stufe;Faktor;MeshCells;Dauer_s;");
+            csv.Append("Level;ScaleFactor;MeshCells;Duration_s;");
             foreach (var m in metrics) csv.Append($"{m};");
-            csv.AppendLine("AbweichungRef;Konvergiert;YPlus_P95;YPlus_Ok;NormiertRef;Schichten;SchichtDicke_mm;Wandstufe;Tri;Quad;Prism;Hexa;Tet;Pyramiden;Blockage_%;CD_p;CD_v");
+            csv.AppendLine("DeviationFromRef;Converged;YPlus_P95;YPlus_Ok;NormalizedToRef;Layers;LayerThickness_mm;WallStage;Tri;Quad;Prism;Hex;Tet;Pyramid;Blockage_pct;CD_p;CD_v");
 
             foreach (var s in decision.AllStages.OrderBy(st => st.LevelIndex))
             {
@@ -104,7 +104,7 @@ namespace FluidForge.Core
                     maxDev = devs.Count > 0 ? devs.Values.Max() : 0f;
                 }
 
-                // Normiert nach MetricTolerance (TODO-W1): höchstens 1 = innerhalb der Toleranz inkl. Mindestbetrag.
+                // Normalized per MetricTolerance (TODO-W1): at most 1 = within tolerance including absolute floor.
                 float maxNorm = 0f;
                 if (decision.NormalizedDeviationsToRef != null
                     && decision.NormalizedDeviationsToRef.TryGetValue(s.LevelIndex, out var norms) && norms.Count > 0)
@@ -208,7 +208,7 @@ namespace FluidForge.Core
             ["IsMonotonic"] = gci.IsMonotonic,
             ["IsAsymptotic"] = gci.IsAsymptotic,
             ["Warning"] = gci.Warning,
-            // Richardson-Extrapolation der Hauptgröße (null, wenn nicht im asymptotischen Bereich)
+            // Richardson extrapolation of the primary metric (null when not in the asymptotic range)
             ["ExtrapolatedValue"] = float.IsFinite(gci.ExtrapolatedValue) ? gci.ExtrapolatedValue : null,
             ["ExtrapolatedDeviationPercent"] = float.IsFinite(gci.ExtrapolatedDeviationPercent) ? gci.ExtrapolatedDeviationPercent : null
         };
@@ -250,7 +250,7 @@ namespace FluidForge.Core
             string jsonPath = Path.Combine(fullCalibDir, "calibration.json");
             File.WriteAllText(jsonPath, jsonContent, Encoding.UTF8);
 
-            // Kopie nach latest_calibration.* im Kalibrierungsverzeichnis
+            // Copy to latest_calibration.* in the calibration directory
             string latestJson = Path.Combine(workingDir, MeshCalibration.CalibrationDirectoryName, MeshCalibration.LatestCalibrationJson);
             string latestCsv = Path.Combine(workingDir, MeshCalibration.CalibrationDirectoryName, MeshCalibration.LatestCalibrationCsv);
             File.WriteAllText(latestJson, jsonContent, Encoding.UTF8);
@@ -258,9 +258,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Warnt, wenn die Stufen mit unterschiedlicher Wandschicht (Schichtzahl, Dicke oder Ersatznetz) gerechnet wurden:
-        /// dann misst die Reihe nicht nur den Netzeinfluss (Bericht-Lauf 09.11.2026: 21 → 16 Schichten).
-        /// <c>null</c>, wenn alles gleich ist oder keine Wandschicht-Angaben vorliegen.
+        /// Warns if levels were meshed with differing boundary-layer settings (layer count, thickness, or
+        /// fallback mesh): in that case the sequence does not isolate pure mesh refinement (run 09.11.2026:
+        /// 21 -> 16 layers). Returns <c>null</c> when consistent or when no boundary-layer data is present.
         /// </summary>
         public static string? DescribeLayerMismatch(IReadOnlyList<CalibrationStageData> stages)
         {
@@ -270,14 +270,14 @@ namespace FluidForge.Core
             var counts = withLayers.Select(st => st.BoundaryLayerLayers).Distinct().ToList();
             if (counts.Count > 1)
             {
-                string list = string.Join(", ", withLayers.Select(st => $"Stufe {st.LevelIndex}: {st.BoundaryLayerLayers}"));
-                return $"Die Stufen haben unterschiedliche Schichtzahlen ({list}). Die Netzstudie ist dadurch nicht vergleichbar.";
+                string list = string.Join(", ", withLayers.Select(st => $"Level {st.LevelIndex}: {st.BoundaryLayerLayers}"));
+                return $"Levels have differing boundary-layer counts ({list}). The grid convergence study is not directly comparable.";
             }
 
             var fallback = withLayers.Where(st => st.BoundaryLayerStage >= 3).Select(st => st.LevelIndex).ToList();
             if (fallback.Count > 0)
             {
-                return $"Stufe(n) {string.Join(", ", fallback)} wurden mit Ersatznetz (überall verdünnte Wandschicht) gerechnet und sind nur eingeschränkt vergleichbar.";
+                return $"Level(s) {string.Join(", ", fallback)} used the fallback mesh (globally thinned boundary layer) and have limited comparability.";
             }
 
             return null;
@@ -287,12 +287,12 @@ namespace FluidForge.Core
         {
             TextWriter writer = output ?? Console.Out;
             writer.WriteLine("\n==================================================");
-            writer.WriteLine(" KALIBRIERUNGSERGEBNIS");
+            writer.WriteLine(" CALIBRATION RESULT");
             writer.WriteLine("==================================================");
             writer.WriteLine(decision.SummaryMessage);
 
             double totalSeconds = decision.AllStages.Sum(st => st.DurationSeconds);
-            writer.WriteLine($"   Dauer der Kalibrierung gesamt: {MeshCalibration.FormatDuration(totalSeconds)} ({decision.AllStages.Count} Stufen)");
+            writer.WriteLine($"   Total calibration duration: {MeshCalibration.FormatDuration(totalSeconds)} ({decision.AllStages.Count} levels)");
             foreach (var st in decision.AllStages.OrderBy(st => st.LevelIndex))
             {
                 var extras = new List<string>();
@@ -300,7 +300,7 @@ namespace FluidForge.Core
                                      + st.VolumeHexahedra + st.VolumeTetrahedra + st.VolumePyramids;
                 if (totalBreakdown > 0)
                 {
-                    extras.Add($"Tri={st.SurfaceTriangles:N0}, Quad={st.SurfaceQuads:N0}, Prism={st.VolumePrisms:N0}, Hexa={st.VolumeHexahedra:N0}, Tet={st.VolumeTetrahedra:N0}, Pyr={st.VolumePyramids:N0}");
+                    extras.Add($"Tri={st.SurfaceTriangles:N0}, Quad={st.SurfaceQuads:N0}, Prism={st.VolumePrisms:N0}, Hex={st.VolumeHexahedra:N0}, Tet={st.VolumeTetrahedra:N0}, Pyr={st.VolumePyramids:N0}");
                 }
                 if (float.IsFinite(st.TunnelBlockagePercent))
                 {
@@ -317,11 +317,11 @@ namespace FluidForge.Core
                     extras.Add($"CD_p={cdp}, CD_v={cdv}");
                 }
                 string extraSuffix = extras.Count > 0 ? $" | {string.Join(" | ", extras)}" : string.Empty;
-                writer.WriteLine($"     Stufe {st.LevelIndex} (Faktor {st.Factor.ToString("0.00", CultureInfo.InvariantCulture)}): {MeshCalibration.FormatDuration(st.DurationSeconds)}, {st.MeshCells:N0} Zellen{extraSuffix}");
+                writer.WriteLine($"     Level {st.LevelIndex} (factor {st.Factor.ToString("0.00", CultureInfo.InvariantCulture)}): {MeshCalibration.FormatDuration(st.DurationSeconds)}, {st.MeshCells:N0} cells{extraSuffix}");
             }
 
             string? layerWarning = DescribeLayerMismatch(decision.AllStages);
-            if (layerWarning != null) writer.WriteLine($"   [WARNUNG] {layerWarning}");
+            if (layerWarning != null) writer.WriteLine($"   {OutputConventions.WarningTag} {layerWarning}");
 
             if (decision.Gci != null)
             {
@@ -335,35 +335,35 @@ namespace FluidForge.Core
                     ? $"{decision.Gci.GciSelectedPercent.ToString("F2", CultureInfo.InvariantCulture)} %"
                     : "n/a";
 
-                writer.WriteLine($"   Beobachtete Ordnung p:        {pStr}");
-                writer.WriteLine($"   GCI (Feinstes Netz):          {gciFineStr}");
-                writer.WriteLine($"   GCI (Gewähltes/Mittleres):    {gciSelStr}");
+                writer.WriteLine($"   Observed order p:              {pStr}");
+                writer.WriteLine($"   GCI (Finest mesh):             {gciFineStr}");
+                writer.WriteLine($"   GCI (Selected/Medium):         {gciSelStr}");
                 if (float.IsFinite(decision.Gci.ExtrapolatedValue))
                 {
-                    writer.WriteLine($"   Extrapolierter netzunabhängiger Wert (Hauptgröße): {decision.Gci.ExtrapolatedValue.ToString("0.#####", CultureInfo.InvariantCulture)} "
-                        + $"(feinstes Netz weicht {decision.Gci.ExtrapolatedDeviationPercent:0.0} % davon ab)");
+                    writer.WriteLine($"   Extrapolated grid-independent value (primary metric): {decision.Gci.ExtrapolatedValue.ToString("0.#####", CultureInfo.InvariantCulture)} "
+                        + $"(finest mesh deviates by {decision.Gci.ExtrapolatedDeviationPercent:0.0} %)");
                 }
                 if (decision.Gci.Warning != null)
                 {
-                    writer.WriteLine($"   [WARNUNG] {decision.Gci.Warning}");
+                    writer.WriteLine($"   {OutputConventions.WarningTag} {decision.Gci.Warning}");
                 }
             }
 
             if (decision.Success && decision.SelectedStage != null)
             {
-                writer.WriteLine($"\n-> Empfohlener Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.SelectedStage.LevelIndex})");
+                writer.WriteLine($"\n-> Recommended mesh factor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Level {decision.SelectedStage.LevelIndex})");
             }
             else if (!decision.Success && decision.FallbackStage != null)
             {
-                writer.WriteLine($"   -> Empfohlener Rückfall-Faktor (feinste gültige Kandidatenstufe): {decision.FallbackStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Stufe {decision.FallbackStage.LevelIndex})");
+                writer.WriteLine($"   -> Recommended fallback factor (finest valid candidate level): {decision.FallbackStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} (Level {decision.FallbackStage.LevelIndex})");
             }
             writer.WriteLine("==================================================\n");
         }
 
-        /// <summary>Dauer einer Kalibrierstufe ins Log (Plan wandschicht_zellzahl.md, WZ10).</summary>
+        /// <summary>Logs the duration of a calibration level (boundary-layer cell count plan, WZ10).</summary>
         public static void PrintStageDuration(int level, float factor, double seconds)
         {
-            Console.WriteLine($"       ⏱ Dauer Stufe {level} (Faktor {factor.ToString("0.00", CultureInfo.InvariantCulture)}): {MeshCalibration.FormatDuration(seconds)}");
+            Console.WriteLine($"       ⏱ Duration Level {level} (factor {factor.ToString("0.00", CultureInfo.InvariantCulture)}): {MeshCalibration.FormatDuration(seconds)}");
         }
     }
 }

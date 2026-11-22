@@ -5,14 +5,13 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Zugriff auf die mitgelieferten JSON-Dateien von <c>src/projects/MantaAuv/</c> (TODO-24).
+    /// Access to the bundled JSON files of <c>src/projects/MantaAuv/</c> (TODO-24).
     ///
     /// <para>
-    /// <b>Warum dieser Helfer existiert:</b> <c>JsonConfigLoader</c> überspringt eine fehlende
-    /// Datei kommentarlos — das ist im Lauf richtig, im Test aber die schlimmste Sorte Fehler.
-    /// Ein Test, der eine nicht gefundene Datei lädt, vergleicht die Code-Standards mit sich
-    /// selbst und ist grün, ohne irgendetwas geprüft zu haben. Deshalb wird hier vorher hart
-    /// auf Existenz geprüft.
+    /// <b>Why this helper exists:</b> <c>JsonConfigLoader</c> silently skips a missing
+    /// file — that is right during a run, but the worst kind of bug in a test.
+    /// A test that loads a non-existent file compares code defaults against themselves
+    /// and passes without having tested anything. Therefore existence is strictly checked here first.
     /// </para>
     /// </summary>
     internal static class MantaProjectFiles
@@ -20,8 +19,8 @@ namespace FluidForge.Tests
         public const string ProjectName = "MantaAuv";
 
         /// <summary>
-        /// Der Ordner <c>src/projects/MantaAuv/</c>. Gesucht wird aufwärts vom
-        /// Arbeitsverzeichnis, weil die Tests aus <c>bin/Debug/net9.0</c> laufen.
+        /// The folder <c>src/projects/MantaAuv/</c>. Searched upwards from the
+        /// working directory because tests run from <c>bin/Debug/net9.0</c>.
         /// </summary>
         public static string Directory
         {
@@ -30,41 +29,41 @@ namespace FluidForge.Tests
                 string? directory = ProjectPaths.ResolveProjectDirectory(ProjectName);
 
                 Assert.True(directory != null,
-                    $"Der Ordner src/projects/{ProjectName}/ wurde nicht gefunden — "
-                    + "ohne ihn prüfen die folgenden Tests nichts.");
+                    $"The folder src/projects/{ProjectName}/ was not found — "
+                    + "without it, the following tests verify nothing.");
 
                 return directory!;
             }
         }
 
         /// <summary>
-        /// Lädt eine Datei des Projekts über die Schichten des Loaders und stellt sicher, dass
-        /// sie auch wirklich existiert.
+        /// Loads a project file through the loader layers and ensures that
+        /// it actually exists.
         /// </summary>
-        /// <param name="relativeName">z.B. <c>simulation.json</c> oder <c>solvers/su2.json</c>.</param>
+        /// <param name="relativeName">e.g. <c>simulation.json</c> or <c>solvers/su2.json</c>.</param>
         public static T Load<T>(T defaults, string relativeName) where T : class
         {
             string directory = Directory;
             string file = Path.Combine(directory, relativeName.Replace('/', Path.DirectorySeparatorChar));
 
             Assert.True(File.Exists(file),
-                $"src/projects/{ProjectName}/{relativeName} fehlt — ohne die Datei vergleicht "
-                + "dieser Test die Code-Standards mit sich selbst.");
+                $"src/projects/{ProjectName}/{relativeName} is missing — without this file, "
+                + "this test compares code defaults against themselves.");
 
             return JsonConfigLoader.LoadForProject(defaults, relativeName, directory).Value;
         }
 
-        /// <summary>Die <c>simulation.json</c> des Projekts.</summary>
+        /// <summary>The <c>simulation.json</c> of the project.</summary>
         public static SimulationConfig Simulation()
             => Load(SimulationConfig.CreateDefault(), "simulation.json");
 
-        /// <summary>Die <c>project.json</c> des Projekts, samt Projektname aus dem Ordner.</summary>
+        /// <summary>The <c>project.json</c> of the project, including project name from the folder.</summary>
         public static ProjectConfig Project(ProjectConfig defaults)
         {
             ProjectConfig loaded = Load(ProjectConfigDto.FromProjectConfig(defaults), ProjectPaths.ManifestFileName)
                 .ToProjectConfig();
 
-            // Der Ordnername ist der Projektname (Entscheidung 1) — genau wie in Program.cs.
+            // The folder name is the project name (Decision 1) — just like in Program.cs.
             loaded.ProjectName = ProjectName;
 
             return loaded;

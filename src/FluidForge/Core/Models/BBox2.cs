@@ -4,8 +4,8 @@ using System.Numerics;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Zwei-dimensionale Bounding Box (AABB) in Millimetern.
-    /// Ergonomisch gestaltet analog zu PicoGKs BBox3 (vecMin/vecMax) und MeshBounds (Min/Max).
+    /// Two-dimensional axis-aligned bounding box (AABB) in millimeters.
+    /// Designed ergonomically after PicoGK's BBox3 (vecMin/vecMax) and MeshBounds (Min/Max).
     /// </summary>
     public readonly struct BBox2
     {

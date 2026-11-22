@@ -4,29 +4,28 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Konvention für die Unsicherheit eines Kennwerts (Paket B, 08.11.2026). Ein Solver darf neben
-    /// <c>Drag</c> auch <c>Uncertainty_Drag</c> in <see cref="ModelRecord.PassiveParameters"/> schreiben:
-    /// die <b>relative</b> Standardunsicherheit (1σ) des Werts, z. B. 0,02 für ±2 %. Bei SU2 kommt sie
-    /// aus den Blockmitteln des Endfensters; eine ruhig auskonvergierte Rechnung hat fast 0, eine mit
-    /// Wirbelablösung deutlich mehr.
+    /// Convention for metric uncertainty. Alongside <c>Drag</c>, a solver may write
+    /// <c>Uncertainty_Drag</c> into <see cref="ModelRecord.PassiveParameters"/>: the
+    /// <b>relative</b> standard uncertainty (1σ) of the value, e.g., 0.02 for ±2%.
+    /// In SU2 this comes from block averages over the trailing window; a smoothly converged run
+    /// has near-zero uncertainty, while vortex shedding yields higher values.
     ///
     /// <para>
-    /// Der Kern kennt keinen Solver: Er liest nur diese Schlüssel. Der Bayes-Optimierer nutzt sie als
-    /// Rauschen je Rechnung, so dass schwankende Ergebnisse das Ersatzmodell weniger stark ziehen.
-    /// Fehlt der Schlüssel, gilt die Unsicherheit als unbekannt (das Modell schätzt dann ein gemeinsames
-    /// Rauschen wie bisher).
+    /// The core is solver-agnostic and only reads these keys. Bayesian optimization uses them
+    /// as per-point observation noise so noisy evaluations pull the surrogate less strongly.
+    /// If absent, uncertainty is treated as unknown and the model estimates a shared noise level.
     /// </para>
     /// </summary>
     public static class MetricUncertainty
     {
         public const string Prefix = "Uncertainty_";
 
-        /// <summary>Obergrenze, damit ein einzelner Ausreißer das Modell nicht aushebelt (±100 %).</summary>
+        /// <summary>Upper bound so a single outlier cannot dominate the surrogate (±100%).</summary>
         public const double MaximumRelative = 1.0;
 
         public static string KeyFor(string metric) => Prefix + metric;
 
-        /// <summary>Relative Unsicherheit eines Kennwerts, falls vorhanden und endlich.</summary>
+        /// <summary>Returns the relative uncertainty of a metric if present, finite, and non-negative.</summary>
         public static bool TryGet(ModelRecord record, string metric, out double relative)
         {
             relative = 0;
@@ -37,10 +36,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Grobe relative Unsicherheit der Fitness: Wurzel aus der Summe der Quadrate der relativen
-        /// Unsicherheiten der genannten Kennwerte (für Produkte und Quotienten wie CL/CD oder
-        /// Volumen·Abstand/Drag³ in erster Näherung richtig, Exponenten bleiben unberücksichtigt).
-        /// Ohne Namen werden alle vorhandenen Unsicherheiten des Datensatzes genommen.
+        /// Approximate relative uncertainty of fitness: root-sum-of-squares of the relative
+        /// uncertainties of the specified metrics (first-order approximation for products/quotients).
+        /// If no metric names are given, all present uncertainties in the record are combined.
         /// </summary>
         public static bool TryGetFitness(ModelRecord record, IReadOnlyCollection<string> metrics, out double relative)
         {

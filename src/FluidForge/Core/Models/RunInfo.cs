@@ -3,67 +3,66 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Inhalt des „Fahrtenschreibers" <c>Ergebnisse/&lt;Projekt&gt;/run-info.json</c> (TODO-50, F24):
-    /// mit welchem Code-Stand, welchen Programmversionen, welchem Zufalls-Seed und auf welchem
-    /// Rechner ein Lauf gerechnet hat. Reine Information — nichts im Programm entscheidet danach.
-    /// Die Feldnamen sind deutsch, weil die Datei für Menschen geschrieben wird.
+    /// Contents of the run flight-recorder <c>results/&lt;Project&gt;/run-info.json</c>:
+    /// records which code revision, tool versions, random seed, and host machine a run used.
+    /// Purely informational — nothing in the program makes decisions based on it.
     /// </summary>
     public sealed class RunInfo
     {
-        public const string StatusRunning = "laeuft";
-        public const string StatusCompleted = "abgeschlossen";
-        public const string StatusAborted = "abgebrochen";
+        public const string StatusRunning = "running";
+        public const string StatusCompleted = "completed";
+        public const string StatusAborted = "aborted";
 
         public int Format { get; set; } = 1;
-        public string Projekt { get; set; } = "";
-        public string Start { get; set; } = "";
-        public string? Ende { get; set; }
+        public string Project { get; set; } = "";
+        public string StartedAt { get; set; } = "";
+        public string? FinishedAt { get; set; }
 
-        /// <summary><c>laeuft</c>, <c>abgeschlossen</c> oder <c>abgebrochen</c>. Nach einem harten
-        /// Abbruch (Neustart, <c>kill</c>) bleibt <c>laeuft</c> stehen; <c>status</c> erkennt den
-        /// Fall über das Journal.</summary>
+        /// <summary><c>running</c>, <c>completed</c>, or <c>aborted</c>. After a hard abort
+        /// (reboot, <c>kill</c>), <c>running</c> remains; <c>status</c> detects this
+        /// via the journal.</summary>
         public string Status { get; set; } = StatusRunning;
 
-        public List<string> Aufruf { get; set; } = new();
-        public int ZufallsSeed { get; set; }
-        public RunInfoMachine Rechner { get; set; } = new();
-        public RunInfoSource Quellstand { get; set; } = new();
+        public List<string> CommandLine { get; set; } = new();
+        public int RandomSeed { get; set; }
+        public RunInfoMachine Host { get; set; } = new();
+        public RunInfoSource Source { get; set; } = new();
 
-        /// <summary>Programmname → Version, <c>"unbekannt"</c> wenn nicht ermittelbar.</summary>
-        public Dictionary<string, string> Programme { get; set; } = new();
+        /// <summary>Tool name → version, <c>"unknown"</c> if unavailable.</summary>
+        public Dictionary<string, string> Tools { get; set; } = new();
 
-        /// <summary>Fingerabdruck der geladenen Konfigurationswerte (<see cref="ConfigFingerprint"/>).</summary>
-        public string KonfigurationsHash { get; set; } = "";
+        /// <summary>Fingerprint of the loaded configuration values (<see cref="ConfigFingerprint"/>).</summary>
+        public string ConfigHash { get; set; } = "";
 
-        public List<RunInfoResume> Wiederaufnahmen { get; set; } = new();
+        public List<RunInfoResume> Resumes { get; set; } = new();
     }
 
     public sealed class RunInfoMachine
     {
         public string Name { get; set; } = "";
-        public string Betriebssystem { get; set; } = "";
-        public int Prozessorkerne { get; set; }
+        public string OperatingSystem { get; set; } = "";
+        public int ProcessorCount { get; set; }
         public string DotNet { get; set; } = "";
     }
 
     /// <summary>
-    /// Code-Stand. Auf dem Server aus <c>deploy-info.json</c> (schreibt <c>sim.ps1</c> beim
-    /// Deploy), lokal direkt aus <c>.git</c> (<see cref="GitInfo"/>).
+    /// Source revision metadata. On the server read from <c>deploy-info.json</c> (written by
+    /// <c>sim.ps1</c> during deploy); locally read directly from <c>.git</c> (<see cref="GitInfo"/>).
     /// </summary>
     public sealed class RunInfoSource
     {
         public string? Commit { get; set; }
         public string? Branch { get; set; }
         public string? DeployHash { get; set; }
-        public string? DeployZeit { get; set; }
+        public string? DeployedAt { get; set; }
 
-        /// <summary><c>"true"</c>, <c>"false"</c> oder <c>"unbekannt"</c>.</summary>
-        public string UncommittedChanges { get; set; } = "unbekannt";
+        /// <summary><c>"true"</c>, <c>"false"</c>, or <c>"unknown"</c>.</summary>
+        public string UncommittedChanges { get; set; } = "unknown";
     }
 
     public sealed class RunInfoResume
     {
-        public string Zeit { get; set; } = "";
-        public int UebernommeneRechnungen { get; set; }
+        public string Timestamp { get; set; } = "";
+        public int AdoptedEvaluations { get; set; }
     }
 }

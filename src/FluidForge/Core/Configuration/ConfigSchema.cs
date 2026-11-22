@@ -8,23 +8,17 @@ using System.Text.Json.Nodes;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Gleicht die Schlüssel einer Konfigurationsdatei gegen die Properties des Zieltyps ab.
-    ///
-    /// <para>
-    /// Vor TODO-22 verschluckte der Merge einen Tippfehler stillschweigend: <c>"MachNumer"</c>
-    /// landete im JsonNode, fiel beim Deserialisieren weg, und der Lauf rechnete stundenlang
-    /// mit dem Standardwert weiter. Bei mehreren Projekten × mehreren Dateien wird das zur
-    /// Falle — deshalb ist ein unbekannter Schlüssel ab jetzt ein Abbruch (Entscheidung 8).
-    /// </para>
+    /// Validates the keys of a configuration file against the properties of the target type.
+    /// Unknown keys are rejected immediately instead of being silently ignored during deserialization.
     /// </summary>
     public static class ConfigSchema
     {
         /// <summary>
-        /// Prüft alle Schlüssel von <paramref name="overlay"/> gegen <paramref name="targetType"/>.
+        /// Validates all keys in <paramref name="overlay"/> against <paramref name="targetType"/>.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Die Datei nennt mindestens einen Schlüssel, den der Zieltyp nicht kennt. Die Meldung
-        /// führt Dateiname, Schlüssel und die nächstähnlichen gültigen Namen.
+        /// The file contains at least one key unknown to the target type. The message lists
+        /// the filename, invalid key(s), and closest valid property names.
         /// </exception>
         public static void Validate(Type targetType, JsonObject overlay, string filePath)
         {
@@ -34,16 +28,16 @@ namespace FluidForge.Core
             if (problems.Count == 0) return;
 
             string headline = problems.Count == 1
-                ? "nennt einen Schlüssel, den"
-                : $"nennt {problems.Count} Schlüssel, die";
+                ? "contains a key unknown to"
+                : $"contains {problems.Count} keys unknown to";
 
             throw new InvalidOperationException(
-                $"[CONFIG] '{filePath}' {headline} der Typ {targetType.Name} nicht kennt:"
+                $"{OutputConventions.ConfigTag} '{filePath}' {headline} type {targetType.Name}:"
                 + Environment.NewLine
                 + string.Join(Environment.NewLine, problems.Select(problem => "          " + problem))
                 + Environment.NewLine
-                + "          Ein unbekannter Schlüssel wirkt nicht: er fiele beim Lesen weg und der "
-                + "Lauf rechnete mit dem Standardwert weiter.");
+                + "          An unknown key has no effect: it would be silently dropped and the "
+                + "run would continue using the default value.");
         }
 
         private static void Collect(Type type, JsonObject overlay, string prefix, List<string> problems)
@@ -52,7 +46,7 @@ namespace FluidForge.Core
 
             foreach (KeyValuePair<string, JsonNode?> entry in overlay)
             {
-                // Groß-/Kleinschreibung ignorieren — genau wie der Deserialisierer.
+                // Case-insensitive match — matching the JSON deserializer.
                 PropertyInfo? property = properties.FirstOrDefault(
                     candidate => string.Equals(candidate.Name, entry.Key, StringComparison.OrdinalIgnoreCase));
 
@@ -62,18 +56,17 @@ namespace FluidForge.Core
                     continue;
                 }
 
-                // Nur in echte Objekte absteigen. Ein Dictionary hat freie Schlüssel: "Length"
-                // unter BaseParameters ist ein Parametername und kein Property-Name, genauso
-                // wie "Drag" unter ResultMetrics ein Metrikname ist.
+                // Only recurse into real objects. A Dictionary has free-form keys: "Length"
+                // under BaseParameters is a parameter name, not a property name, just as
+                // "Drag" under ResultMetrics is a metric name.
                 if (entry.Value is JsonObject nested && HasOwnProperties(property.PropertyType))
                     Collect(property.PropertyType, nested, prefix + property.Name + ".", problems);
             }
         }
 
         /// <summary>
-        /// Hat dieser Typ eigene, benannte Properties — oder ist er ein Behälter mit freien
-        /// Schlüsseln? Zeichenketten, Zahlen, Aufzählungen und alles Aufzählbare (Dictionary,
-        /// List, HashSet, Array) sind Behälter und werden nicht betreten.
+        /// Returns whether this type has its own named properties rather than being a value or
+        /// free-key container (string, primitive, enum, or IEnumerable such as Dictionary/List/Array).
         /// </summary>
         private static bool HasOwnProperties(Type type)
         {
@@ -85,9 +78,6 @@ namespace FluidForge.Core
 
         private static string Suggest(string key, PropertyInfo[] properties)
         {
-            // Je länger der Schlüssel, desto mehr Vertipper lässt man durchgehen: bei
-            // "BouncerTolerance" ist ein Abstand von 3 noch offensichtlich gemeint,
-            // bei "Min" wäre er es nicht mehr.
             int tolerance = Math.Max(2, key.Length / 3);
 
             List<string> close = properties
@@ -100,33 +90,27 @@ namespace FluidForge.Core
                 .ToList();
 
             if (close.Count > 0)
-                return "meintest du " + string.Join(" oder ", close) + "?";
+                return "did you mean " + string.Join(" or ", close) + "?";
 
             string[] valid = properties
                 .Select(property => property.Name)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            if (valid.Length == 0) return "dieser Typ hat überhaupt keine Einstellungen.";
+            if (valid.Length == 0) return "this type has no configurable settings.";
 
-            // Bewusst IMMER die vollständige Liste (04.11.2026). Vorher wurde nach 15 Namen mit
-            // "u.a. …" abgekürzt — alphabetisch, also ohne Rücksicht darauf, welcher Name gemeint
-            // war. Mit dem 16. SU2-Schlüssel fiel so ausgerechnet "TurbulenceModel" aus der
-            // Meldung. Wer hier landet, hat keinen ähnlichen Namen getroffen und braucht genau
-            // diese Liste; ein paar Zeilen mehr im Abbruch kosten nichts.
-            return "gültig wären: " + string.Join(", ", valid);
+            // Always show the full list so no valid key is hidden by truncation.
+            return "valid keys are: " + string.Join(", ", valid);
         }
 
         /// <summary>
-        /// Levenshtein-Abstand, Groß-/Kleinschreibung egal. Nur für die Vorschlagsliste —
-        /// die Prüfung selbst hängt nicht daran.
+        /// Case-insensitive Levenshtein distance for typo suggestions.
         /// </summary>
         private static int Distance(string left, string right)
         {
             left = left.ToLowerInvariant();
             right = right.ToLowerInvariant();
 
-            // Zwei Zeilen genügen: für die Zeile i braucht man nur i-1.
             var previous = new int[right.Length + 1];
             var current = new int[right.Length + 1];
 

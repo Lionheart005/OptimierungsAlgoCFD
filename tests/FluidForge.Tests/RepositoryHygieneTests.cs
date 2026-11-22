@@ -10,19 +10,19 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-32: Es liegen keine Zugangsdaten im Repo — geprüft am 04.11.2026 über den
-    /// Arbeitsstand und alle 71 Commits der Historie. Dieser Test sorgt dafür, dass es so bleibt.
+    /// TODO-32: No credentials are in the repository — verified on 2026-11-04 across the
+    /// working tree and all 71 commits in history. This test ensures it stays that way.
     ///
     /// <para>
-    /// Gesucht wird nach <b>Geheimnissen</b>, nicht nach Namen: Server-Benutzername und interne
-    /// Adressen dürfen im Repo stehen (so entschieden am 04.11.2026). Ein privater Schlüssel,
-    /// ein GitHub-Token oder ein eingetipptes Passwort dagegen nie — die wären nach einem Push
-    /// nicht mehr zurückzuholen, auch nicht durch einen Commit, der sie wieder löscht.
+    /// We scan for <b>secrets</b>, not names: server usernames and internal addresses may appear
+    /// in the repository (decided on 2026-11-04). A private key, a GitHub token, or a typed
+    /// password, however, must never be committed — after a push they could not be retracted,
+    /// not even by a follow-up commit that deletes them.
     /// </para>
     /// </summary>
     public class RepositoryHygieneTests
     {
-        /// <summary>Die Ordner, die ins Repo gehören und auf den Server deployt werden.</summary>
+        /// <summary>The folders that belong in the repository and are deployed to the server.</summary>
         private static readonly string[] ScannedFolders = { "src", "scripts", "config" };
 
         private static readonly string[] TextExtensions =
@@ -30,14 +30,14 @@ namespace FluidForge.Tests
 
         private static readonly (string Name, Regex Pattern)[] SecretPatterns =
         {
-            ("privater Schlüssel",   new Regex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-            ("GitHub-Token",         new Regex(@"\bghp_[A-Za-z0-9]{30,}")),
-            ("GitHub-Token (fein)",  new Regex(@"\bgithub_pat_[A-Za-z0-9_]{20,}")),
-            ("AWS-Zugangsschlüssel", new Regex(@"\bAKIA[0-9A-Z]{16}\b")),
-            ("API-Schlüssel (sk-)",  new Regex(@"\bsk-[A-Za-z0-9_-]{32,}")),
-            // Eine Zuweisung mit einem echten Wert, nicht das Wort an sich: "Passwort eingeben"
-            // in einer Anleitung ist harmlos, password = "abc123xyz" nicht.
-            ("Passwort/Token im Klartext", new Regex(
+            ("private key",                new Regex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+            ("GitHub token",               new Regex(@"\bghp_[A-Za-z0-9]{30,}")),
+            ("GitHub token (fine-grained)", new Regex(@"\bgithub_pat_[A-Za-z0-9_]{20,}")),
+            ("AWS access key",             new Regex(@"\bAKIA[0-9A-Z]{16}\b")),
+            ("API key (sk-)",              new Regex(@"\bsk-[A-Za-z0-9_-]{32,}")),
+            // An assignment with a real value, not the word itself: "enter password"
+            // in documentation is harmless, password = "abc123xyz" is not.
+            ("plaintext password/token",   new Regex(
                 @"(?i)\b(password|passwort|passwd|secret|api[_-]?key|access[_-]?token)\b[""']?\s*[:=]\s*[""'][^""'\s]{6,}[""']")),
         };
 
@@ -46,9 +46,9 @@ namespace FluidForge.Tests
             get
             {
                 string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
-                Assert.True(projectsRoot != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
+                Assert.True(projectsRoot != null, "Directory src/projects/ was not found.");
 
-                // src/projects -> src -> Repo-Wurzel
+                // src/projects -> src -> repo root
                 return Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot)!)!;
             }
         }
@@ -67,7 +67,7 @@ namespace FluidForge.Tests
                     string normalized = file.Replace('\\', '/');
                     if (normalized.Contains("/bin/") || normalized.Contains("/obj/")) continue;
 
-                    // Maschinenspezifische Dateien sind gitignored und gehen nie ins Repo.
+                    // Machine-specific files are gitignored and never enter the repo.
                     if (JsonConfigLoader.IsMachineSpecific(file)) continue;
 
                     if (TextExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
@@ -96,11 +96,11 @@ namespace FluidForge.Tests
             }
 
             Assert.True(findings.Count == 0,
-                "Mögliche Zugangsdaten im Repo — vor dem nächsten Commit entfernen:\n  "
+                "Possible credentials in repository — remove before next commit:\n  "
                 + string.Join("\n  ", findings));
         }
 
-        /// <summary>Der Test muss überhaupt etwas zu sehen bekommen, sonst ist er grün, ohne zu prüfen.</summary>
+        /// <summary>The test must actually see source files; otherwise it passes without checking anything.</summary>
         [Fact]
         public void The_Scan_Actually_Sees_The_Sources()
         {
@@ -111,22 +111,22 @@ namespace FluidForge.Tests
             Assert.Contains("sim-runner.sh", files);
         }
 
-        /// <summary>Die Muster müssen echte Treffer auch erkennen — geprüft an erfundenen Werten.</summary>
+        /// <summary>The patterns must detect real hits — verified with fabricated values.</summary>
         [Theory]
         [InlineData("-----BEGIN OPENSSH PRIVATE KEY-----")]
         [InlineData("token: ghp_abcdefghijklmnopqrstuvwxyz0123456789")]
-        [InlineData("\"Password\": \"geheim123\"")]
+        [InlineData("\"Password\": \"secret123\"")]
         [InlineData("api_key = 'abcdef123456'")]
         public void The_Patterns_Recognize_Typical_Secrets(string line)
         {
             Assert.Contains(SecretPatterns, entry => entry.Pattern.IsMatch(line));
         }
 
-        /// <summary>Und sie schlagen bei normaler Doku nicht an.</summary>
+        /// <summary>And they do not trigger on ordinary documentation.</summary>
         [Theory]
-        [InlineData("müsstest du jedes Mal das Passwort eingeben")]
+        [InlineData("you would have to enter the password every time")]
         [InlineData("Permission denied (publickey,password)")]
-        [InlineData("\"MpiRunPath\": \"/home/lpleissner/miniconda/bin/mpirun\",")]
+        [InlineData("\"MpiRunPath\": \"/home/exampleuser/miniconda/bin/mpirun\",")]
         public void The_Patterns_Ignore_Ordinary_Text(string line)
         {
             Assert.DoesNotContain(SecretPatterns, entry => entry.Pattern.IsMatch(line));

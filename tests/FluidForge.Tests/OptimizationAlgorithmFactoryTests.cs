@@ -7,8 +7,8 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-10: die Algorithmuswahl kommt aus der Framework-Konfiguration
-    /// (simulation.json des Projekts) statt aus auskommentiertem Code in Program.cs.
+    /// TODO-10: algorithm selection comes from the framework configuration
+    /// (project simulation.json) rather than commented-out code in Program.cs.
     /// </summary>
     public class OptimizationAlgorithmFactoryTests
     {
@@ -28,8 +28,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein Tippfehler oder ein entferntes Verfahren (z. B. "Evolution") soll den Lauf
-        /// nicht abbrechen, sondern auf das Standardverfahren zurückfallen.
+        /// A typo or a removed algorithm (e.g. "Evolution") must not abort the run,
+        /// but fall back to the default algorithm.
         /// </summary>
         [Theory]
         [InlineData("Evolution")]
@@ -45,7 +45,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Standard seit 08.11.2026: Bayes (10 × 10-Vergleich auf Naca2D, siehe .plans/vergleich_optimierer.md).
+        /// Default since 2026-11-08: Bayes (10 × 10 comparison on Naca2D, see .plans/vergleich_optimierer.md).
         /// </summary>
         [Fact]
         public void Framework_Defaults_To_Bayes()

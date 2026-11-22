@@ -8,7 +8,7 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für die Auswertung und Archivierung von SU2-Verläufen (history.csv, TODO-35).
+    /// Tests for evaluating and archiving SU2 histories (history.csv, TODO-35).
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class Su2HistoryAnalyzerTests
@@ -63,7 +63,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // 1. Reine Verlaufsauswertung: Su2HistoryAnalyzer.Evaluate
+        // 1. Pure history evaluation: Su2HistoryAnalyzer.Evaluate
         // -------------------------------------------------------------------
 
         [Fact]
@@ -77,14 +77,14 @@ namespace FluidForge.Tests
 
             Su2HistoryResult result = Su2HistoryAnalyzer.Evaluate(lines, options);
 
-            // Letzte Zeile hat Inner_Iter = 179 -> 180 Iterationen
+            // Last row has Inner_Iter = 179 -> 180 iterations
             Assert.Equal(180, result.Iterations);
             Assert.True(result.Converged);
 
-            // -1.500 - (-6.800) = 5.300 Dekaden Abfall
+            // -1.500 - (-6.800) = 5.300 decades drop
             Assert.Equal(5.300f, result.ResidualDrop, 3);
 
-            // Letzte 3 Zeilen CD: 0.315, 0.310, 0.310 -> Mean ≈ 0.311667, (0.315 - 0.310) / 0.311667 ≈ 0.01607
+            // Last 3 rows CD: 0.315, 0.310, 0.310 -> Mean ≈ 0.311667, (0.315 - 0.310) / 0.311667 ≈ 0.01607
             Assert.True(result.Oscillation.ContainsKey("CD"));
             Assert.InRange(result.Oscillation["CD"], 0.015f, 0.017f);
         }
@@ -100,11 +100,11 @@ namespace FluidForge.Tests
 
             Su2HistoryResult result = Su2HistoryAnalyzer.Evaluate(lines, options);
 
-            // Inner_Iter = 499 -> 500 Iterationen (genau ITER erreicht)
+            // Inner_Iter = 499 -> 500 iterations (exactly reached ITER)
             Assert.Equal(500, result.Iterations);
             Assert.False(result.Converged);
 
-            // -1.200 - (-3.800) = 2.600 Dekaden
+            // -1.200 - (-3.800) = 2.600 decades
             Assert.Equal(2.600f, result.ResidualDrop, 3);
         }
 
@@ -119,7 +119,7 @@ namespace FluidForge.Tests
 
             Su2HistoryResult result = Su2HistoryAnalyzer.Evaluate(lines, options);
 
-            // Letzte 4 Zeilen: 0.300, 0.350, 0.300, 0.350 -> Mean = 0.325, Span = 0.050 -> Osc = 0.050 / 0.325 ≈ 0.1538
+            // Last 4 rows: 0.300, 0.350, 0.300, 0.350 -> Mean = 0.325, Span = 0.050 -> Osc = 0.050 / 0.325 ≈ 0.1538
             Assert.True(result.Oscillation.ContainsKey("CD"));
             Assert.Equal(0.050f / 0.325f, result.Oscillation["CD"], 3);
             Assert.Equal(0.325f, result.WindowMeans["CD"], 3);
@@ -149,7 +149,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // 2. Warnungen auf der Konsole
+        // 2. Console warnings
         // -------------------------------------------------------------------
 
         [Fact]
@@ -164,7 +164,7 @@ namespace FluidForge.Tests
                 WithHistoryFile(HistoryStoppedAtIter, path => solver.ReadMetricsFromHistory(path, record, config));
             });
 
-            Assert.Contains("[WARNUNG] SU2 hat ITER=500 erreicht, ohne dass das Kriterium erfüllt war – CD ist der Stand bei Iteration 500, kein konvergierter Wert.", output);
+            Assert.Contains($"{OutputConventions.WarningTag} SU2 reached ITER=500 without meeting criterion — CD is the value at iteration 500, not a converged value.", output);
         }
 
         [Fact]
@@ -182,12 +182,12 @@ namespace FluidForge.Tests
                 WithHistoryFile(HistoryOscillating, path => solver.ReadMetricsFromHistory(path, record, config));
             });
 
-            Assert.Contains("schwingt um ±", output);
-            Assert.Contains("Hinweis auf instationäre Strömung (Wirbelablösung)", output);
+            Assert.Contains("oscillates by ±", output);
+            Assert.Contains("indicates unsteady flow (vortex shedding)", output);
         }
 
         // -------------------------------------------------------------------
-        // 3. PassiveParameters Einträge (Su2_Iterations, Su2_Converged, Su2_Osc_*)
+        // 3. PassiveParameters entries (Su2_Iterations, Su2_Converged, Su2_Osc_*)
         // -------------------------------------------------------------------
 
         [Fact]
@@ -206,7 +206,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // 4. Optionen: ResultAveraging & TreatUnconvergedAsFailed
+        // 4. Options: ResultAveraging & TreatUnconvergedAsFailed
         // -------------------------------------------------------------------
 
         [Fact]
@@ -221,7 +221,7 @@ namespace FluidForge.Tests
 
             WithHistoryFile(HistoryOscillating, path => solver.ReadMetricsFromHistory(path, record, config));
 
-            // Letzte Zeile von HistoryOscillating hat CD = 0.350
+            // Last row of HistoryOscillating has CD = 0.350
             Assert.Equal(0.350f, record.PassiveParameters["Drag"], 3);
         }
 
@@ -237,7 +237,7 @@ namespace FluidForge.Tests
 
             WithHistoryFile(HistoryOscillating, path => solver.ReadMetricsFromHistory(path, record, config));
 
-            // Letzte 4 Zeilen: 0.300, 0.350, 0.300, 0.350 -> Mittelwert = 0.325
+            // Last 4 rows: 0.300, 0.350, 0.300, 0.350 -> mean = 0.325
             Assert.Equal(0.325f, record.PassiveParameters["Drag"], 3);
         }
 
@@ -246,7 +246,7 @@ namespace FluidForge.Tests
         {
             var solver = new Su2Solver(new Su2SolverOptions
             {
-                ResultAveraging = "Unbekannt"
+                ResultAveraging = "Unknown"
             });
             var record = new ModelRecord();
             var config = new SimulationConfig { Su2MaxIterations = 500, CauchyElements = 4 };
@@ -256,7 +256,7 @@ namespace FluidForge.Tests
                 WithHistoryFile(HistoryOscillating, path => solver.ReadMetricsFromHistory(path, record, config));
             });
 
-            Assert.Contains("[WARNUNG] Unbekanntes ResultAveraging 'Unbekannt' — nutze 'Last'.", output);
+            Assert.Contains($"{OutputConventions.WarningTag} Unknown ResultAveraging 'Unknown' — using 'Last'.", output);
             Assert.Equal(0.350f, record.PassiveParameters["Drag"], 3);
         }
 
@@ -265,7 +265,7 @@ namespace FluidForge.Tests
         {
             var solver = new Su2Solver(new Su2SolverOptions
             {
-                ResultAveraging = "Unbekannt",
+                ResultAveraging = "Unknown",
                 ResultMetrics = new Dictionary<string, string> { ["Drag"] = "CD", ["Lift"] = "CL" }
             });
             var record1 = new ModelRecord();
@@ -281,7 +281,7 @@ namespace FluidForge.Tests
                 });
             });
 
-            int occurrences = (output.Length - output.Replace("Unbekanntes ResultAveraging", "").Length) / "Unbekanntes ResultAveraging".Length;
+            int occurrences = (output.Length - output.Replace("Unknown ResultAveraging", "").Length) / "Unknown ResultAveraging".Length;
             Assert.Equal(1, occurrences);
         }
 
@@ -316,7 +316,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // 5. Dateinamens-Helper: ArchiveBaseName
+        // 5. Filename helper: ArchiveBaseName
         // -------------------------------------------------------------------
 
         [Fact]
@@ -342,14 +342,14 @@ namespace FluidForge.Tests
         [Fact]
         public void ArchiveBaseNameFromMesh_Takes_Tag_From_Mesh_Name()
         {
-            // Servertest 06.11.2026: alle fünf Kalibrierstufen schrieben in dieselbe History_Gen1_Var1.csv.
+            // Server test 2026-11-06: all five calibration levels wrote to the same History_Gen1_Var1.csv.
             var record = new ModelRecord { Iteration = 1, Variant = 1 };
 
             Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("/x/Model_Gen1_Var1.su2", record));
-            Assert.Equal("Gen1_Var1_Kal5", Su2Solver.ArchiveBaseNameFromMesh("/x/Model_Gen1_Var1_Kal5.su2", record));
+            Assert.Equal("Gen1_Var1_Cal5", Su2Solver.ArchiveBaseNameFromMesh("/x/Model_Gen1_Var1_Cal5.su2", record));
             Assert.Equal("Gen1_Var1_Recheck", Su2Solver.ArchiveBaseNameFromMesh("Model_Gen1_Var1_Recheck.su2", record));
-            // Fremde Namen: ohne Tag wie bisher.
-            Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("netz.su2", record));
+            // Unrelated names: without tag as before.
+            Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("mesh.su2", record));
             Assert.Equal("Gen1_Var1", Su2Solver.ArchiveBaseNameFromMesh("Model_Gen1_Var10.su2", record));
         }
     }

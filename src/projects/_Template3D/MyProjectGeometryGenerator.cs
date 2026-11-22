@@ -10,26 +10,21 @@ using FluidForge.Kernels.PicoGk;
 namespace FluidForge.Projects.MyProject
 {
     /// <summary>
-    /// Die Geometrie eines Projekts (TODO-27). Diese Vorlage baut den einfachsten denkbaren
-    /// Körper — einen Quader aus <c>Length × Width × Height</c> — und meldet vier Metriken.
-    /// Damit läuft die ganze Kette (PicoGK → STL → Gmsh → SU2 → Fitness) einmal durch, bevor du
-    /// deine eigene Form einbaust: ein <b>Rauchtest</b>.
+    /// Project geometry generator. This template builds the simplest possible body —
+    /// a box of <c>Length x Width x Height</c> — and reports four metrics so the full pipeline
+    /// (PicoGK -> STL -> Gmsh -> SU2 -> Fitness) can be smoke-tested before adding your own shape.
     ///
     /// <para>
-    /// <b>Hier arbeitest du.</b> Der Quader steht nur als Platzhalter; ersetze
-    /// <see cref="BuildVoxelModel"/> durch deine Form. Wie eine richtige Geometrie aussieht, zeigt
-    /// <c>src/projects/MantaAuv/MantaGeometryGenerator.cs</c>: dort entsteht aus einem
-    /// <c>Lattice</c> ein Rumpf mit Flügelfächer, der über zwei <c>Offset</c>-Schritte organisch
-    /// verschmolzen wird.
+    /// <b>Edit here.</b> Replace <see cref="BuildVoxelModel"/> with your own geometry.
+    /// For a real-world example, see <c>src/projects/MantaAuv/MantaGeometryGenerator.cs</c>,
+    /// which builds a <c>Lattice</c> fuselage with a fin-ray wing fan blended via two <c>Offset</c> steps.
     /// </para>
     ///
     /// <para>
-    /// Das Framework erfährt vom Ergebnis ausschließlich über den
-    /// <see cref="GeometryResult"/> — eine STL-Datei und benannte Metriken. Es gibt keine
-    /// Metrikliste, die irgendwo gepflegt werden müsste: der Name, den du hier in
-    /// <see cref="GeometryResult.AddMetric"/> schreibst, ist derselbe, den die Fitness-Formel
-    /// liest, den <c>ReferenceAreaMetric</c> in der su2.json meinen kann und der als Spalte in
-    /// der <c>Simulation_Results.csv</c> auftaucht.
+    /// The framework communicates with the geometry exclusively via <see cref="GeometryResult"/> —
+    /// an STL file and named metrics. Any name passed to <see cref="GeometryResult.AddMetric"/>
+    /// is available to the fitness formula, <c>ReferenceAreaMetric</c> in su2.json, and as a column
+    /// in <c>results.csv</c>.
     /// </para>
     /// </summary>
     public sealed class MyProjectGeometryGenerator : IGeometryGenerator
@@ -41,30 +36,24 @@ namespace FluidForge.Projects.MyProject
             string outputDirectory,
             SimulationConfig config)
         {
-            // Die Parameter kommen aus project.json (bzw. CreateDefaults) und sind hier bereits
-            // auf die PicoGK-Arbeitsgröße geschrumpft — der Controller rechnet die Metriken
-            // hinterher zurück. Deshalb wird hier NICHT mit den Zahlen aus der JSON gerechnet,
-            // sondern mit denen, die ankommen.
+            // Parameters come from project.json (or CreateDefaults) and are already scaled to
+            // PicoGK's working size — the controller scales reported metrics back afterward.
             float length = Read(parameters, "Length");
             float width = Read(parameters, "Width");
             float height = Read(parameters, "Height");
 
             Voxels voxels = BuildVoxelModel(length, width, height);
 
-            // Das Netz, das exportiert wird — und aus dem alle Maße kommen.
             Mesh exportModel = new Mesh(voxels);
 
-            // Der Dateiname ist frei wählbar, das Muster aber praktisch: Iteration und Variante
-            // stehen darin, und alle STLs eines Laufs liegen unter Ergebnisse/<Projekt>/.
+            // Output STLs are written under results/<Project>/.
             string modelPath = Path.Combine(outputDirectory, $"Model_Gen{iteration}_Var{variant}.stl");
             exportModel.SaveToStlFile(modelPath);
 
-            // Glättung ist ein abschaltbarer Framework-Baustein (Entscheidung 4): steht
-            // UseStlSmoothing in der simulation.json auf false, bleibt die STL, wie sie aus dem
-            // Voxel-Modell kommt. Eine fehlgeschlagene Glättung darf den Lauf nicht kosten —
-            // die ungeglättete Datei ist immer noch rechenbar.
-            // Die Messung erfolgt nach einer erfolgreichen Glättung direkt auf dem geschriebenen STL,
-            // damit Volume, SurfaceArea, FrontalArea und Span zum tatsächlichen CFD-Netz passen.
+            // Smoothing is a toggleable framework step: if UseStlSmoothing is false in simulation.json,
+            // the raw voxel mesh is kept. A failed smoothing pass should not abort the variant.
+            // When smoothing succeeds, metrics are measured directly from the smoothed STL so
+            // Volume, SurfaceArea, FrontalArea, and Span match the actual CFD surface.
             MeshMeasurement? smoothedMeasurement = null;
             if (config.UseStlSmoothing)
             {
@@ -83,58 +72,54 @@ namespace FluidForge.Projects.MyProject
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"       -> [WARNUNG] Glättung fehlgeschlagen: {ex.Message}");
+                    Console.WriteLine($"       -> {OutputConventions.WarningTag} Smoothing failed: {ex.Message}");
                 }
             }
 
             MeshMeasurement measurement = smoothedMeasurement ?? PicoGkMeshMetrics.Measure(exportModel);
 
-            // Ein negatives Vorzeichen hiesse: die Dreiecke sind nach innen gedreht. Gmsh
-            // rechnet so eine Huelle nicht oder falsch, und im Betrag sieht man es nicht.
+            // A negative signed volume indicates inward-pointing triangle normals, which causes
+            // Gmsh to fail or produce invalid volume meshes.
             if (measurement.SignedVolume < 0f)
-                Console.WriteLine("       -> [WARNUNG] Das Netz ist nach innen gedreht (negatives Volumen).");
+                Console.WriteLine($"       -> {OutputConventions.WarningTag} Mesh is inverted (negative signed volume).");
 
             var result = new GeometryResult { StlPath = modelPath };
 
             // ==============================================================
-            //  METRIKEN -- die Schnittstelle zum Rest des Frameworks
+            //  METRICS -- interface to the rest of the framework
             // ==============================================================
             //
-            // Der zweite Parameter von AddMetric ist die DIMENSION. Sie entscheidet, wie der
-            // RubberBandScaler von der PicoGK-Arbeitsgröße zurückrechnet:
+            // The second argument to AddMetric is the physical DIMENSION, which tells
+            // RubberBandScaler how to scale back from PicoGK working size:
             //
-            //   Volume  kubisch      Area  quadratisch      Linear  einfach      None  gar nicht
+            //   Volume  cubic (s^3)   Area  quadratic (s^2)   Linear  linear (s^1)   None  unscaled
             //
-            // EIN FALSCHER EINTRAG FÄLLT NICHT AUF. Der Wert ist dann um den Skalierungsfaktor
-            // hoch 1, 2 oder 3 daneben — und sieht trotzdem plausibel aus. Welche Dimension eine
-            // Metrik bekam, hält Ergebnisse/<Projekt>/effective-config.json fest (TODO-25).
+            // A wrong scaling dimension will NOT throw an error — the value will simply be
+            // off by s^1, s^2, or s^3. Effective scaling dimensions are recorded in
+            // results/<Project>/effective-config.json.
             result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
             result.AddMetric("SurfaceArea", measurement.SurfaceArea, MetricScaling.Area);
 
-            // FrontalArea ist die angeströmte Fläche (quer zur X-Achse) und hat einen zweiten
-            // Abnehmer: solvers/su2.json nennt sie unter "ReferenceAreaMetric", SU2 bildet daraus
-            // REF_AREA und normiert damit alle Beiwerte. Über config.UseProjectedFrontalArea (in
-            // simulation.json) lässt sich zwischen der wahren projizierten Silhouette (true, Standard)
-            // und dem Hüllquader-Rechteck Size.Y * Size.Z (false) umschalten.
+            // FrontalArea is the cross-sectional area perpendicular to X and is used by
+            // solvers/su2.json ("ReferenceAreaMetric") to compute REF_AREA.
             result.AddMetric("FrontalArea", measurement.GetFrontalArea(config.UseProjectedFrontalArea), MetricScaling.Area);
 
-            // Spannweite: die Ausdehnung quer zur Strömung. Eine Länge, also Linear.
+            // Span: extent perpendicular to the flow (a length, hence Linear).
             result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
 
-            // Ein Verhältnis ist dimensionslos und darf NICHT mitskaliert werden — das ist der
-            // Fall für None. (Beispiel, die Fitness dieser Vorlage benutzt es nicht.)
+            // Ratios are dimensionless and must NOT be scaled (MetricScaling.None).
             result.AddMetric("LengthToWidth", length / Math.Max(width, 0.001f), MetricScaling.None);
 
             return result;
         }
 
         /// <summary>
-        /// Der Platzhalter-Körper: ein Quader, zentriert im Ursprung, Länge entlang X (=
-        /// Strömungsrichtung). <b>Das ist die Methode, die du ersetzt.</b>
+        /// Placeholder body: a box centered at the origin with length along X (flow direction).
+        /// <b>Replace this method with your own geometry.</b>
         ///
         /// <para>
-        /// Wer Kanten verrunden will, ruft auf dem Voxelmodell <c>Offset(r)</c> und danach
-        /// <c>Offset(-r)</c> auf — so verschmilzt MantaAuv seine Flügel mit dem Rumpf.
+        /// To round edges or blend parts organically, call <c>Offset(r)</c> followed by
+        /// <c>Offset(-r)</c> on the <see cref="Voxels"/> instance.
         /// </para>
         /// </summary>
         private static Voxels BuildVoxelModel(float length, float width, float height)
@@ -144,26 +129,18 @@ namespace FluidForge.Projects.MyProject
         }
 
         /// <summary>
-        /// Einen Parameter lesen — und abbrechen, wenn er fehlt.
-        ///
-        /// <para>
-        /// Bewusst <b>kein</b> Ersatzwert: ein Tippfehler in <c>project.json</c> würde sonst
-        /// stundenlang eine Geometrie rechnen, die nichts mit den eingestellten Zahlen zu tun hat.
-        /// Die Geometrie-Erzeugung läuft außerhalb des <c>try</c> im
-        /// <see cref="WorkflowController"/> — der Lauf endet hier also sofort, mit dieser Meldung.
-        /// </para>
+        /// Reads a required parameter and fails fast if missing (no silent fallback).
         /// </summary>
-        /// <exception cref="InvalidOperationException">Der Parameter steht nicht in der Konfiguration.</exception>
+        /// <exception cref="InvalidOperationException">The parameter is missing in configuration.</exception>
         private static float Read(Dictionary<string, float> parameters, string name)
         {
             if (parameters.TryGetValue(name, out float value)) return value;
 
             throw new InvalidOperationException(
-                $"[GEOMETRIE] Der Parameter '{name}' fehlt. Vorhanden ist: "
-                + (parameters.Count > 0 ? string.Join(", ", parameters.Keys) : "(keiner)")
-                + ". Er gehört in BaseParameters, MaxDeviations und ParameterBounds der "
-                + "project.json dieses Projekts — und in dieselben drei Listen in "
-                + "CreateDefaults().");
+                $"[GEOMETRY] Missing parameter '{name}'. Present: "
+                + (parameters.Count > 0 ? string.Join(", ", parameters.Keys) : "(none)")
+                + ". Add it to BaseParameters, MaxDeviations, and ParameterBounds in "
+                + "project.json -- and to the same three dictionaries in CreateDefaults().");
         }
     }
 }

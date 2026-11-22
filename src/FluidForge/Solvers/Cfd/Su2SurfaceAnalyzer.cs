@@ -10,13 +10,13 @@ using System.Text.RegularExpressions;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Statistische Auswertung des dimensionslosen Wandabstands y+ über die Bauteiloberfläche (TODO-41).
+    /// Statistical evaluation of dimensionless wall distance y+ across the part surface.
     /// </summary>
-    /// <param name="SampleCount">Anzahl der ausgewerteten Oberflächenpunkte bzw. Knoten.</param>
-    /// <param name="Min">Minimaler y+-Wert an der Wand.</param>
-    /// <param name="Median">Median (50 %-Quantil) von y+.</param>
-    /// <param name="P95">95 %-Quantil (P95) von y+.</param>
-    /// <param name="Max">Maximaler y+-Wert an der Wand.</param>
+    /// <param name="SampleCount">Number of evaluated surface points/vertices.</param>
+    /// <param name="Min">Minimum y+ value on the wall.</param>
+    /// <param name="Median">Median (50th percentile) of y+.</param>
+    /// <param name="P95">95th percentile (P95) of y+.</param>
+    /// <param name="Max">Maximum y+ value on the wall.</param>
     public sealed record YPlusStatistics(
         int SampleCount,
         float Min,
@@ -25,8 +25,8 @@ namespace FluidForge.Solvers.Cfd
         float Max);
 
     /// <summary>
-    /// Aufschlüsselung des Widerstandsbeiwerts in Druckanteil (<c>CD_p</c>) und Reibungsanteil (<c>CD_v</c>)
-    /// durch Integration über die Bauteiloberfläche in <c>surface.vtu</c>.
+    /// Breakdown of drag coefficient into pressure drag (<c>CD_p</c>) and viscous drag (<c>CD_v</c>)
+    /// by integrating over the part surface in <c>surface.vtu</c>.
     /// </summary>
     public sealed record AerodynamicDragBreakdown(
         double PressureDragCoeff,
@@ -36,15 +36,15 @@ namespace FluidForge.Solvers.Cfd
         bool Is2D);
 
     /// <summary>
-    /// Liest und analysiert Wandwerte (insbesondere y+) aus SU2-Oberflächendateien (surface.csv bzw. surface.vtu).
+    /// Reads and analyzes wall quantities (especially y+) from SU2 surface files (surface.csv or surface.vtu).
     /// </summary>
     public static class Su2SurfaceAnalyzer
     {
         /// <summary>
-        /// Wertet ein Zeilen-Array aus einer SU2-surface.csv aus und berechnet die y+-Statistik.
+        /// Evaluates a line array from an SU2 surface.csv file and computes y+ statistics.
         /// </summary>
-        /// <param name="lines">Zeilen der CSV-Datei (Kopfzeile + Datenzeilen).</param>
-        /// <returns>Die berechneten Statistiken, oder <c>null</c>, wenn keine Daten oder Spalte vorhanden sind.</returns>
+        /// <param name="lines">CSV file lines (header + data rows).</param>
+        /// <returns>Computed statistics, or <c>null</c> if no data or y+ column is present.</returns>
         public static YPlusStatistics? EvaluateSurfaceCsv(string[] lines)
         {
             if (lines == null || lines.Length < 2)
@@ -78,15 +78,15 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Sucht in einem Arbeitsverzeichnis nach <c>surface.csv</c> (oder <c>surface_flow.csv</c>) und
-        /// optional als Rückfallebene nach <c>surface.vtu</c>, um die y+-Statistik zu bestimmen.
+        /// Searches a working directory for <c>surface.csv</c> (or <c>surface_flow.csv</c>) and
+        /// optionally falls back to <c>surface.vtu</c> to compute y+ statistics.
         /// </summary>
         public static YPlusStatistics? EvaluateFromDirectory(string workingDirectory)
         {
             if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
                 return null;
 
-            // 1. Primär: surface.csv oder surface_flow.csv
+            // 1. Primary: surface.csv or surface_flow.csv
             string[] csvCandidates = { "surface.csv", "surface_flow.csv" };
             foreach (string file in csvCandidates)
             {
@@ -101,12 +101,12 @@ namespace FluidForge.Solvers.Cfd
                     }
                     catch
                     {
-                        // Defensiver Fallback auf nächsten Kandidaten
+                        // Defensive fallback to next candidate
                     }
                 }
             }
 
-            // 2. Rückfallebene: surface.vtu
+            // 2. Fallback: surface.vtu
             string[] vtuCandidates = { "surface.vtu", "surface_flow.vtu" };
             foreach (string file in vtuCandidates)
             {
@@ -120,7 +120,7 @@ namespace FluidForge.Solvers.Cfd
                     }
                     catch
                     {
-                        // Defensiv ignorieren
+                        // Ignore defensively
                     }
                 }
             }
@@ -129,8 +129,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Rückfall-Leser für VTK XML UnstructuredGrid (.vtu), sucht nach dem DataArray "Y_Plus" in PointData.
-        /// Unterstützt sowohl ASCII als auch appended raw binary (UInt32 / UInt64 Header).
+        /// Fallback reader for VTK XML UnstructuredGrid (.vtu); searches for the "Y_Plus" DataArray in PointData.
+        /// Supports both ASCII and appended raw binary (UInt32 / UInt64 headers).
         /// </summary>
         public static YPlusStatistics? EvaluateSurfaceVtu(string vtuPath)
         {
@@ -142,7 +142,7 @@ namespace FluidForge.Solvers.Cfd
                 byte[] fileBytes = File.ReadAllBytes(vtuPath);
                 string text = Encoding.UTF8.GetString(fileBytes);
 
-                // Suche nach DataArray mit Name="Y_Plus" (case-insensitive)
+                // Search for DataArray with Name="Y_Plus" (case-insensitive)
                 var match = Regex.Match(text, @"<DataArray[^>]*Name\s*=\s*[""'](Y_Plus|y_plus|YPlus)[""'][^>]*>", RegexOptions.IgnoreCase);
                 if (!match.Success)
                     return null;
@@ -160,7 +160,7 @@ namespace FluidForge.Solvers.Cfd
                     if (!long.TryParse(offsetMatch.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long offset))
                         return null;
 
-                    // Suche den Start von <AppendedData encoding="raw">_
+                    // Locate start of <AppendedData encoding="raw">_
                     int appIdx = text.IndexOf("<AppendedData", StringComparison.OrdinalIgnoreCase);
                     if (appIdx < 0) return null;
                     int underscoreIdx = text.IndexOf('_', appIdx);
@@ -169,7 +169,7 @@ namespace FluidForge.Solvers.Cfd
                     long dataStart = underscoreIdx + 1 + offset;
                     if (dataStart >= fileBytes.Length) return null;
 
-                    // Header-Typ ermitteln (Standard in neuem VTK ist UInt64, sonst UInt32)
+                    // Determine header type (default in newer VTK is UInt64, otherwise UInt32)
                     bool isHeader64 = text.Contains("header_type=\"UInt64\"", StringComparison.OrdinalIgnoreCase) ||
                                       text.Contains("header_type='UInt64'", StringComparison.OrdinalIgnoreCase);
 
@@ -218,7 +218,7 @@ namespace FluidForge.Solvers.Cfd
                 }
                 else
                 {
-                    // ASCII format: suche Inhalt zwischen <DataArray ...> und </DataArray>
+                    // ASCII format: extract content between <DataArray ...> and </DataArray>
                     int startContent = match.Index + match.Length;
                     int endContent = text.IndexOf("</DataArray>", startContent, StringComparison.OrdinalIgnoreCase);
                     if (endContent < 0) return null;
@@ -282,7 +282,7 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Berechnet ein beliebiges Perzentil aus einer aufsteigend sortierten Liste per linearer Interpolation.
+        /// Computes an arbitrary percentile from an ascending sorted list via linear interpolation.
         /// </summary>
         public static float ComputePercentile(List<float> sorted, float percentile)
         {
@@ -300,8 +300,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Sucht im Arbeitsverzeichnis nach <c>surface.vtu</c> oder <c>surface_flow.vtu</c> und integriert
-        /// <c>CD_p</c> und <c>CD_v</c> über die Bauteiloberfläche.
+        /// Searches the working directory for <c>surface.vtu</c> or <c>surface_flow.vtu</c> and integrates
+        /// <c>CD_p</c> and <c>CD_v</c> over the part surface.
         /// </summary>
         public static AerodynamicDragBreakdown? EvaluateDragBreakdownFromDirectory(
             string workingDirectory,
@@ -329,9 +329,9 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Integriert <c>Pressure_Coefficient</c> (<c>CD_p</c>) und <c>Skin_Friction_Coefficient</c> (<c>CD_v</c>)
-        /// über die Oberflächenzellen einer SU2-<c>.vtu</c>-Datei (ASCII oder appended raw binary,
-        /// <c>Float32</c>/<c>Float64</c>, <c>Int32</c>/<c>Int64</c>/<c>UInt8</c>, <c>UInt32</c>/<c>UInt64</c>-Header).
+        /// Integrates <c>Pressure_Coefficient</c> (<c>CD_p</c>) and <c>Skin_Friction_Coefficient</c> (<c>CD_v</c>)
+        /// over surface cells of an SU2 <c>.vtu</c> file (ASCII or appended raw binary,
+        /// <c>Float32</c>/<c>Float64</c>, <c>Int32</c>/<c>Int64</c>/<c>UInt8</c>, <c>UInt32</c>/<c>UInt64</c> headers).
         /// </summary>
         public static AerodynamicDragBreakdown? EvaluateAerodynamicDragBreakdown(
             string vtuPath,

@@ -3,32 +3,32 @@ using System.Collections.Generic;
 
 namespace FluidForge.Core
 {
-    /// <summary>Ergebnis von <see cref="RunResume.Prepare"/>.</summary>
+    /// <summary>Result of <see cref="RunResume.Prepare"/>.</summary>
     public sealed class ResumePlan
     {
-        /// <summary>Das Journal hat seine Schlusszeile: nichts zu tun.</summary>
+        /// <summary>The journal already contains its closing marker line: nothing left to do.</summary>
         public bool AlreadyCompleted { get; init; }
 
-        /// <summary>Zur Wiedergabe geöffnetes Journal (<c>null</c> bei <see cref="AlreadyCompleted"/>).</summary>
+        /// <summary>Journal opened for replay (<c>null</c> when <see cref="AlreadyCompleted"/> is true).</summary>
         public RunJournal? Journal { get; init; }
 
-        /// <summary>Seed aus der Kopfzeile des Journals — er gewinnt immer.</summary>
+        /// <summary>Seed from the journal header — it always takes precedence.</summary>
         public int Seed { get; init; }
 
-        /// <summary>So viele Rechnungen stehen zur Übernahme bereit.</summary>
+        /// <summary>Number of saved evaluations ready to be replayed.</summary>
         public int StoredSimulations { get; init; }
 
-        /// <summary>Hinweise, die den Lauf nicht aufhalten (anderer Seed, anderer Code-Stand).</summary>
+        /// <summary>Non-fatal warnings (different seed in config, changed source code state).</summary>
         public List<string> Warnings { get; init; } = new();
     }
 
     /// <summary>
-    /// Prüfungen und Vorbereitung für <c>--resume</c> (TODO-52, F27/F28). Getrennt von
-    /// <c>Program.cs</c>, damit sie ohne Kernel und ohne Solver prüfbar sind.
+    /// Validation and preparation for <c>--resume</c> (TODO-52, F27/F28). Separated from
+    /// <c>Program.cs</c> so it can be unit-tested without kernel or solver dependencies.
     /// </summary>
     public static class RunResume
     {
-        /// <summary>Kopfzeile eines neuen Journals.</summary>
+        /// <summary>Builds the header for a new journal.</summary>
         public static RunJournalHeader CreateHeader(
             string project, int seed, SortedDictionary<string, string> configurationSections, RunInfoSource source)
         {
@@ -45,12 +45,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Sucht das Journal, prüft Konfiguration, Seed und Code-Stand und öffnet es zur Wiedergabe.
+        /// Locates the journal, validates configuration, seed, and source code state, and opens it for replay.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Kein Journal vorhanden, oder die Konfiguration hat sich seit dem Start geändert. Die
-        /// Meldungen beginnen mit <c>[WIEDERAUFNAHME]</c> und gelten damit als Bedienfehler
-        /// (kurze Meldung, Exit-Code 1).
+        /// No journal exists, or the configuration changed since the run started. Messages begin with
+        /// <c>[RESUME]</c> and are reported as user errors (concise message, exit code 1).
         /// </exception>
         public static ResumePlan Prepare(
             string workingDirectory,
@@ -64,37 +63,37 @@ namespace FluidForge.Core
 
             if (content == null)
                 throw new InvalidOperationException(
-                    $"[WIEDERAUFNAHME] Kein abgebrochener Lauf gefunden ({JsonConfigLoader.Label(path)} fehlt). "
-                    + $"Neu starten mit .\\scripts\\sim.ps1 run -Project {projectName}.");
+                    $"{OutputConventions.ResumeTag} No aborted run found ({JsonConfigLoader.Label(path)} is missing). "
+                    + $"Start a new run with .\\scripts\\sim.ps1 run -Project {projectName}.");
 
             if (content.Completed)
                 return new ResumePlan { AlreadyCompleted = true, Seed = content.Header.ZufallsSeed, StoredSimulations = content.Entries.Count };
 
             RunJournalHeader header = content.Header;
 
-            // F27: eine geänderte Physik mitten im Lauf darf nie still passieren.
+            // F27: changed physics or run configuration mid-run must never happen silently.
             IReadOnlyList<string> changed = ConfigFingerprint.Differences(header.KonfigurationsAbschnitte, configurationSections);
             if (changed.Count > 0)
                 throw new InvalidOperationException(
-                    $"[WIEDERAUFNAHME] Die Konfiguration hat sich seit dem Start des Laufs geändert: {string.Join(", ", changed)}. "
-                    + "Mit geänderten Werten wären die Ergebnisse nicht mehr vergleichbar, deshalb wird nicht fortgesetzt. "
-                    + "Entweder die Änderung rückgängig machen (die Werte des Laufs stehen in effective-config.json) "
-                    + $"oder neu starten mit .\\scripts\\sim.ps1 run -Project {projectName}.");
+                    $"{OutputConventions.ResumeTag} Configuration changed since the run started: {string.Join(", ", changed)}. "
+                    + "Results with modified settings would no longer be comparable, so resume is aborted. "
+                    + "Either revert the change (the run's original settings are recorded in effective-config.json) "
+                    + $"or start fresh with .\\scripts\\sim.ps1 run -Project {projectName}.");
 
             var warnings = new List<string>();
 
             if (configuredSeed != 0 && configuredSeed != header.ZufallsSeed)
                 warnings.Add(
-                    $"[HINWEIS] In simulation.json steht \"RandomSeed\": {configuredSeed}, der Lauf wurde aber mit "
-                    + $"{header.ZufallsSeed} gestartet. Für die Fortsetzung gilt der Wert aus dem Journal ({header.ZufallsSeed}).");
+                    $"[HINT] simulation.json specifies \"RandomSeed\": {configuredSeed}, but this run was started with "
+                    + $"{header.ZufallsSeed}. Resuming continues with the journal seed ({header.ZufallsSeed}).");
 
             bool deployDiffers = header.DeployHash != null && source.DeployHash != null && header.DeployHash != source.DeployHash;
             bool commitDiffers = header.Commit != null && source.Commit != null && header.Commit != source.Commit;
             if (deployDiffers || commitDiffers)
                 warnings.Add(
-                    "[WARNUNG] Der Code-Stand weicht vom Start des Laufs ab "
-                    + $"(Start: {header.DeployHash ?? header.Commit}, jetzt: {source.DeployHash ?? source.Commit}). "
-                    + "Es wird trotzdem fortgesetzt; weicht dadurch eine Rechnung ab, endet die Wiedergabe dort mit Warnung.");
+                    $"{OutputConventions.WarningTag} Source code version differs from the start of the run "
+                    + $"(start: {header.DeployHash ?? header.Commit}, now: {source.DeployHash ?? source.Commit}). "
+                    + "Continuing anyway; if an evaluation diverges as a result, replay will stop there with a warning.");
 
             foreach (string warning in warnings) Console.WriteLine(warning);
 

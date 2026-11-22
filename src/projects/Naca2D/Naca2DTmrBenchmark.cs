@@ -7,7 +7,7 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Projects.Naca2D
 {
     /// <summary>
-    /// Ergebnis eines Validierungsabgleichs gegen die NASA-TMR-Referenzdaten (TODO-47).
+    /// Result of a validation check against NASA TMR reference data.
     /// </summary>
     public sealed record TmrValidationResult(
         float AlphaDeg,
@@ -21,39 +21,39 @@ namespace FluidForge.Projects.Naca2D
         string Summary);
 
     /// <summary>
-    /// NASA Langley Research Center - Turbulence Modeling Resource (TMR) Validierungsdaten (TODO-47).
-    /// Referenzfall: 2D NACA 0012 Tragflügelprofil bei Re_c = 6·10⁶, Mach = 0.15, Spalart-Allmaras (SA)
-    /// Turbulenzmodell.
+    /// NASA Langley Research Center - Turbulence Modeling Resource (TMR) validation data.
+    /// Reference case: 2D NACA 0012 airfoil at Re_c = 6e6, Mach = 0.15, Spalart-Allmaras (SA)
+    /// turbulence model.
     ///
     /// <para>
-    /// Quelle: NASA Langley Research Center, Turbulence Modeling Resource,
+    /// Source: NASA Langley Research Center, Turbulence Modeling Resource,
     /// "2D NACA 0012 Airfoil Validation - Spalart-Allmaras (SA) Model",
     /// <see href="https://turbmodels.larc.nasa.gov/naca0012_val_sa.html"/>
-    /// Gitterkonvergierte Referenzwerte (CFL3D / FUN3D):
-    /// - alpha = 0°:  CL_ref = 0.0000, CD_ref = 0.00819
-    /// - alpha = 10°: CL_ref = 1.0909, CD_ref = 0.01231
-    /// - alpha = 15°: CL_ref = 1.5461, CD_ref = 0.02124
+    /// Grid-converged reference values (CFL3D / FUN3D):
+    /// - alpha = 0 deg:  CL_ref = 0.0000, CD_ref = 0.00819
+    /// - alpha = 10 deg: CL_ref = 1.0909, CD_ref = 0.01231
+    /// - alpha = 15 deg: CL_ref = 1.5461, CD_ref = 0.02124
     /// </para>
     /// </summary>
     public static class Naca2DTmrBenchmark
     {
         /// <summary>
-        /// Offizielle NASA TMR-Referenzquelle.
+        /// Official NASA TMR reference URL.
         /// </summary>
         public const string SourceUrl = "https://turbmodels.larc.nasa.gov/naca0012_val_sa.html";
 
         /// <summary>
-        /// Referenz-Reynoldszahl bezogen auf die Sehnenlänge.
+        /// Reference Reynolds number based on chord length.
         /// </summary>
         public const float ReferenceReynoldsNumber = 6.0e6f;
 
         /// <summary>
-        /// Referenz-Machzahl.
+        /// Reference Mach number.
         /// </summary>
         public const float ReferenceMachNumber = 0.15f;
 
         /// <summary>
-        /// Tabelle der gitterkonvergierten NASA-TMR-Referenzwerte (SA-Modell).
+        /// Table of grid-converged NASA TMR reference values (SA model).
         /// </summary>
         public static readonly IReadOnlyDictionary<int, (float ClRef, float CdRef)> ReferencePoints =
             new Dictionary<int, (float ClRef, float CdRef)>
@@ -64,15 +64,15 @@ namespace FluidForge.Projects.Naca2D
             };
 
         /// <summary>
-        /// Gleicht simulierte Beiwerte gegen die NASA-TMR-Referenz ab.
-        /// Bei alpha = 0° wird CL absolut geprüft (|CL_sim - CL_ref| &lt;= 0.005), da CL_ref = 0.
-        /// Bei alpha = 10° und 15° werden relative Fehler geprüft (CL &lt;= clToleranceRel, CD &lt;= cdToleranceRel).
+        /// Compares simulated coefficients against NASA TMR reference data.
+        /// At alpha = 0 deg, CL is checked absolutely (|CL_sim - CL_ref| &lt;= 0.005) since CL_ref = 0.
+        /// At alpha = 10 deg and 15 deg, relative errors are checked (CL &lt;= clToleranceRel, CD &lt;= cdToleranceRel).
         /// </summary>
-        /// <param name="alphaDeg">Anstellwinkel in Grad (0, 10 oder 15).</param>
-        /// <param name="clSimulated">Simulierter Auftriebsbeiwert CL.</param>
-        /// <param name="cdSimulated">Simulierter Widerstandsbeiwert CD.</param>
-        /// <param name="clToleranceRel">Erlaubter relativer Fehler für CL (Standard: 0.02 = 2 %).</param>
-        /// <param name="cdToleranceRel">Erlaubter relativer Fehler für CD (Standard: 0.05 = 5 %).</param>
+        /// <param name="alphaDeg">Angle of attack in degrees (0, 10, or 15).</param>
+        /// <param name="clSimulated">Simulated lift coefficient CL.</param>
+        /// <param name="cdSimulated">Simulated drag coefficient CD.</param>
+        /// <param name="clToleranceRel">Allowed relative error for CL (default: 0.02 = 2%).</param>
+        /// <param name="cdToleranceRel">Allowed relative error for CD (default: 0.05 = 5%).</param>
         public static TmrValidationResult EvaluateAgainstTmr(
             float alphaDeg,
             float clSimulated,
@@ -93,8 +93,8 @@ namespace FluidForge.Projects.Naca2D
             if (matchedAlpha < 0)
             {
                 throw new ArgumentException(
-                    $"Für alpha = {alphaDeg}° liegen keine NASA-TMR-Referenzdaten vor. "
-                    + $"Verfügbare Stützpunkte sind: {string.Join("°, ", ReferencePoints.Keys)}° (Quelle: {SourceUrl}).",
+                    $"No NASA TMR reference data available for alpha = {alphaDeg} deg. "
+                    + $"Available reference angles: {string.Join(" deg, ", ReferencePoints.Keys)} deg (source: {SourceUrl}).",
                     nameof(alphaDeg));
             }
 
@@ -105,8 +105,8 @@ namespace FluidForge.Projects.Naca2D
 
             if (matchedAlpha == 0)
             {
-                // Bei alpha = 0 ist CL_ref = 0.0000; relatives Teilen durch 0 ist unzulässig.
-                // Geprüft wird die absolute Abweichung mit Grenze 0.005 (0.5 % Maximalauftrieb).
+                // At alpha = 0, CL_ref = 0.0000; relative division by zero is invalid.
+                // Check absolute deviation against 0.005 (0.5% of max lift).
                 float clAbsError = MathF.Abs(clSimulated - clRef);
                 clRelError = clAbsError;
                 clPassed = clAbsError <= 0.005f;
@@ -122,14 +122,14 @@ namespace FluidForge.Projects.Naca2D
 
             bool overallPassed = clPassed && cdPassed;
 
-            string status = overallPassed ? "BESTANDEN" : "NICHT BESTANDEN";
+            string status = overallPassed ? "PASSED" : "FAILED";
             string summary = string.Format(
                 CultureInfo.InvariantCulture,
-                "TMR-Validierung alpha={0:F1}° [{1}]: CL_ref={2:F4}, CL_sim={3:F4} (Fehler={4:P2}, Tol={5:P1}, {6}); " +
-                "CD_ref={7:F5}, CD_sim={8:F5} (Fehler={9:P2}, Tol={10:P1}, {11})",
+                "TMR Validation alpha={0:F1} deg [{1}]: CL_ref={2:F4}, CL_sim={3:F4} (Error={4:P2}, Tol={5:P1}, {6}); " +
+                "CD_ref={7:F5}, CD_sim={8:F5} (Error={9:P2}, Tol={10:P1}, {11})",
                 alphaDeg, status,
-                clRef, clSimulated, clRelError, (matchedAlpha == 0 ? 0.005f : clToleranceRel), clPassed ? "OK" : "ABWEICHUNG",
-                cdRef, cdSimulated, cdRelError, cdToleranceRel, cdPassed ? "OK" : "ABWEICHUNG");
+                clRef, clSimulated, clRelError, (matchedAlpha == 0 ? 0.005f : clToleranceRel), clPassed ? "OK" : "DEVIATION",
+                cdRef, cdSimulated, cdRelError, cdToleranceRel, cdPassed ? "OK" : "DEVIATION");
 
             return new TmrValidationResult(
                 alphaDeg,
@@ -144,11 +144,11 @@ namespace FluidForge.Projects.Naca2D
         }
 
         /// <summary>
-        /// Erzeugt konfigurierte SU2-Solver-Optionen für den NASA-TMR-Validierungsfall:
-        /// Luftströmung bei Re_c = 6·10⁶, Mach = 0.15, Spalart-Allmaras in 2D.
+        /// Creates configured SU2 solver options for the NASA TMR validation case:
+        /// airflow at Re_c = 6e6, Mach = 0.15, Spalart-Allmaras in 2D.
         /// </summary>
-        /// <param name="alphaDeg">Anstellwinkel in Grad.</param>
-        /// <param name="chordMeters">Sehnenlänge in Metern (Standard 1.0 m).</param>
+        /// <param name="alphaDeg">Angle of attack in degrees.</param>
+        /// <param name="chordMeters">Chord length in meters (default 1.0 m).</param>
         public static Su2SolverOptions CreateTmrFlowAndSolverOptions(float alphaDeg, float chordMeters = 1.0f)
         {
             float speedOfSound = 340.28f;

@@ -6,12 +6,12 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Orchestriert den Optimierungs-Workflow.
-    /// Arbeitet NUR noch mit Interfaces — keine konkreten Klassen mehr.
+    /// Orchestrates the optimization workflow.
+    /// Operates strictly against interfaces — no concrete solver or geometry implementations.
     /// </summary>
     public class WorkflowController
     {
-        /// <summary>Variantennummer, unter der Validierungsläufe (Re-Simulation) laufen.</summary>
+        /// <summary>Variant number used for validation re-simulations.</summary>
         private const int ValidationVariantNumber = 99;
 
         private readonly SimulationContext _context;
@@ -20,43 +20,41 @@ namespace FluidForge.Core
         private readonly SolverStage[] _stages;
         private readonly IModelValidator _validator;
 
-        // Kein IFitnessCalculator-Feld: die Bewertung läuft über den Optimierungsalgorithmus
-        // (EvaluateAndSelectBest) und im Validierungslauf über den ChampionValidator.
-        // Deshalb kommen die Pflicht-Metriken als reine Namensliste herein und nicht als
-        // Rechner — sonst zöge TODO-26 die mit TODO-13 entfernte Abhängigkeit wieder ein.
+        // No IFitnessCalculator field: evaluation runs through the optimization algorithm
+        // (EvaluateAndSelectBest) and during validation through ChampionValidator.
+        // Required metrics therefore enter solely as a list of names rather than a calculator
+        // instance — keeping the decoupling introduced in TODO-13 intact (TODO-26).
         private readonly IReadOnlyCollection<string> _requiredMetrics;
 
-        // Lauf-Journal für die Wiederaufnahme (TODO-51). null = Verhalten exakt wie vor TODO-51.
+        // Run journal for resuming aborted runs (TODO-51). null = exact pre-TODO-51 behavior.
         private readonly RunJournal? _journal;
 
         /// <summary>
-        /// Der letzte Aufruf von <see cref="RunPipeline"/> kam aus dem Journal und hat nichts
-        /// gerechnet. Die Restzeit-Schätzung lässt solche Varianten aus (TODO-51).
+        /// True if the last call to <see cref="RunPipeline"/> was replayed from the journal without
+        /// executing solvers. The run-time estimator skips replayed calls (TODO-51).
         /// </summary>
         public bool LastCallWasReplayed { get; private set; }
 
         /// <summary>
-        /// Gemessene bzw. aus dem Journal wiedergegebene Laufzeit des letzten
-        /// <see cref="RunPipeline"/>-Aufrufs in Sekunden.
+        /// Measured or replayed duration in seconds of the most recent <see cref="RunPipeline"/> call.
         /// </summary>
         public double? LastCallDurationSeconds { get; private set; }
 
         /// <summary>
-        /// 2 oder 3: bestimmt, wie stark die Zellzahl bei der Feinprüfung wächst, und damit die Zeitprognose.
-        /// Program.cs setzt den Wert aus <c>su2.json</c>; ohne Angabe gilt 3.
+        /// 2 or 3: determines how cell count scales during fine verification and thus the time forecast.
+        /// Set from <c>su2.json</c>; defaults to 3 if omitted.
         /// </summary>
         public int MeshDimensions { get; init; } = 3;
 
         /// <param name="requiredMetrics">
-        /// Metriknamen, die der <see cref="IFitnessCalculator"/> des Projekts braucht
-        /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). Fehlt einer nach der ersten
-        /// erfolgreich gerechneten Variante, bricht der Lauf ab (TODO-26). <c>null</c> oder
-        /// leer = keine Prüfung.
+        /// Metric names required by the project's <see cref="IFitnessCalculator"/>
+        /// (<see cref="IFitnessCalculator.RequiredMetrics"/>). If any is missing after the first
+        /// successful variant, the run aborts (TODO-26). <c>null</c> or empty skips the check.
         /// </param>
         /// <param name="journal">
-        /// Optionales Lauf-Journal (TODO-51): jedes Ergebnis von <see cref="RunPipeline"/> wird
-        /// mitgeschrieben, und im Wiedergabe-Modus antwortet es statt der Rechnung. Alle
-        /// Controller eines Laufs teilen sich eine Instanz.
+        /// Optional run journal (TODO-51): every result of <see cref="RunPipeline"/> is recorded,
+        /// and in replay mode the journal answers instead of running solvers. All controllers in a run
+        /// share one instance.
         /// </param>
         public WorkflowController(
             IGeometryGenerator geometry,
@@ -78,94 +76,93 @@ namespace FluidForge.Core
 
         public void RunOptimization()
         {
-            Console.WriteLine($"[SYSTEM] Nutze Optimierungsalgorithmus: {_optimizer.Name}");
-            Console.WriteLine($"[SYSTEM] Projekt: {_context.Project.ProjectName}");
-            Console.WriteLine($"[SYSTEM] Solver: {string.Join(", ", _stages.Select(s => s.Solver.Name))}");
+            Console.WriteLine($"{OutputConventions.SystemTag} Using optimization algorithm: {_optimizer.Name}");
+            Console.WriteLine($"{OutputConventions.SystemTag} Project: {_context.Project.ProjectName}");
+            Console.WriteLine($"{OutputConventions.SystemTag} Solver(s): {string.Join(", ", _stages.Select(s => s.Solver.Name))}");
 
-            // Automatisches Ende (09.11.2026). Falsche Werte brechen hier ab, vor der ersten Rechnung.
+            // Automatic stop (09.11.2026). Invalid settings abort here before the first evaluation.
             AutoStopConfig autoStop = _context.Config.AutoStop ?? new AutoStopConfig();
             bool autoStopEnabled = AutoStop.IsEnabled(autoStop);
             if (autoStopEnabled)
                 Console.WriteLine(
-                    $"[SYSTEM] Automatisches Ende: an (Mindestverbesserung {autoStop.MinImprovement * 100:0.##} % "
-                    + $"über die letzten {autoStop.WindowVariants} Varianten; höchstens "
-                    + $"{_context.Config.MaxIterations} × {_context.Config.VariantsPerIteration} Varianten)");
+                    $"{OutputConventions.SystemTag} Automatic stop: enabled (minimum improvement {autoStop.MinImprovement * 100:0.##} % "
+                    + $"over the last {autoStop.WindowVariants} variants; at most "
+                    + $"{_context.Config.MaxIterations} x {_context.Config.VariantsPerIteration} variants)");
 
-            // Restzeit-Prognose (Plan zeitschaetzung.md): gleitendes Fenster, Nachprüfung je Iteration
-            // und Feinprüfung am Ende sind eingerechnet.
+            // Run-time forecast (time-estimation plan): sliding window, per-iteration validation,
+            // and final fine verification are all accounted for.
             var estimator = new RunTimeEstimator(_context.Config, MeshDimensions, autoStopEnabled);
 
-            // Gewinner der zuletzt gelaufenen Iteration. Nur für die Schlussmeldung
-            // interessant — der ABSOLUTE Champion wird am Ende über die ganze History
-            // bestimmt (TODO-15), nicht über die letzte Iteration.
+            // Winner of the last completed iteration. Kept only for the closing summary — the
+            // OVERALL champion is determined across the entire history (TODO-15), not the last iteration.
             ModelRecord? lastIterationWinner = null;
 
-            // Die Pflicht-Metriken werden genau einmal geprüft — an der ersten Variante,
-            // die tatsächlich durchgelaufen ist (siehe EnsureRequiredMetrics).
+            // Required metrics are checked once on the first variant that completes without failure
+            // (see EnsureRequiredMetrics).
             bool requiredMetricsChecked = false;
 
             // =========================================================
-            // ÄUẞERE SCHLEIFE: ITERATIONEN (z.B. Generationen)
+            // OUTER LOOP: ITERATIONS (e.g., generations)
             // =========================================================
             for (int iter = 1; iter <= _context.Config.MaxIterations; iter++)
             {
                 SimulationLog.PrintIterationBanner(iter, _context.Config.MaxIterations);
-                
+
                 List<ModelRecord> currentIterationRecords = new List<ModelRecord>();
 
                 // =========================================================
-                // INNERE SCHLEIFE: VARIANTEN (Modelle)
+                // INNER LOOP: VARIANTS (models)
                 // =========================================================
                 for (int var = 1; var <= _context.Config.VariantsPerIteration; var++)
                 {
                     Stopwatch timer = Stopwatch.StartNew();
-                    
-                    // 1. Parameter vom Algorithmus generieren lassen
+
+                    // 1. Generate parameters from the optimization algorithm
                     var activeParams = _optimizer.GenerateParameters(_context, iter, var, _context.Config.VariantsPerIteration);
 
                     SimulationLog.PrintVariantHeader(iter, _context.Config.MaxIterations, var, _context.Config.VariantsPerIteration);
                     SimulationLog.PrintGeneLine(activeParams);
 
-                    // 2.-6. Die eigentliche Pipeline (Skalierung → Geometrie → Mesh → Solver)
+                    // 2.-6. Core pipeline (scaling -> geometry -> mesh -> solver)
                     ModelRecord record = RunPipeline(activeParams, iter, var);
                     bool replayed = LastCallWasReplayed;
 
-                    // Sofort je Variante bewerten (wenn nicht fehlgeschlagen):
+                    // Evaluate immediately per variant (if successful):
                     if (!record.SimulationFailed)
                     {
                         _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { record }, _context);
                     }
 
-                    // 6a. Liefert die Pipeline überhaupt, was die Fitness-Formel braucht?
+                    // 6a. Does the pipeline provide everything the fitness formula requires?
                     if (!requiredMetricsChecked && !record.SimulationFailed)
                     {
                         requiredMetricsChecked = true;
                         EnsureRequiredMetrics(record);
                     }
 
-                    // 7. Datensatz speichern
+                    // 7. Record result
                     _context.History.Add(record);
                     currentIterationRecords.Add(record);
-                    _context.ExportToCsv(); 
+                    _context.ExportToCsv();
 
                     SimulationLog.PrintVariantResult(record);
                     SimulationLog.PrintVariantDiagnostics(record);
                     UpdateTimer(timer, replayed, record, estimator, iter, var);
-                } 
+                }
 
                 // =========================================================
-                // AUSWERTUNG & VALIDIERUNG
+                // EVALUATION & VALIDATION
                 // =========================================================
-                // 1. Der Algorithmus bewertet die Modelle und wählt den Gewinner
+                // 1. Algorithm scores the iteration's variants and picks the best
                 _optimizer.EvaluateAndSelectBest(currentIterationRecords, _context);
-                
-                // 2. Den Validator (ehemals Türsteher/Bouncer) anwenden
+
+                // 2. Apply stability validator (bouncer)
                 ModelRecord trueWinner = _validator.ValidateChampion(
-                    currentIterationRecords, 
+                    currentIterationRecords,
                     _context.Config,
                     (testParams) => ResimulateForValidation(testParams, iter));
 
-                // 2a. Optionale feine Nachrechnung je Iteration (Mode = "EachIteration", TODO-43)
+                // 2a. Optional per-iteration fine verification (Mode = "EachIteration", TODO-43)
                 ChampionFineVerifier.VerifyIterationWinner(
                     trueWinner,
                     iter,
@@ -175,56 +172,54 @@ namespace FluidForge.Core
                     _requiredMetrics);
 
                 lastIterationWinner = trueWinner;
-                
-                _context.ExportToCsv(); 
-                
+
+                _context.ExportToCsv();
+
                 SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, currentIterationRecords, trueWinner);
                 SimulationLog.PrintTimeForecast(estimator.Estimate(iter, _context.Config.VariantsPerIteration, iterationFinished: true), DateTime.Now);
 
-                // Liegt der Champion schon jetzt an einer Parametergrenze, sofort sagen und nicht erst am Ende
-                // des Laufs (nach der Feinprüfung, und gar nicht, wenn man von Hand stoppt).
+                // Report immediately if the champion sits on a parameter bound rather than waiting until
+                // the very end (after fine verification, or never if stopped manually).
                 PrintBoundaryHint(trueWinner, iter);
 
-                // Automatisches Ende: nur zwischen zwei Iterationen, nie mitten in einer Generation.
+                // Automatic stop: only between iterations, never mid-generation.
                 if (autoStopEnabled && iter < _context.Config.MaxIterations)
                 {
                     AutoStopDecision decision = AutoStop.Evaluate(_context.History, autoStop);
                     if (decision.Stop)
                     {
                         SimulationLog.PrintBanner(
-                            $"AUTOMATISCHES ENDE NACH ITERATION {iter} VON {_context.Config.MaxIterations}",
-                            "Der Bestwert verbessert sich kaum noch (AutoStop).");
-                        Console.WriteLine($"[AUTO-ENDE] {decision.Message}");
+                            $"AUTOMATIC STOP AFTER ITERATION {iter} OF {_context.Config.MaxIterations}",
+                            "Best fitness is no longer improving sufficiently (AutoStop).");
+                        Console.WriteLine($"{OutputConventions.AutoStopTag} {decision.Message}");
                         break;
                     }
-                    Console.WriteLine($"[AUTO-ENDE] {decision.Message}");
+                    Console.WriteLine($"{OutputConventions.AutoStopTag} {decision.Message}");
                 }
 
                 if (iter < _context.Config.MaxIterations)
                 {
-                    // 3. Den Algorithmus auf die nächste Runde vorbereiten
+                    // 3. Prepare algorithm for the next iteration
                     _optimizer.PrepareNextIteration(_context, currentIterationRecords, trueWinner);
                 }
             }
 
-            // Finale Verifikation (Mode = "Final" oder "FinalTopN", TODO-43)
+            // Final verification (Mode = "Final" or "FinalTopN", TODO-43)
             ChampionFineVerifier.VerifyFinal(
                 _context,
                 (p, f, t) => RunPipeline(p, ValidationVariantNumber, ValidationVariantNumber, f, t),
                 r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
                 _requiredMetrics);
 
-            // Der beste Lauf des GESAMTEN Durchgangs, nicht der Gewinner der letzten
-            // Iteration: beim EA ist das meist dasselbe, beim RSM mit seiner zufälligen
-            // DoE-Phase oft nicht.
+            // Best record across the ENTIRE run, not just the last iteration's winner:
+            // with EA they are usually the same, while with RSM/DoE they often differ.
             FinishOptimization(SelectBestRecord(_context.History), lastIterationWinner);
         }
 
         /// <summary>
-        /// Der Record mit der höchsten Fitness. Disqualifizierte und fehlgeschlagene Modelle
-        /// tragen eine sehr kleine Fitness und fallen dadurch von selbst heraus.
-        /// Bei Gleichstand gewinnt der frühere Eintrag, damit die Auswahl reproduzierbar ist.
-        /// Gibt <c>null</c> zurück, wenn die Liste leer ist.
+        /// Returns the record with the highest fitness. Disqualified and failed models carry a tiny
+        /// fitness and naturally fall behind. Ties break in favor of the earlier record for reproducibility.
+        /// Returns <c>null</c> if the sequence is empty.
         /// </summary>
         public static ModelRecord? SelectBestRecord(IEnumerable<ModelRecord> records)
         {
@@ -239,18 +234,17 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prüft, ob der Record alle Metriken trägt, die der <see cref="IFitnessCalculator"/> des
-        /// Projekts braucht — und bricht sonst ab (TODO-26).
+        /// Verifies that the record contains all metrics required by the project's
+        /// <see cref="IFitnessCalculator"/>, aborting otherwise (TODO-26).
         ///
         /// <para>
-        /// Bewusst erst nach der ersten Variante: vorher existiert keine einzige Metrik, weil sie
-        /// aus Geometrie und Solver kommen. Und bewusst nur an einem Record, dessen Simulation
-        /// <b>nicht</b> abgebrochen ist — sonst würde ein einzelner SU2-Absturz in Variante 1 als
-        /// Konfigurationsfehler gemeldet. Scheitert jede Variante, bleibt die Prüfung aus; dann
-        /// hat der Lauf ohnehin ein größeres Problem, über das der Solver selbst schon geredet hat.
+        /// Deliberately checked only after the first variant: before that, no metrics exist because
+        /// they come from geometry and solver. Also checked only on a non-failed record so a single
+        /// SU2 crash in variant 1 is not misreported as a configuration error. If every variant fails,
+        /// the solver has already reported the underlying issue.
         /// </para>
         /// </summary>
-        /// <exception cref="InvalidOperationException">Eine Pflicht-Metrik fehlt.</exception>
+        /// <exception cref="InvalidOperationException">A required metric is missing.</exception>
         private void EnsureRequiredMetrics(ModelRecord record)
         {
             if (_requiredMetrics.Count == 0) return;
@@ -259,22 +253,22 @@ namespace FluidForge.Core
             if (missing.Count == 0) return;
 
             string present = record.PassiveParameters.Count == 0
-                ? "(keine)"
+                ? "(none)"
                 : string.Join(", ", record.PassiveParameters.Keys);
 
             throw new InvalidOperationException(
-                $"[KONFIGURATION] Nach der ersten gerechneten Variante fehlt/fehlen die Metrik(en) "
-                + $"{string.Join(", ", missing)}, ohne die sich die Fitness-Formel nicht rechnen lässt. "
-                + $"Vorhanden ist: {present}. "
-                + "Geometrie-Metriken meldet der IGeometryGenerator des Projekts über AddMetric(...); "
-                + "Solver-Größen kommen aus 'ResultMetrics' in dessen su2.json. "
-                + "Abbruch hier, statt den ganzen Lauf mit einer Ersatz-Fitness durchzurechnen.");
+                $"{OutputConventions.ConfigTag} After the first evaluated variant, required metric(s) "
+                + $"{string.Join(", ", missing)} are missing; fitness cannot be computed without them. "
+                + $"Present: {present}. "
+                + "Geometry metrics are reported by the project's IGeometryGenerator via AddMetric(...); "
+                + "solver quantities come from 'ResultMetrics' in su2.json. "
+                + "Aborting here rather than running the entire optimization with a fallback fitness.");
         }
 
         /// <summary>
-        /// Callback für den ModelValidator: Führt eine vollständige Re-Simulation mit den gegebenen
-        /// Parametern durch. Läuft durch dieselbe Pipeline wie eine reguläre Variante,
-        /// nur unter der Variantennummer 99 und ohne Eintrag in der History.
+        /// Callback for the model validator: executes a full re-simulation with the given parameters
+        /// through the same pipeline as a regular variant, using variant number 99 and without adding
+        /// to the history.
         /// </summary>
         private ModelRecord ResimulateForValidation(Dictionary<string, float> testParams, int iteration)
         {
@@ -282,11 +276,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Die eigentliche Pipeline für einen Parametersatz:
-        /// Skalierung (Gummiband) → Geometrie → Metriken → Vernetzung → Solver-Kette.
-        /// Unterstützt optional temporär überschriebenen Netzfaktor und Tag (TODO-42/43).
-        /// Gibt einen fertigen <see cref="ModelRecord"/> zurück; die Fitness wird hier
-        /// bewusst nicht berechnet, das macht der Optimierungsalgorithmus bzw. der Validator.
+        /// Core evaluation pipeline for one parameter set:
+        /// scaling (rubber-band) -> geometry -> metrics -> meshing -> solver chain.
+        /// Optionally supports temporary mesh factor and tag overrides (TODO-42/43).
+        /// Returns a populated <see cref="ModelRecord"/>; fitness is intentionally not computed here,
+        /// leaving that to the optimization algorithm or validator.
         /// </summary>
         public ModelRecord RunPipeline(
             Dictionary<string, float> parameters,
@@ -320,8 +314,8 @@ namespace FluidForge.Core
                     return directRecord;
                 }
 
-                // Wiederaufnahme (TODO-51): erst das Journal fragen, sonst rechnen und anhängen.
-                // Faktor und Tag sind hier schon die wirksamen (nach TODO-42/43).
+                // Resume (TODO-51): check journal first; otherwise execute and append.
+                // Factor and tag here already reflect overrides (after TODO-42/43).
                 float factor = _context.EffectiveMeshRefinementFactor;
                 string tag = _context.CurrentRunTag ?? "";
 
@@ -339,7 +333,7 @@ namespace FluidForge.Core
                 double elapsedSeconds = sw.Elapsed.TotalSeconds;
                 LastCallDurationSeconds = elapsedSeconds;
 
-                // Sofort bei der Rückgabe: die Aufrufer verändern den Datensatz danach noch.
+                // Record immediately upon return before callers mutate the record.
                 _journal.Append(iteration, variant, factor, tag, parameters, record, elapsedSeconds);
                 return record;
             }
@@ -352,8 +346,8 @@ namespace FluidForge.Core
 
         private ModelRecord RunPipelineCore(Dictionary<string, float> parameters, int iteration, int variant)
         {
-            // Skalierung (Gummiband) — mit dimensionalen Parametern aus dem Projekt.
-            // Abgeschaltet liefert Create() eine Neutral-Instanz (ShrinkFactor 1, Identität).
+            // Rubber-band scaling using the project's dimensional parameters.
+            // When disabled, Create() returns a neutral identity instance (ShrinkFactor = 1).
             RubberBandScaler scaler = RubberBandScaler.Create(
                 _context.Config.UseRubberBandScaler,
                 parameters,
@@ -368,7 +362,7 @@ namespace FluidForge.Core
             };
             record.PassiveParameters["MeshRefinementFactor"] = _context.EffectiveMeshRefinementFactor;
 
-            // Geometrie erzeugen (IGeometryGenerator) → GeometryResult
+            // Generate geometry (IGeometryGenerator) -> GeometryResult
             var geoResult = _geometry.GenerateAndExport(
                 iteration, variant,
                 scaler.ShrunkParameters,
@@ -377,7 +371,7 @@ namespace FluidForge.Core
 
             record.StlPath = geoResult.StlPath;
 
-            // Metriken aus dem GeometryResult in den Record übernehmen und zurückskalieren
+            // Transfer metrics from GeometryResult to record and restore physical scale
             ApplyGeometryMetrics(record, geoResult, scaler);
             record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
 
@@ -385,8 +379,8 @@ namespace FluidForge.Core
 
             try
             {
-                // Jede Stufe vernetzt mit ihrem eigenen Mesher und rechnet dann.
-                // Stufen, die sich dieselbe Mesher-Instanz teilen, vernetzen nur einmal.
+                // Each stage meshes with its own mesher and then runs its solver.
+                // Stages sharing the same mesher instance mesh only once.
                 var meshCache = new Dictionary<IMeshGenerator, string>(ReferenceEqualityComparer.Instance);
 
                 foreach (var stage in _stages)
@@ -403,10 +397,10 @@ namespace FluidForge.Core
                         meshPath = stage.Mesher.GenerateMesh(meshRequest);
                         meshCache[stage.Mesher] = meshPath;
 
-                        // ModelRecord führt genau einen Mesh-Pfad — den der ersten Stufe.
+                        // ModelRecord stores one mesh path — the one from the first stage.
                         if (string.IsNullOrEmpty(record.MeshPath)) record.MeshPath = meshPath;
 
-                        // Kennwerte des Netzes (Zellzahlen, Schichtzahl, Dicke, Stufe der Rückfall-Leiter …) in die CSV
+                        // Mesh metrics (cell counts, layer count, thickness, fallback stage, ...) for CSV export
                         if (stage.Mesher is IMeshMetricsSource metricsSource)
                         {
                             foreach (var kvp in metricsSource.LastMeshMetrics)
@@ -421,7 +415,7 @@ namespace FluidForge.Core
                         }
                         else
                         {
-                            // Abwärtskompatibilitäts-Fallback für Mock-Mesher ohne IMeshMetricsSource oder ohne "MeshCells"
+                            // Backward-compatibility fallback for mock meshers without IMeshMetricsSource or "MeshCells"
                             MeshMetrics.PopulateSu2CellMetrics(record.PassiveParameters, meshPath, overwriteExisting: false);
                             if (record.PassiveParameters.TryGetValue("MeshCells", out float fallbackCells)
                                 && float.IsFinite(fallbackCells) && fallbackCells > 0f)
@@ -430,8 +424,8 @@ namespace FluidForge.Core
                             }
                         }
 
-                        // Zellgrenze (Kalibrierung oder Sicherheitsdeckel MaxCells3D in der Optimierung):
-                        // an der GEMESSENEN Zellzahl prüfen, bevor SU2 Stunden rechnet.
+                        // Cell limit (calibration or MaxCells3D safety cap during optimization):
+                        // checked against MEASURED cell count before SU2 runs for hours.
                         bool isCalibrationLimit = _context.CellLimit > 0;
                         long effectiveCellLimit = isCalibrationLimit
                             ? _context.CellLimit
@@ -441,10 +435,10 @@ namespace FluidForge.Core
                             record.PassiveParameters[ModelRecord.CellLimitExceededKey] = 1f;
                             record.SimulationFailed = true;
                             string limitLabel = isCalibrationLimit
-                                ? "Zellgrenze (Kalibrierung)"
-                                : "Sicherheitsgrenze (MeshCalibration.MaxCells3D)";
+                                ? "Cell limit (calibration)"
+                                : "Safety cap (MeshCalibration.MaxCells3D)";
                             SimulationLog.Error(
-                                $"{limitLabel} überschritten: {cellCount:N0} Zellen gemessen, Grenze {effectiveCellLimit:N0}. Die Strömungsrechnung entfällt.");
+                                $"{limitLabel} exceeded: {cellCount:N0} cells measured, limit {effectiveCellLimit:N0}. Skipping flow solver.");
                             break;
                         }
                     }
@@ -454,13 +448,13 @@ namespace FluidForge.Core
             }
             catch (Exception ex)
             {
-                SimulationLog.Error($"Simulation abgebrochen: {ex.Message}");
-                // Generischer Fehler-Marker — der FitnessCalculator muss damit umgehen.
-                // Der Kern kennt keine projektspezifischen Metriknamen wie "Drag".
+                SimulationLog.Error($"Simulation aborted: {ex.Message}");
+                // Generic failure marker — the FitnessCalculator handles it.
+                // Core remains agnostic to project-specific metric names like "Drag".
                 record.SimulationFailed = true;
 
-                // Ein Vernetzungsfehler ist kein Strömungsabsturz: Bayes soll deswegen nicht die ganze
-                // Formzone meiden (Plan wandschicht_zellzahl.md, FZ7).
+                // A meshing failure is not a solver divergence: Bayes should not avoid the entire
+                // shape region for it (boundary-layer cell count plan, FZ7).
                 if (ex is MeshGenerationException) record.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
             }
 
@@ -468,9 +462,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Überträgt die Metriken des <see cref="GeometryResult"/> in den Record und rechnet sie
-        /// dabei von der PicoGK-Arbeitsgröße auf die reale Größe zurück. Welche Dimension eine
-        /// Metrik hat, deklariert das Projekt im <see cref="GeometryResult"/> — der Kern rät nicht.
+        /// Copies metrics from <see cref="GeometryResult"/> into the record, restoring them from
+        /// PicoGK working scale back to physical units. The project declares each metric's scaling
+        /// dimension on <see cref="GeometryResult"/> — Core never guesses.
         /// </summary>
         private static void ApplyGeometryMetrics(ModelRecord record, GeometryResult geoResult, RubberBandScaler scaler)
         {
@@ -499,9 +493,9 @@ namespace FluidForge.Core
         {
             timer.Stop();
 
-            // Gerechnete Varianten zählen mit ihrer Dauer. Aus dem Journal übernommene zählen mit der
-            // ursprünglichen Dauer (DurationSeconds bleibt erhalten), nicht mit den Millisekunden der Wiedergabe.
-            // Gescheiterte Varianten bleiben außen vor: sie brauchen Sekunden und würden den Schnitt drücken.
+            // Live variants contribute their measured duration. Journal-replayed variants contribute
+            // their originally recorded duration (DurationSeconds preserved), not replay milliseconds.
+            // Failed variants are excluded so quick crashes do not pull the average down.
             if (!record.SimulationFailed)
             {
                 double? measured = replayed ? LastCallDurationSeconds : timer.Elapsed.TotalSeconds;
@@ -514,32 +508,32 @@ namespace FluidForge.Core
                 DateTime.Now);
         }
 
-        /// <summary>Meldet eine Parametergrenze, an der der Champion einer Iteration liegt.</summary>
+        /// <summary>Reports when an iteration champion lies on a parameter bound.</summary>
         private void PrintBoundaryHint(ModelRecord champion, int iteration)
         {
             var atBounds = BoundaryHint.Find(champion.ActiveParameters, _context.Project.ParameterBounds);
             if (atBounds.Count == 0) return;
 
             SimulationLog.WriteLineColored(
-                $"[GRENZE] Champion von Iteration {iteration} liegt an der Parametergrenze: "
+                $"[BOUND] Champion of iteration {iteration} lies on parameter bound: "
                 + string.Join(", ", atBounds.Select(f => f.Describe())),
                 ConsoleColor.Yellow);
         }
 
         private void FinishOptimization(ModelRecord? champion, ModelRecord? lastIterationWinner)
         {
-            // Eine Optimierung, in der keine einzige Variante gerechnet werden konnte, ist nicht
-            // "erfolgreich" (Servertest 06.11.2026: Gmsh scheiterte an jeder Variante, die Meldung blieb) (TODO-W9).
+            // An optimization where not a single variant succeeded is not "successful"
+            // (server test 06.11.2026: Gmsh failed on every variant yet the banner stayed) (TODO-W9).
             int valid = _context.History.Count(r => !r.SimulationFailed);
             bool anySucceeded = valid > 0;
 
             if (anySucceeded)
             {
-                SimulationLog.PrintBanner("OPTIMIERUNG ERFOLGREICH BEENDET");
+                SimulationLog.PrintBanner("OPTIMIZATION COMPLETED SUCCESSFULLY");
             }
             else
             {
-                SimulationLog.PrintBanner("OPTIMIERUNG BEENDET – KEINE EINZIGE VARIANTE WAR GÜLTIG");
+                SimulationLog.PrintBanner("OPTIMIZATION FINISHED - NO VALID VARIANT FOUND");
             }
 
             foreach (string line in MeshRobustnessReport.Lines(_context.History))
@@ -549,33 +543,33 @@ namespace FluidForge.Core
 
             if (!anySucceeded)
             {
-                SimulationLog.Warning($"Alle {_context.History.Count} Varianten sind gescheitert (Vernetzung oder SU2). Die Fehlerprotokolle liegen unter FehlerLogs/.");
+                SimulationLog.Warning($"All {_context.History.Count} variants failed (meshing or SU2). Error logs are located under {OutputConventions.ErrorLogsDirectory}/.");
                 return;
             }
 
             if (champion != null)
             {
                 Console.WriteLine();
-                SimulationLog.WriteLineColored($"🏆 ABSOLUTER CHAMPION: Iteration {champion.Iteration} | Variante {champion.Variant}", ConsoleColor.Green);
+                SimulationLog.WriteLineColored($"🏆 {OutputConventions.ChampionBanner}: Iteration {champion.Iteration} | Variant {champion.Variant}", ConsoleColor.Green);
                 SimulationLog.WriteLineColored($"   Score: {champion.Fitness:F2}", ConsoleColor.Green);
 
-                // Sichtbar machen, wenn der beste Lauf nicht der letzte war — sonst wundert
-                // sich der Nutzer über zwei verschiedene Varianten in der Ausgabe.
+                // Make it explicit when the overall champion differs from the last iteration's winner
+                // so the user is not confused by two different variants in the output.
                 if (lastIterationWinner != null && !ReferenceEquals(lastIterationWinner, champion))
                 {
                     Console.WriteLine(
-                        $"   (Gewinner der letzten Iteration war Iteration {lastIterationWinner.Iteration} | " +
-                        $"Variante {lastIterationWinner.Variant} mit Score {lastIterationWinner.Fitness:F2})");
+                        $"   (Winner of the last iteration was Iteration {lastIterationWinner.Iteration} | " +
+                        $"Variant {lastIterationWinner.Variant} with Score {lastIterationWinner.Fitness:F2})");
                 }
 
-                // Passive Parameter dynamisch anzeigen
+                // Display passive parameters dynamically
                 foreach (var kvp in champion.PassiveParameters)
                 {
                     Console.WriteLine($"   {kvp.Key}: {kvp.Value:F4}");
                 }
 
-                // Liegt der Gewinner am Rand des erlaubten Bereichs, bestimmt die Grenze das Ergebnis.
-                // Das wird sichtbar gemeldet, die Grenzen selbst werden nie automatisch geändert.
+                // If the winner sits at the edge of the allowed space, the bound dictates the result.
+                // Report this visibly; bounds themselves are never widened automatically.
                 var atBounds = BoundaryHint.Find(champion.ActiveParameters, _context.Project.ParameterBounds);
                 if (atBounds.Count > 0)
                 {
@@ -584,14 +578,13 @@ namespace FluidForge.Core
                         SimulationLog.WriteLineColored(line, ConsoleColor.Yellow);
                 }
 
-                // Die Pfade kommen aus dem Kontext und stehen nicht mehr als Text hier:
-                // seit TODO-25 liegen die Ergebnisse unter Ergebnisse/<Projekt>/, und eine
-                // hartcodierte Zeile hätte den Nutzer in den falschen Ordner geschickt.
-                string analysis = System.IO.Path.Combine(_context.WorkingDirectory, "Analyseergebnisse");
+                // Paths come from context rather than hardcoded strings:
+                // since TODO-25 results live under results/<Project>/, so hardcoding would mislead the user.
+                string analysis = System.IO.Path.Combine(_context.WorkingDirectory, OutputConventions.AnalysisDirectory);
 
-                Console.WriteLine($"\n📂 ParaView-Dateien in {analysis}:");
-                Console.WriteLine($"   Oberfläche: Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
-                Console.WriteLine($"   Volumen:    Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
+                Console.WriteLine($"\n📂 ParaView files in {analysis}:");
+                Console.WriteLine($"   Surface: Surface_Gen{champion.Iteration}_Var{champion.Variant}.vtu");
+                Console.WriteLine($"   Volume:  Volume_Gen{champion.Iteration}_Var{champion.Variant}.vtu\n");
             }
         }
     }

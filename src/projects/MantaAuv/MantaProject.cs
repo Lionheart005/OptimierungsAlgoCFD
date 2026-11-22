@@ -4,17 +4,16 @@ using FluidForge.Core;
 namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
-    /// Das Manta-Ray AUV, verdrahtet (TODO-23). Diese Klasse ersetzt den <c>case "MantaAuv":</c>,
-    /// der vorher in <c>Program.cs</c> stand.
+    /// Project definition for the Manta-Ray AUV.
     ///
     /// <para>
-    /// Kernel und Solver-Kette kommen unverändert aus <see cref="CfdProjectDefinition"/>:
-    /// PicoGK, Gmsh, SU2 — genau das, was der <c>switch</c> vorher fest verbunden hat.
+    /// Kernel and solver pipeline are inherited unchanged from <see cref="CfdProjectDefinition"/>:
+    /// PicoGK, Gmsh, and SU2.
     /// </para>
     /// </summary>
     public sealed class MantaProject : CfdProjectDefinition
     {
-        /// <summary>Muss dem Ordnernamen unter <c>src/projects/</c> entsprechen.</summary>
+        /// <summary>Must match the folder name under <c>src/projects/</c>.</summary>
         public override string Name => "MantaAuv";
 
         /// <inheritdoc/>
@@ -25,8 +24,8 @@ namespace FluidForge.Projects.MantaAuv
             => new MantaGeometryGenerator();
 
         /// <summary>
-        /// Prüft im Konstruktor, ob die Pflicht-Ziele vorliegen (TODO-16) — der Lauf bricht
-        /// dadurch hier ab und nicht erst nach Stunden Rechenzeit.
+        /// Validates required optimization targets in the constructor so missing keys
+        /// fail immediately rather than hours into a run.
         /// </summary>
         public override IFitnessCalculator CreateFitness(ProjectContext context)
             => new MantaFitnessCalculator(context.Project);

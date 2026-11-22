@@ -5,26 +5,26 @@ using System.Numerics;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Messergebnis einer oder mehrerer 2D-Konturen (z.B. Profilschnitt).
+    /// Geometric measurements of one or more 2D contours (e.g., airfoil cross-section).
     /// </summary>
     public readonly struct ContourMeasurement2D
     {
-        /// <summary>Nettofläche in mm² (Außenkonturen minus Löcher).</summary>
+        /// <summary>Net area in mm² (outer contours minus holes).</summary>
         public float Area { get; }
 
-        /// <summary>Gesamter Umfang aller Konturschleifen in mm.</summary>
+        /// <summary>Total perimeter across all contour loops in mm.</summary>
         public float Perimeter { get; }
 
-        /// <summary>Bounding Box der Konturen.</summary>
+        /// <summary>Bounding box of the contours.</summary>
         public BBox2 Bounds { get; }
 
-        /// <summary>Sehnenlänge in mm (Ausdehnung in X-Richtung).</summary>
+        /// <summary>Chord length in mm (extent along X).</summary>
         public float Chord => Bounds.Size.X;
 
-        /// <summary>Profildicke in mm (Ausdehnung in Y-Richtung).</summary>
+        /// <summary>Profile thickness in mm (extent along Y).</summary>
         public float Thickness => Bounds.Size.Y;
 
-        /// <summary>Gesamtzahl der Stützpunkte aller Schleifen.</summary>
+        /// <summary>Total number of vertices across all loops.</summary>
         public int PointCount { get; }
 
         public ContourMeasurement2D(float area, float perimeter, BBox2 bounds, int pointCount)
@@ -40,13 +40,13 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Berechnet geometrische Metriken für 2D-Konturen (Fläche nach Gaußscher Trapezformel / Shoelace,
-    /// Umfang geschlossener Polygone, Bounding Box, Sehne und Dicke).
+    /// Computes geometric metrics for 2D contours (area via the shoelace formula,
+    /// closed polygon perimeter, bounding box, chord, and thickness).
     /// </summary>
     public static class MeshMetrics2D
     {
         /// <summary>
-        /// Vermisst eine einzelne geschlossene 2D-Kontur.
+        /// Measures a single closed 2D contour.
         /// </summary>
         public static ContourMeasurement2D Measure(IReadOnlyList<Vector2> singleContour)
         {
@@ -57,9 +57,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Vermisst eine Menge geschlossener 2D-Konturen (Außenkonturen und Löcher).
-        /// Die vorzeichenbehafteten Flächen der Schleifen werden summiert (Löcher subtrahieren sich
-        /// automatisch bei gegenläufiger Orientierung).
+        /// Measures a collection of closed 2D contours (outer contours and holes).
+        /// Signed loop areas are summed so opposite-winding holes subtract automatically.
         /// </summary>
         public static ContourMeasurement2D Measure(IReadOnlyList<IReadOnlyList<Vector2>> contours)
         {
@@ -89,10 +88,10 @@ namespace FluidForge.Core
 
                     bounds = bounds.Include(p0);
 
-                    // Gaußsche Trapezformel (Shoelace-Formel): x_i * y_{i+1} - x_{i+1} * y_i
+                    // Shoelace formula: x_i * y_{i+1} - x_{i+1} * y_i
                     contourSignedArea += ((double)p0.X * p1.Y) - ((double)p1.X * p0.Y);
 
-                    // Segmentlänge
+                    // Segment length
                     double dx = p1.X - p0.X;
                     double dy = p1.Y - p0.Y;
                     contourPerimeter += Math.Sqrt(dx * dx + dy * dy);

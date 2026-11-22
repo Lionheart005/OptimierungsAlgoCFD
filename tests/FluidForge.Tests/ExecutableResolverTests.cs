@@ -38,7 +38,7 @@ namespace FluidForge.Tests
         [Fact]
         public void FindInPath_Finds_Standard_System_Command()
         {
-            // Unter Windows ist 'cmd' oder 'powershell' vorhanden, unter Linux 'sh' oder 'ls'
+            // On Windows 'cmd' or 'powershell' is available, on Linux 'sh' or 'ls'
             string cmdName = OperatingSystem.IsWindows() ? "cmd" : "sh";
             string? found = ExecutableResolver.FindInPath(cmdName);
 
@@ -67,15 +67,15 @@ namespace FluidForge.Tests
         [Fact]
         public void Resolve_Emits_Fallback_Message_When_Candidate_Found()
         {
-            // Simuliert einen Fallback-Pfad unter dem Benutzerverzeichnis
+            // Simulates a fallback path under the user home directory
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             string fallbackDir = Path.Combine(home, "miniconda", "bin");
             string candidateFile = Path.Combine(fallbackDir, "mock_dummy_SU2_CFD");
 
-            // Falls das Verzeichnis nicht existiert oder keine Schreibrechte bestehen, testen wir den Writer-Output
+            // If the directory does not exist or lacks write permissions, test the writer output
             using var sw = new StringWriter();
             string resolved = ExecutableResolver.Resolve("unknown_command", "su2", sw);
-            // Wenn kein candidate existiert, ist der Output leer
+            // If no candidate exists, output is empty
             Assert.Equal("unknown_command", resolved);
         }
     }

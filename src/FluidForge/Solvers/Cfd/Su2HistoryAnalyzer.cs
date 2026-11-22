@@ -6,20 +6,20 @@ using System.Linq;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Parameter für die Auswertung des Konvergenzverlaufs aus der SU2-<c>history.csv</c> (TODO-35).
+    /// Parameters for evaluating convergence history from SU2's <c>history.csv</c>.
     /// </summary>
     public record Su2HistoryOptions
     {
-        /// <summary>Maximale Iterationsanzahl aus der Konfiguration (ITER).</summary>
+        /// <summary>Maximum iteration count from configuration (ITER).</summary>
         public int MaxIterations { get; init; } = 500;
 
-        /// <summary>Fenstergröße für die Cauchy-Konvergenzprüfung (CONV_CAUCHY_ELEMS).</summary>
+        /// <summary>Window size for Cauchy convergence check (CONV_CAUCHY_ELEMS).</summary>
         public int CauchyElems { get; init; } = 150;
 
-        /// <summary>Namen der Spalten (z.B. "CD", "CL"), für die die Schwingung berechnet werden soll.</summary>
+        /// <summary>Column names (e.g. "CD", "CL") for which oscillation and drift are computed.</summary>
         public IReadOnlyList<string> MetricColumns { get; init; } = Array.Empty<string>();
 
-        /// <summary>Synonym für <see cref="MetricColumns"/>.</summary>
+        /// <summary>Alias for <see cref="MetricColumns"/>.</summary>
         public IReadOnlyList<string> Metrics => MetricColumns;
 
         public Su2HistoryOptions() { }
@@ -36,7 +36,7 @@ namespace FluidForge.Solvers.Cfd
     }
 
     /// <summary>
-    /// Ergebnis der Verlaufsauswertung einer SU2-Simulation (TODO-35).
+    /// Result of evaluating an SU2 simulation's convergence history.
     /// </summary>
     public record Su2HistoryResult(
         int Iterations,
@@ -46,59 +46,56 @@ namespace FluidForge.Solvers.Cfd
         IReadOnlyDictionary<string, float> WindowMeans)
     {
         /// <summary>
-        /// Länge des Endfensters in Zeilen, über das <see cref="TailMeans"/>, <see cref="WindowDrift"/>
-        /// und <see cref="OscillationAmplitude"/> gebildet sind: <c>min(CauchyElems, Zeilen / 2)</c>.
-        /// Nie mehr als die halbe Historie, damit der Anlauf das Fenster nicht verfälscht (TODO-W3).
+        /// Length of the tail window in rows over which <see cref="TailMeans"/>, <see cref="WindowDrift"/>,
+        /// and <see cref="OscillationAmplitude"/> are computed: <c>min(CauchyElems, rows / 2)</c>.
+        /// Never exceeds half the history so startup transients do not skew the window.
         /// </summary>
         public int TailRows { get; init; }
 
-        /// <summary>Mittelwert je Kennwert über das Endfenster (ohne Anlaufphase).</summary>
+        /// <summary>Mean per metric over the tail window (excluding startup transient).</summary>
         public IReadOnlyDictionary<string, float> TailMeans { get; init; } = new Dictionary<string, float>();
 
         /// <summary>
-        /// Absolute Drift je Kennwert: Unterschied der Mittelwerte von erster und zweiter Hälfte des
-        /// Endfensters. Maß für den iterativen Fehler (TODO-W3): Pendeln um einen festen Wert ergibt
-        /// ~0, ein langsames Weiterwandern einen deutlichen Wert.
+        /// Absolute drift per metric: difference between first-half and second-half means of the tail window.
+        /// Measures iterative error: oscillation around a fixed mean yields ~0, slow drift yields a clear value.
         /// </summary>
         public IReadOnlyDictionary<string, float> WindowDrift { get; init; } = new Dictionary<string, float>();
 
         /// <summary>
-        /// Echte Schwingungsamplitude je Kennwert: Spannweite der Werte im Endfenster <b>nach Abzug
-        /// des linearen Trends</b>, bezogen auf |Mittelwert|. Anders als <see cref="Su2HistoryResult.Oscillation"/>
-        /// enthält sie keine Drift und eignet sich für die Warnung vor Wirbelablösung.
+        /// True oscillation amplitude per metric: peak-to-peak range in the tail window <b>after detrending</b>,
+        /// divided by |mean|. Unlike <see cref="Su2HistoryResult.Oscillation"/>, it excludes drift and is
+        /// suited for vortex-shedding warnings.
         /// </summary>
         public IReadOnlyDictionary<string, float> OscillationAmplitude { get; init; } = new Dictionary<string, float>();
 
         /// <summary>
-        /// Relative Standardunsicherheit (1σ) des Fenstermittels je Kennwert, aus Blockmitteln
-        /// (<see cref="Su2HistoryAnalyzer.Batches"/> gleich lange Blöcke, um den linearen Trend bereinigt),
-        /// bezogen auf |Mittelwert|. Bei einer ruhigen Rechnung nahe 0, bei Wirbelablösung deutlich größer.
-        /// Fehlt, wenn das Endfenster kürzer als zwei Zeilen je Block ist.
+        /// Relative standard uncertainty (1σ) of the tail mean per metric from batch means
+        /// (<see cref="Su2HistoryAnalyzer.Batches"/> equal-length batches, detrended), divided by |mean|.
+        /// Near 0 for steady runs, larger under vortex shedding. Omitted if fewer than 2 rows per batch.
         /// </summary>
         public IReadOnlyDictionary<string, float> TailUncertainty { get; init; } = new Dictionary<string, float>();
 
         /// <summary>
-        /// Zeigt das Endfenster eine <b>statistisch gesicherte</b> Drift (Trend der Blockmittel größer als
-        /// das Dreifache seiner Unsicherheit)? Falsch heißt: der Wert schwankt um einen festen Mittelwert
-        /// (instationär, aber stabil), auch wenn die einfache Drift-Prüfung anschlägt.
+        /// Whether the tail window exhibits a <b>statistically significant</b> drift (batch-mean slope exceeds
+        /// 3x its standard error). False means the metric oscillates around a stationary mean (unsteady but stable).
         /// </summary>
         public IReadOnlyDictionary<string, bool> TrendSignificant { get; init; } = new Dictionary<string, bool>();
     }
 
     /// <summary>
-    /// Reine Analysefunktion für den SU2-Konvergenzverlauf ohne Datei- oder Konsolen-I/O (TODO-35).
+    /// Pure analysis functions for SU2 convergence history without file or console I/O.
     /// </summary>
     public static class Su2HistoryAnalyzer
     {
-        /// <summary>Anzahl der Blöcke für Blockmittel (Trend-Test und Unsicherheit).</summary>
+        /// <summary>Number of batches for batch-mean statistics (trend test and uncertainty).</summary>
         public const int Batches = 8;
 
         /// <summary>
-        /// Wertet den Verlauf einer SU2-Simulation (<c>history.csv</c>) rein rechnerisch aus.
+        /// Evaluates the convergence history of an SU2 simulation (<c>history.csv</c>).
         /// </summary>
-        /// <param name="lines">Kopfzeile und Datenzeilen der CSV-Datei.</param>
-        /// <param name="options">Konvergenzgrenzen und zu prüfende Spaltennamen.</param>
-        /// <returns>Die ermittelten Kennwerte zu Iterationsanzahl, Konvergenz, Residuenabfall und Schwingungen.</returns>
+        /// <param name="lines">Header line and data rows of the CSV file.</param>
+        /// <param name="options">Convergence limits and column names to evaluate.</param>
+        /// <returns>Computed iteration count, convergence status, residual drop, and oscillation statistics.</returns>
         public static Su2HistoryResult Evaluate(string[] lines, Su2HistoryOptions options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
@@ -130,9 +127,9 @@ namespace FluidForge.Solvers.Cfd
             }
 
             // 1. Iterations:
-            // SU2 zählt innere Iterationen ab 0 (0-basiert). Wenn eine Iterationsspalte (Inner_Iter, ITER)
-            // vorhanden ist und in der letzten Zeile der ganzzahlige Wert n steht, sind n + 1 Iterationen gerechnet worden.
-            // Fehlt die Spalte oder ist sie nicht lesbar, wird die Anzahl der Datenzeilen verwendet.
+            // SU2 counts inner iterations from 0 (0-based). If an iteration column (Inner_Iter, ITER)
+            // is present and the last row contains integer n, n + 1 iterations were executed.
+            // Falls back to data row count if missing or unparseable.
             int iterations = dataRows.Count;
             int iterCol = Su2Solver.FindColumn(headers, "Inner_Iter", out _);
             if (iterCol < 0) iterCol = Su2Solver.FindColumn(headers, "ITER", out _);
@@ -153,8 +150,8 @@ namespace FluidForge.Solvers.Cfd
             bool converged = options.MaxIterations > 0 && iterations > 0 && iterations < options.MaxIterations;
 
             // 3. ResidualDrop:
-            // Dekaden, um die das erste RMS-Residuum (Spalte beginnt mit "rms[") zwischen erster und letzter Zeile gefallen ist.
-            // In SU2 sind rms[...]-Werte bereits dekadische Logarithmen (log10), daher entspricht der Abfall first - last.
+            // Decades by which the first RMS residual (column starting with "rms[") dropped from first to last row.
+            // In SU2 rms[...] values are already log10, so drop = first - last.
             float residualDrop = float.NaN;
             int rmsCol = -1;
             for (int i = 0; i < headers.Length; i++)
@@ -182,7 +179,7 @@ namespace FluidForge.Solvers.Cfd
             }
 
             // 4. Oscillation & WindowMeans:
-            // Über die letzten CauchyElems Zeilen (oder weniger, falls nicht genug Zeilen vorhanden).
+            // Over the last CauchyElems rows (or fewer if not enough rows exist).
             var oscillation = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             var windowMeans = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
@@ -237,7 +234,7 @@ namespace FluidForge.Solvers.Cfd
                     oscillation[metricCol] = osc;
                 }
 
-                // Endfenster: nie mehr als die halbe Historie (TODO-W3).
+                // Tail window: never more than half the history.
                 if (tailRows >= 4)
                 {
                     var tail = new List<float>(tailRows);
@@ -285,12 +282,10 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Blockmittel-Statistik: Das Fenster wird in <see cref="Batches"/> gleich lange Blöcke geteilt.
-        /// Durch die Blockmittel wird eine Gerade gelegt. <paramref name="significant"/> ist wahr, wenn
-        /// ihre Steigung mehr als das Dreifache ihres Standardfehlers beträgt (gesicherte Drift).
-        /// <paramref name="standardError"/> ist der Standardfehler des Fenstermittels aus der Streuung
-        /// der Blockmittel um die Gerade. Blockmittel statt Einzelwerte, weil aufeinanderfolgende
-        /// Iterationen stark voneinander abhängen.
+        /// Batch-mean statistics: splits the window into <see cref="Batches"/> equal-length batches and fits
+        /// a line through batch means. <paramref name="significant"/> is true if the slope exceeds 3x its
+        /// standard error (statistically significant drift). <paramref name="standardError"/> is the standard
+        /// error of the window mean from batch scatter around the trend line.
         /// </summary>
         public static bool BatchStatistics(IReadOnlyList<float> values, out double standardError, out bool significant)
         {
@@ -301,7 +296,7 @@ namespace FluidForge.Solvers.Cfd
             if (size < 2) return false;
 
             var means = new double[Batches];
-            int offset = values.Count - size * Batches;   // Rest vorne weglassen (Anlauf)
+            int offset = values.Count - size * Batches;   // Drop leading remainder (startup)
             for (int b = 0; b < Batches; b++)
             {
                 double sum = 0;
@@ -326,7 +321,7 @@ namespace FluidForge.Solvers.Cfd
             }
             double residualSd = Math.Sqrt(ss / (Batches - 2));
 
-            // Untergrenze gegen Division durch null bei exakt linearen oder konstanten Verläufen
+            // Floor against division by zero on exact linear or constant histories
             double floor = 1e-9 * Math.Max(Math.Abs(meanY), 1e-12);
             double slopeError = Math.Max(residualSd, floor) / Math.Sqrt(sxx);
 
@@ -335,7 +330,7 @@ namespace FluidForge.Solvers.Cfd
             return true;
         }
 
-        /// <summary>Spannweite der Abweichungen von der Ausgleichsgeraden (kleinste Quadrate).</summary>
+        /// <summary>Peak-to-peak range of residuals from the least-squares trend line.</summary>
         private static float DetrendedPeakToPeak(IReadOnlyList<float> values)
         {
             int n = values.Count;

@@ -4,36 +4,33 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Die zentrale Regel, welche Rechnungen ein Ersatzmodell lernen darf (TODO-53, F13).
-    /// Eine Stelle statt verstreuter Filter.
+    /// Central rule defining which evaluations a surrogate model may train on.
     ///
     /// <para>
-    /// Nutzbar ist ein Datensatz, wenn die Rechnung nicht fehlgeschlagen ist, der Türsteher sie nicht
-    /// verworfen hat, die Fitness endlich ist, es keine Kontrollrechnung ist (Variante 99) und sie auf
-    /// derselben Netzstufe wie der Lauf entstand (<c>MeshRefinementFactor</c>, Toleranz 1e-6).
-    /// Datensätze ohne diesen Schlüssel werden angenommen (ältere Daten und Tests).
-    /// Fehlgeschlagene und disqualifizierte Punkte werden getrennt geliefert: der Optimierer meidet
-    /// ihre Umgebung (Abstoßung).
+    /// A record is usable if it did not fail, was not disqualified by the bouncer, has finite fitness,
+    /// is not a control run (variant 99), and was evaluated at the same mesh refinement level as the
+    /// current run (<c>MeshRefinementFactor</c>, tolerance 1e-6; records without this key are accepted
+    /// for backward compatibility). Failed and disqualified points are returned separately for repulsion.
     /// </para>
     /// </summary>
     public sealed class SurrogateTrainingSet
     {
-        /// <summary>Variantennummer der Kontrollrechnungen (Türsteher, Feinprüfung).</summary>
+        /// <summary>Variant number reserved for control runs (bouncer, fine verification).</summary>
         public const int ControlRunVariant = 99;
 
-        /// <summary>Nutzbare Datensätze in History-Reihenfolge.</summary>
+        /// <summary>Usable records in history order.</summary>
         public IReadOnlyList<ModelRecord> Records { get; }
 
-        /// <summary>Normierte Eingaben, parallel zu <see cref="Records"/>.</summary>
+        /// <summary>Normalized inputs corresponding to <see cref="Records"/>.</summary>
         public IReadOnlyList<double[]> Inputs { get; }
 
-        /// <summary>Normierte Orte fehlgeschlagener oder disqualifizierter Rechnungen.</summary>
+        /// <summary>Normalized locations of failed or disqualified evaluations.</summary>
         public IReadOnlyList<double[]> ExcludedPoints { get; }
 
         /// <summary>
-        /// Nur die echt fehlgeschlagenen Rechnungen (Vernetzung oder Solver abgebrochen), ohne die vom
-        /// Türsteher verworfenen. Ein verworfener Gewinner liegt oft gerade am steilen Optimum; als
-        /// „Absturz" gelernt, würde das Erfolgsmodell genau dort wegsteuern.
+        /// Only genuinely failed evaluations (meshing or solver aborted), excluding bouncer-rejected
+        /// candidates. A rejected winner often sits right at a steep optimum; treating it as a crash
+        /// would steer the success model away from the optimum.
         /// </summary>
         public IReadOnlyList<double[]> FailedPoints { get; }
 
@@ -57,8 +54,8 @@ namespace FluidForge.Core
                 if (record.Variant == ControlRunVariant) continue;
                 if (!SameMeshLevel(record, context.EffectiveMeshRefinementFactor)) continue;
 
-                // Ersatznetz (Wandschicht überall verdünnt) rechnet mit einem anderen Wandnetz als die übrigen Varianten:
-                // nicht als Lerndaten verwenden, aber auch nicht als Absturz werten.
+                // Fallback mesh (uniformly thinned boundary layer) uses a different wall mesh:
+                // exclude from training, but do not treat as a solver crash.
                 bool meshFallback = record.PassiveParameters.TryGetValue(ModelRecord.MeshFallbackKey, out float fb) && fb > 0.5f;
 
                 if (record.SimulationFailed || record.Disqualified || meshFallback)
@@ -66,8 +63,8 @@ namespace FluidForge.Core
                     double[] point = space.ToUnit(record.ActiveParameters);
                     excluded.Add(point);
 
-                    // Ein Vernetzungsfehler ist kein Strömungsabsturz (Plan wandschicht_zellzahl.md, FZ7): er stößt die Suche
-                    // nur in der engen Umgebung ab, schreckt aber nicht die ganze Formzone ab (Erfolgsmodell).
+                    // A meshing error is not a flow solver crash: apply local repulsion only,
+                    // without teaching the success model to avoid the entire shape region.
                     bool meshFailed = record.PassiveParameters.TryGetValue(ModelRecord.MeshFailedKey, out float mf) && mf > 0.5f;
                     if (record.SimulationFailed && !meshFailed) failed.Add(point);
                     continue;

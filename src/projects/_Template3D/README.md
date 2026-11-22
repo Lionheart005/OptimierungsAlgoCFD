@@ -1,22 +1,22 @@
-# `_Template3D` — 3D-Kopiervorlage für neue Projekte
+# `_Template3D` — 3D Project Template
 
-> **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
-> **3D-Modellierungs-Handbuch (PicoGK):** [`src/FluidForge/Kernels/PicoGk/README.md`](../../FluidForge/Kernels/PicoGk/README.md)  
-> **Nachschlagewerk für alle JSON-Einstellungen:** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
+> **Step-by-step guide for creating a project:** [`src/projects/README.md`](../README.md)  
+> **3D Modeling Manual (PicoGK):** [`src/FluidForge/Kernels/PicoGk/README.md`](../../FluidForge/Kernels/PicoGk/README.md)  
+> **Legacy JSON Reference:** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md) *(currently in German)*
 
-Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für 3D-CFD-Bauteile (PicoGK → Gmsh 3D → SU2). Er wird über das Skript
+This folder is **not a standalone project**, but the template for 3D CFD components (PicoGK → Gmsh 3D → SU2). Copy it via:
 
 ```powershell
-.\scripts\new-project.ps1 MeinBauteil
+.\scripts\new-project.ps1 MyComponent
 ```
 
-nach `src/projects/MeinBauteil/` kopiert, wobei der Platzhalter `MyProject` in allen Datei-, Klassen- und Namensraumnamen automatisch ersetzt wird. Alle weiteren Schritte (Parameter, Geometrie, Zielfunktion, Aufräumen der JSONs und Start) sind zentral in [`src/projects/README.md`](../README.md) beschrieben.
+This copies the template to `src/projects/MyComponent/` and automatically replaces the `MyProject` placeholder in all filenames, class names, and namespaces. All further steps (parameters, geometry, fitness, trimming JSONs, running) are documented in [`src/projects/README.md`](../README.md).
 
-## Besonderheiten dieser Vorlage
+## Template Notes
 
-- **Vom Hauptprogramm-Build ausgeschlossen, vom Testprojekt compiliert:**  
-  `src/projects/_Template3D/` wird in `src/FluidForge/FluidForge.csproj` vom Build ausgeschlossen, damit keine Projektdefinition mit dem Platzhalternamen `MyProject` ohne passenden Ordner entsteht (sie erscheint daher auch nicht unter `--list-projects`). Compiliert und geprüft wird der Ordner stattdessen durch `tests/FluidForge.Tests/`, sodass Schnittstellenänderungen sofort bei `dotnet test` auffallen.
-- **Kleiner erster Lauf:**  
-  In `simulation.json` stehen `MaxIterations = 5` und `VariantsPerIteration = 5` (Standard 10 × 10). Die Netzkalibrierung steht auf `"Auto"` (in 3D Stunden); für einen schnellen Rauchtest der Kette PicoGK → STL → Gmsh → SU2 → Fitness `"Manual"` mit eingetragenem `MeshRefinementFactor` verwenden. Alle übrigen JSON-Einträge zeigen die dokumentierten Code-Standardwerte als Nachschlagewerk.
-- **Aktuelle 3D-Vorgaben (AP-1 bis AP-6):**  
-  Die Vorlage nutzt standardmäßig $y^+ \approx 1{,}5$ (`TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`), krümmungsabhängige Oberflächenverfeinerung (`MeshSizeFromCurvature = true`, `CurvatureElements = 20`, `CurvatureMinSizeFactor = 0.5`), automatische Windkanal-Garantien entkoppelt vom `RubberBandScaler` ($\ge 5\,L$ stromauf, $\ge 15\,L$ stromab, $\ge 5\,B/H$ seitlich, $\le 0{,}3\,\%$ Versperrung), Start-Voxelprüfung (`AutoVoxelResolution`, Standard `false`) sowie automatischen SU2-Restart bei Rest-Drift (`AutoRestartOnDrift = true`, `CauchyTolerance = "1e-5"`).
+- **Excluded from main app build, compiled by tests:**  
+  `src/projects/_Template3D/` is excluded in `src/FluidForge/FluidForge.csproj` so that no placeholder `MyProject` definition exists without a matching folder (and does not appear in `--list-projects`). Instead, `tests/FluidForge.Tests/` compiles and validates it so interface changes fail immediately on `dotnet test`.
+- **Small initial run:**  
+  `simulation.json` sets `MaxIterations = 5` and `VariantsPerIteration = 5` (framework default is 10 × 10). `MeshCalibration` is set to `"Auto"` (takes hours in 3D); for a quick smoke test of PicoGK → STL → Gmsh → SU2 → Fitness, switch to `"Manual"` and set `MeshRefinementFactor`. All remaining JSON keys show documented code defaults as a reference.
+- **3D baseline settings:**  
+  Uses $y^+ \approx 1.5$ (`TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`), curvature-based surface refinement (`MeshSizeFromCurvature = true`, `CurvatureElements = 20`, `CurvatureMinSizeFactor = 0.5`), automatic wind-tunnel clearances decoupled from `RubberBandScaler` ($\ge 5\,L$ upstream, $\ge 15\,L$ downstream, $\ge 5\,W/H$ lateral, $\le 0.3\%$ blockage), startup voxel check (`AutoVoxelResolution`, default `false`), and automatic SU2 restart on remaining drift (`AutoRestartOnDrift = true`, `CauchyTolerance = "1e-5"`).

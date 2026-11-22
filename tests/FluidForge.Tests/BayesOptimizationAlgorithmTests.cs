@@ -10,9 +10,9 @@ using Xunit.Abstractions;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Gemeinsame Bausteine der Bayes-Tests: ein kompletter Lauf mit dem echten
-    /// <see cref="WorkflowController"/>, aber gemockter Geometrie und gemocktem Solver.
-    /// Feste Seeds, keine Zeitgrenzen (F22).
+    /// Shared building blocks for Bayes tests: a full run with the real
+    /// <see cref="WorkflowController"/>, but mocked geometry and mocked solver.
+    /// Fixed seeds, no time limits (F22).
     /// </summary>
     internal static class BayesHarness
     {
@@ -29,7 +29,7 @@ namespace FluidForge.Tests
             public string Verification = "Off";
         }
 
-        /// <summary>Fitness aus einem einzigen Kennwert "Value", ohne deklarierte Kennwerte.</summary>
+        /// <summary>Fitness from a single metric "Value", without declared metrics.</summary>
         public sealed class SingleValueFitness : IFitnessCalculator
         {
             private readonly Func<double, double> _map;
@@ -110,7 +110,7 @@ namespace FluidForge.Tests
         public static float Best(SimulationContext context) =>
             context.History.Where(r => !r.SimulationFailed && !r.Disqualified).Max(r => r.Fitness);
 
-        // ---------------------------------------------------------------- Testfunktionen
+        // ---------------------------------------------------------------- Test functions
 
         public static double Branin(double x1, double x2)
         {
@@ -148,7 +148,7 @@ namespace FluidForge.Tests
             Bounds = new[] { (-5f, 10f), (0f, 15f) },
             Start = new[] { 2.5f, 7.5f },
             Solve = r => r.PassiveParameters["Value"] = (float)Branin(r.ActiveParameters["X1"], r.ActiveParameters["X2"]),
-            // Fitness = Gütezahl, Maximum 1/(1+0.3979) bei dem bekannten Minimum
+            // Fitness = quality score, maximum 1/(1+0.3979) at the known minimum
             Fitness = () => new SingleValueFitness(v => 1.0 / (1.0 + v))
         };
 
@@ -190,7 +190,7 @@ namespace FluidForge.Tests
         {
             var problem = BayesHarness.BraninProblem();
             problem.Variants = 6;
-            var context = BayesHarness.NewContext(problem, Sub("grenzen"));
+            var context = BayesHarness.NewContext(problem, Sub("bounds"));
             var optimizer = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v), random: new Random(1));
 
             var first = optimizer.GenerateParameters(context, 1, 1, 6);
@@ -206,8 +206,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Regressionstest (08.11.2026): Reicht der Versuchsplan über mehrere Runden, darf nichts davon
-        /// verloren gehen. Vorher wurden die Punkte nach der nächsten Runde verworfen.
+        /// Regression test (2026-11-08): if the initial design spans multiple rounds, none of it
+        /// may be lost. Previously, remaining points were discarded after the next round.
         /// </summary>
         [Fact]
         public void A_Design_Longer_Than_One_Round_Is_Used_Completely()
@@ -215,14 +215,14 @@ namespace FluidForge.Tests
             var problem = BayesHarness.BraninProblem();
             problem.Iterations = 4;
             problem.Variants = 3;
-            problem.Bayes = new BayesConfig { InitialSamples = 10 };   // 1 Startwert + 9 LHS über 4 Runden
-            var (context, optimizer) = BayesHarness.Run(problem, "Bayes", 4, Sub("langer_plan"));
+            problem.Bayes = new BayesConfig { InitialSamples = 10 };   // 1 start point + 9 LHS over 4 rounds
+            var (context, optimizer) = BayesHarness.Run(problem, "Bayes", 4, Sub("long_design"));
 
             Assert.Equal(10, ((BayesOptimizationAlgorithm)optimizer).InitialSampleCount);
             var design = context.History.Take(10).ToList();
             Assert.All(design, r => Assert.False(r.PassiveParameters.ContainsKey(BayesOptimizationAlgorithm.PredictedFitnessKey)));
 
-            // Die 9 LHS-Punkte sind in jeder Dimension geschichtet (ein Punkt je Neuntel).
+            // The 9 LHS points are stratified in each dimension (one point per ninth).
             var lhs = design.Skip(1).ToList();
             foreach (var (name, min, max) in new[] { ("X1", -5f, 10f), ("X2", 0f, 15f) })
             {
@@ -235,7 +235,7 @@ namespace FluidForge.Tests
         public void The_Initial_Design_Is_Latin_Hypercube_Stratified()
         {
             var problem = BayesHarness.BraninProblem();
-            problem.Variants = 6;   // n0 = max(6, 2*2+2) = 6 → 5 LHS-Punkte nach dem Startwert
+            problem.Variants = 6;   // n0 = max(6, 2*2+2) = 6 -> 5 LHS points after the start point
             var context = BayesHarness.NewContext(problem, Sub("lhs"));
             var optimizer = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v), random: new Random(5));
 
@@ -254,7 +254,7 @@ namespace FluidForge.Tests
         public void A_Missing_Bound_Stops_Before_The_First_Calculation_And_Names_The_Parameter()
         {
             var problem = BayesHarness.BraninProblem();
-            var context = BayesHarness.NewContext(problem, Sub("ohne"));
+            var context = BayesHarness.NewContext(problem, Sub("missing"));
             context.Project.ParameterBounds.Remove("X2");
             var optimizer = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v), random: new Random(1));
 
@@ -263,7 +263,7 @@ namespace FluidForge.Tests
             Assert.Contains("ParameterBounds", ex.Message);
             Assert.Contains("project.json", ex.Message);
 
-            // Auch ohne Vorprüfung: schon der erste Vorschlag bricht ab.
+            // Even without preflight: the very first proposal aborts.
             var lazy = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v), random: new Random(1));
             Assert.Throws<InvalidOperationException>(() => lazy.GenerateParameters(context, 1, 1, 6));
         }
@@ -272,10 +272,10 @@ namespace FluidForge.Tests
         public void A_Fixed_Parameter_Stays_Fixed_And_Is_Not_Modelled()
         {
             var problem = BayesHarness.BraninProblem();
-            problem.Bounds = new[] { (-5f, 10f), (7.5f, 7.5f) };   // X2 fest
+            problem.Bounds = new[] { (-5f, 10f), (7.5f, 7.5f) };   // X2 fixed
             problem.Iterations = 3;
             problem.Variants = 4;
-            var (context, _) = BayesHarness.Run(problem, "Bayes", 3, Sub("fest"));
+            var (context, _) = BayesHarness.Run(problem, "Bayes", 3, Sub("fixed"));
 
             Assert.All(context.History, r => Assert.Equal(7.5f, r.ActiveParameters["X2"]));
             Assert.True(context.History.Select(r => r.ActiveParameters["X1"]).Distinct().Count() > 6);
@@ -285,8 +285,8 @@ namespace FluidForge.Tests
         public void An_Unknown_Setting_Is_Rejected_With_A_Clear_Message()
         {
             var problem = BayesHarness.BraninProblem();
-            problem.Bayes = new BayesConfig { SurrogateTarget = "Magie" };
-            var context = BayesHarness.NewContext(problem, Sub("magie"));
+            problem.Bayes = new BayesConfig { SurrogateTarget = "Magic" };
+            var context = BayesHarness.NewContext(problem, Sub("magic"));
             var optimizer = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v));
 
             var ex = Assert.Throws<InvalidOperationException>(() => optimizer.Preflight(context));
@@ -331,7 +331,7 @@ namespace FluidForge.Tests
             Assert.Equal(1.6, region.Length);
 
             region.Register(true); region.Register(true); region.Register(true);
-            Assert.Equal(1.6, region.Length);   // Deckel
+            Assert.Equal(1.6, region.Length);   // cap
         }
 
         [Fact]
@@ -347,7 +347,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Below_The_Minimum_A_Restart_Is_Due_And_Resets_The_Length()
         {
-            var region = new TrustRegionState(4, 4);   // Toleranz 1
+            var region = new TrustRegionState(4, 4);   // tolerance 1
             for (int i = 0; i < 7; i++)
             {
                 Assert.False(region.NeedsRestart);
@@ -372,18 +372,18 @@ namespace FluidForge.Tests
             var problem = BayesHarness.BraninProblem();
             problem.Iterations = 4;
             problem.Variants = 5;
-            string directory = Sub("voll");
+            string directory = Sub("full");
 
             var (context, optimizer) = BayesHarness.Run(problem, "Bayes", 7, directory);
 
             Assert.Equal(20, context.History.Count);
             Assert.Equal(SurrogateTargetMode.Fitness, ((BayesOptimizationAlgorithm)optimizer).ActiveMode);
 
-            // Versuchsplan (Iteration 1): keine Vorhersage. Später: Vorhersage samt Band.
+            // Initial design (iteration 1): no prediction. Later: prediction with band.
             Assert.All(context.History.Where(r => r.Iteration == 1),
                 r => Assert.False(r.PassiveParameters.ContainsKey(BayesOptimizationAlgorithm.PredictedFitnessKey)));
             var predicted = context.History.Where(r => r.PassiveParameters.ContainsKey(BayesOptimizationAlgorithm.PredictedFitnessKey)).ToList();
-            Assert.True(predicted.Count >= 5, $"Vorhersagen: {predicted.Count}");
+            Assert.True(predicted.Count >= 5, $"Predictions: {predicted.Count}");
             foreach (var r in predicted)
             {
                 Assert.True(r.PassiveParameters[BayesOptimizationAlgorithm.PredictedLowKey]
@@ -392,14 +392,14 @@ namespace FluidForge.Tests
                             >= r.PassiveParameters[BayesOptimizationAlgorithm.PredictedFitnessKey] - 1e-6f);
             }
 
-            // Sie landen als Spalten in der CSV.
-            string csv = File.ReadAllText(Path.Combine(directory, "Simulation_Results.csv"));
+            // They end up as columns in the CSV.
+            string csv = File.ReadAllText(Path.Combine(directory, OutputConventions.ResultsCsvFileName));
             Assert.Contains("Bayes_PredictedFitness", csv.Split('\n')[0]);
             Assert.Contains("Bayes_Explorer", csv.Split('\n')[0]);
 
-            // Verlaufsdatei: Kopfzeile, eine Zeile je vorbereiteter Iteration (3 von 4).
-            string[] lines = File.ReadAllLines(Path.Combine(directory, "Analyseergebnisse", BayesOptimizationAlgorithm.HistoryFileName));
-            Assert.StartsWith("Iteration;Modus;Lernpunkte;Vertrauensbereich_L;Abweichung_Mittel;Anteil_im_Band;BesteFitness;Relevanz_X1;Relevanz_X2", lines[0]);
+            // History file: header line, one line per prepared iteration (3 of 4).
+            string[] lines = File.ReadAllLines(Path.Combine(directory, OutputConventions.AnalysisDirectory, BayesOptimizationAlgorithm.HistoryFileName));
+            Assert.StartsWith("Iteration;Mode;TrainingPoints;TrustRegion_L;MeanRelativeError;InBandShare;BestFitness;Relevance_X1;Relevance_X2", lines[0]);
             Assert.Equal(1 + 3, lines.Length);
             Assert.Contains("Fitness", lines[^1].Split(';')[1]);
         }
@@ -414,8 +414,8 @@ namespace FluidForge.Tests
 
             BayesHarness.Run(problem, "Rsm", 7, directory);
 
-            Assert.False(File.Exists(Path.Combine(directory, "Analyseergebnisse", BayesOptimizationAlgorithm.HistoryFileName)));
-            Assert.DoesNotContain("Bayes_", File.ReadAllText(Path.Combine(directory, "Simulation_Results.csv")));
+            Assert.False(File.Exists(Path.Combine(directory, OutputConventions.AnalysisDirectory, BayesOptimizationAlgorithm.HistoryFileName)));
+            Assert.DoesNotContain("Bayes_", File.ReadAllText(Path.Combine(directory, OutputConventions.ResultsCsvFileName)));
         }
 
         [Fact]
@@ -443,7 +443,7 @@ namespace FluidForge.Tests
             (SimulationContext, IOptimizationAlgorithm) Plain() => BayesHarness.Run(problem, "Bayes", 4, Sub("plain"));
             var (plainContext, _) = Plain();
 
-            // Derselbe Lauf, nur dass jede Bewertung mehrfach aufgerufen wird.
+            // Same run, except each evaluation is called multiple times.
             IOptimizationAlgorithm Wrap(IFitnessCalculator f, Random r) => new ExtraEvaluationWrapper(new BayesOptimizationAlgorithm(f, random: r));
             var (extraContext, _) = BayesHarness.Run(problem, "Bayes", 4, Sub("extra"), Wrap);
 
@@ -473,7 +473,7 @@ namespace FluidForge.Tests
             var problem = BayesHarness.BraninProblem();
             problem.Iterations = 5;
             problem.Variants = 6;
-            var (context, _) = BayesHarness.Run(problem, "Bayes", 9, Sub("dubletten"));
+            var (context, _) = BayesHarness.Run(problem, "Bayes", 9, Sub("duplicates"));
 
             var all = context.History.Select(r => (r.ActiveParameters["X1"], r.ActiveParameters["X2"])).ToList();
             Assert.Equal(all.Count, all.Distinct().Count());
@@ -488,11 +488,11 @@ namespace FluidForge.Tests
         [Fact]
         public void The_Proposals_Of_One_Round_Are_Spread_Out_Not_Near_Duplicates()
         {
-            // Gemessen am 08.11.2026 auf dem Server: vier Vorschläge einer Runde lagen fast aufeinander.
+            // Measured on 2026-11-08 on the server: four proposals in one round were nearly identical.
             var problem = BayesHarness.BraninProblem();
             problem.Iterations = 5;
             problem.Variants = 6;
-            var (context, _) = BayesHarness.Run(problem, "Bayes", 9, Sub("streuung"));
+            var (context, _) = BayesHarness.Run(problem, "Bayes", 9, Sub("spread"));
 
             double minimum = double.PositiveInfinity;
             foreach (var round in context.History.Where(r => r.Iteration >= 3).GroupBy(r => r.Iteration))
@@ -503,7 +503,7 @@ namespace FluidForge.Tests
                         minimum = Math.Min(minimum, Math.Sqrt(Math.Pow(points[i][0] - points[j][0], 2) + Math.Pow(points[i][1] - points[j][1], 2)));
             }
 
-            Assert.True(minimum > 0.01, $"kleinster Abstand zweier Vorschläge einer Runde: {minimum:F4}");
+            Assert.True(minimum > 0.01, $"Smallest distance between two proposals in one round: {minimum:F4}");
         }
 
         [Fact]
@@ -511,17 +511,17 @@ namespace FluidForge.Tests
         {
             var problem = BayesHarness.BraninProblem();
             problem.Variants = 6;
-            var context = BayesHarness.NewContext(problem, Sub("abstossung"));
+            var context = BayesHarness.NewContext(problem, Sub("repulsion"));
             var spy = new SpyModel();
             int created = 0;
             var optimizer = new BayesOptimizationAlgorithm(
                 new BayesHarness.SingleValueFitness(v => 1.0 / (1.0 + v)),
                 random: new Random(2),
-                // erstes Modell = Fitness, das zweite ist das Erfolgsmodell (gelungen gegen abgestürzt)
+                // first model = fitness, second is the success model (succeeded vs crashed)
                 modelFactory: () => created++ == 0 ? spy : new SpyModel());
             optimizer.Preflight(context);
 
-            // Sechs gute Rechnungen verteilt im Raum, dazu ein fehlgeschlagener und ein disqualifizierter Punkt.
+            // Six good runs distributed in space, plus one failed and one disqualified point.
             var random = new Random(3);
             for (int i = 0; i < 8; i++)
             {
@@ -537,7 +537,7 @@ namespace FluidForge.Tests
 
             optimizer.PrepareNextIteration(context, context.History.ToList(), context.History[0]);
 
-            Assert.Equal(6, spy.LastFitCount);   // nur die sechs nutzbaren
+            Assert.Equal(6, spy.LastFitCount);   // only the six usable ones
 
             double radius = 0.05 * Math.Sqrt(2);
             var excluded = new[] { (4.0, 4.0), (8.0, 11.0) };
@@ -547,12 +547,12 @@ namespace FluidForge.Tests
                 foreach (var (ex1, ex2) in excluded)
                 {
                     double dx = (p["X1"] - ex1) / 15.0, dy = (p["X2"] - ex2) / 15.0;
-                    Assert.True(Math.Sqrt(dx * dx + dy * dy) > radius / 2, $"Vorschlag {variant} liegt zu nah an ({ex1}, {ex2})");
+                    Assert.True(Math.Sqrt(dx * dx + dy * dy) > radius / 2, $"Proposal {variant} is too close to ({ex1}, {ex2})");
                 }
             }
         }
 
-        /// <summary>Wie ein Gauß-Prozess, zählt aber mit, mit wie vielen Punkten er lernen musste.</summary>
+        /// <summary>Like a Gaussian process, but counts how many points it had to learn from.</summary>
         private sealed class SpyModel : ISurrogateModel
         {
             private readonly GaussianProcess _inner = new(new Random(1));
@@ -570,7 +570,7 @@ namespace FluidForge.Tests
             public IReadOnlyList<double>? ParameterRelevance => _inner.ParameterRelevance;
         }
 
-        // ---------------------------------------------------------------- Vergleich mit Rsm (Testfunktionen)
+        // ---------------------------------------------------------------- Comparison with Rsm (test functions)
 
         private (double Bayes, double Rsm) Compare(BayesHarness.Problem problem, int seed)
         {
@@ -580,9 +580,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Branin (2D), 6 × 6 Rechnungen, 3 feste Seeds, mit echtem Türsteher. Gemessen am 08.11.2026:
-        /// Bayes 0,705 / 0,709 / 0,684, Rsm 0,608 / 0,080 / 0,702, Optimum 0,715. Je Seed schwankt das
-        /// Ergebnis (kleines Budget), deshalb zählt die Summe über die Seeds.
+        /// Branin (2D), 6 x 6 runs, 3 fixed seeds, with real bouncer. Measured on 2026-11-08:
+        /// Bayes 0.705 / 0.709 / 0.684, Rsm 0.608 / 0.080 / 0.702, optimum 0.715. Each seed varies
+        /// (small budget), so the sum across seeds counts.
         /// </summary>
         [Fact]
         public void Bayes_Is_Close_To_The_Optimum_And_Better_Than_Rsm_On_Branin()
@@ -594,20 +594,20 @@ namespace FluidForge.Tests
             {
                 var (bayes, rsm) = Compare(BayesHarness.BraninProblem(), seed);
                 _output.WriteLine($"Branin Seed {seed}: Bayes {bayes:F4}, Rsm {rsm:F4}, Optimum {optimum:F4}");
-                Assert.True(bayes >= optimum * 0.8, $"Seed {seed}: Bayes {bayes} ist nicht nah am Optimum {optimum}");
+                Assert.True(bayes >= optimum * 0.8, $"Seed {seed}: Bayes {bayes} is not close to optimum {optimum}");
                 bayesSum += bayes;
                 rsmSum += rsm;
             }
 
-            Assert.True(bayesSum >= rsmSum, $"Summe Bayes {bayesSum} < Summe Rsm {rsmSum}");
+            Assert.True(bayesSum >= rsmSum, $"Sum Bayes {bayesSum} < Sum Rsm {rsmSum}");
         }
 
         /// <summary>
-        /// Hartmann-6 (6D) mit nur 36 Rechnungen ist für jedes Verfahren schwer und stark vom Zufall
-        /// abhängig (je Seed schwankt das Ergebnis um mehr als 1,0; schon kleine Codeänderungen kippen
-        /// einzelne Seeds). Deshalb 6 Seeds und nur die Summe. Gemessen am 08.11.2026:
-        /// Bayes 2,32 / 1,19 / 1,96 / 3,02 / 1,92 / 2,67 (Summe 13,1), Rsm 2,93 / 1,33 / 1,48 / 0,98 / 1,99 / 1,29
-        /// (Summe 10,0), Optimum 3,32.
+        /// Hartmann-6 (6D) with only 36 runs is hard for any method and strongly random-dependent
+        /// (per seed the result varies by more than 1.0; even small code changes flip individual seeds).
+        /// Therefore 6 seeds and sum only. Measured on 2026-11-08:
+        /// Bayes 2.32 / 1.19 / 1.96 / 3.02 / 1.92 / 2.67 (sum 13.1), Rsm 2.93 / 1.33 / 1.48 / 0.98 / 1.99 / 1.29
+        /// (sum 10.0), optimum 3.32.
         /// </summary>
         [Fact]
         public void Bayes_Is_Better_Than_Rsm_On_Hartmann6_On_Average()
@@ -618,13 +618,13 @@ namespace FluidForge.Tests
             {
                 var (bayes, rsm) = Compare(BayesHarness.HartmannProblem(), seed);
                 _output.WriteLine($"Hartmann6 Seed {seed}: Bayes {bayes:F4}, Rsm {rsm:F4}, Optimum 3.3224");
-                Assert.True(bayes >= 1.0, $"Seed {seed}: Bayes {bayes} ist zu weit vom Optimum 3.32");
+                Assert.True(bayes >= 1.0, $"Seed {seed}: Bayes {bayes} is too far from optimum 3.32");
                 bayesSum += bayes;
                 rsmSum += rsm;
             }
 
-            Assert.True(bayesSum >= rsmSum, $"Summe Bayes {bayesSum} < Summe Rsm {rsmSum}");
-            Assert.True(bayesSum / 6 >= 1.8, $"Mittel {bayesSum / 6}");
+            Assert.True(bayesSum >= rsmSum, $"Sum Bayes {bayesSum} < Sum Rsm {rsmSum}");
+            Assert.True(bayesSum / 6 >= 1.8, $"Mean {bayesSum / 6}");
         }
 
         [Fact]
@@ -654,17 +654,17 @@ namespace FluidForge.Tests
                 Variants = 10
             };
 
-            var (context, optimizer) = BayesHarness.Run(problem, "Bayes", 5, Sub("zwanzig"));
+            var (context, optimizer) = BayesHarness.Run(problem, "Bayes", 5, Sub("twenty"));
             var bayes = (BayesOptimizationAlgorithm)optimizer;
             Assert.True(bayes.TrustRegionActive);
 
             int designPoints = bayes.InitialSampleCount;   // 42
             double bestDesign = context.History.Take(designPoints).Max(r => r.Fitness);
             double best = BayesHarness.Best(context);
-            _output.WriteLine($"20D: bester Versuchsplan-Punkt {bestDesign:F3}, Ende {best:F3}");
+            _output.WriteLine($"20D: best design point {bestDesign:F3}, end {best:F3}");
 
-            // Fitness = 10 - f; ein klarer Gewinn heißt: der Abstand zum Optimum (10) sinkt auf unter 60 %.
-            Assert.True(10.0 - best < 0.6 * (10.0 - bestDesign), $"f(Entwurf) = {10 - bestDesign:F3}, f(Ende) = {10 - best:F3}");
+            // Fitness = 10 - f; a clear win means the distance to the optimum (10) drops below 60%.
+            Assert.True(10.0 - best < 0.6 * (10.0 - bestDesign), $"f(design) = {10 - bestDesign:F3}, f(end) = {10 - best:F3}");
         }
 
         [Fact]
@@ -675,19 +675,19 @@ namespace FluidForge.Tests
             problem.Variants = 6;
             var spy = new SpyModel();
 
-            var (_, _) = BayesHarness.Run(problem, "Bayes", 2, Sub("deckel"),
+            var (_, _) = BayesHarness.Run(problem, "Bayes", 2, Sub("cap"),
                 (f, r) => new BayesOptimizationAlgorithm(f, random: r, modelFactory: () => spy,
                     tuning: new BayesTuning { MaxTrainingPoints = 12, CandidatePool = 500 }));
 
-            Assert.Equal(12, spy.LastFitCount);   // 30 gerechnet, aber höchstens 12 gesehen
+            Assert.Equal(12, spy.LastFitCount);   // 30 computed, but at most 12 seen
         }
     }
 
     public class BayesMetricsModeTests : TempDirectoryTest
     {
         /// <summary>
-        /// Manta-ähnlich: Fitness = A·B / C³, mal 0,1 außerhalb eines A-Bereichs. A, B und C verlaufen
-        /// glatt, die Fitness springt. Die Fitness deklariert ihre Kennwerte.
+        /// Manta-like: Fitness = A * B / C³, times 0.1 outside an A-range. A, B, and C vary
+        /// smoothly, fitness jumps. Fitness declares its metrics.
         /// </summary>
         private sealed class MantaLikeFitness : IFitnessCalculator
         {
@@ -710,9 +710,9 @@ namespace FluidForge.Tests
                 float fitness = a * b / MathF.Pow(MathF.Max(c, 0.001f), 3);
                 if (a < 2.0f || a > 3.0f) fitness *= 0.1f;
 
-                if (_readsUndeclared && record.PassiveParameters.TryGetValue("Geheim", out float secret)) fitness += secret;
+                if (_readsUndeclared && record.PassiveParameters.TryGetValue("Secret", out float secret)) fitness += secret;
 
-                record.PassiveParameters["Verhaeltnis"] = a / MathF.Max(c, 0.001f);   // schreibt zusätzliche Schlüssel (wie GlideRatio)
+                record.PassiveParameters["Ratio"] = a / MathF.Max(c, 0.001f);   // writes additional keys (like GlideRatio)
                 record.Fitness = fitness;
             }
         }
@@ -758,7 +758,7 @@ namespace FluidForge.Tests
         {
             var problem = BayesHarness.BraninProblem();
             problem.Bayes = new BayesConfig { SurrogateTarget = "Metrics" };
-            var context = BayesHarness.NewContext(problem, Sub("leer"));
+            var context = BayesHarness.NewContext(problem, Sub("empty"));
             var optimizer = new BayesOptimizationAlgorithm(new BayesHarness.SingleValueFitness(v => v));
 
             var ex = Assert.Throws<InvalidOperationException>(() => optimizer.Preflight(context));
@@ -773,10 +773,10 @@ namespace FluidForge.Tests
             problem.Solve = r =>
             {
                 baseSolve(r);
-                r.PassiveParameters["Geheim"] = 1.0f + r.ActiveParameters["P1"];   // nicht deklariert, verändert die Fitness
+                r.PassiveParameters["Secret"] = 1.0f + r.ActiveParameters["P1"];   // undeclared, alters fitness
             };
 
-            var (_, optimizer) = BayesHarness.Run(problem, "Bayes", 3, Sub("rueckfall"));
+            var (_, optimizer) = BayesHarness.Run(problem, "Bayes", 3, Sub("fallback"));
 
             Assert.Equal(SurrogateTargetMode.Fitness, ((BayesOptimizationAlgorithm)optimizer).ActiveMode);
         }
@@ -784,13 +784,13 @@ namespace FluidForge.Tests
         [Fact]
         public void A_Fitness_That_Needs_Only_Declared_Metrics_Stays_In_Metrics_Mode()
         {
-            var (context, optimizer) = BayesHarness.Run(MantaLike(), "Bayes", 3, Sub("bleibt"));
+            var (context, optimizer) = BayesHarness.Run(MantaLike(), "Bayes", 3, Sub("stays"));
             Assert.Equal(SurrogateTargetMode.Metrics, ((BayesOptimizationAlgorithm)optimizer).ActiveMode);
 
-            // Throwaway-Datensätze kommen nie in die History: genau 36 Einträge.
+            // Throwaway records never enter History: exactly 36 entries.
             Assert.Equal(36, context.History.Count);
 
-            // Auch im Metrics-Modus stehen die Vorhersagespalten in der CSV.
+            // In Metrics mode too, prediction columns appear in the CSV.
             Assert.Contains(context.History, r => r.PassiveParameters.ContainsKey(BayesOptimizationAlgorithm.PredictedFitnessKey));
         }
 
@@ -813,12 +813,12 @@ namespace FluidForge.Tests
                 rsm += BayesHarness.Best(cr);
             }
 
-            // Gemessen am 08.11.2026 (Summe über 3 Seeds): Metrics 110,4, Fitness 78,6, Rsm 82,2.
-            // Der Modus "Fitness" hat an der Sprungstelle der Formel keinen Vorteil gegenüber Rsm,
-            // der Modus "Metrics" schon. Genau dafür gibt es ihn.
-            Assert.True(metrics >= fitness * 1.1, $"Metrics {metrics} nicht klar besser als Fitness {fitness}");
-            Assert.True(metrics >= rsm * 1.1, $"Metrics {metrics} nicht klar besser als Rsm {rsm}");
-            Assert.True(fitness >= rsm * 0.85, $"Fitness {fitness} deutlich schlechter als Rsm {rsm}");
+            // Measured on 2026-11-08 (sum over 3 seeds): Metrics 110.4, Fitness 78.6, Rsm 82.2.
+            // "Fitness" mode has no advantage over Rsm at the formula discontinuity,
+            // "Metrics" mode does. That is precisely why it exists.
+            Assert.True(metrics >= fitness * 1.1, $"Metrics {metrics} not clearly better than Fitness {fitness}");
+            Assert.True(metrics >= rsm * 1.1, $"Metrics {metrics} not clearly better than Rsm {rsm}");
+            Assert.True(fitness >= rsm * 0.85, $"Fitness {fitness} significantly worse than Rsm {rsm}");
         }
 
         [Fact]
@@ -832,7 +832,7 @@ namespace FluidForge.Tests
             BayesHarness.Run(problem, "Bayes", 3, Sub("log"),
                 (f, r) => new BayesOptimizationAlgorithm(f, random: r, modelFactory: () => { var m = new RecordingModel(); models.Add(m); return m; }));
 
-            // Die Modelle entstehen in der Reihenfolge A, B, C; alle Kennwerte sind positiv → ln.
+            // Models are created in order A, B, C; all metrics are positive -> ln.
             Assert.Equal(3, models.Count);
             Assert.All(models, m => Assert.All(m.LastOutputs, v => Assert.True(Math.Abs(v) < 5)));   // ln(~1..10) ≈ 0..2.3
 
@@ -840,12 +840,12 @@ namespace FluidForge.Tests
             mixed.Iterations = 2;
             mixed.Variants = 8;
             var baseSolve = mixed.Solve;
-            mixed.Solve = r => { baseSolve(r); r.PassiveParameters["A"] -= 2.5f; };   // wechselt das Vorzeichen
+            mixed.Solve = r => { baseSolve(r); r.PassiveParameters["A"] -= 2.5f; };   // changes sign
             var mixedModels = new List<RecordingModel>();
-            BayesHarness.Run(mixed, "Bayes", 3, Sub("gemischt"),
+            BayesHarness.Run(mixed, "Bayes", 3, Sub("mixed"),
                 (f, r) => new BayesOptimizationAlgorithm(f, random: r, modelFactory: () => { var m = new RecordingModel(); mixedModels.Add(m); return m; }));
 
-            Assert.Contains(mixedModels[0].LastOutputs, v => v < 0);   // A wird roh gelernt
+            Assert.Contains(mixedModels[0].LastOutputs, v => v < 0);   // A is learned raw
         }
 
         private sealed class RecordingModel : ISurrogateModel
@@ -869,25 +869,25 @@ namespace FluidForge.Tests
             var problem = MantaLike();
             problem.Solve = r =>
             {
-                // P5 hat keinen Einfluss
+                // P5 has no influence
                 r.PassiveParameters["A"] = 1.5f + 1.5f * r.ActiveParameters["P1"];
                 r.PassiveParameters["B"] = 1.0f + r.ActiveParameters["P2"];
                 r.PassiveParameters["C"] = 0.5f + (r.ActiveParameters["P3"] - 0.7f) * (r.ActiveParameters["P3"] - 0.7f) + 0.2f * r.ActiveParameters["P4"];
             };
-            string directory = Sub("wichtig");
+            string directory = Sub("importance");
 
             BayesHarness.Run(problem, "Bayes", 3, directory);
 
-            string[] lines = File.ReadAllLines(Path.Combine(directory, "Analyseergebnisse", BayesOptimizationAlgorithm.HistoryFileName));
+            string[] lines = File.ReadAllLines(Path.Combine(directory, OutputConventions.AnalysisDirectory, BayesOptimizationAlgorithm.HistoryFileName));
             string[] header = lines[0].Split(';');
             string[] last = lines[^1].Split(';');
-            int first = Array.IndexOf(header, "Relevanz_P1");
+            int first = Array.IndexOf(header, "Relevance_P1");
             var relevance = Enumerable.Range(0, 5)
                 .Select(i => double.Parse(last[first + i], System.Globalization.CultureInfo.InvariantCulture))
                 .ToArray();
 
             Assert.True(relevance[4] <= relevance.Take(4).Max() * 0.5,
-                $"P5 sollte kaum wichtig sein: {string.Join(", ", relevance.Select(v => v.ToString("F2")))}");
+                $"P5 should have low importance: {string.Join(", ", relevance.Select(v => v.ToString("F2")))}");
         }
 
         [Fact]
@@ -905,7 +905,7 @@ namespace FluidForge.Tests
                 Solve = r =>
                 {
                     double x = r.ActiveParameters["X1"];
-                    // Messrauschen (±0.35) um eine flache Basis 5.0 + 0.5*sin(2*pi*x)
+                    // Measurement noise (±0.35) around a flat baseline 5.0 + 0.5*sin(2*pi*x)
                     double noise = (noiseRng.NextDouble() - 0.5) * 0.7;
                     r.PassiveParameters["Value"] = (float)(5.0 + 0.5 * Math.Sin(2.0 * Math.PI * x) + noise);
                 }
@@ -927,7 +927,7 @@ namespace FluidForge.Tests
                         return gp;
                     }));
 
-            // Mindestens das Fitness-Modell hat signifikantes Beobachtungsrauschen gelernt
+            // At least the fitness model learned significant observation noise
             Assert.Contains(observedModels, m => m.ObservationNoiseVariance > 1e-3);
 
             var predicted = context.History
@@ -935,7 +935,7 @@ namespace FluidForge.Tests
                 .ToList();
             Assert.NotEmpty(predicted);
 
-            // Vergleich: das vorhergesagte 95%-Band muss breiter als das reine latente 95%-Band sein
+            // Comparison: the predicted 95% band must be wider than the pure latent 95% band
             GaussianProcess fitnessGp = observedModels.First(m => m.ObservationNoiseVariance > 1e-3);
             int widerThanLatent = 0;
             int covered = 0;
@@ -954,9 +954,9 @@ namespace FluidForge.Tests
                 }
             }
 
-            Assert.True(widerThanLatent > 0, "Erwartet breiteres Band durch ObservationNoiseVariance.");
+            Assert.True(widerThanLatent > 0, "Expected wider band due to ObservationNoiseVariance.");
             double coverage = (double)covered / predicted.Count;
-            Assert.True(coverage >= 0.75, $"Bandabdeckung bei verrauschten Daten zu niedrig: {coverage:P1}");
+            Assert.True(coverage >= 0.75, $"Band coverage on noisy data too low: {coverage:P1}");
         }
     }
 }

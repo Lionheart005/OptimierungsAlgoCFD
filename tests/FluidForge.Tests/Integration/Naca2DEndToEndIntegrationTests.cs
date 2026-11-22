@@ -82,7 +82,7 @@ namespace FluidForge.Tests.Integration
 
             var flow = FlowConditions.From(config, su2Options);
 
-            // 1. 2D-Geometrie (NACA 0012, c = 50 mm)
+            // 1. 2D geometry (NACA 0012, c = 50 mm)
             var generator = new Naca2DGeometryGenerator(closedTrailingEdge: true, chordLength: 50.0f);
             var parameters = new Dictionary<string, float>
             {
@@ -97,7 +97,7 @@ namespace FluidForge.Tests.Integration
             Assert.True(geom.Metrics.TryGetValue("Chord", out float chord));
             Assert.InRange(chord, 49.5f, 50.5f);
 
-            // 2. 2D-Gmsh-Vernetzung
+            // 2. 2D Gmsh meshing
             var mesher = new Gmsh2DMesher(mesherOptions, flow);
             string meshPath = mesher.GenerateMesh(new MeshRequest(geom.StlPath, 1, 1, config, 1.0f, _workDir));
             Assert.True(File.Exists(meshPath), $"SU2 mesh missing: {meshPath}");
@@ -108,7 +108,7 @@ namespace FluidForge.Tests.Integration
             Assert.True(quad2DCount > 0, $"Expected 2D Quad boundary-layer cells (VTK type 9) > 0 in NELEM, got {quad2DCount}.");
             Assert.True(tri2DCount > 0, $"Expected 2D Triangle cells (VTK type 5) > 0 in NELEM, got {tri2DCount}.");
 
-            // 3. SU2-2D-Simulation (OpenMP Direct Mode)
+            // 3. SU2 2D simulation (OpenMP direct mode)
             var record = new ModelRecord
             {
                 Iteration = 1,

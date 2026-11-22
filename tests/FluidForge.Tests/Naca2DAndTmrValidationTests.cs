@@ -12,7 +12,7 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für TODO-47: 2D-NACA-Flügelprofilprojekt Naca2D und Validierung gegen NASA-TMR-Referenzdaten.
+    /// Tests for TODO-47: 2D NACA airfoil project Naca2D and validation against NASA TMR reference data.
     /// </summary>
     public class Naca2DAndTmrValidationTests
     {
@@ -35,16 +35,16 @@ namespace FluidForge.Tests
                 var config = SimulationConfig.CreateDefault();
                 var result = generator.GenerateAndExport(1, 1, parameters, tempDir, config);
 
-                // 1. Result Kind und Pfade
+                // 1. Result kind and paths
                 Assert.Equal(GeometryKind.Contour2D, result.Kind);
-                Assert.True(File.Exists(result.StlPath), $"Konturdatei nicht gefunden: {result.StlPath}");
+                Assert.True(File.Exists(result.StlPath), $"Contour file not found: {result.StlPath}");
                 Assert.EndsWith(".json", result.StlPath, StringComparison.OrdinalIgnoreCase);
 
                 string svgPath = Path.Combine(tempDir, "Model_Gen1_Var1.svg");
-                Assert.True(File.Exists(svgPath), $"SVG-Datei nicht gefunden: {svgPath}");
+                Assert.True(File.Exists(svgPath), $"SVG file not found: {svgPath}");
 
-                // 2. Geometrische Metriken für NACA 0012 bei c = 50 mm, t = 12 %
-                // Sehne = 50 mm, Dicke = 0.12 * 50 = 6.0 mm, Fläche ca. 0.685 * 0.12 * 2500 = 205.5 mm²
+                // 2. Geometric metrics for NACA 0012 at c = 50 mm, t = 12 %
+                // Chord = 50 mm, thickness = 0.12 * 50 = 6.0 mm, area ~ 0.685 * 0.12 * 2500 = 205.5 mm²
                 Assert.True(result.Metrics.ContainsKey("Chord"));
                 Assert.True(result.Metrics.ContainsKey("Thickness"));
                 Assert.True(result.Metrics.ContainsKey("Area"));
@@ -61,16 +61,16 @@ namespace FluidForge.Tests
                 Assert.InRange(area, 200.0f, 210.0f);
                 Assert.Equal(chord, frontalArea);
 
-                // 3. Konturdatei laden und Knickpunkterkennung prüfen
+                // 3. Load contour file and verify corner detection
                 ContourFile2D contourFile = Shape2D.LoadContour(result.StlPath);
                 Assert.NotNull(contourFile.Contours);
                 Assert.Single(contourFile.Contours);
 
                 ContourLoop2D loop = contourFile.Contours[0];
                 Assert.NotNull(loop.Points);
-                Assert.True(loop.Points.Count > 100, $"Erwartet > 100 Stützpunkte, gefunden: {loop.Points.Count}");
+                Assert.True(loop.Points.Count > 100, $"Expected > 100 points, found: {loop.Points.Count}");
 
-                // An der scharfen Hinterkante muss mindestens 1 Knickpunkt erkannt werden
+                // At the sharp trailing edge at least 1 corner point must be detected
                 Assert.NotNull(loop.CornerIndices);
                 Assert.NotEmpty(loop.CornerIndices);
             }
@@ -108,15 +108,15 @@ namespace FluidForge.Tests
                 Assert.True(File.Exists(geoPath));
                 string[] lines = File.ReadAllLines(geoPath);
 
-                // Spline an der scharfen Hinterkante getrennt
+                // Spline split at sharp trailing edge
                 int splineCount = lines.Count(l => l.StartsWith("Spline("));
-                Assert.True(splineCount >= 2, $"Erwartet mindestens 2 Splines an Kante, gefunden: {splineCount}");
+                Assert.True(splineCount >= 2, $"Expected at least 2 splines at corner, found: {splineCount}");
 
-                // BoundaryLayer-Feld vorhanden
+                // BoundaryLayer field present
                 Assert.Contains(lines, l => l.Contains("Field[1] = BoundaryLayer;"));
                 Assert.Contains(lines, l => l.Contains("Field[1].Quads = 1;"));
 
-                // SU2-Markernamen vorhanden
+                // SU2 marker names present
                 Assert.Contains(lines, l => l.Contains("Physical Curve(\"Wall\")"));
                 Assert.Contains(lines, l => l.Contains("Physical Curve(\"Farfield\")"));
             }
@@ -149,7 +149,7 @@ namespace FluidForge.Tests
                 simConfig.Su2MaxIterations = 250;
 
                 string cfgPath = Path.Combine(tempDir, "config.cfg");
-                float refArea = 0.05f; // 50 mm = 0.05 m Sehne * 1 m Tiefe in 2D
+                float refArea = 0.05f; // 50 mm = 0.05 m chord * 1 m span in 2D
 
                 Su2ConfigGenerator.Generate(
                     cfgPath,
@@ -162,11 +162,11 @@ namespace FluidForge.Tests
                 Assert.True(File.Exists(cfgPath));
                 string configContent = File.ReadAllText(cfgPath);
 
-                // AOA und Geschwindigkeitsvektor in 2D
+                // AOA and velocity vector in 2D
                 Assert.Contains("AOA= 5", configContent);
                 Assert.Contains("FREESTREAM_VELOCITY", configContent);
 
-                // Marker Wall und Farfield
+                // Wall and Farfield markers
                 Assert.Contains("MARKER_HEATFLUX= ( Wall, 0.0 )", configContent);
                 Assert.Contains("MARKER_FAR= ( Farfield )", configContent);
             }
@@ -178,15 +178,15 @@ namespace FluidForge.Tests
         }
 
         [Theory]
-        [InlineData(0.0f, 0.0005f, 0.00825f, true)]   // alpha=0: CL nah 0, CD Fehler ca. 0.73% -> BESTANDEN
-        [InlineData(0.0f, 0.0080f, 0.00825f, false)]  // alpha=0: CL = 0.008 > 0.005 Absoluttoleranz -> FEHLGESCHLAGEN
-        [InlineData(0.0f, 0.0000f, 0.00900f, false)]  // alpha=0: CD Fehler 9.9% > 5% -> FEHLGESCHLAGEN
-        [InlineData(10.0f, 1.1000f, 0.01250f, true)]  // alpha=10: CL Fehler 0.83% <= 2%, CD Fehler 1.54% <= 5% -> BESTANDEN
-        [InlineData(10.0f, 1.1200f, 0.01250f, false)] // alpha=10: CL Fehler 2.67% > 2% -> FEHLGESCHLAGEN
-        [InlineData(10.0f, 1.0909f, 0.01350f, false)] // alpha=10: CD Fehler 9.67% > 5% -> FEHLGESCHLAGEN
-        [InlineData(15.0f, 1.5500f, 0.02150f, true)]  // alpha=15: CL Fehler 0.25% <= 2%, CD Fehler 1.22% <= 5% -> BESTANDEN
-        [InlineData(15.0f, 1.5850f, 0.02124f, false)] // alpha=15: CL Fehler 2.52% > 2% -> FEHLGESCHLAGEN
-        [InlineData(15.0f, 1.5461f, 0.02300f, false)] // alpha=15: CD Fehler 8.29% > 5% -> FEHLGESCHLAGEN
+        [InlineData(0.0f, 0.0005f, 0.00825f, true)]   // alpha=0: CL near 0, CD error ~0.73% -> PASSED
+        [InlineData(0.0f, 0.0080f, 0.00825f, false)]  // alpha=0: CL = 0.008 > 0.005 abs tolerance -> FAILED
+        [InlineData(0.0f, 0.0000f, 0.00900f, false)]  // alpha=0: CD error 9.9% > 5% -> FAILED
+        [InlineData(10.0f, 1.1000f, 0.01250f, true)]  // alpha=10: CL error 0.83% <= 2%, CD error 1.54% <= 5% -> PASSED
+        [InlineData(10.0f, 1.1200f, 0.01250f, false)] // alpha=10: CL error 2.67% > 2% -> FAILED
+        [InlineData(10.0f, 1.0909f, 0.01350f, false)] // alpha=10: CD error 9.67% > 5% -> FAILED
+        [InlineData(15.0f, 1.5500f, 0.02150f, true)]  // alpha=15: CL error 0.25% <= 2%, CD error 1.22% <= 5% -> PASSED
+        [InlineData(15.0f, 1.5850f, 0.02124f, false)] // alpha=15: CL error 2.52% > 2% -> FAILED
+        [InlineData(15.0f, 1.5461f, 0.02300f, false)] // alpha=15: CD error 8.29% > 5% -> FAILED
         public void Naca2DTmrBenchmark_EvaluateAgainstTmr_Validates_Within_Tolerances(
             float alpha, float clSim, float cdSim, bool expectedPass)
         {
@@ -194,7 +194,7 @@ namespace FluidForge.Tests
 
             Assert.Equal(expectedPass, result.Passed);
             Assert.Equal(alpha, result.AlphaDeg);
-            Assert.Contains(expectedPass ? "BESTANDEN" : "NICHT BESTANDEN", result.Summary);
+            Assert.Contains(expectedPass ? "PASSED" : "FAILED", result.Summary);
         }
 
         [Fact]
@@ -216,7 +216,7 @@ namespace FluidForge.Tests
             // Re = (rho * v * c) / mu
             float reynolds = (options.Density * options.FreestreamVelocity * options.ReferenceLength) / options.DynamicViscosity;
 
-            // Re muss exakt 6e6 (mit numerischer Toleranz < 0.1 %) sein
+            // Re must be exactly 6e6 (with numerical tolerance < 0.1 %)
             Assert.InRange(reynolds, 5.99e6f, 6.01e6f);
         }
 
@@ -226,7 +226,7 @@ namespace FluidForge.Tests
             var calculator = new Naca2DFitnessCalculator(new Naca2DProject().CreateDefaults());
             var simConfig = SimulationConfig.CreateDefault();
 
-            // Normaler Fall: CL = 1.0909, CD = 0.01231
+            // Normal case: CL = 1.0909, CD = 0.01231
             var record = new ModelRecord();
             record.PassiveParameters["Lift"] = 1.0909f;
             record.PassiveParameters["Drag"] = 0.01231f;
@@ -237,7 +237,7 @@ namespace FluidForge.Tests
             Assert.Equal(expectedRatio, record.Fitness, precision: 2);
             Assert.True(record.PassiveParameters.ContainsKey("GlideRatio"));
 
-            // Fehlgeschlagene Simulation
+            // Failed simulation
             var failed = new ModelRecord { SimulationFailed = true };
             calculator.CalculateFitness(failed, simConfig);
             Assert.Equal(0.0001f, failed.Fitness, precision: 4);

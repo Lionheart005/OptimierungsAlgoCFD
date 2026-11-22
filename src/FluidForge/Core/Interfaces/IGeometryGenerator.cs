@@ -3,17 +3,15 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Erzeugt die 3D-Geometrie für ein Projekt und gibt eine STL + Metriken zurück.
+    /// Generates the geometry for a project and returns an STL/contour path plus metrics.
     /// </summary>
     public interface IGeometryGenerator
     {
-        /// <param name="parameters">Die (ggf. skalierten) Geometrie-Parameter.</param>
-        /// <param name="outputDirectory">Zielverzeichnis für die STL-Datei.</param>
+        /// <param name="parameters">The (optionally scaled) geometry parameters.</param>
+        /// <param name="outputDirectory">Target directory for the generated geometry file.</param>
         /// <param name="config">
-        /// Framework-Konfiguration — enthält u.a. die Glättungsparameter und den Schalter
-        /// <see cref="SimulationConfig.UseStlSmoothing"/>. Wie in <see cref="IMeshGenerator"/>
-        /// und <see cref="ISimulationSolver"/> wird die Konfiguration als Ganzes übergeben,
-        /// statt einzelne Werte durchzureichen.
+        /// Framework configuration — includes smoothing parameters and <see cref="SimulationConfig.UseStlSmoothing"/>.
+        /// Passed as a whole object, matching <see cref="IMeshGenerator"/> and <see cref="ISimulationSolver"/>.
         /// </param>
         GeometryResult GenerateAndExport(
             int iteration, int variant,

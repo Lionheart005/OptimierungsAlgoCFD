@@ -6,21 +6,21 @@ using FluidForge.Core;
 
 namespace FluidForge.Solvers.Cfd
 {
-    /// <summary>Ergebnis eines Gmsh-Aufrufs: Exit-Code und die Fehlerzeile(n) aus der Ausgabe.</summary>
+    /// <summary>Result of a Gmsh invocation: exit code and extracted error line(s) from output.</summary>
     internal sealed record GmshRunResult(int ExitCode, string? FirstError)
     {
-        /// <summary>Für Meldungen: " (Gmsh: …)" oder leer.</summary>
+        /// <summary>For log messages: " (Gmsh: ...)" or empty.</summary>
         public string ErrorSuffix => string.IsNullOrEmpty(FirstError) ? string.Empty : $" (Gmsh: {FirstError})";
     }
 
     /// <summary>
-    /// Vereinheitlichte Gmsh-Prozessausführung für 2D und 3D inkl. Fehlerlog-Archivierung.
+    /// Unified Gmsh process execution for 2D and 3D including error-log archiving.
     /// </summary>
     internal static class GmshProcessRunner
     {
         /// <summary>
-        /// Startet Gmsh mit den angegebenen Argumenten und erfasst bei <paramref name="captureOutput"/>
-        /// die ersten aussagekräftigen Fehlerzeilen für die Diagnose.
+        /// Launches Gmsh with the specified arguments and, when <paramref name="captureOutput"/> is true,
+        /// captures the first meaningful error lines for diagnostics.
         /// </summary>
         public static GmshRunResult Run(
             SimulationConfig config,
@@ -72,19 +72,19 @@ namespace FluidForge.Solvers.Cfd
             }
             catch (Exception ex)
             {
-                CopyGeoToFehlerLogs(scriptForErrorLog, workingDirectory, "Startfehler");
-                throw new Exception($"Gmsh konnte nicht gestartet werden: {ex.Message}. .geo-Skript nach FehlerLogs kopiert.", ex);
+                CopyGeoToErrorLogs(scriptForErrorLog, workingDirectory, "LaunchError");
+                throw new Exception($"Failed to start Gmsh: {ex.Message}. .geo script copied to {OutputConventions.ErrorLogsDirectory}.", ex);
             }
         }
 
         /// <summary>
-        /// Kopiert ein fehlerhaftes <c>.geo</c>- bzw. <c>.pos</c>-Skript defensiv in <c>FehlerLogs/</c>.
+        /// Defensively copies a failing <c>.geo</c> or <c>.pos</c> script into <c>error-logs/</c>.
         /// </summary>
-        public static void CopyGeoToFehlerLogs(string geoPath, string workingDirectory, string errorLabel = "")
+        public static void CopyGeoToErrorLogs(string geoPath, string workingDirectory, string errorLabel = "")
         {
             try
             {
-                string errorLogDir = Path.Combine(workingDirectory, "FehlerLogs");
+                string errorLogDir = Path.Combine(workingDirectory, OutputConventions.ErrorLogsDirectory);
                 Directory.CreateDirectory(errorLogDir);
                 string destGeoPath = Path.Combine(errorLogDir, Path.GetFileName(geoPath));
                 if (File.Exists(geoPath))
@@ -92,7 +92,7 @@ namespace FluidForge.Solvers.Cfd
                     File.Copy(geoPath, destGeoPath, overwrite: true);
                     if (!string.IsNullOrWhiteSpace(errorLabel))
                     {
-                        SimulationLog.Detail($"[FEHLER] {errorLabel}: {Path.GetFileName(geoPath)} nach FehlerLogs kopiert.");
+                        SimulationLog.Detail($"{OutputConventions.ErrorTag} {errorLabel}: copied {Path.GetFileName(geoPath)} to {OutputConventions.ErrorLogsDirectory}.");
                     }
                 }
             }

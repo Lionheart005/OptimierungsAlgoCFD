@@ -28,7 +28,7 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Vorhersagebänder, Modell-Treffsicherheit und Verlaufsprotokollierung (<c>Bayes_Verlauf.csv</c>) (TODO-58).
+    /// Prediction bands, surrogate accuracy tracking, and history logging (<c>Bayes_History.csv</c>).
     /// </summary>
     internal sealed class BayesDiagnosticsReporter
     {
@@ -106,8 +106,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Treffsicherheit der eben beendeten Runde: mittlere relative Abweichung zwischen Vorhersage und
-        /// echter Fitness und Anteil der Varianten im 95-%-Band. Nur Modellvorschläge zählen.
+        /// Accuracy of the just-completed round: mean relative deviation between predicted
+        /// and actual fitness, and fraction of variants within the 95% band. Only model proposals count.
         /// </summary>
         public static BayesAccuracy? MeasureAccuracy(IEnumerable<ModelRecord> records)
         {
@@ -122,8 +122,8 @@ namespace FluidForge.Core
                 r.PassiveParameters.TryGetValue(BayesOptimizationAlgorithm.PredictedHighKey, out float high);
 
                 double actual = r.Fitness;
-                // Symmetrisch bezogen auf den Mittelwert beider Zahlen (0 bis 2): Teilen durch den Istwert allein
-                // ergab Millionen Prozent, sobald ein Wert nahe null lag (z. B. Fitness 0 bei negativem Auftrieb).
+                // Symmetric relative to the mean of both values (0..2): dividing by actual alone
+                // produced millions of percent whenever a value was near zero (e.g., fitness 0).
                 deviationSum += Math.Abs(predicted - actual) / Math.Max(0.5 * (Math.Abs(predicted) + Math.Abs(actual)), 1e-6);
                 if (actual >= low && actual <= high) inBand++;
                 count++;
@@ -137,16 +137,16 @@ namespace FluidForge.Core
             if (accuracy == null) return;
 
             Console.WriteLine(
-                $"[BAYES] Treffsicherheit der letzten Runde: Ø Abweichung {accuracy.MeanDeviation * 100:F0} %, "
-                + $"{accuracy.InBand} von {accuracy.Count} im Erwartungsband.");
+                $"{OutputConventions.BayesTag} Last round accuracy: mean error {accuracy.MeanDeviation * 100:F0} %, "
+                + $"{accuracy.InBand} of {accuracy.Count} within prediction band.");
 
             if (accuracy.Share < 0.5)
-                SimulationLog.Warning("[BAYES] Modell noch unsicher oder Ergebnisse stark verrauscht.");
+                SimulationLog.Warning($"{OutputConventions.BayesTag} Model still uncertain or results strongly noisy.");
         }
 
         public void LogSummary(FittedEnsemble fit, int trainingPoints, ParameterSpace space)
         {
-            Console.WriteLine($"[BAYES] Ersatzmodell gelernt aus {trainingPoints} Rechnungen (Modus {_ensemble.ActiveMode}).");
+            Console.WriteLine($"{OutputConventions.BayesTag} Surrogate trained on {trainingPoints} evaluations (mode {_ensemble.ActiveMode}).");
 
             foreach (SurrogateSlot slot in fit.Slots)
             {
@@ -160,7 +160,7 @@ namespace FluidForge.Core
 
                 var parts = ranked.Take(8).Select(i => $"{space.FreeNames[i]} {Bar(relevance[i])}").ToList();
                 if (ranked.Count > 8) parts.Add("…");
-                Console.WriteLine($"[BAYES]   {slot.Name}: {string.Join("  ", parts)}");
+                Console.WriteLine($"{OutputConventions.BayesTag}   {slot.Name}: {string.Join("  ", parts)}");
             }
         }
 
@@ -195,11 +195,11 @@ namespace FluidForge.Core
 
             try
             {
-                string directory = Path.Combine(context.WorkingDirectory, "Analyseergebnisse");
+                string directory = Path.Combine(context.WorkingDirectory, OutputConventions.AnalysisDirectory);
                 Directory.CreateDirectory(directory);
 
-                var header = "Iteration;Modus;Lernpunkte;Vertrauensbereich_L;Abweichung_Mittel;Anteil_im_Band;BesteFitness;"
-                    + string.Join(";", space.FreeNames.Select(n => "Relevanz_" + n));
+                var header = "Iteration;Mode;TrainingPoints;TrustRegion_L;MeanRelativeError;InBandShare;BestFitness;"
+                    + string.Join(";", space.FreeNames.Select(n => "Relevance_" + n));
                 header = header.TrimEnd(';');
 
                 var text = new StringBuilder();
@@ -210,7 +210,7 @@ namespace FluidForge.Core
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                SimulationLog.Warning($"[BAYES] {BayesOptimizationAlgorithm.HistoryFileName} konnte nicht geschrieben werden: {ex.Message}");
+                SimulationLog.Warning($"{OutputConventions.BayesTag} Could not write {BayesOptimizationAlgorithm.HistoryFileName}: {ex.Message}");
             }
         }
     }

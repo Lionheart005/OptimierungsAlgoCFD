@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Kalibrierungsrelevante Metadaten eines Solvers, damit <see cref="MeshCalibration"/>
-    /// y+-Limits und überwachte Größen ohne Solver-Schicht-Abhängigkeit auslesen kann.
+    /// Calibration-relevant solver metadata so <see cref="MeshCalibration"/> can read
+    /// y+ limits and monitored metrics without depending on the solver layer.
     /// </summary>
     public interface ICalibrationSolverOptions
     {
@@ -15,7 +15,7 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Kalibrierungsrelevante Metadaten eines Vernetzers für die Start-Konsistenzprüfung
+    /// Calibration-relevant mesher metadata for startup consistency checks
     /// in <see cref="MeshCalibration"/>.
     /// </summary>
     public interface ICalibrationMesherOptions

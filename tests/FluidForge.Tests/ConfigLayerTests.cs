@@ -8,14 +8,14 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-22: die vier Schichten des Loaders, die Prüfung unbekannter Schlüssel und der
-    /// Warnblock für maschinenspezifische Dateien.
+    /// TODO-22: the four layers of the loader, unknown-key validation, and the
+    /// warning block for machine-specific files.
     ///
-    /// Gearbeitet wird auf einem temporären Projekt- und Konfigurationsordner — die
-    /// mitgelieferten Dateien im Repo bleiben unangetastet.
+    /// Operates on a temporary project and config directory — the bundled
+    /// files in the repo remain untouched.
     ///
-    /// Der Warnblock-Test liest die Konsole über <c>Console.SetOut</c> mit — prozessweiter
-    /// Zustand, deshalb nie parallel zu anderen Klassen (siehe <see cref="ProcessWideStateCollection"/>).
+    /// The warning-block test captures console output via <c>Console.SetOut</c> — process-wide
+    /// state, so never run in parallel with other classes (see <see cref="ProcessWideStateCollection"/>).
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class ConfigLayerTests : IDisposable
@@ -27,7 +27,7 @@ namespace FluidForge.Tests
         public ConfigLayerTests()
         {
             _root = Path.Combine(Path.GetTempPath(), "layertest_" + Guid.NewGuid().ToString("N"));
-            _projectDirectory = Path.Combine(_root, "src", "projects", "Testprojekt");
+            _projectDirectory = Path.Combine(_root, "src", "projects", "TestProject");
             _configDirectory = Path.Combine(_root, "config");
 
             Directory.CreateDirectory(Path.Combine(_projectDirectory, "solvers"));
@@ -49,7 +49,7 @@ namespace FluidForge.Tests
             => JsonConfigLoader.LoadForProject(
                 SimulationConfig.CreateDefault(), "simulation.json", _projectDirectory, _configDirectory);
 
-        /// <summary>Das Etikett, unter dem der Bericht eine Datei führt: ein Pfad, kein blanker Name.</summary>
+        /// <summary>The label under which the report lists a file: a path, not a bare filename.</summary>
         private string ProjectLabel(string relativeName)
             => JsonConfigLoader.Label(Path.Combine(new[] { _projectDirectory }.Concat(relativeName.Split('/')).ToArray()));
 
@@ -57,7 +57,7 @@ namespace FluidForge.Tests
             => JsonConfigLoader.Label(Path.Combine(new[] { _configDirectory }.Concat(relativeName.Split('/')).ToArray()));
 
         // -------------------------------------------------------------------
-        // Schicht 2: der Projektordner
+        // Layer 2: the project directory
         // -------------------------------------------------------------------
 
         [Fact]
@@ -68,7 +68,7 @@ namespace FluidForge.Tests
             var result = LoadSimulation();
 
             Assert.Equal(3, result.Value.MaxIterations);
-            // Nicht genannte Schlüssel bleiben auf dem Code-Standard.
+            // Unmentioned keys stay at the code default.
             Assert.Equal(10, result.Value.VariantsPerIteration);
             Assert.Equal(ProjectLabel("simulation.json"), result.Report.Origins["MaxIterations"]);
             Assert.False(result.Report.Origins.ContainsKey("VariantsPerIteration"));
@@ -93,16 +93,16 @@ namespace FluidForge.Tests
                 new Su2SolverOptions(), "solvers/su2.json", _projectDirectory, _configDirectory);
 
             Assert.Equal("SST", result.Value.TurbulenceModel);
-            Assert.Equal(1025.0f, result.Value.Density);   // unverändert aus dem Code
+            Assert.Equal(1025.0f, result.Value.Density);   // unchanged from code
         }
 
         // -------------------------------------------------------------------
-        // Schichtreihenfolge: 3 schlägt 2, 4 schlägt 3
+        // Layer order: 3 beats 2, 4 beats 3
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Schicht 3 gewinnt über Schicht 2, damit ein Projekt dem Rechner nicht seine
-        /// Programmpfade umbiegen kann.
+        /// Layer 3 beats layer 2 so a project cannot override a machine's own
+        /// executable paths.
         /// </summary>
         [Fact]
         public void Layer_Three_Beats_Layer_Two()
@@ -116,7 +116,7 @@ namespace FluidForge.Tests
             Assert.Equal(ConfigLabel("simulation.local.json"), result.Report.Origins["MpiCores"]);
         }
 
-        /// <summary>Schicht 4 — dieses Projekt auf diesem Rechner — gewinnt über alles.</summary>
+        /// <summary>Layer 4 — this project on this machine — beats everything.</summary>
         [Fact]
         public void Layer_Four_Beats_Layer_Three()
         {
@@ -138,14 +138,14 @@ namespace FluidForge.Tests
 
             var result = LoadSimulation();
 
-            Assert.Equal(5, result.Value.MaxIterations);   // Schicht 2
-            Assert.Equal(4, result.Value.MpiCores);        // Schicht 3
-            Assert.Equal(2, result.Value.GmshCores);       // Schicht 4
-            Assert.Equal(10, result.Value.VariantsPerIteration); // Code-Standard
+            Assert.Equal(5, result.Value.MaxIterations);   // Layer 2
+            Assert.Equal(4, result.Value.MpiCores);        // Layer 3
+            Assert.Equal(2, result.Value.GmshCores);       // Layer 4
+            Assert.Equal(10, result.Value.VariantsPerIteration); // Code default
         }
 
         // -------------------------------------------------------------------
-        // Entscheidung 8: ein unbekannter Schlüssel ist ein Fehler
+        // Decision 8: an unknown key is an error
         // -------------------------------------------------------------------
 
         [Fact]
@@ -157,26 +157,26 @@ namespace FluidForge.Tests
 
             Assert.Contains("simulation.json", error.Message);
             Assert.Contains("MachNumer", error.Message);
-            Assert.Contains("MachNumber", error.Message);   // der Vorschlag
+            Assert.Contains("MachNumber", error.Message);   // the suggestion
         }
 
         /// <summary>
-        /// Gibt es keinen ähnlichen Namen, muss wenigstens die Liste der gültigen kommen —
-        /// sonst steht der Nutzer vor einem Abbruch ohne Ausweg.
+        /// If there is no similar name, at least the list of valid names must be shown —
+        /// otherwise the user faces an abort with no way out.
         /// </summary>
         [Fact]
         public void An_Unknown_Key_Without_A_Near_Match_Lists_Valid_Names()
         {
-            WriteProjectFile("solvers/su2.json", @"{ ""Lieblingsfarbe"": ""blau"" }");
+            WriteProjectFile("solvers/su2.json", @"{ ""FavoriteColor"": ""blue"" }");
 
             var error = Assert.Throws<InvalidOperationException>(() => JsonConfigLoader.LoadForProject(
                 new Su2SolverOptions(), "solvers/su2.json", _projectDirectory, _configDirectory));
 
-            Assert.Contains("Lieblingsfarbe", error.Message);
+            Assert.Contains("FavoriteColor", error.Message);
             Assert.Contains("TurbulenceModel", error.Message);
 
-            // Vollständig, nicht abgekürzt: jeder gültige Schlüssel steht in der Meldung — auch
-            // der alphabetisch letzte, der bei einer Abkürzung zuerst wegfiele.
+            // Complete, not abbreviated: every valid key appears in the message — including
+            // the alphabetically last one, which would be dropped first in an abbreviation.
             foreach (var property in typeof(Su2SolverOptions).GetProperties())
                 Assert.Contains(property.Name, error.Message);
 
@@ -195,18 +195,18 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die Kernregel aus der Abstimmung: ein Dictionary hat freie Schlüssel. "Length" unter
-        /// BaseParameters ist ein Parametername, kein Property-Name — die Prüfung darf dort
-        /// nicht absteigen, sonst zerlegt sie jede bestehende Projektdatei.
+        /// Core rule from the alignment: a dictionary has free keys. "Length" under
+        /// BaseParameters is a parameter name, not a property name — validation must not
+        /// descend into it, otherwise it breaks every existing project file.
         /// </summary>
         [Fact]
         public void Free_Keys_Inside_Dictionaries_Are_Not_Checked()
         {
             WriteProjectFile("project.json", @"{
-                ""BaseParameters"": { ""Fluegelspannweite"": 42.0 },
-                ""OptimizationTargets"": { ""WasAuchImmer"": 1.0 },
-                ""ParameterBounds"": { ""Fluegelspannweite"": { ""Min"": 1.0, ""Max"": 99.0 } },
-                ""DimensionalParameters"": [ ""Fluegelspannweite"" ]
+                ""BaseParameters"": { ""Wingspan"": 42.0 },
+                ""OptimizationTargets"": { ""Whatever"": 1.0 },
+                ""ParameterBounds"": { ""Wingspan"": { ""Min"": 1.0, ""Max"": 99.0 } },
+                ""DimensionalParameters"": [ ""Wingspan"" ]
             }");
 
             var result = JsonConfigLoader.LoadForProject(
@@ -214,15 +214,14 @@ namespace FluidForge.Tests
 
             var project = result.Value.ToProjectConfig();
 
-            Assert.Equal(42.0f, project.BaseParameters["Fluegelspannweite"]);
-            Assert.Equal(1.0f, project.OptimizationTargets["WasAuchImmer"]);
-            Assert.Equal(99.0f, project.ParameterBounds["Fluegelspannweite"].Max);
-            Assert.Contains("Fluegelspannweite", project.DimensionalParameters);
+            Assert.Equal(42.0f, project.BaseParameters["Wingspan"]);
+            Assert.Equal(1.0f, project.OptimizationTargets["Whatever"]);
+            Assert.Equal(99.0f, project.ParameterBounds["Wingspan"].Max);
+            Assert.Contains("Wingspan", project.DimensionalParameters);
         }
 
         /// <summary>
-        /// Auf oberster Ebene wird sehr wohl geprüft — auch in einer Datei, die weiter unten
-        /// freie Schlüssel hat.
+        /// Top-level keys are still checked — even in a file that has free keys deeper down.
         /// </summary>
         [Fact]
         public void The_Top_Level_Of_A_Project_File_Is_Still_Checked()
@@ -247,16 +246,16 @@ namespace FluidForge.Tests
             var result = JsonConfigLoader.LoadForProject(
                 new Su2SolverOptions(), "solvers/su2.json", _projectDirectory, _configDirectory);
 
-            // Drag kommt aus dem Code-Standard dazu — gewollt, siehe Kommentarkopf der su2.json.
+            // Drag is added from the code default — intentional, see header comment of su2.json.
             Assert.Equal("CD", result.Value.ResultMetrics["Drag"]);
             Assert.Equal("CL", result.Value.ResultMetrics["Lift"]);
-            // Die Herkunft wird bis auf den einzelnen Schlüssel im verschachtelten Objekt geführt.
+            // Origin is tracked down to each individual key in the nested object.
             Assert.Equal(ProjectLabel("solvers/su2.json"), result.Report.Origins["ResultMetrics.Lift"]);
             Assert.False(result.Report.Origins.ContainsKey("ResultMetrics.Drag"));
         }
 
         // -------------------------------------------------------------------
-        // Warnblock für *.local.json
+        // Warning block for *.local.json
         // -------------------------------------------------------------------
 
         [Fact]
@@ -267,7 +266,7 @@ namespace FluidForge.Tests
 
             var result = LoadSimulation();
 
-            // GmshCores ist wertgleich und darf nicht auftauchen.
+            // GmshCores has the same value and must not appear.
             Assert.Equal(
                 new[] { "MaxIterations", "MpiCores" },
                 result.Report.MachineOverrides.Select(entry => entry.Key).OrderBy(key => key));
@@ -287,14 +286,14 @@ namespace FluidForge.Tests
             var result = LoadSimulation();
 
             Assert.Empty(result.Report.MachineOverrides);
-            // Unsichtbar soll sie trotzdem nicht sein.
+            // Still, it should not be invisible.
             Assert.Contains(ConfigLabel("simulation.local.json"), result.Report.NeutralMachineFiles);
         }
 
         [Fact]
         public void A_Local_File_That_Only_Adds_To_The_Code_Default_Is_Reported_Too()
         {
-            // Keine Projektdatei: der Vergleichswert ist der Code-Standard.
+            // No project file: comparison value is the code default.
             WriteConfigFile("simulation.local.json", @"{ ""MaxIterations"": 2 }");
 
             var result = LoadSimulation();
@@ -306,8 +305,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Beide local-Schichten heißen gleich — die Meldung muss trotzdem sagen, welche der
-        /// beiden Dateien zu löschen ist. Deshalb führt der Bericht Pfade, keine blanken Namen.
+        /// Both local layers share the same filename — the message must still tell which of the
+        /// two files to delete. Therefore the report lists paths, not bare names.
         /// </summary>
         [Fact]
         public void Both_Local_Layers_Are_Reported_Under_Their_Own_Path()
@@ -330,8 +329,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Eine Zeichenkette gehört ohne Anführungszeichen in den Block — er wird von Menschen
-        /// gelesen, nicht geparst.
+        /// A string value belongs in the block without quotes — it is read by humans,
+        /// not parsed.
         /// </summary>
         [Fact]
         public void String_Values_Are_Shown_Without_Quotes()
@@ -346,8 +345,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Eine Datei unterhalb des Arbeitsverzeichnisses wird relativ benannt — sonst steht im
-        /// Warnblock ein absoluter Pfad, den niemand mit dem Repo in Verbindung bringt.
+        /// A file below the working directory is labelled relatively — otherwise the
+        /// warning block shows an absolute path that nobody associates with the repo.
         /// </summary>
         [Fact]
         public void A_File_Below_The_Working_Directory_Is_Labelled_Relative()
@@ -358,10 +357,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Der Block ist eine Nachricht an einen Menschen — deshalb wird hier ausnahmsweise die
-        /// Konsolenausgabe selbst geprüft und nicht nur die Daten dahinter. Bewusst nur auf
-        /// Vorhandensein: xUnit lässt andere Testklassen parallel laufen, die in denselben
-        /// umgeleiteten Strom schreiben können.
+        /// The block is a message to a human — therefore console output itself is checked here
+        /// as an exception, not just the underlying data. Intentionally checking presence only:
+        /// xUnit runs other test classes in parallel that may write to the same redirected stream.
         /// </summary>
         [Fact]
         public void The_Warning_Block_Names_File_Key_And_Both_Values()
@@ -386,11 +384,11 @@ namespace FluidForge.Tests
                 Console.SetOut(original);
             }
 
-            Assert.Contains("[WARNUNG] Eine maschinenspezifische Datei überschreibt dieses Projekt:", printed);
+            Assert.Contains($"{OutputConventions.WarningTag} A machine-specific file overrides this project:", printed);
             Assert.Contains(ConfigLabel("simulation.local.json"), printed);
-            Assert.Contains("Projekt: 10   ->   local: 2", printed);
-            Assert.Contains("Projekt: 12   ->   local: 4", printed);
-            // Der Block sagt auch, wohin die Werte gehören.
+            Assert.Contains("Project: 10   ->   local: 2", printed);
+            Assert.Contains("Project: 12   ->   local: 4", printed);
+            // The block also tells where the values belong.
             Assert.Contains("src/projects/MantaAuv/", printed);
         }
 
@@ -398,22 +396,22 @@ namespace FluidForge.Tests
         public void The_Machine_Variant_Of_A_File_Is_Its_Local_Neighbour()
         {
             Assert.Equal(
-                Path.Combine("irgendwo", "simulation.local.json"),
-                JsonConfigLoader.MachineVariantOf(Path.Combine("irgendwo", "simulation.json")));
+                Path.Combine("somewhere", "simulation.local.json"),
+                JsonConfigLoader.MachineVariantOf(Path.Combine("somewhere", "simulation.json")));
 
-            // Schon eine local-Datei: bleibt, wie sie ist.
+            // Already a local file: stays as is.
             Assert.Equal(
-                Path.Combine("irgendwo", "su2.local.json"),
-                JsonConfigLoader.MachineVariantOf(Path.Combine("irgendwo", "su2.local.json")));
+                Path.Combine("somewhere", "su2.local.json"),
+                JsonConfigLoader.MachineVariantOf(Path.Combine("somewhere", "su2.local.json")));
         }
     }
 
     /// <summary>
-    /// TODO-22: das Auflösen des Projektverzeichnisses. Ersetzt die frühere
-    /// „sechs Ebenen hoch, suche config“-Heuristik.
+    /// TODO-22: resolving the project directory. Replaces the previous
+    /// "six levels up, search config" heuristic.
     ///
-    /// Ein Test hier setzt die Umgebungsvariable <c>SIM_PROJECTS_DIR</c> — deshalb läuft die
-    /// Klasse nie parallel zu anderen (siehe <see cref="ProcessWideStateCollection"/>).
+    /// One test here sets the environment variable <c>SIM_PROJECTS_DIR</c> — therefore this
+    /// class never runs in parallel with others (see <see cref="ProcessWideStateCollection"/>).
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class ProjectPathsTests : IDisposable
@@ -444,13 +442,13 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ein falsch getippter Pfad darf nicht stillschweigend durch die Suche ersetzt werden —
-        /// sonst rechnet der Lauf mit einem anderen Projekt als dem gemeinten.
+        /// A mistyped path must not silently fall back to searching —
+        /// otherwise the run uses a different project than intended.
         /// </summary>
         [Fact]
         public void A_Wrong_Explicit_Path_Yields_Null_Instead_Of_Searching()
         {
-            Assert.Null(ProjectPaths.ResolveProjectsRoot(Path.Combine(_root, "gibtsnicht")));
+            Assert.Null(ProjectPaths.ResolveProjectsRoot(Path.Combine(_root, "doesnotexist")));
         }
 
         [Fact]
@@ -462,7 +460,7 @@ namespace FluidForge.Tests
             Assert.Equal("MantaAuv", Path.GetFileName(directory!));
         }
 
-        /// <summary>Linux unterscheidet Groß-/Kleinschreibung, Windows nicht — der Lauf soll auf beiden dasselbe finden.</summary>
+        /// <summary>Linux is case-sensitive, Windows is not — the run should find the same on both.</summary>
         [Fact]
         public void The_Project_Name_Is_Case_Insensitive()
         {
@@ -472,10 +470,10 @@ namespace FluidForge.Tests
         [Fact]
         public void An_Unknown_Project_Yields_Null()
         {
-            Assert.Null(ProjectPaths.ResolveProjectDirectory("GibtsNicht", ProjectsRoot));
+            Assert.Null(ProjectPaths.ResolveProjectDirectory("DoesNotExist", ProjectsRoot));
         }
 
-        /// <summary>Die Vorlage ist kein Projekt — sie darf in keiner Auswahlliste auftauchen.</summary>
+        /// <summary>The template is not a project — it must not appear in any selection list.</summary>
         [Fact]
         public void The_Template_Is_Not_Listed_As_A_Project()
         {

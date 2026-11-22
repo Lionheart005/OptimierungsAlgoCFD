@@ -3,17 +3,17 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Standard-Normalverteilung für die Auswahlregel Expected Improvement (TODO-54).
+    /// Standard normal distribution helpers for Expected Improvement acquisition.
     /// </summary>
     public static class NormalDistribution
     {
         private static readonly double InvSqrt2Pi = 1.0 / Math.Sqrt(2.0 * Math.PI);
 
-        /// <summary>Dichte φ(z).</summary>
+        /// <summary>Probability density function φ(z).</summary>
         public static double Pdf(double z) => InvSqrt2Pi * Math.Exp(-0.5 * z * z);
 
         /// <summary>
-        /// Verteilungsfunktion Φ(z) = ½·erfc(−z/√2). Relativer Fehler unter 1e-7 im Bereich |z| ≤ 8.
+        /// Cumulative distribution function Φ(z) = ½·erfc(−z/√2). Relative error below 1e-7 for |z| ≤ 8.
         /// </summary>
         public static double Cdf(double z)
         {
@@ -21,7 +21,7 @@ namespace FluidForge.Core
             return 0.5 * Erfc(-z / Math.Sqrt(2.0));
         }
 
-        /// <summary>Ein normalverteilter Zufallswert (Box-Muller).</summary>
+        /// <summary>Draws a standard normal random sample (Box-Muller).</summary>
         public static double Sample(Random random)
         {
             double u1 = 1.0 - random.NextDouble();
@@ -30,8 +30,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Komplementäre Fehlerfunktion. Für |x| &lt; 3 die Taylorreihe der Fehlerfunktion, darüber der
-        /// Kettenbruch, der genau dort schnell konvergiert und die Ränder relativ genau trifft.
+        /// Complementary error function. Uses Taylor series for |x| &lt; 3 and continued
+        /// fraction expansion above for fast convergence and accurate tails.
         /// </summary>
         public static double Erfc(double x)
         {

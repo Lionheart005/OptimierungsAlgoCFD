@@ -6,14 +6,14 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Gemeinsamer Builder für Wake-Box- und Detail-Box-Verfeinerungsfelder in 2D- und 3D-<c>.geo</c>-Skripten.
+    /// Shared builder for wake-box and detail-box refinement fields in 2D and 3D <c>.geo</c> scripts.
     /// </summary>
     internal static class WakeAndDetailBoxBuilder
     {
-        /// <summary>Zahlen fürs <c>.geo</c>-Skript immer mit Punkt als Dezimaltrenner.</summary>
+        /// <summary>Always format numbers for <c>.geo</c> scripts using dot as decimal separator.</summary>
         public static string Format(float value) => value.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>Zahlen fürs <c>.geo</c>-Skript immer mit Punkt als Dezimaltrenner.</summary>
+        /// <summary>Always format numbers for <c>.geo</c> scripts using dot as decimal separator.</summary>
         public static string Format(double value) => value.ToString(CultureInfo.InvariantCulture);
 
         public static void AppendSectionHeader(List<string> geoLines, string headerLine, bool wideBanner = false, bool leadingBlankLine = false)
@@ -92,7 +92,7 @@ namespace FluidForge.Solvers.Cfd
             float cell = (options.DetailBoxCellSize > 0f ? options.DetailBoxCellSize * safeScale : 2.5f * baseSizeGeo) * factor;
             float minHeightLengthFactor = Math.Max(0f, options.DetailBoxMinHeightLengthFactor);
 
-            AppendSectionHeader(geoLines, "// F2) DETAILBOX UM UND HINTER DEM MODELL (TODO-W6)");
+            AppendSectionHeader(geoLines, "// F2) DETAIL BOX AROUND AND BEHIND MODEL");
             geoLines.Add($"dbbox() = BoundingBox Surface {{{surfaces}}};");
             geoLines.Add("dminX = dbbox(0); dminY = dbbox(1); dminZ = dbbox(2);");
             geoLines.Add("dmaxX = dbbox(3); dmaxY = dbbox(4); dmaxZ = dbbox(5);");
@@ -120,7 +120,7 @@ namespace FluidForge.Solvers.Cfd
             float wakeSize,
             float farfieldSize)
         {
-            AppendSectionHeader(geoLines, "// F) DYNAMISCHE WAKE-BOX (NACHLAUF)", wideBanner: true, leadingBlankLine: true);
+            AppendSectionHeader(geoLines, "// F) DYNAMIC WAKE BOX", wideBanner: true, leadingBlankLine: true);
             AppendNumericBoxField(
                 geoLines, 4,
                 bounds.Min.X - (0.05f * chordGeo),
@@ -140,7 +140,7 @@ namespace FluidForge.Solvers.Cfd
             float farfieldSize)
         {
             float detailSize = options.DetailBoxCellSizeFactor * chordGeo * factor;
-            AppendSectionHeader(geoLines, "// F2) DETAILBOX UM UND HINTER DEM PROFIL (TODO-W6)", wideBanner: true, leadingBlankLine: true);
+            AppendSectionHeader(geoLines, "// F2) DETAIL BOX AROUND AND BEHIND PROFILE", wideBanner: true, leadingBlankLine: true);
             AppendNumericBoxField(
                 geoLines, 6,
                 bounds.Min.X - (0.1f * chordGeo),

@@ -3,24 +3,23 @@
 
 """
 plot_optimization.py
-Universelle, projektunabhängige Auswertung von Simulation_Results.csv (Roadmap AP 1.1).
+Universal, project-independent analysis of results.csv (and legacy Simulation_Results.csv).
 
-Analysiert GA-Optimierungsläufe mit automatischer Erkennung aktiver Entwurfsparameter (Gene)
-und erzeugt publikationsreife Diagramme (PNG 300 DPI, optional PDF/SVG):
-  00_dashboard_optimierung: 2x2 Übersichts-Dashboard
-  01_fitness_verlauf: Fitness-Evolution, Best-so-Far und Gesamtsieger
-  02_parameter_evolution: Evolution aller aktiven Entwurfsparameter
-  03_beiwerte_verlauf: Verlauf aerodynamischer/physikalischer Kennwerte
-  04_pareto_front: Pareto-Front (z. B. Drag vs. Lift oder Drag vs. Volumen)
-  05_champion_vergleich: Relativer Vergleich Champion vs. Basisentwurf mit Tabelle
+Analyzes GA optimization runs with automatic detection of active design parameters (genes)
+and generates publication-ready plots (300 DPI PNG, optional PDF/SVG):
+  00_optimization_dashboard: 2x2 summary dashboard
+  01_fitness_history: Fitness evolution, best-so-far, and overall champion
+  02_parameter_evolution: Evolution of all active design parameters
+  03_coefficients_history: Progression of aerodynamic/physical metrics
+  04_pareto_front: Pareto front (e.g. Drag vs. Lift or Drag vs. Volume)
+  05_champion_comparison: Relative comparison of champion vs. baseline with summary table
 """
 
 import sys
-import os
 import argparse
 from pathlib import Path
 
-# Falls --show nicht übergeben wurde: Headless Matplotlib Backend 'Agg'
+# Use headless Matplotlib backend 'Agg' unless --show is passed
 if "--show" not in sys.argv:
     import matplotlib
     matplotlib.use("Agg")
@@ -31,7 +30,7 @@ import pandas as pd
 import numpy as np
 
 
-# Bekannte System- und passive Spalten (case-insensitive Vergleich)
+# Known system and passive columns (case-insensitive comparison)
 KNOWN_ID_COLS = ["iteration", "variant"]
 KNOWN_END_COLS = ["fitness", "stlpath", "meshpath", "simulationfailed"]
 
@@ -47,7 +46,7 @@ KNOWN_PASSIVE_COLS = [
 
 
 def parse_export_formats(args):
-    """Ermittelt die Exportformate (z. B. ['png', 'pdf', 'svg'])."""
+    """Determine export image formats (e.g. ['png', 'pdf', 'svg'])."""
     if getattr(args, "vector", False):
         return ["png", "pdf", "svg"]
     if getattr(args, "formats", None):
@@ -57,7 +56,7 @@ def parse_export_formats(args):
 
 
 def save_figure(fig, base_path, formats, dpi=300):
-    """Speichert eine Figur in allen angegebenen Formaten."""
+    """Save figure in all specified formats."""
     base = Path(base_path)
     if base.suffix.lower() in [".png", ".pdf", ".svg", ".jpg", ".jpeg"]:
         base = base.with_suffix("")
@@ -71,28 +70,27 @@ def save_figure(fig, base_path, formats, dpi=300):
 
 
 def find_results_csv(path_arg):
-    """Findet die Simulation_Results.csv im übergebenen Pfad oder Ordner."""
+    """Locate results.csv (with fallback to legacy Simulation_Results.csv)."""
     p = Path(path_arg)
     if p.is_file():
         return p
     if p.is_dir():
-        # Direkte Suche
-        direct = p / "Simulation_Results.csv"
-        if direct.is_file():
-            return direct
-        # Suche in Unterordnern
-        matches = list(p.glob("**/Simulation_Results.csv"))
-        if matches:
-            return matches[0]
-        # Fallback: irgendeine CSV mit 'simulation_results'
+        for filename in ["results.csv", "Simulation_Results.csv"]:
+            direct = p / filename
+            if direct.is_file():
+                return direct
+        for filename in ["results.csv", "Simulation_Results.csv"]:
+            matches = list(p.glob(f"**/{filename}"))
+            if matches:
+                return matches[0]
         for f in p.rglob("*.csv"):
-            if "simulation_results" in f.name.lower():
+            if f.name.lower() in ("results.csv", "simulation_results.csv") or "simulation_results" in f.name.lower():
                 return f
     return None
 
 
 def read_results_csv(csv_path):
-    """Liest die CSV-Datei ein (Trennzeichen ';', Dezimalpunkt '.')."""
+    """Read results CSV (semicolon separator, dot decimal)."""
     df = pd.read_csv(csv_path, sep=";", decimal=".", skipinitialspace=True)
     df.columns = [str(c).strip().strip("\"'").strip() for c in df.columns]
     df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
@@ -101,10 +99,10 @@ def read_results_csv(csv_path):
 
 def detect_columns(df):
     """
-    Erkennt automatisch:
-    - ID-Spalten (Iteration, Variant)
-    - Aktive Entwurfsparameter (Gene)
-    - Hauptmetriken (Fitness, Drag, Lift, GlideRatio, Volume, Area etc.)
+    Automatically detect:
+    - ID columns (Iteration, Variant)
+    - Active design parameters (genes)
+    - Key metrics (Fitness, Drag, Lift, GlideRatio, Volume, Area, etc.)
     """
     cols = list(df.columns)
     cols_lower = [c.lower() for c in cols]
@@ -114,11 +112,8 @@ def detect_columns(df):
     fit_col = cols[cols_lower.index("fitness")] if "fitness" in cols_lower else None
     failed_col = cols[cols_lower.index("simulationfailed")] if "simulationfailed" in cols_lower else None
 
-    # Alle bekannten System-/Passiv-Spalten lower
     all_system_lower = set(KNOWN_ID_COLS + KNOWN_END_COLS + KNOWN_PASSIVE_COLS)
 
-    # Identifikation der aktiven Parameter (Gene):
-    # 1. Versuch: Spalten zwischen 'Variant' und der ersten bekannten passiven Spalte
     active_params = []
     if var_col:
         var_idx = cols.index(var_col)
@@ -127,14 +122,12 @@ def detect_columns(df):
             c_low = c.lower()
             if c_low in KNOWN_END_COLS or c_low in KNOWN_PASSIVE_COLS:
                 break
-            # Prüfen ob numerisch
             try:
                 pd.to_numeric(df[c].dropna().head(10))
                 active_params.append(c)
             except (ValueError, TypeError):
                 pass
 
-    # Fallback, falls kein Parameter gefunden wurde: alle numerischen Spalten, die nicht in all_system_lower sind
     if not active_params:
         for c in cols:
             c_low = c.lower()
@@ -145,7 +138,6 @@ def detect_columns(df):
                 except (ValueError, TypeError):
                     pass
 
-    # Physik-Spalten erkennen
     drag_col = next((c for c in cols if c.lower() == "drag"), None)
     lift_col = next((c for c in cols if c.lower() == "lift"), None)
     glide_col = next((c for c in cols if c.lower() in ("glideratio", "glide_ratio", "ceff")), None)
@@ -168,8 +160,8 @@ def detect_columns(df):
 
 def clean_and_prepare_data(df, col_info):
     """
-    Wandelt Spalten in numerische Typen um, filtert Ausreißer/Fehler
-    und trennt reguläre Varianten von Validierungsvarianten (z. B. Var 99).
+    Convert columns to numeric types, flag failed runs, and separate regular
+    variants from validation/recheck variants (e.g. Variant 99 / Iteration 99).
     """
     iter_col = col_info["iter_col"]
     var_col = col_info["var_col"]
@@ -177,23 +169,19 @@ def clean_and_prepare_data(df, col_info):
     failed_col = col_info["failed_col"]
 
     df = df.copy()
-    # In numerische Typen umwandeln
     for c in df.columns:
         if c.lower() not in ["stlpath", "meshpath"]:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Flag für fehlgeschlagene Simulation
     is_failed = pd.Series(False, index=df.index)
     if failed_col and failed_col in df.columns:
         is_failed = is_failed | (df[failed_col] == 1)
 
     if fit_col and fit_col in df.columns:
-        # Disqualifizierte oder fehlgeschlagene Varianten (Fitness <= 0.001 oder NaN)
         is_failed = is_failed | df[fit_col].isna() | (df[fit_col] <= 0.001)
 
     df["IsFailed"] = is_failed
 
-    # Flag für Validierungs-/Feinprüfungs-Varianten (Variant 99 oder Iteration 99)
     is_validation = pd.Series(False, index=df.index)
     if var_col and var_col in df.columns:
         is_validation = is_validation | (df[var_col] == 99)
@@ -201,7 +189,6 @@ def clean_and_prepare_data(df, col_info):
         is_validation = is_validation | (df[iter_col] == 99)
     df["IsValidation"] = is_validation
 
-    # Berechne GlideRatio falls nicht vorhanden, aber Lift und Drag existieren
     drag_col = col_info["drag_col"]
     lift_col = col_info["lift_col"]
     glide_col = col_info["glide_col"]
@@ -215,9 +202,9 @@ def clean_and_prepare_data(df, col_info):
 
 def calculate_pareto_front(df_valid, x_col, y_col, maximize_y=True):
     """
-    Berechnet die 2D-Pareto-Front:
-    x_col wird minimiert (z. B. Drag).
-    y_col wird standardmäßig maximiert (z. B. Lift, GlideRatio, Volume).
+    Compute the 2D Pareto front:
+    x_col is minimized (e.g., Drag);
+    y_col is maximized by default (e.g., Lift, GlideRatio, Volume).
     """
     sub = df_valid[[x_col, y_col]].dropna()
     if sub.empty:
@@ -232,7 +219,6 @@ def calculate_pareto_front(df_valid, x_col, y_col, maximize_y=True):
         for j, q in enumerate(points):
             if i == j:
                 continue
-            # q dominiert p wenn q_x <= p_x und q_y >= p_y (bei maximize_y)
             if maximize_y:
                 if q[0] <= p[0] and q[1] >= p[1] and (q[0] < p[0] or q[1] > p[1]):
                     is_pareto[i] = False
@@ -242,12 +228,11 @@ def calculate_pareto_front(df_valid, x_col, y_col, maximize_y=True):
                     is_pareto[i] = False
                     break
 
-    pareto_df = sub[is_pareto].sort_values(by=x_col)
-    return pareto_df
+    return sub[is_pareto].sort_values(by=x_col)
 
 
 # -----------------------------------------------------------------------------
-# PLOT 1: Fitness-Verlauf
+# PLOT 1: Fitness History
 # -----------------------------------------------------------------------------
 def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
     iter_col = col_info["iter_col"]
@@ -259,7 +244,6 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Alle Varianten als Streudiagramm
     ax.scatter(
         df_valid[iter_col],
         df_valid[fit_col],
@@ -267,11 +251,10 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
         alpha=0.45,
         s=40,
         edgecolors="none",
-        label="Varianten (gültig)",
+        label="Variants (valid)",
         zorder=3
     )
 
-    # Fehlgeschlagene Varianten am unteren Rand andeuten
     df_failed = df[df["IsFailed"] & ~df["IsValidation"]]
     if not df_failed.empty:
         min_fit = df_valid[fit_col].min()
@@ -283,15 +266,13 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
             marker="x",
             s=35,
             alpha=0.6,
-            label=f"Fehlgeschlagen ({len(df_failed)})",
+            label=f"Failed ({len(df_failed)})",
             zorder=3
         )
 
-    # Generations-Champions und Best-so-Far
     gen_groups = df_valid.groupby(iter_col)[fit_col]
     gen_champs = gen_groups.max().reset_index()
 
-    # Best-so-far
     gens = gen_champs[iter_col].values
     best_vals = np.maximum.accumulate(gen_champs[fit_col].values)
 
@@ -313,11 +294,10 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
         markersize=6,
         linestyle="--",
         linewidth=1.2,
-        label="Generations-Champion",
+        label="Generation Champion",
         zorder=5
     )
 
-    # Gesamtsieger hervorheben
     best_idx = df_valid[fit_col].idxmax()
     champ_row = df_valid.loc[best_idx]
     champ_iter = champ_row[iter_col]
@@ -331,11 +311,10 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
         s=250,
         edgecolors="black",
         linewidth=1.2,
-        label=f"Gesamtsieger (Gen {int(champ_iter)}: {champ_fit:.2f})",
+        label=f"Overall Champion (Gen {int(champ_iter)}: {champ_fit:.2f})",
         zorder=6
     )
 
-    # Basis-Entwurf (Gen 1, Var 1)
     base_rows = df_valid[(df_valid[iter_col] == 1) & (df_valid[col_info["var_col"]] == 1)]
     if not base_rows.empty:
         base_fit = base_rows.iloc[0][fit_col]
@@ -346,11 +325,11 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
             marker="s",
             s=80,
             edgecolors="black",
-            label=f"Basisentwurf ({base_fit:.2f})",
+            label=f"Baseline ({base_fit:.2f})",
             zorder=5
         )
 
-    ax.set_title("Fitness-Entwicklung über die Generationen", fontsize=13, fontweight="bold")
+    ax.set_title("Fitness Progression Across Generations", fontsize=13, fontweight="bold")
     ax.set_xlabel("Generation (Iteration)", fontsize=11)
     ax.set_ylabel("Fitness [-]", fontsize=11)
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
@@ -358,7 +337,7 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
     ax.legend(loc="best", framealpha=0.9)
 
     plt.tight_layout()
-    out_base = out_dir / "01_fitness_verlauf"
+    out_base = out_dir / "01_fitness_history"
     saved = save_figure(fig, out_base, formats)
     if show:
         plt.show()
@@ -367,7 +346,7 @@ def plot_fitness_evolution(df, col_info, out_dir, formats, show=False):
 
 
 # -----------------------------------------------------------------------------
-# PLOT 2: Parameter-Evolution (Gene)
+# PLOT 2: Parameter Evolution (Genes)
 # -----------------------------------------------------------------------------
 def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
     active_params = col_info["active_params"]
@@ -386,9 +365,8 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
     nrows = (num_params + ncols - 1) // ncols
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(5.2 * ncols, 3.8 * nrows), squeeze=False)
-    fig.suptitle("Evolution der aktiven Entwurfsparameter", fontsize=14, fontweight="bold", y=1.00)
+    fig.suptitle("Evolution of Active Design Parameters", fontsize=14, fontweight="bold", y=1.00)
 
-    # Generations-Champions identifizieren
     gen_champ_indices = df_valid.groupby(iter_col)[fit_col].idxmax() if fit_col else []
     champ_rows = df_valid.loc[gen_champ_indices]
 
@@ -398,12 +376,10 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
         r, c = divmod(idx, ncols)
         ax = axes[r][c]
 
-        # Daten pro Generation sammeln
         data_per_gen = [df_valid[df_valid[iter_col] == g][param].dropna().values for g in unique_gens]
 
-        # Boxplots je Generation
         box_pos = list(range(len(unique_gens)))
-        bp = ax.boxplot(
+        ax.boxplot(
             data_per_gen,
             positions=box_pos,
             widths=0.45,
@@ -415,7 +391,6 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
             flierprops=dict(marker="o", markerfacecolor="gray", markersize=3, alpha=0.4),
         )
 
-        # Einzelne Punkte mit leichtem Jitter überlagern
         for i, (g, vals) in enumerate(zip(unique_gens, data_per_gen)):
             jitter = np.random.normal(0, 0.04, size=len(vals))
             ax.scatter(
@@ -427,7 +402,6 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
                 zorder=3
             )
 
-        # Generations-Champion als rote Linie/Sterne
         champ_vals = [champ_rows[champ_rows[iter_col] == g][param].values[0]
                       for g in unique_gens if len(champ_rows[champ_rows[iter_col] == g]) > 0]
         ax.plot(
@@ -437,7 +411,7 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
             marker="*",
             markersize=9,
             linewidth=1.2,
-            label="Gen-Champion",
+            label="Gen Champion",
             zorder=5
         )
 
@@ -449,7 +423,6 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
         if idx == 0:
             ax.legend(loc="best", fontsize=9)
 
-    # Nicht genutzte Achsen ausblenden
     for idx in range(num_params, nrows * ncols):
         r, c = divmod(idx, ncols)
         fig.delaxes(axes[r][c])
@@ -464,7 +437,7 @@ def plot_parameter_evolution(df, col_info, out_dir, formats, show=False):
 
 
 # -----------------------------------------------------------------------------
-# PLOT 3: Physik-/Beiwerte-Verlauf über den fortlaufenden Variantenindex
+# PLOT 3: Physical / Aerodynamic Coefficients History
 # -----------------------------------------------------------------------------
 def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
     drag_col = col_info["drag_col"]
@@ -476,17 +449,15 @@ def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
     if df_valid.empty or not drag_col:
         return None
 
-    # Metriken sammeln
     plot_metrics = []
     if drag_col and drag_col in df_valid.columns:
-        plot_metrics.append((drag_col, "Widerstandsbeiwert Cd", "#1f77b4"))
+        plot_metrics.append((drag_col, "Drag Coefficient Cd", "#1f77b4"))
     if lift_col and lift_col in df_valid.columns and df_valid[lift_col].abs().max() > 1e-6:
-        plot_metrics.append((lift_col, "Auftriebsbeiwert Cl", "#2ca02c"))
+        plot_metrics.append((lift_col, "Lift Coefficient Cl", "#2ca02c"))
     if glide_col and glide_col in df_valid.columns:
-        plot_metrics.append((glide_col, "Gleitzahl Cl / Cd", "#ff7f0e"))
+        plot_metrics.append((glide_col, "Glide Ratio Cl / Cd", "#ff7f0e"))
 
     if not plot_metrics:
-        # Fallback auf Geometriegrößen
         for alt_c in ["Volume", "Area", "FrontalArea"]:
             if alt_c in df_valid.columns:
                 plot_metrics.append((alt_c, alt_c, "#9467bd"))
@@ -497,9 +468,8 @@ def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
     if n_plots == 1:
         axes = [axes]
 
-    fig.suptitle("Entwicklung der physikalischen Kenngrößen", fontsize=13, fontweight="bold")
+    fig.suptitle("Progression of Physical Metrics", fontsize=13, fontweight="bold")
 
-    # Generationswechsel-Indizes für vertikale Linien
     gen_changes = []
     current_gen = None
     for idx, row in df_valid.iterrows():
@@ -516,7 +486,6 @@ def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
         ax.set_ylabel(label_name, fontsize=10, fontweight="bold")
         ax.grid(True, linestyle="--", alpha=0.5)
 
-        # Generations-Trennlinien
         for split_idx, gen_num in gen_changes:
             ax.axvline(split_idx, color="gray", linestyle=":", alpha=0.7)
             if ax_idx == 0:
@@ -525,10 +494,10 @@ def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
 
         ax.legend(loc="best")
 
-    axes[-1].set_xlabel("Fortlaufender Varianten-Index (gültige Simulationen)", fontsize=11)
+    axes[-1].set_xlabel("Sequential Variant Index (valid evaluations)", fontsize=11)
 
     plt.tight_layout()
-    out_base = out_dir / "03_beiwerte_verlauf"
+    out_base = out_dir / "03_coefficients_history"
     saved = save_figure(fig, out_base, formats)
     if show:
         plt.show()
@@ -537,7 +506,7 @@ def plot_coefficients_history(df, col_info, out_dir, formats, show=False):
 
 
 # -----------------------------------------------------------------------------
-# PLOT 4: Pareto-Front
+# PLOT 4: Pareto Front
 # -----------------------------------------------------------------------------
 def plot_pareto_front(df, col_info, out_dir, formats, show=False):
     drag_col = col_info["drag_col"]
@@ -550,28 +519,25 @@ def plot_pareto_front(df, col_info, out_dir, formats, show=False):
     if df_valid.empty or not drag_col:
         return None
 
-    # Entscheiden, welche Y-Achse genutzt wird
     use_lift = lift_col and lift_col in df_valid.columns and df_valid[lift_col].abs().max() > 1e-4
     if use_lift:
         x_col = drag_col
         y_col = lift_col
-        x_label = f"Widerstandsbeiwert Cd ({drag_col}) [Minimierung]"
-        y_label = f"Auftriebsbeiwert Cl ({lift_col}) [Maximierung]"
+        x_label = f"Drag Coefficient Cd ({drag_col}) [Minimize]"
+        y_label = f"Lift Coefficient Cl ({lift_col}) [Maximize]"
         maximize_y = True
     else:
-        # Fallback: Drag vs. Volume / Area
         alt_y = next((c for c in ["Volume", "FrontalArea", "Area"] if c in df_valid.columns), None)
         if not alt_y:
             return None
         x_col = drag_col
         y_col = alt_y
-        x_label = f"Widerstand ({drag_col}) [Minimierung]"
-        y_label = f"Geometrie ({alt_y}) [Maximierung]"
+        x_label = f"Drag ({drag_col}) [Minimize]"
+        y_label = f"Geometry ({alt_y}) [Maximize]"
         maximize_y = True
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
 
-    # Streudiagramm farbkodiert nach Generation
     gens = df_valid[iter_col].values
     scatter = ax.scatter(
         df_valid[x_col],
@@ -589,7 +555,6 @@ def plot_pareto_front(df, col_info, out_dir, formats, show=False):
     cbar.locator = ticker.MaxNLocator(integer=True)
     cbar.update_ticks()
 
-    # Pareto-Front berechnen und einzeichnen
     pareto_df = calculate_pareto_front(df_valid, x_col, y_col, maximize_y=maximize_y)
     if not pareto_df.empty:
         ax.plot(
@@ -600,18 +565,16 @@ def plot_pareto_front(df, col_info, out_dir, formats, show=False):
             linewidth=2.0,
             marker="o",
             markersize=5,
-            label="Pareto-Front",
+            label="Pareto Front",
             zorder=4
         )
 
-    # Basis-Entwurf (Gen 1, Var 1)
     base_rows = df_valid[(df_valid[iter_col] == 1) & (df_valid[var_col] == 1)]
     if not base_rows.empty:
         bx = base_rows.iloc[0][x_col]
         by = base_rows.iloc[0][y_col]
-        ax.scatter([bx], [by], color="black", marker="s", s=110, label="Basisentwurf (Gen 1, Var 1)", zorder=5)
+        ax.scatter([bx], [by], color="black", marker="s", s=110, label="Baseline (Gen 1, Var 1)", zorder=5)
 
-    # Gesamtsieger hervorheben
     if fit_col and fit_col in df_valid.columns:
         best_row = df_valid.loc[df_valid[fit_col].idxmax()]
         ax.scatter(
@@ -622,11 +585,11 @@ def plot_pareto_front(df, col_info, out_dir, formats, show=False):
             s=280,
             edgecolors="black",
             linewidth=1.2,
-            label=f"Gesamtsieger (* Gen {int(best_row[iter_col])})",
+            label=f"Overall Champion (* Gen {int(best_row[iter_col])})",
             zorder=6
         )
 
-    ax.set_title(f"Pareto-Diagramm: {y_col} über {x_col}", fontsize=13, fontweight="bold")
+    ax.set_title(f"Pareto Front: {y_col} vs. {x_col}", fontsize=13, fontweight="bold")
     ax.set_xlabel(x_label, fontsize=11)
     ax.set_ylabel(y_label, fontsize=11)
     ax.grid(True, linestyle="--", alpha=0.5)
@@ -642,7 +605,7 @@ def plot_pareto_front(df, col_info, out_dir, formats, show=False):
 
 
 # -----------------------------------------------------------------------------
-# PLOT 5: Champion-Vergleich (Relativ gegenüber Basisentwurf + Kennwert-Tabelle)
+# PLOT 5: Champion Comparison (Relative to Baseline + Summary Table)
 # -----------------------------------------------------------------------------
 def plot_champion_comparison(df, col_info, out_dir, formats, show=False):
     iter_col = col_info["iter_col"]
@@ -654,17 +617,10 @@ def plot_champion_comparison(df, col_info, out_dir, formats, show=False):
     if df_valid.empty or not fit_col:
         return None
 
-    # Basisentwurf finden
     base_rows = df_valid[(df_valid[iter_col] == 1) & (df_valid[var_col] == 1)]
-    if base_rows.empty:
-        base_row = df_valid.iloc[0]
-    else:
-        base_row = base_rows.iloc[0]
-
-    # Gesamtsieger finden
+    base_row = base_rows.iloc[0] if not base_rows.empty else df_valid.iloc[0]
     best_row = df_valid.loc[df_valid[fit_col].idxmax()]
 
-    # Vergleichsmetriken zusammenstellen
     compare_metrics = list(active_params)
     for phys_col in [col_info["drag_col"], col_info["lift_col"], col_info["glide_col"], fit_col]:
         if phys_col and phys_col in df_valid.columns and phys_col not in compare_metrics:
@@ -697,21 +653,20 @@ def plot_champion_comparison(df, col_info, out_dir, formats, show=False):
             p,
             f"{b_float:.4g}",
             f"{c_float:.4g}",
-            f"{delta_pct:+.1f} %"
+            f"{delta_pct:+.1f}%"
         ])
 
     if not param_names:
         return None
 
     fig, (ax_bar, ax_tab) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={"height_ratios": [1.4, 1.0]})
-    fig.suptitle(f"Gesamtsieger (Gen {int(best_row[iter_col])}, Var {int(best_row[var_col])}) im Vergleich zum Basisentwurf",
+    fig.suptitle(f"Overall Champion (Gen {int(best_row[iter_col])}, Var {int(best_row[var_col])}) vs. Baseline",
                  fontsize=13, fontweight="bold")
 
-    # Balkendiagramm der relativen Änderungen
     y_pos = np.arange(len(param_names))
     colors = ["#2ca02c" if v >= 0 else "#1f77b4" for v in pct_changes]
 
-    # Bei Widerstand (Drag) ist negativ positiv (Verbesserung)
+    # For Drag, negative change is an improvement
     for idx, p in enumerate(param_names):
         if "drag" in p.lower():
             colors[idx] = "#2ca02c" if pct_changes[idx] <= 0 else "#d62728"
@@ -720,20 +675,18 @@ def plot_champion_comparison(df, col_info, out_dir, formats, show=False):
     ax_bar.set_yticks(y_pos)
     ax_bar.set_yticklabels(param_names, fontsize=10, fontweight="bold")
     ax_bar.axvline(0, color="black", linewidth=1.0)
-    ax_bar.set_xlabel("Relative Änderung gegenüber Basisentwurf [%]", fontsize=11)
+    ax_bar.set_xlabel("Relative Change vs. Baseline [%]", fontsize=11)
     ax_bar.grid(True, linestyle="--", alpha=0.4, axis="x")
 
-    # Prozentlabels an den Balken
     for bar, pct in zip(bars, pct_changes):
         x_val = bar.get_width()
         ha = "left" if x_val >= 0 else "right"
         offset = 1.0 if x_val >= 0 else -1.0
-        ax_bar.text(x_val + offset, bar.get_y() + bar.get_height() / 2, f"{pct:+.1f} %",
+        ax_bar.text(x_val + offset, bar.get_y() + bar.get_height() / 2, f"{pct:+.1f}%",
                     va="center", ha=ha, fontsize=9, fontweight="bold")
 
-    # Tabelle
     ax_tab.axis("off")
-    col_labels = ["Parameter / Metrik", "Basisentwurf", "Champion", "Differenz (%)"]
+    col_labels = ["Parameter / Metric", "Baseline", "Champion", "Difference (%)"]
     tab = ax_tab.table(
         cellText=table_data,
         colLabels=col_labels,
@@ -744,14 +697,13 @@ def plot_champion_comparison(df, col_info, out_dir, formats, show=False):
     tab.set_fontsize(9.5)
     tab.scale(1.0, 1.4)
 
-    # Header-Styling
     for c_idx in range(len(col_labels)):
         cell = tab[0, c_idx]
         cell.set_facecolor("#2b5c8f")
         cell.set_text_props(color="white", fontweight="bold")
 
     plt.tight_layout()
-    out_base = out_dir / "05_champion_vergleich"
+    out_base = out_dir / "05_champion_comparison"
     saved = save_figure(fig, out_base, formats)
     if show:
         plt.show()
@@ -774,56 +726,56 @@ def plot_dashboard(df, col_info, out_dir, formats, show=False):
         return None
 
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle("Optimierungs-Dashboard (Gesamtübersicht)", fontsize=15, fontweight="bold")
+    fig.suptitle("Optimization Dashboard (Overview)", fontsize=15, fontweight="bold")
 
-    # 1. Panel oben links: Fitness-Verlauf
-    ax1.scatter(df_valid[iter_col], df_valid[fit_col], color="#1f77b4", alpha=0.4, s=35, label="Varianten")
+    # 1. Top left: Fitness history
+    ax1.scatter(df_valid[iter_col], df_valid[fit_col], color="#1f77b4", alpha=0.4, s=35, label="Variants")
     gen_champs = df_valid.groupby(iter_col)[fit_col].max().reset_index()
     best_vals = np.maximum.accumulate(gen_champs[fit_col].values)
     ax1.step(gen_champs[iter_col], best_vals, where="post", color="#2ca02c", linewidth=2.0, label="Best-so-Far")
     champ_row = df_valid.loc[df_valid[fit_col].idxmax()]
     ax1.scatter([champ_row[iter_col]], [champ_row[fit_col]], color="#d62728", marker="*", s=180, label="Champion *", zorder=6)
-    ax1.set_title("Fitness-Entwicklung", fontsize=11, fontweight="bold")
+    ax1.set_title("Fitness Progression", fontsize=11, fontweight="bold")
     ax1.set_xlabel("Generation", fontsize=10)
     ax1.set_ylabel("Fitness", fontsize=10)
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(loc="best", fontsize=8.5)
 
-    # 2. Panel oben rechts: Pareto-Front
+    # 2. Top right: Pareto front
     if drag_col and drag_col in df_valid.columns:
         use_lift = lift_col and lift_col in df_valid.columns and df_valid[lift_col].abs().max() > 1e-4
         y_name = lift_col if use_lift else next((c for c in ["Volume", "Area"] if c in df_valid.columns), drag_col)
-        scatter = ax2.scatter(df_valid[drag_col], df_valid[y_name], c=df_valid[iter_col], cmap="viridis", s=40, alpha=0.7)
+        ax2.scatter(df_valid[drag_col], df_valid[y_name], c=df_valid[iter_col], cmap="viridis", s=40, alpha=0.7)
         pareto_df = calculate_pareto_front(df_valid, drag_col, y_name, maximize_y=True)
         if not pareto_df.empty:
-            ax2.plot(pareto_df[drag_col], pareto_df[y_name], color="#d62728", linestyle="--", linewidth=1.8, label="Pareto-Front")
+            ax2.plot(pareto_df[drag_col], pareto_df[y_name], color="#d62728", linestyle="--", linewidth=1.8, label="Pareto Front")
         ax2.scatter([champ_row[drag_col]], [champ_row[y_name]], color="#e377c2", marker="*", s=200, label="Champion *", zorder=6)
-        ax2.set_title(f"Pareto-Verteilung ({y_name} vs. {drag_col})", fontsize=11, fontweight="bold")
+        ax2.set_title(f"Pareto Distribution ({y_name} vs. {drag_col})", fontsize=11, fontweight="bold")
         ax2.set_xlabel(drag_col, fontsize=10)
         ax2.set_ylabel(y_name, fontsize=10)
         ax2.grid(True, linestyle="--", alpha=0.5)
         ax2.legend(loc="best", fontsize=8.5)
     else:
-        ax2.text(0.5, 0.5, "Keine Widerstandsspalte vorhanden", ha="center", va="center")
+        ax2.text(0.5, 0.5, "No drag column available", ha="center", va="center")
 
-    # 3. Panel unten links: Physik-Beiwerte
+    # 3. Bottom left: Physical metrics
     if drag_col and drag_col in df_valid.columns:
         sub_df = df_valid.reset_index(drop=True)
-        ax3.plot(sub_df.index, sub_df[drag_col], color="#1f77b4", label=f"Widerstand ({drag_col})", linewidth=1.3)
+        ax3.plot(sub_df.index, sub_df[drag_col], color="#1f77b4", label=f"Drag ({drag_col})", linewidth=1.3)
         ax3.set_ylabel(drag_col, color="#1f77b4", fontsize=10)
         ax3.tick_params(axis="y", labelcolor="#1f77b4")
         if lift_col and lift_col in sub_df.columns and sub_df[lift_col].abs().max() > 1e-4:
             ax3_twin = ax3.twinx()
-            ax3_twin.plot(sub_df.index, sub_df[lift_col], color="#2ca02c", label=f"Auftrieb ({lift_col})", linewidth=1.3)
+            ax3_twin.plot(sub_df.index, sub_df[lift_col], color="#2ca02c", label=f"Lift ({lift_col})", linewidth=1.3)
             ax3_twin.set_ylabel(lift_col, color="#2ca02c", fontsize=10)
             ax3_twin.tick_params(axis="y", labelcolor="#2ca02c")
-        ax3.set_title("Physikalischer Verlauf über Varianten", fontsize=11, fontweight="bold")
-        ax3.set_xlabel("Varianten-Index", fontsize=10)
+        ax3.set_title("Physical Metrics Across Variants", fontsize=11, fontweight="bold")
+        ax3.set_xlabel("Variant Index", fontsize=10)
         ax3.grid(True, linestyle="--", alpha=0.5)
     else:
-        ax3.text(0.5, 0.5, "Keine Physik-Spalten vorhanden", ha="center", va="center")
+        ax3.text(0.5, 0.5, "No physical columns available", ha="center", va="center")
 
-    # 4. Panel unten rechts: Champion-Vergleich
+    # 4. Bottom right: Champion comparison
     base_rows = df_valid[(df_valid[iter_col] == 1) & (df_valid[var_col] == 1)]
     base_row = base_rows.iloc[0] if not base_rows.empty else df_valid.iloc[0]
 
@@ -836,7 +788,7 @@ def plot_dashboard(df, col_info, out_dir, formats, show=False):
 
     names = []
     deltas = []
-    for k in compare_keys[:8]:  # max 8 im Dashboard
+    for k in compare_keys[:8]:
         b = base_row.get(k, np.nan)
         c = champ_row.get(k, np.nan)
         if pd.notna(b) and pd.notna(c) and abs(float(b)) > 1e-7:
@@ -854,14 +806,14 @@ def plot_dashboard(df, col_info, out_dir, formats, show=False):
         ax4.set_yticks(y_pos)
         ax4.set_yticklabels(names, fontsize=9)
         ax4.axvline(0, color="black", linewidth=0.8)
-        ax4.set_xlabel("Änderung [%]", fontsize=10)
-        ax4.set_title("Champion vs. Basisentwurf (Δ %)", fontsize=11, fontweight="bold")
+        ax4.set_xlabel("Change [%]", fontsize=10)
+        ax4.set_title("Champion vs. Baseline (Δ %)", fontsize=11, fontweight="bold")
         ax4.grid(True, linestyle="--", alpha=0.4, axis="x")
     else:
-        ax4.text(0.5, 0.5, "Keine Vergleichsdaten verfügbar", ha="center", va="center")
+        ax4.text(0.5, 0.5, "No comparison data available", ha="center", va="center")
 
     plt.tight_layout()
-    out_base = out_dir / "00_dashboard_optimierung"
+    out_base = out_dir / "00_optimization_dashboard"
     saved = save_figure(fig, out_base, formats)
     if show:
         plt.show()
@@ -871,43 +823,41 @@ def plot_dashboard(df, col_info, out_dir, formats, show=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Universelle, projektunabhängige Auswertung von Simulation_Results.csv.",
+        description="Universal, project-independent analysis of results.csv.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("path", help="Pfad zu Simulation_Results.csv oder einem Ordner, der diese enthält")
-    parser.add_argument("--out", default=None, help="Zielverzeichnis für die Plots (Standard: <CSV-Ordner>/Plots_Optimierung/)")
-    parser.add_argument("--formats", default="png", help="Kommagetrennte Liste der Bildformate (z.B. png,pdf,svg; Standard: png)")
-    parser.add_argument("--vector", action="store_true", help="Erzeugt zusätzlich Publikations-Vektorgrafiken (.pdf und .svg)")
-    parser.add_argument("--show", action="store_true", help="Öffnet interaktive Matplotlib-Fenster")
+    parser.add_argument("path", help="Path to results.csv (or Simulation_Results.csv) or a directory containing it")
+    parser.add_argument("--out", default=None, help="Output directory for plots (default: <csv-dir>/Plots_Optimization/)")
+    parser.add_argument("--formats", default="png", help="Comma-separated list of image formats (e.g. png,pdf,svg; default: png)")
+    parser.add_argument("--vector", action="store_true", help="Also generate publication vector graphics (.pdf and .svg)")
+    parser.add_argument("--show", action="store_true", help="Open interactive Matplotlib windows")
 
     args = parser.parse_args()
 
     csv_file = find_results_csv(args.path)
     if not csv_file or not csv_file.is_file():
-        print(f"[FEHLER] Keine Simulation_Results.csv gefunden unter: {args.path}")
+        print(f"[ERROR] No results.csv (or Simulation_Results.csv) found under: {args.path}")
         sys.exit(1)
 
-    print(f"Lese Ergebnisdatei: {csv_file}")
+    print(f"Reading results file: {csv_file}")
     df = read_results_csv(csv_file)
     if df.empty:
-        print("[FEHLER] Ergebnisdatei ist leer.")
+        print("[ERROR] Results file is empty.")
         sys.exit(1)
 
     col_info = detect_columns(df)
     df_clean = clean_and_prepare_data(df, col_info)
 
-    # Ausgabeverzeichnis festlegen
     if args.out:
         out_dir = Path(args.out)
     else:
-        out_dir = csv_file.parent / "Plots_Optimierung"
+        out_dir = csv_file.parent / "Plots_Optimization"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     formats = parse_export_formats(args)
-    print(f"Erkannte Entwurfsparameter (Gene): {col_info['active_params']}")
-    print(f"Erzeuge Optimierungs-Plots in: {out_dir} (Formate: {', '.join(formats)})")
+    print(f"Detected design parameters (genes): {col_info['active_params']}")
+    print(f"Generating optimization plots in: {out_dir} (formats: {', '.join(formats)})")
 
-    # Plots erzeugen
     plot_fitness_evolution(df_clean, col_info, out_dir, formats, show=args.show)
     plot_parameter_evolution(df_clean, col_info, out_dir, formats, show=args.show)
     plot_coefficients_history(df_clean, col_info, out_dir, formats, show=args.show)
@@ -915,7 +865,7 @@ def main():
     plot_champion_comparison(df_clean, col_info, out_dir, formats, show=args.show)
     plot_dashboard(df_clean, col_info, out_dir, formats, show=args.show)
 
-    print("Optimierungsauswertung erfolgreich abgeschlossen.")
+    print("Optimization analysis completed successfully.")
 
 
 if __name__ == "__main__":

@@ -1,624 +1,263 @@
-# Server-, Deployment- & Einrichtungs-Handbuch (`scripts/`)
+# Server, Deployment & Setup Guide (`scripts/`)
 
-> **Weiterführende Dokumente (ohne Doppelung):**
-> - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
-> - **Neues Bauteil / Projekt anlegen (3D & 2D):** [`src/projects/README.md`](../src/projects/README.md)
-> - **Framework-Architektur & C#-Entwicklung:** [`src/OptimierungsAlgoCFD/README.md`](../src/OptimierungsAlgoCFD/README.md)
-> - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../config/README.md)
+> **Related documentation:**
+> - **User Manual & All JSON Settings:** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
+> - **Creating a New Project / Geometry (3D & 2D):** [`src/projects/README.md`](../src/projects/README.md)
+> - **Framework Architecture & C# Development:** [`src/FluidForge/README.md`](../src/FluidForge/README.md)
+> - **Local Override Configuration (`*.local.json`):** [`config/README.md`](../config/README.md)
 
-Zwei Skripte, eine Aufgabe: den Optimierungslauf von Windows aus auf dem
-Hochschulrechner starten und beobachten.
+Two scripts, one job: start and monitor optimization runs on the remote Linux server from Windows.
 
-| Datei | Läuft auf | Aufgabe |
+| File | Runs on | Purpose |
 |---|---|---|
-| `sim.ps1` | Windows | Code packen, per SSH hochladen, Befehle absetzen, Ergebnisse holen |
-| `sim-runner.sh` | Linux | tmux, xvfb-run, Pfade, Build, Start/Stop/Status |
-| `new-project.ps1` | Windows | Ein neues Projekt anlegen (kopiert `src/projects/_Vorlage3D`) |
-| `plot_history.py` | Windows / Linux | Konvergenzverläufe (`history.csv`) prüfen, auswerten und plotten |
-| `plot_calibration.py` | Windows / Linux | Netzkalibrierung (`calibration.csv`) auswerten und GCI-/Zellklassen-Plots erzeugen |
-| `plot_optimization.py` | Windows / Linux | Optimierungsverlauf (`Simulation_Results.csv`) auswerten und plotten |
+| `sim.ps1` | Windows | Package code, upload via SSH, dispatch commands, fetch results |
+| `sim-runner.sh` | Linux | tmux, xvfb-run, paths, build, start/stop/status |
+| `new-project.ps1` | Windows | Create a new project (copies `src/projects/_Template3D` or `_Template2D`) |
+| `plot_history.py` | Windows / Linux | Inspect and plot SU2 convergence histories (`history.csv`) |
+| `plot_calibration.py` | Windows / Linux | Analyze mesh calibration (`calibration.csv`) and generate GCI plots |
+| `plot_optimization.py` | Windows / Linux | Analyze and plot optimization results (`results.csv`) |
 
-`new-project.ps1` hat mit dem Server nichts zu tun — es steht hier, weil es dasselbe
-Werkzeugkästchen ist. Was danach zu tun ist, steht in
-[`src/projects/README.md`](../src/projects/README.md).
+`new-project.ps1` is a local scaffolding helper kept in the same toolbox. See
+[`src/projects/README.md`](../src/projects/README.md) for what to edit after creating a project.
 
-`sim-runner.sh` wird mit hochgeladen und liegt auf dem Server im selben Repo.
-Wer ohnehin per SSH eingeloggt ist, kann es dort direkt benutzen:
+`sim-runner.sh` is uploaded alongside the source code and can also be invoked directly when
+logged in via SSH:
 
 ```bash
-cd ~/Documents/AutomatisierungCleanVersion
+cd ~/Documents/FluidForge
 bash scripts/sim-runner.sh status
 ```
 
-## Voraussetzungen
+## Prerequisites
 
-- **Auf dem Server:** einmalig `setup_server.sh` (Miniconda, SU2, Gmsh, PicoGK, .NET).
-  Das erledigen diese Skripte *nicht* — sie setzen die fertige Umgebung voraus.
-- **Auf Windows:** `ssh`, `scp` und `tar` (in Windows 11 enthalten), ein Eintrag in
-  `~/.ssh/config` und ein dort hinterlegter SSH-Schlüssel — siehe nächster Abschnitt.
-  `BIC_12` ist die Vorgabe.
+- **On the server:** one-time `setup_server.sh` (Miniconda, SU2, Gmsh, PicoGK, .NET).
+  The deployment scripts do not install these tools -- they assume the environment is ready.
+- **On Windows:** `ssh`, `scp`, and `tar` (included in Windows 11), an entry in
+  `~/.ssh/config`, and key-based SSH authentication. `BIC_12` is the default host alias.
 
-### SSH-Schlüssel
+### SSH Key Setup
 
-Ein einzelnes `sim.ps1 run` setzt fünf bis sechs ssh/scp-Aufrufe ab. Ohne Schlüssel
-müsstest du jedes Mal das Passwort eingeben, und die stillen Abfragen (`running`,
-`hash`) unterdrücken stderr — eine Passwortabfrage sähe dort aus wie ein Hänger.
-Anmeldung per Schlüssel ist deshalb praktisch Voraussetzung.
+A single `sim.ps1 run` issues five to six ssh/scp calls. Without key-based auth you would
+be prompted for a password on every call, and quiet queries (`running`, `hash`) suppress
+stderr so a password prompt would look like a hang.
 
-**Was gebraucht wird:** ein Schlüsselpaar unter `%USERPROFILE%\.ssh\` (Standardname,
-z.B. `id_ed25519` + `id_ed25519.pub`). Weil es ein Standardname ist, findet ssh ihn
-von allein — eine `IdentityFile`-Zeile in der `config` ist nicht nötig. Der
-**öffentliche** Teil muss auf dem Server in `~/.ssh/authorized_keys` stehen.
+**Required:** a key pair under `%USERPROFILE%\.ssh\` (standard name such as `id_ed25519` +
+`id_ed25519.pub`), with the **public** key appended to `~/.ssh/authorized_keys` on the server.
 
-**Prüfen, ob das schon der Fall ist:**
+**Verify key-based login:**
 
 ```powershell
 ssh -o BatchMode=yes BIC_12 "echo ok"
 ```
 
-`BatchMode=yes` schaltet jede Passwortabfrage ab. `ok` = Schlüssel funktioniert.
-`Permission denied (publickey,password)` = er liegt noch nicht auf dem Server.
+`BatchMode=yes` disables password prompts. `ok` means the key works; `Permission denied`
+means the public key is not yet on the server.
 
-**Schlüssel erzeugen, falls noch keiner existiert:**
+**Generate a key pair if needed:**
 
 ```powershell
 ssh-keygen -t ed25519
 ```
 
-**Öffentlichen Teil auf den Server bringen** (einmalig, fragt nach dem Passwort).
-`ssh-copy-id` gibt es unter Windows nicht:
+**Install the public key on the server** (`ssh-copy-id` is not available on Windows):
 
 ```powershell
 $key = (Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" -Raw).Trim()
 ssh BIC_12 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && grep -qxF '$key' ~/.ssh/authorized_keys 2>/dev/null || echo '$key' >> ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys"
 ```
 
-Bewusst nicht `type …pub | ssh …`: PowerShell macht aus dem durchgereichten Text
-CRLF-Zeilenenden, und ein `\r` in `authorized_keys` macht den Eintrag unbrauchbar.
-Das `grep -qxF` verhindert doppelte Einträge bei mehrfachem Aufruf.
+Do not use `type ...pub | ssh ...`: PowerShell emits CRLF line endings, and a `\r` in
+`authorized_keys` breaks key matching.
 
-## Alltag
-
-Manchmal funktioniert der Befehl beim ersten mal nicht, dann einfach nochmal probieren. 
+## Daily Workflow
 
 ```powershell
-.\scripts\sim.ps1 projects  # Welche Projekte kennt der Server, wo liegen Ergebnisse?
-.\scripts\sim.ps1 doctor    # Prüft SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
-                            # (lädt beim allerersten Aufruf den Code hoch, baut aber nicht)
-.\scripts\sim.ps1 run       # Hochladen, bauen, in tmux starten
-.\scripts\sim.ps1 resume    # Abgebrochenen Lauf fortsetzen (ohne Upload, ohne Build)
-.\scripts\sim.ps1 calibrate # Netzkalibrierung starten (ermittelt optimalen MeshRefinementFactor)
-.\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Einzelne Variante auf feinerem Netz nachrechnen
-.\scripts\sim.ps1 log       # Live zusehen (Strg+C beendet nur die Anzeige)
-.\scripts\sim.ps1 status    # Läuft was? Seit wann? Wie viele Datensätze? Letzte Zeitprognose (Ende, Feinprüfung)
-.\scripts\sim.ps1 fetch     # CSV + Log nach .\Serverergebnisse\ holen
-.\scripts\sim.ps1 stop      # Lauf und hängende Rechenprozesse beenden
-.\scripts\sim.ps1 delete    # Sauberer Neuanfang: Ergebnisse aller Projekte + Logs löschen
+.\scripts\sim.ps1 projects  # List projects known to the server and existing results
+.\scripts\sim.ps1 doctor    # Check SU2, mpirun, gmsh, dotnet, tmux, libpicogk.so
+                            # (uploads code on first call, does not build)
+.\scripts\sim.ps1 run       # Upload, build, start in tmux
+.\scripts\sim.ps1 resume    # Resume an interrupted run (no upload, no build)
+.\scripts\sim.ps1 calibrate # Start mesh calibration (determines optimal MeshRefinementFactor)
+.\scripts\sim.ps1 recheck -Variant Gen3_Var2 -Finer 1 # Re-evaluate one variant on a finer mesh
+.\scripts\sim.ps1 log       # Follow log live (Ctrl+C only exits the viewer)
+.\scripts\sim.ps1 status    # Is anything running? Runtime? CSV rows? Forecast?
+.\scripts\sim.ps1 fetch     # Download CSV + log + histories to .\server-results\
+.\scripts\sim.ps1 stop      # Stop run and lingering solver processes
+.\scripts\sim.ps1 delete    # Clean slate: delete results of all projects + logs
 ```
 
-`delete` ist für den Fall „ab jetzt ein ganz neuer Lauf“: Es löscht auf dem Server
-`Ergebnisse/` (alle Projekte), `simulation.log`, das Archiv `logs/` und `.last_exit`.
-So liegen nach einem Lauf mit 5 Modellen nicht noch die Modelle 6–10 vom Lauf davor
-im Ordner. Code, `bin/`/`obj/` (also der Build und `libpicogk.so`), `.deploy_hash`
-und alle `*.local.json` bleiben stehen, damit der nächste Lauf ohne Neubau startet.
-Der Befehl listet erst auf und fragt dann nach (`-Force` überspringt die Frage). Bei
-einem laufenden Lauf verweigert er das Löschen. Was du behalten willst, holst du
-vorher mit `fetch -All`.
+`delete` prepares a completely fresh run: it removes `results/` (all projects),
+`simulation.log`, `logs/`, and `.last_exit` on the server. Code, `bin/`/`obj/`
+(including `libpicogk.so`), `.deploy_hash`, and all `*.local.json` files are kept so
+the next run starts without rebuilding. It lists targets first and asks for confirmation
+(`-Force` skips the prompt), and refuses to run while a simulation is active.
 
-Welches Projekt gerechnet wird, entscheidet `-Project <Name>` — der Name ist der
-Ordnername unter `src/projects/`. Bei `deploy`, `run` und `doctor` gilt ohne Angabe
-die Vorgabe `MantaAuv` (mit Hinweis). `fetch` und `status` fragen dagegen automatisch
-das zuletzt gerechnete Projekt (`lastproject`) auf dem Server ab, sodass nach einem Lauf
-kein manuelles `-Project` nötig ist.
+`-Project <Name>` selects the project (folder name under `src/projects/`). For `deploy`,
+`run`, `resume`, `doctor`, `calibrate`, and `recheck`, omitting `-Project` falls back to
+`MantaAuv` with a warning. `fetch` and `status` automatically query `lastproject` from
+the server.
 
-### Abgebrochenen Lauf fortsetzen (`resume`)
+### Resuming an Interrupted Run (`resume`)
 
-tmux schützt nur dagegen, dass die Konsole zugeht oder die SSH-Verbindung abreißt —
-nicht gegen einen Neustart des Servers, einen Stromausfall oder einen Absturz. Dafür
-schreibt jeder Lauf ein Journal (`Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl`):
-eine Zeile je fertiger Rechnung, sofort auf die Platte gebracht.
+`tmux` protects against closing the local console or dropping SSH, but not against a
+server reboot or crash. Every run therefore writes a journal
+(`results/<Project>/resume/journal.jsonl`), flushing one line per completed evaluation.
 
 ```powershell
-.\scripts\sim.ps1 status -Project Naca2D   # meldet "Abgebrochener Lauf gefunden: … Rechnungen gesichert"
-.\scripts\sim.ps1 resume -Project Naca2D   # setzt dort fort
+.\scripts\sim.ps1 status -Project Naca2D   # reports interrupted run and saved count
+.\scripts\sim.ps1 resume -Project Naca2D   # resumes from the journal
 ```
 
-`resume` startet das Programm mit `--resume`. Es läuft mit demselben Zufalls-Seed von
-vorn, nimmt die gesicherten Ergebnisse samt ursprünglicher `DurationSeconds` aber aus dem Journal, statt sie neu zu rechnen
-(Log: `[WIEDERAUFNAHME] … übernommen`). Das dauert Sekunden; danach wird normal
-weitergerechnet. Verloren geht höchstens die Variante, die beim Abbruch gerade lief.
+`resume` launches the application with `--resume`, replays completed evaluations from the
+journal using the same random seed, and continues from there. At most the single variant
+that was running at the time of interruption is lost.
 
-* `resume` lädt **nichts hoch und baut nicht**. Weicht der lokale Code vom Server ab,
-  gibt es nur eine Warnung: neuer Code braucht einen neuen Lauf (`run`).
-* Hat sich die Konfiguration des Projekts geändert, bricht `resume` ab und nennt die
-  Datei. Ein geänderter Seed in `simulation.json` wird gemeldet, es gilt der aus dem Journal.
-* Ein neues `run` (auch ein Neustart durch `deploy`) archiviert das alte Journal als
-  `journal_<Zeitstempel>.jsonl` und beginnt frisch.
+- `resume` **never uploads or builds**. If local code differs from the server, it prints
+  a warning (new code requires `run`).
+- If project configuration changed, `resume` aborts and names the changed file.
+- A fresh `run` (or restart via `deploy`) archives the previous journal as
+  `journal_<timestamp>.jsonl`.
 
-`sim-runner.sh` auf dem Server hat **keinen** stillen Standard mehr — von Hand aufgerufen
-verlangt es `SIM_PROJECT=<Name>` (außer bei `lastproject`, `projects`, `delete`, `stop`, `running`, `hash`),
-weil ein Vertipper dort sonst klaglos ein anderes Projekt gerechnet und dessen Ergebnisse überschrieben hätte.
+On the server directly, `sim-runner.sh` has **no** silent default project -- it requires
+`SIM_PROJECT=<Name>` (except for `lastproject`, `projects`, `delete`, `stop`, `running`, `hash`).
 
-## Ergebnisse herunterladen
+## Fetching Results
 
-Alles landet unter `.\Serverergebnisse\<Server>_<Projekt>_<Zeitstempel>\` — Projektname
-und Zeitstempel verhindern, dass sich verschiedene Projekte oder Abrufe überschreiben. Der Ordner ist
-gitignored.
+Fetched archives are extracted into `.\server-results\<Server>_<Project>_<Timestamp>\`
+(gitignored) so different projects and downloads never overwrite each other.
 
-Das Herunterladen packt die gewünschten Dateien auf dem Server mit `sim-runner.sh pack <Projekt> <Umfang>`
-zu einem einzigen `tar.gz`, lädt dieses mit **einem** scp-Aufruf herunter und entpackt es lokal mit `tar.exe`.
-Über das VPN spart das Zeit und verhindert Hänger bei vielen Einzelverbindungen.
+`sim.ps1 fetch` runs `sim-runner.sh pack <Project> <scope>` on the server to create a
+single `.tar.gz`, downloads it in one `scp` call, and extracts it locally with `tar.exe`.
 
-### Drei Umfänge: Standard, -Champion, -All
+### Three Scopes: Standard, `-Champion`, `-All`
 
-#### 1. Nur das Ergebnis (Standard)
+1. **Standard (`.\scripts\sim.ps1 fetch`)**
+   Fetches `results.csv`, `effective-config.json`, `run-info.json`, `source-snapshot/`,
+   `simulation.log`, `analysis/histories/`, `calibration/`, and `verification.csv` (each
+   if present). Fails with an error and lists available server projects if `results.csv`
+   is missing.
+
+2. **Champion (`.\scripts\sim.ps1 fetch -Champion`)**
+   Fetches standard files plus ParaView VTU files for the overall champion and top-N
+   (`Surface_GenX_VarY.vtu`, `Volume_GenX_VarY.vtu`, and `*Champion*.vtu`).
+
+3. **Full Archive (`.\scripts\sim.ps1 fetch -All`)**
+   Downloads the entire `results/<Project>/` folder including all STL, `.su2`, and `.vtu` files.
+   Note that a full 10 x 10 run can be 1.5-2 GB.
+
+### Fetching Individual Files Directly
 
 ```powershell
-.\scripts\sim.ps1 fetch
+# All files for a specific variant
+scp BIC_12:Documents/FluidForge/results/MantaAuv/*Gen1_Var2* .\server-results\
+
+# Geometry STL only
+scp BIC_12:Documents/FluidForge/results/MantaAuv/Model_Gen1_Var2.stl .\server-results\
+
+# ParaView surface and volume files for one variant
+scp BIC_12:Documents/FluidForge/results/MantaAuv/analysis/*Gen1_Var2* .\server-results\
+
+# All surface VTUs without large volume files
+scp BIC_12:Documents/FluidForge/results/MantaAuv/analysis/Surface_* .\server-results\
+
+# Error logs for failed evaluations
+scp -r BIC_12:Documents/FluidForge/results/MantaAuv/error-logs .\server-results\
 ```
 
-Holt `Simulation_Results.csv`, `effective-config.json`, `run-info.json`, `Quellstand/`, das Projekt-Log, `Analyseergebnisse/Verlaeufe/`,
-`Kalibrierung/` und `Verifikation.csv` (jede Datei nur wenn vorhanden).
-Das ist der Normalfall: wenige KB bis MB, schnell über VPN. Fehlt die CSV nach dem Entpacken, bricht
-das Skript mit einer roten Fehlermeldung und der Liste aller auf dem Server vorhandenen Projektergebnisse ab.
+The best variant is listed in `results.csv` (highest `Fitness`) and at the end of
+`simulation.log` under `OVERALL CHAMPION`.
 
-#### 2. Mit Champion-Dateien (-Champion)
+### Result Directory Layout (`results/<Project>/`)
 
-```powershell
-.\scripts\sim.ps1 fetch -Champion
-```
-
-Holt den Standard-Umfang plus die ParaView-VTU-Dateien des Champions und Top-N (`Surface_GenX_VarY.vtu`
-und `Volume_GenX_VarY.vtu` laut `simulation.log` sowie alle `*Champion*.vtu`).
-
-#### 3. Der komplette Ergebnisse-Ordner (-All)
-
-```powershell
-.\scripts\sim.ps1 fetch -All
-```
-
-Kopiert alles: alle Geometrien (STL), Netze (.su2), ParaView-Dateien (.vtu) und Arbeitsdateien.
-
-> **Größe beachten.** Pro Variante fallen rund 15–20 MB an (STL 1–3 MB,
-> SU2-Netz 4–8 MB, zwei `.vtu` 4–9 MB). Ein Probelauf mit 2 Varianten liegt bei
-> ~54 MB, ein voller Lauf mit 10 × 10 Varianten bei **1,5–2 GB**.
-
-### Einzelne Modelle gezielt holen
-
-Dafür braucht es kein Skript — `scp` expandiert Platzhalter auf dem Server.
-Der Pfad ist immer `Documents/AutomatisierungCleanVersion/Ergebnisse/<Projekt>/…`;
-**jedes Projekt hat seinen eigenen Ordner**, sonst überschriebe ein zweites Projekt
-die Ergebnisse des ersten:
-
-```powershell
-# Alle Dateien einer bestimmten Variante (Geometrie, Netz, Gmsh-Skript)
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/*Gen1_Var2* .\Serverergebnisse\
-
-# Nur die Geometrie zum Anschauen im CAD/Slicer
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Model_Gen1_Var2.stl .\Serverergebnisse\
-
-# Nur die ParaView-Dateien einer Variante (Oberfläche + Strömungsfeld)
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Analyseergebnisse/*Gen1_Var2* .\Serverergebnisse\
-
-# Alle ParaView-Oberflächen aller Varianten, ohne die großen Volumendateien
-scp BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/Analyseergebnisse/Surface_* .\Serverergebnisse\
-
-# Fehlerprotokolle, wenn eine Simulation abgebrochen ist
-scp -r BIC_12:Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv/FehlerLogs .\Serverergebnisse\
-```
-
-Welche Variante die interessante ist, steht in der CSV (höchste `Fitness`) oder
-am Ende von `simulation.log` unter „ABSOLUTER CHAMPION".
-
-Erst nachsehen, was überhaupt da ist:
-
-```powershell
-.\scripts\sim.ps1 projects          # welche Projekte, wie viele Datensaetze
-ssh BIC_12 'ls -lhS Documents/AutomatisierungCleanVersion/Ergebnisse/MantaAuv'
-ssh BIC_12 'du -sh  Documents/AutomatisierungCleanVersion/Ergebnisse/*'
-```
-
-### Was im Ergebnisse-Ordner liegt
-
-Alles unterhalb von `Ergebnisse/<Projekt>/`:
-
-| Datei | Bedeutung |
+| File / Folder | Description |
 |---|---|
-| `Simulation_Results.csv` | **Das Ergebnis.** Eine Zeile je Variante, alle Parameter und Metriken (inkl. Zellklassen `MeshCells_*`, Kanalmaße/`TunnelBlockagePercent`, `Su2_CD_p`/`Su2_CD_v`) |
-| `Kalibrierung/calibration.csv` | Netzstudie & GCI-Bericht je Stufe (inkl. `Tri;Quad;Prism;Hexa;Tet;Pyramiden`, `Blockage_%`, `CD_p`, `CD_v`) |
-| `effective-config.json` | Womit gerechnet wurde, samt Herkunft je Schlüssel. Gehört zur CSV dazu |
-| `run-info.json` | Fahrtenschreiber: Code-Stand (Commit, Branch, Deploy-Hash), Programmversionen, Zufalls-Seed, Rechner, Status, Wiederaufnahmen |
-| `Quellstand/` | Kopie von `src/projects/<Projekt>/` (`*.cs`, `*.json`) zum Start des Laufs |
-| `Wiederaufnahme/journal.jsonl` | Lauf-Journal für `resume`; ältere als `journal_<Zeitstempel>.jsonl` |
-| `Analyseergebnisse/Verlaeufe/` | Gespeicherte Konvergenzverläufe (`History_*.csv`) und Konfigurationen (`Config_*.cfg`) |
-| `Analyseergebnisse/Surface_GenX_VarY.vtu` | Oberfläche für ParaView (Druckverteilung) |
-| `Analyseergebnisse/Volume_GenX_VarY.vtu` | Strömungsfeld für ParaView |
-| `Model_GenX_VarY.stl` | erzeugte Geometrie |
-| `Model_GenX_VarY.su2` | Rechennetz |
-| `Meshing_GenX_VarY.geo` | Gmsh-Skript, mit dem das Netz entstanden ist |
-| `FehlerLogs/` | SU2-Konsolenausgabe abgebrochener Simulationen |
-| `restart.dat`, `surface.vtu`, `vol_solution.vtu`, `current_config.cfg`, `history.csv` | SU2-Arbeitsdateien, werden bei **jeder** Variante überschrieben |
+| `results.csv` | Main optimization table (one row per variant, parameters, metrics, `MeshCells_*`, `TunnelBlockagePercent`, `Su2_CD_p`/`Su2_CD_v`) |
+| `calibration/calibration.csv` | Mesh independence study & GCI report per level |
+| `effective-config.json` | Effective configuration with provenance for every key |
+| `run-info.json` | Run metadata (commit, branch, deploy hash, tool versions, seed, host, status) |
+| `source-snapshot/` | Copy of `src/projects/<Project>/` (`*.cs`, `*.json`) at run start |
+| `resume/journal.jsonl` | Resume journal (archived as `journal_<timestamp>.jsonl` on new run) |
+| `analysis/histories/` | Saved convergence histories (`History_*.csv`) and solver configs (`Config_*.cfg`) |
+| `analysis/Surface_GenX_VarY.vtu` | Surface field for ParaView |
+| `analysis/Volume_GenX_VarY.vtu` | Volume flow field for ParaView |
+| `Model_GenX_VarY.stl` | Generated geometry |
+| `Model_GenX_VarY.su2` | Computational mesh |
+| `Meshing_GenX_VarY.geo` | Gmsh script |
+| `error-logs/` | Console output of failed SU2 runs |
+| `restart.dat`, `surface.vtu`, `vol_solution.vtu`, `current_config.cfg`, `history.csv` | SU2 working files overwritten on each variant |
 
-Herunterladen während eines laufenden Laufs ist unbedenklich (es wird nur
-gelesen), liefert aber eine Momentaufnahme: eine Datei, die gerade geschrieben
-wird, kann unvollständig ankommen. Für das Endergebnis also erst abholen, wenn
-`status` „gestoppt" meldet.
+## Post-Processing & Plotting
 
-Anderer Rechner oder anderes Projekt:
+The Python plotting scripts require `pandas`, `matplotlib`, and `numpy` (`pip install pandas matplotlib numpy`):
 
-```powershell
-.\scripts\sim.ps1 run -Server BIC_8 -Project MantaAuv
-```
+- **Optimization overview (`plot_optimization.py`):**
+  ```powershell
+  python scripts/plot_optimization.py server-results/<folder>
+  ```
+- **SU2 convergence histories (`plot_history.py`):**
+  ```powershell
+  python scripts/plot_history.py server-results/<folder>
+  python scripts/plot_history.py server-results/<folder> --var Gen1_Var1
+  python scripts/plot_history.py server-results/<folder> --compare
+  ```
+- **Mesh calibration & GCI (`plot_calibration.py`):**
+  ```powershell
+  python scripts/plot_calibration.py server-results/<folder>
+  ```
 
-Nach `run` kann die Konsole zu — der Lauf hängt in einer tmux-Sitzung und
-überlebt das Ende der SSH-Verbindung.
+## Monitoring Server Load via SSH
 
-## Eine Rechnung von Hand prüfen
-
-Nach einem Lauf (oder währenddessen) kann die Konvergenz der SU2-Strömungssimulationen
-überprüft und visualisiert werden:
-
-### 1. Verläufe und Ergebnisse abholen
-
-```powershell
-.\scripts\sim.ps1 fetch
-# bzw. für ein bestimmtes Projekt:
-.\scripts\sim.ps1 fetch -Project MantaAuv
-```
-
-Das holt `Simulation_Results.csv`, `effective-config.json` und standardmäßig den Ordner
-`Analyseergebnisse/Verlaeufe/` (mit allen `History_GenX_VarY.csv` und `Config_GenX_VarY.cfg`)
-nach `.\Serverergebnisse\<Projekt>\`.
-
-### 2. Konvergenz prüfen und plotten mit `plot_history.py`
-
-Das Skript `scripts/plot_history.py` basiert auf `pandas` und `matplotlib`
-(`pip install pandas matplotlib`):
-
-**a) Übersichtstabelle aller Varianten anzeigen:**
-```powershell
-python scripts/plot_history.py Serverergebnisse/MantaAuv
-```
-Gibt eine kompakte Konsole-Tabelle aus:
-- Anzahl gerechneter Iterationen im Vergleich zu `ITER`
-- Konvergiert (`ja`/`nein`, d.h. Abbruchkriterium vor Erreichen von `ITER` erfüllt)
-- Residuenabfall in Dekaden (erstes `rms[...]`-Residuum)
-- Endwerte und Schwingung `(max-min)/|mean|` in % über das Cauchy-Fenster für jede Metrik (`CD`, `CL`, …)
-
-**b) Einzelne Variante im Detail plotten:**
-```powershell
-python scripts/plot_history.py Serverergebnisse/MantaAuv --var Gen1_Var1
-# oder direkt die CSV-Datei angeben:
-python scripts/plot_history.py Serverergebnisse/MantaAuv/Analyseergebnisse/Verlaeufe/History_Gen1_Var1.csv
-```
-Erzeugt ein PNG mit drei übereinanderliegenden Diagrammen (gespeichert als `History_Gen1_Var1.png`
-neben der CSV-Datei):
-1. **Kennwerte über Iteration**: Verlauf der aerodynamischen Beiwerte (`CD`, `CL`, …).
-2. **Residuen (logarithmisch)**: Alle `rms[...]`-Spalten über die Iterationen.
-3. **Konvergenz-Fenster (Cauchy)**: Gezoomte Darstellung der Hauptmetrik mit Endwertlinie,
-   Toleranzband (`±cauchy_eps`) und schraffiertem Cauchy-Fenster.
-
-Mit `--show` öffnet sich zusätzlich ein interaktives Matplotlib-Fenster.
-
-**c) Mehrere Varianten vergleichen:**
-```powershell
-python scripts/plot_history.py Serverergebnisse/MantaAuv --compare
-python scripts/plot_history.py Serverergebnisse/MantaAuv --compare --var Gen1_Var1 Gen2_Var3
-```
-Überlagert die Kennwert- und Residuenkurven der Varianten in einer gemeinsamen Grafik
-und speichert `History_Compare.png` im Verzeichnis.
-
-### 3. Strömungsfeld und Druckverteilung in ParaView prüfen
-
-Wenn die Konvergenz rechnerisch geprüft ist und das 3D-Strömungsfeld im Detail interessiert:
+Use `-t` for interactive tools such as `top` or `htop`, and single quotes so `$USER` is
+expanded on the server rather than locally in PowerShell:
 
 ```powershell
-.\scripts\sim.ps1 fetch -Champion -Project MantaAuv
-```
-Holt die VTU-Dateien des Champions (`Surface_*.vtu` und `Volume_*.vtu`). Diese können
-direkt in ParaView geöffnet werden, um Druckverteilung, Grenzschicht und eventuelle
-Wirbelablösungen visuell zu analysieren.
-
-## Auslastung auf dem Server ansehen
-
-Das läuft bewusst außerhalb der Skripte, direkt per SSH. Wichtig ist `-t`:
-`top` und `htop` sind interaktiv und brauchen ein Terminal, das ssh ohne dieses
-Flag gar nicht erst anfordert.
-
-```powershell
-ssh -t BIC_12 'top -u $USER'      # beenden mit  q
-ssh -t BIC_12 'htop -u $USER'     # bunter, beenden mit  q  oder  F10
-```
-
-Die **einfachen** Anführungszeichen sind nötig: in doppelten würde PowerShell
-`$USER` schon lokal ersetzen (zu einem leeren Wert), statt es dem Server zu überlassen.
-
-Nur ein kurzer Blick, ohne interaktives Fenster — geht auch ohne `-t`:
-
-```powershell
+ssh -t BIC_12 'top -u $USER'
+ssh -t BIC_12 'htop -u $USER'
 ssh BIC_12 'top -b -n 1 -u $USER | head -n 12'
-ssh BIC_12 'echo "Kerne: $(nproc)"; uptime'
+ssh BIC_12 'echo "Cores: $(nproc)"; uptime'
 ```
 
-So sieht ein gesunder Lauf aus:
+## How Deployment Works
 
-```
-    PID USER      ...  %CPU  COMMAND
- 733193 lpleiss+  ... 554.5  dotnet      <- das Framework, treibt die Solver
- 733310 lpleiss+  ... 100.0  SU2_CFD     <- ein Prozess je MPI-Rang,
- 733311 lpleiss+  ... 100.0  SU2_CFD        Anzahl = "MpiCores" in simulation.json
-```
+1. `src/`, `config/`, and `scripts/` are packed, excluding `bin/`, `obj/`, `*.local.json`,
+   `*.md`, `*.ps1`, and `*.pdf`.
+2. A SHA-256 fingerprint over paths and contents is compared against `.deploy_hash` on the server.
+3. **Unchanged** -> no upload; an active run is left untouched.
+4. **Changed while running** -> stops the active run, uploads, builds, and restarts
+   (unless `-NoRestart` is passed, which uploads without building).
+5. `dotnet build` runs and `libpicogk.so` is copied alongside `FluidForge.dll`.
+6. `.deploy_hash` and `deploy-info.json` are written only after a successful build.
+7. Before extracting, orphaned files under `src/`, `scripts/`, and `config/` are pruned
+   (preserving `*.local.json`, `bin/`, `obj/`, and `results/`).
 
-Steht `dotnet` bei ~100 % und es ist **kein** `SU2_CFD` zu sehen, rechnet gerade
-die Geometrie oder Gmsh — oder MPI wird nicht genutzt (siehe „CPU-Auslastung nur
-100 %" weiter unten unter [Troubleshooting & Fehlerbehebung](#troubleshooting--fehlerbehebung-auf-dem-server)).
+## One-Time Server Setup (Rootless Linux)
 
-## Was beim Deploy passiert
+For a fresh Linux server without `sudo`:
 
-1. `src/`, `config/` und `scripts/` werden gepackt — **ohne** `bin/`, `obj/`,
-   `*.local.json` sowie `*.md` und `*.ps1`. Auf dem Server landet aus `scripts/`
-   also nur `sim-runner.sh`; alles andere braucht er nicht. Das ist kein Detail:
-   der Fingerabdruck wird genau über diese Liste gebildet, sonst würde schon eine
-   Korrektur in dieser README einen laufenden Lauf neu starten.
-2. Über Pfade und Dateiinhalte wird ein Fingerabdruck gebildet und mit dem
-   verglichen, der auf dem Server liegt (`.deploy_hash`).
-3. **Unverändert** → kein Upload, ein laufender Lauf bleibt unangetastet.
-4. **Verändert und es läuft gerade etwas** → der Lauf wird gestoppt, der neue
-   Code hochgeladen und gebaut, danach wird neu gestartet.
-   Mit `-NoRestart` wird nur hochgeladen und *nicht* gebaut — ein Build würde dem
-   laufenden Prozess die DLL unter den Füßen wegziehen.
-5. `dotnet build` und danach `libpicogk.so` neben die DLL kopieren (der Build
-   räumt den Ordner gelegentlich auf).
-6. Erst nach erfolgreichem Build: `.deploy_hash` und `deploy-info.json` schreiben.
-   `deploy-info.json` enthält Commit, Branch, Deploy-Zeit und — wenn ein git gefunden
-   wird (PATH oder GitHub Desktop) — ob es nicht-committete Änderungen gab. Das Programm
-   übernimmt das in `run-info.json`, denn auf dem Server gibt es kein `.git`.
-
-**Verwaiste Dateien werden vor dem Entpacken entfernt.** Ein Deploy überschreibt nur,
-es löscht nicht — eine umbenannte oder verschobene Datei lag danach doppelt auf dem
-Server, und bei C#-Dateien heißt das: derselbe Typ zweimal, `CS0101`, Build kaputt.
-Genau das ist beim Umzug nach `src/projects/` passiert. Deshalb räumt `deploy` unter
-`src/`, `scripts/` und `config/` erst auf und packt dann aus. Ausgenommen sind
-`*.local.json` (die sollen ein Deploy überleben, das ist ihr ganzer Zweck) sowie
-`bin/` und `obj/`, damit der Build inkrementell bleibt. Unter `Ergebnisse/` wird
-**nichts** angefasst.
-
-Weil `*.local.json` nie übertragen wird, überlebt eine solche Datei auf dem Server
-jedes Deploy — sie lässt sich nur per SSH dort entfernen, wo sie liegt.
-**Sollstand ist, dass es keine gibt**, und der Start meldet jede vorhandene mit jedem
-Schlüssel, den sie aushebelt. Für einen kurzen Probelauf ist sie der falsche Weg:
-`MaxIterations` und `VariantsPerIteration` gehören in
-`src/projects/<Projekt>/simulation.json` — dann ist das, was du hochlädst, auch das,
-was läuft. Näheres in [`config/README.md`](../config/README.md).
-
-## Warum ein eigenes Verzeichnis
-
-Zielverzeichnis ist `~/Documents/AutomatisierungCleanVersion`, nicht das alte
-`~/Documents/Automatisierung_v2`. Gründe:
-
-- Die alte Ablage hat das flache Layout (`Automatisierung_v2.csproj` im Wurzelordner,
-  `dotnet run` ohne Argumente). Das refaktorierte Projekt braucht `src/projects/` neben
-  dem Framework und den Aufruf `… <Projektname>`.
-- Der alte Ordner bleibt so als `main`-Referenz für den Vergleichslauf (TODO-21) liegen.
-
-## Stolperfallen, die hier schon erledigt sind
-
-- **Zeilenenden:** `.gitattributes` hält `*.sh` auf LF, und das Deploy zieht sie auf
-  dem Server nochmal hart nach (`sed -i 's/\r$//'`). Sonst scheitert bash an `$'\r'`.
-- **`~/.bashrc` greift nicht:** Bei `ssh host befehl` startet bash nicht-interaktiv,
-  und Ubuntus `~/.bashrc` steigt dann sofort wieder aus. Nichts aus `conda init` oder
-  den `MESA_*`-Zeilen ist gesetzt. `sim-runner.sh` baut sich seine Umgebung deshalb
-  in jedem Aufruf selbst.
-- **`pkill -9 -f dotnet`** aus der alten Anleitung träfe *jeden* .NET-Prozess des
-  Nutzers. `stop` killt gezielt `OptimierungsAlgoCFD.dll` und dessen Kindprozesse.
-- **Xvfb-Reste** werden bewusst nicht abgeschossen: `xvfb-run -a` sucht sich eine
-  freie Display-Nummer. Wenn doch nötig: `pkill -9 -f Xvfb`.
-- **Tote VPN-Verbindung hängt ewig:** Ohne Zeitgrenze wartet ssh/scp bei einem
-  abgerissenen AnyConnect-Tunnel unbegrenzt und ohne Meldung. Seit dem 04.11.2026 gibt
-  `sim.ps1` jedem Aufruf großzügige Grenzen mit (`$SshOptions` oben im Skript): eine
-  Minute für den Verbindungsaufbau, Abbruch erst nach **3 Minuten** ohne jedes
-  Lebenszeichen. Das ist bewusst weit gefasst: Unter Volllast antwortet der Server
-  träge, und knappe Werte haben früher gesunde Verbindungen abgebrochen. Ein stiller,
-  aber laufender Befehl (Build, `stop`) wird dadurch nicht abgebrochen, weil sshd die
-  Lebenszeichen selbst beantwortet. **Bricht die Verbindung ab, rechnet ein Lauf in
-  tmux auf dem Server trotzdem weiter.** Der Test
-  `ScriptContractTests.Every_Ssh_And_Scp_Call_Carries_The_Timeouts` passt auf, dass
-  kein neuer Aufruf ohne Grenzen dazukommt.
-
-## Wenn etwas klemmt
-
-```powershell
-.\scripts\sim.ps1 doctor              # Erste Anlaufstelle: Pfade und Werkzeuge
-.\scripts\sim.ps1 log -NoFollow -Lines 100
-```
-
-Ein Lauf, der sofort wieder endet, wird von `start` erkannt — es werden dann direkt
-die letzten Logzeilen ausgegeben. Ältere Logs liegen auf dem Server unter `logs/`.
-
----
-
-## Einmalige Server-Einrichtung (Linux ohne Sudo / Admin-Rechte)
-
-Wenn das System auf einem neuen Linux-Hochschulserver (Ubuntu, ohne `sudo`-Rechte) von Grund auf eingerichtet werden soll, stehen zwei Wege zur Verfügung: vollautomatisch per Skript oder Schritt für Schritt von Hand.
-
-### Weg 1: Automatische Einrichtung via `setup_server.sh` (Empfohlen)
-
-1. Kopiere [`src/OptimierungsAlgoCFD/setup_server.sh`](../src/OptimierungsAlgoCFD/setup_server.sh) auf den Server und führe es aus:
+1. Copy [`src/FluidForge/setup_server.sh`](../src/FluidForge/setup_server.sh) to the server and run:
    ```bash
    chmod +x setup_server.sh
    ./setup_server.sh
    ```
-2. **Hinweis zu Anaconda Terms of Service:** Fragt Conda nach der Zustimmung zu den Nutzungsbedingungen, führe einmalig Folgendes aus und starte das Skript danach erneut:
+2. If Conda asks to accept Anaconda Terms of Service, run:
    ```bash
    export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
    export LD_LIBRARY_PATH=$HOME/miniconda/lib:$LD_LIBRARY_PATH
    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
    ```
-3. **Nach dem Setup:** Einmal aus der SSH-Sitzung ausloggen und neu einloggen, damit die Einträge in `~/.bashrc` aktiv sind.
+   and re-run `./setup_server.sh`.
+3. Log out of SSH and back in so `~/.bashrc` updates take effect.
 
-### Weg 2: Manuelle Installation Schritt für Schritt (ohne Sudo)
+## Troubleshooting
 
-Falls einzelne Komponenten von Hand nachinstalliert oder überprüft werden sollen:
-
-#### 1. Ordnerstruktur & Miniconda
-```bash
-mkdir -p ~/software ~/Documents/AutomatisierungCleanVersion
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-bash ~/miniconda.sh -b -u -p ~/miniconda
-~/miniconda/bin/conda init bash
-source ~/.bashrc
-rm ~/miniconda.sh
-```
-
-#### 2. System-Bibliotheken, Xvfb & tmux über Conda
-```bash
-conda install -y -c conda-forge git boost-cpp tbb-devel blosc pkg-config \
-  xorg-libxrandr xorg-libxinerama xorg-libxcursor xorg-libxi xorg-xvfb-server tmux \
-  xorg-libxext xorg-randrproto xorg-renderproto xorg-libxrender xorg-xorgproto \
-  gcc_linux-64 gxx_linux-64 mesalib libglu freeglut xorg-libx11 openmpi
-```
-
-**Wichtig: SU2 braucht MPICH, nicht OpenMPI.** Das offizielle SU2-Binary (Schritt 3) ist statisch mit MPICH gebaut. Unter dem OpenMPI aus dem Befehl oben startet `-n 12` zwölf unabhängige *serielle* Kopien, die sich gegenseitig die Dateien überschreiben, ohne jede Fehlermeldung; die Ergebnisse sind unbrauchbar. Deshalb zusätzlich ein eigenes MPICH-Environment anlegen:
-```bash
-conda create -y -n mpich -c conda-forge mpich
-```
-Danach genügt der Standardwert `"MpiRunPath": "mpirun"`: Das Programm nimmt bei den Namen `mpirun` und `mpiexec` automatisch dieses MPICH-Environment, noch vor dem PATH (ein ausdrücklich eingetragener Pfad wie `/home/<benutzer>/miniconda/envs/mpich/bin/mpiexec` gilt unverändert). Das Programm prüft die Variante beim Start (`[MPI]`-Warnung im Log, Eintrag `MPI-Variante` in `run-info.json`), und `sim.ps1 doctor` meldet OpenMPI als Problem. `setup_server.sh` legt das Environment automatisch an.
-
-#### 3. Externe Werkzeuge herunterladen (CMake, SU2, Gmsh)
-```bash
-cd ~/software
-
-# CMake (3.29.3)
-wget https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-linux-x86_64.tar.gz
-tar -zxvf cmake-3.29.3-linux-x86_64.tar.gz && rm cmake-3.29.3-linux-x86_64.tar.gz
-
-# SU2 CFD (v7.5.1 mit MPI-Support)
-wget https://github.com/su2code/SU2/releases/download/v7.5.1/SU2-v7.5.1-linux64-mpi.zip -O su2.zip
-unzip su2.zip
-mv SU2-v7.5.1-linux64-mpi SU2-7.5.1 || mv SU2-v7.5.1-linux64 SU2-7.5.1 || mv bin SU2-7.5.1
-rm su2.zip
-mkdir -p $HOME/software/bin
-if [ -d "$HOME/software/SU2-7.5.1/bin" ]; then
-    cp -r $HOME/software/SU2-7.5.1/bin/* $HOME/software/bin/
-else
-    cp -r $HOME/software/SU2-7.5.1/* $HOME/software/bin/
-fi
-chmod +x $HOME/software/bin/SU2_CFD
-
-# Gmsh (4.11.1)
-wget https://gmsh.info/bin/Linux/gmsh-4.11.1-Linux64.tgz
-tar -zxvf gmsh-4.11.1-Linux64.tgz && rm gmsh-4.11.1-Linux64.tgz
-```
-
-#### 4. OpenGL-Header für Mesa bereitstellen (Sudo-Bypass)
-Da ohne `sudo` kein Schreibzugriff auf `/usr/include` besteht, werden die für PicoGK nötigen OpenGL-Header direkt in Condas `include`-Ordner geladen:
-```bash
-mkdir -p $HOME/miniconda/include/GL $HOME/miniconda/include/KHR
-wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/gl.h -O $HOME/miniconda/include/GL/gl.h
-wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/glext.h -O $HOME/miniconda/include/GL/glext.h
-wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/GL/glcorearb.h -O $HOME/miniconda/include/GL/glcorearb.h
-wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/KHR/khrplatform.h -O $HOME/miniconda/include/KHR/khrplatform.h
-```
-
-#### 5. PicoGK Runtime kompilieren (Headless-Modus mit X11)
-```bash
-cd ~/software
-git clone --recursive https://github.com/leap71/PicoGKRuntime.git ~/software/PicoGK
-
-# C++ Typ-Fix in PicoGKTrace.h (oMS ist std::chrono::duration, .count() liefert den Skalar):
-sed -i 's/std::cerr << oMS << " elapsed\\n";/std::cerr << oMS.count() << " elapsed\\n";/g' ~/software/PicoGK/Source/PicoGKTrace.h
-
-export PKG_CONFIG_PATH=$HOME/miniconda/lib/pkgconfig:$PKG_CONFIG_PATH
-export CFLAGS="-I$HOME/miniconda/include"
-export CXXFLAGS="-I$HOME/miniconda/include"
-export LDFLAGS="-L$HOME/miniconda/lib"
-
-rm -rf ~/software/PicoGK/build/* || true
-mkdir -p ~/software/PicoGK/build && cd ~/software/PicoGK/build
-
-# WICHTIG: -DGLFW_BUILD_X11=ON ist Pflicht, damit xvfb-run das virtuelle Display anbinden kann!
-~/software/cmake-3.29.3-linux-x86_64/bin/cmake \
-  -DCMAKE_PREFIX_PATH=$HOME/miniconda \
-  -DBoost_ROOT=$HOME/miniconda \
-  -DBoost_NO_SYSTEM_PATHS=ON \
-  -DPICOGK_NO_VIEWER=ON \
-  -DGLFW_BUILD_WAYLAND=OFF \
-  -DGLFW_BUILD_X11=ON \
-  -DCMAKE_POLICY_DEFAULT_CMP0144=NEW \
-  -DPKG_CONFIG_EXECUTABLE=$HOME/miniconda/bin/pkg-config ..
-
-make -j $(nproc)
-
-# Bibliothek unter beiden Namen (libpicogk.so und libpicogk.26.2.so) bereitstellen:
-TARGET_BIN="$HOME/Documents/AutomatisierungCleanVersion/src/OptimierungsAlgoCFD/bin/Debug/net9.0"
-mkdir -p "$TARGET_BIN"
-PICOGK_LIB=$(find ~/software/PicoGK/build -iname "*picogk.so" | head -n 1)
-cp "$PICOGK_LIB" "$TARGET_BIN/libpicogk.so"
-cp "$PICOGK_LIB" "$TARGET_BIN/libpicogk.26.2.so"
-```
-
-#### 6. .NET 9 SDK & Umgebungsvariablen in `~/.bashrc`
-```bash
-cd ~/software
-wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-chmod +x ./dotnet-install.sh
-env LD_LIBRARY_PATH="" ./dotnet-install.sh --channel 9.0
-rm dotnet-install.sh
-
-cat << 'EOF' >> ~/.bashrc
-
-# --- PicoGK Automated CFD Framework ---
-export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
-export LD_LIBRARY_PATH=$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}
-export HWLOC_HIDE_ERRORS=1
-export LIBGL_ALWAYS_SOFTWARE=1
-export MESA_GL_VERSION_OVERRIDE=4.1
-export MESA_GLSL_VERSION_OVERRIDE=410
-EOF
-
-source ~/.bashrc
-```
-
-### Manueller Start auf dem Server (falls ohne `sim-runner.sh` gearbeitet wird)
-
-Im Normalbetrieb erledigt `sim.ps1` bzw. `sim-runner.sh` alle diese Schritte automatisch. Zur Referenz die manuellen Befehle:
-
-```bash
-# 1. Tmux-Sitzung öffnen
-~/miniconda/bin/tmux new -s sim
-
-# 2. Umgebung laden & Lauf mit xvfb-run starten
-cd ~/Documents/AutomatisierungCleanVersion
-export PATH=$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH
-export LD_LIBRARY_PATH=$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}
-export HWLOC_HIDE_ERRORS=1
-export LIBGL_ALWAYS_SOFTWARE=1
-xvfb-run -a dotnet run --project src/OptimierungsAlgoCFD -- MantaAuv > simulation.log 2>&1
-
-# 3. Aus tmux abkoppeln (Detach): Strg+B drücken, loslassen, dann D drücken
-# Wieder einhängen: ~/miniconda/bin/tmux attach -t sim
-
-# 4. Manueller Not-Aus (nur eigene Prozesse, niemals globales 'pkill dotnet'!):
-~/miniconda/bin/tmux kill-session -t sim
-pkill -9 -f OptimierungsAlgoCFD.dll || true
-pkill -9 -f SU2_CFD || true
-pkill -9 -f mpirun || true
-pkill -9 -f Xvfb || true
-```
-
-### Troubleshooting & Fehlerbehebung auf dem Server
-
-- **Rechnung wirkt falsch, SU2 läuft zwölfmal einzeln, `[MPI]`-Warnung im Log:**  
-  `MpiRunPath` zeigt auf OpenMPI (z. B. `miniconda/bin/mpirun`). Das offizielle SU2-Binary ist mit MPICH gebaut. Auf `$HOME/miniconda/envs/mpich/bin/mpiexec` umstellen oder den Eintrag löschen (der Standard `"mpirun"` wählt das MPICH-Environment selbst, sofern es nach Schritt 2 existiert).
-- **`symbol lookup error` bei `mpirun` / OpenMPI:**  
-  Das System greift auf ein unpassendes globales OpenMPI zu. Das MPICH-`mpiexec` aus dem Environment `mpich` verwenden (siehe oben) und in `simulation.json` unter `MpiRunPath` mit vollem Pfad eintragen.
-- **`prterun was unable to launch` / `Executable not found`:**  
-  `SU2_CFD` liegt nicht unter dem konfigurierten Pfad oder ist nicht ausführbar. Prüfen mit `ls -l ~/software/bin/SU2_CFD` und ggf. `chmod +x ~/software/bin/SU2_CFD`.
-- **`DllNotFoundException: Unable to load shared library 'libpicogk'`:**  
-  `dotnet build` hat das Ausgabeverzeichnis bereinigt. `sim-runner.sh` kopiert die Bibliothek automatisch nach; bei manuellem Build beide Dateien (`libpicogk.so` und `libpicogk.26.2.so`) wie in Schritt 5 wieder nach `src/OptimierungsAlgoCFD/bin/Debug/net9.0/` kopieren.
-- **CPU-Auslastung nur 100 % (Single-Core statt Multi-Core):**  
-  SU2 läuft nicht über `mpirun` oder `MpiCores` steht auf `1`. In `src/projects/<Projekt>/simulation.json` prüfen, ob `MpiCores` (z. B. `12`) und `MpiRunPath` gesetzt sind, und mit `top -u $USER` kontrollieren, ob mehrere `SU2_CFD`-Prozesse starten.
-- **`X connection broken` / `Display already in use`:**  
-  Ein alter `Xvfb`-Prozess blockiert das Display. Immer `xvfb-run -a` (automatische Display-Wahl) verwenden und hängende Instanzen bei Bedarf mit `pkill -9 -f Xvfb` beenden.
-
+- **SU2 runs 12 serial copies instead of MPI (`[MPI]` warning in log):**
+  `MpiRunPath` points to OpenMPI instead of MPICH. Use `$HOME/miniconda/envs/mpich/bin/mpiexec`
+  or keep the default `"mpirun"` when the `mpich` conda environment is installed.
+- **`DllNotFoundException: Unable to load shared library 'libpicogk'`:**
+  Ensure both `libpicogk.so` and `libpicogk.26.2.so` exist in `src/FluidForge/bin/Debug/net9.0/`.
+  `sim-runner.sh build` copies them automatically.
+- **CPU usage stuck at 100% (single-core):**
+  Verify `MpiCores` and `MpiRunPath` in `src/projects/<Project>/simulation.json`.
+- **`X connection broken` / `Display already in use`:**
+  Always use `xvfb-run -a` (automatic display selection); clean up stale instances with `pkill -9 -f Xvfb` if needed.

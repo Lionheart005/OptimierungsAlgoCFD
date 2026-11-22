@@ -14,20 +14,20 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für TODO-45 (Gmsh2DMesher) und TODO-46 (SU2 in 2D, Anstellwinkel, Bezugslänge, Cfd2DProjectDefinition).
+    /// Tests for TODO-45 (Gmsh2DMesher) and TODO-46 (SU2 in 2D, angle of attack, reference length, Cfd2DProjectDefinition).
     /// </summary>
     public class Cfd2DMesherAndSolverTests
     {
         private static List<Vector2> CreateAirfoilContour(float chordMm = 50.0f)
         {
-            // Typische NACA-ähnliche Profilkontur mit scharfem Knick an der Hinterkante
+            // Typical NACA-like airfoil contour with a sharp trailing-edge corner
             var pts = new List<Vector2>
             {
-                new(chordMm, 0f),                 // 0: Hinterkante (Knickpunkt)
+                new(chordMm, 0f),                 // 0: trailing edge (corner point)
                 new(chordMm * 0.75f, -chordMm * 0.03f),
                 new(chordMm * 0.5f, -chordMm * 0.05f),
                 new(chordMm * 0.25f, -chordMm * 0.04f),
-                new(0f, 0f),                      // 4: Vorderkante (rund)
+                new(0f, 0f),                      // 4: leading edge (rounded)
                 new(chordMm * 0.25f, chordMm * 0.06f),
                 new(chordMm * 0.5f, chordMm * 0.08f),
                 new(chordMm * 0.75f, chordMm * 0.05f)
@@ -62,30 +62,30 @@ namespace FluidForge.Tests
                 Assert.True(File.Exists(geoPath));
                 string[] lines = File.ReadAllLines(geoPath);
 
-                // 1. Point( und Spline( vorhanden
+                // 1. Point( and Spline( present
                 Assert.Contains(lines, l => l.StartsWith("Point("));
                 Assert.Contains(lines, l => l.StartsWith("Spline("));
 
-                // 2. Spline an der scharfen Hinterkante getrennt -> mindestens 2 Splines
+                // 2. Spline split at the sharp trailing edge -> at least 2 splines
                 int splineCount = lines.Count(l => l.StartsWith("Spline("));
-                Assert.True(splineCount >= 2, $"Erwartet mindestens 2 Splines (getrennt an Kante), gefunden: {splineCount}");
+                Assert.True(splineCount >= 2, $"Expected at least 2 splines (split at corner), found: {splineCount}");
 
-                // 3. BoundaryLayer-Feld
+                // 3. BoundaryLayer field
                 Assert.Contains(lines, l => l.Contains("Field[1] = BoundaryLayer;"));
                 Assert.Contains(lines, l => l.Contains("Field[1].Quads = 1;"));
                 Assert.Contains(lines, l => l.Contains("Field[1].FanPointsList"));
                 Assert.Contains(lines, l => l.Contains("Field[1].FanNodesList"));
-                // Ohne Thickness und ohne Anmeldung erzeugt Gmsh 4.11 keine bzw. nur eine Schicht
-                // (Servertest 06.11.2026).
+                // Without Thickness and registration, Gmsh 4.11 generates zero or only one layer
+                // (server test 2026-11-06).
                 Assert.Contains(lines, l => l.StartsWith("Field[1].Thickness = "));
                 Assert.Contains(lines, l => l.Trim() == "BoundaryLayer Field = 1;");
 
-                // 4. Physikalische Marker für SU2
+                // 4. Physical markers for SU2
                 Assert.Contains(lines, l => l.Contains("Physical Curve(\"Wall\")"));
                 Assert.Contains(lines, l => l.Contains("Physical Curve(\"Farfield\")"));
                 Assert.Contains(lines, l => l.Contains("Physical Surface(\"Fluid\") = { 1 };"));
 
-                // 5. Skalierung mm -> m
+                // 5. Scaling mm -> m
                 Assert.Contains(lines, l => l.Contains("Mesh.ScalingFactor"));
             }
             finally
@@ -98,7 +98,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Gmsh2DMesher_RemoveMarker_Strips_Fluid_Block_And_Decrements_NMARK()
         {
-            // Aufbau wie der SU2-Export von Gmsh 4.11 in 2D: das Fluidgebiet steht als dritter Marker drin.
+            // Layout matches Gmsh 4.11 SU2 export in 2D: fluid domain is included as the third marker.
             string path = Path.Combine(Path.GetTempPath(), "rm_marker_" + Guid.NewGuid().ToString("N") + ".su2");
             File.WriteAllLines(path, new[]
             {
@@ -120,7 +120,7 @@ namespace FluidForge.Tests
                 Assert.Equal("3 2 3", lines[^1]);
                 Assert.Equal(16, lines.Length);
 
-                // Zweiter Aufruf: nichts mehr zu tun, Datei bleibt gleich.
+                // Second call: nothing left to do, file remains unchanged.
                 Assert.False(Gmsh2DMesher.RemoveMarker(path, Gmsh2DMesher.FluidMarkerName));
                 Assert.Equal(lines, File.ReadAllLines(path));
             }
@@ -156,12 +156,12 @@ namespace FluidForge.Tests
                 string[] lines1 = File.ReadAllLines(geoPath1);
                 string[] lines05 = File.ReadAllLines(geoPath05);
 
-                // Regel F4: y1 in Field[1].Size darf sich NICHT ändern!
+                // Rule F4: y1 in Field[1].Size must NOT change!
                 string y1Line1 = lines1.First(l => l.StartsWith("Field[1].Size ="));
                 string y1Line05 = lines05.First(l => l.StartsWith("Field[1].Size ="));
                 Assert.Equal(y1Line1, y1Line05);
 
-                // Feldgrößen (Threshold SizeMin/SizeMax) müssen sich um Faktor 0.5 halbieren
+                // Field sizes (Threshold SizeMin/SizeMax) must halve by factor 0.5
                 string sizeMin1 = lines1.First(l => l.StartsWith("Field[3].SizeMin ="));
                 string sizeMin05 = lines05.First(l => l.StartsWith("Field[3].SizeMin ="));
 
@@ -170,7 +170,7 @@ namespace FluidForge.Tests
 
                 Assert.Equal(val1 * 0.5f, val05, 4);
 
-                // Wake-Box Zellgröße muss sich ebenfalls halbieren
+                // Wake box cell size must halve as well
                 string wakeVin1 = lines1.First(l => l.StartsWith("Field[4].VIn ="));
                 string wakeVin05 = lines05.First(l => l.StartsWith("Field[4].VIn ="));
 
@@ -187,7 +187,7 @@ namespace FluidForge.Tests
         }
 
         // =====================================================================
-        // TODO-46: SU2 in 2D & Anstellwinkel Tests
+        // TODO-46: SU2 in 2D & Angle of Attack Tests
         // =====================================================================
 
         [Fact]
@@ -199,19 +199,19 @@ namespace FluidForge.Tests
             float expectedVx = speed * MathF.Cos(rad);
             float expectedVLift = speed * MathF.Sin(rad);
 
-            // In 2D: Auftrieb auf +y -> (vx, vy, 0)
+            // In 2D: lift along +y -> (vx, vy, 0)
             var v2D = Su2ConfigGenerator.ResolveVelocityVector(speed, alpha, dimensions: 2);
             Assert.Equal(expectedVx, v2D.Vx, 4);
             Assert.Equal(expectedVLift, v2D.Vy, 4);
             Assert.Equal(0.0f, v2D.Vz);
 
-            // In 3D: Auftrieb auf +z -> (vx, 0, vz)
+            // In 3D: lift along +z -> (vx, 0, vz)
             var v3D = Su2ConfigGenerator.ResolveVelocityVector(speed, alpha, dimensions: 3);
             Assert.Equal(expectedVx, v3D.Vx, 4);
             Assert.Equal(0.0f, v3D.Vy);
             Assert.Equal(expectedVLift, v3D.Vz, 4);
 
-            // Bei alpha = 0: exakt (speed, 0, 0)
+            // At alpha = 0: exact (speed, 0, 0)
             var vZero = Su2ConfigGenerator.ResolveVelocityVector(speed, 0.0f, dimensions: 3);
             Assert.Equal(speed, vZero.Vx);
             Assert.Equal(0.0f, vZero.Vy);
@@ -221,18 +221,18 @@ namespace FluidForge.Tests
         [Fact]
         public void Su2ConfigGenerator_ProjectForceToWindAxes_Calculates_Lift_And_Drag()
         {
-            // Bei alpha = 0: Windachsen = Körperachsen (D = Fx, L = Fy)
+            // At alpha = 0: wind axes = body axes (D = Fx, L = Fy)
             var fBody = new Vector2(10.0f, 100.0f);
             var wind0 = Su2ConfigGenerator.ProjectForceToWindAxes(fBody, 0.0f);
             Assert.Equal(10.0f, wind0.X, 4);
             Assert.Equal(100.0f, wind0.Y, 4);
 
-            // Bei alpha = 90°: D = Fy, L = -Fx
+            // At alpha = 90°: D = Fy, L = -Fx
             var wind90 = Su2ConfigGenerator.ProjectForceToWindAxes(fBody, 90.0f);
             Assert.Equal(100.0f, wind90.X, 4);
             Assert.Equal(-10.0f, wind90.Y, 4);
 
-            // Bei alpha = 10°: D = Fx*cos(a) + Fy*sin(a), L = -Fx*sin(a) + Fy*cos(a)
+            // At alpha = 10°: D = Fx*cos(a) + Fy*sin(a), L = -Fx*sin(a) + Fy*cos(a)
             float rad = 10.0f * (MathF.PI / 180.0f);
             float expD = (10f * MathF.Cos(rad)) + (100f * MathF.Sin(rad));
             float expL = (-10f * MathF.Sin(rad)) + (100f * MathF.Cos(rad));
@@ -262,7 +262,7 @@ namespace FluidForge.Tests
 
                 // In 2D: Vy > 0, Vz == 0
                 string velLine2D = lines2D.First(l => l.StartsWith("FREESTREAM_VELOCITY="));
-                Assert.EndsWith(", 0 )", velLine2D); // Vz ist 0
+                Assert.EndsWith(", 0 )", velLine2D); // Vz is 0
                 Assert.Contains("AOA= 5", lines2D);
 
                 var options3D = new Su2SolverOptions
@@ -277,7 +277,7 @@ namespace FluidForge.Tests
 
                 // In 3D: Vy == 0, Vz > 0
                 string velLine3D = lines3D.First(l => l.StartsWith("FREESTREAM_VELOCITY="));
-                Assert.Contains(", 0, ", velLine3D); // Vy ist 0
+                Assert.Contains(", 0, ", velLine3D); // Vy is 0
                 Assert.Contains("AOA= 5", lines3D);
             }
             finally
@@ -298,13 +298,13 @@ namespace FluidForge.Tests
             var solver2D = new Su2Solver(options2D);
 
             var record2D = new ModelRecord();
-            record2D.PassiveParameters["Chord"] = 50.0f; // 50 mm Sehne
+            record2D.PassiveParameters["Chord"] = 50.0f; // 50 mm chord
 
-            // In 2D: REF_AREA = Sehne je Einheitsspannweite (1 m): 50 mm * 0.001 = 0.05 m²
+            // In 2D: REF_AREA = chord per unit span (1 m): 50 mm * 0.001 = 0.05 m²
             float refArea2D = solver2D.ResolveReferenceArea(record2D);
             Assert.Equal(0.05f, refArea2D, 5);
 
-            // In 3D: REF_AREA = Fläche in mm² * 1e-6: 50 mm² * 1e-6 = 0.00005 m²
+            // In 3D: REF_AREA = area in mm² * 1e-6: 50 mm² * 1e-6 = 0.00005 m²
             var options3D = new Su2SolverOptions
             {
                 Dimensions = 3,
@@ -331,7 +331,7 @@ namespace FluidForge.Tests
                 string meshPath = Path.Combine(tempDir, "airfoil.su2");
                 File.WriteAllText(meshPath, "mock mesh");
 
-                var airfoilPts = CreateAirfoilContour(80.0f); // 80 mm Sehne
+                var airfoilPts = CreateAirfoilContour(80.0f); // 80 mm chord
                 var shape = new Shape2D().AddPolygon(airfoilPts);
                 shape.SaveContour(contourPath, cornerAngleDeg: 35.0f);
 
@@ -361,7 +361,7 @@ namespace FluidForge.Tests
                 }
                 catch
                 {
-                    // Erwarteter Abbruch beim Starten des MPI-Prozesses
+                    // Expected abort when launching MPI process
                 }
 
                 Assert.True(record.PassiveParameters.ContainsKey("ReynoldsNumber"));
@@ -414,17 +414,17 @@ namespace FluidForge.Tests
                 }
                 catch
                 {
-                    // Erwarteter Abbruch beim Starten des MPI-Prozesses
+                    // Expected abort when launching MPI process
                 }
 
-                // 1. Passive Parameter enthält den Anstellwinkel
+                // 1. Passive parameter contains the angle of attack
                 Assert.True(record.PassiveParameters.ContainsKey("AngleOfAttackDeg"));
                 Assert.Equal(7.5f, record.PassiveParameters["AngleOfAttackDeg"]);
 
-                // 2. Base Options wurden nicht dauerhaft mutiert
+                // 2. Base options were not permanently mutated
                 Assert.Equal(0.0f, solver.Options.AngleOfAttackDeg);
 
-                // 3. current_config.cfg wurde mit 7.5 erzeugt
+                // 3. current_config.cfg was generated with 7.5
                 string cfgPath = Path.Combine(tempDir, "current_config.cfg");
                 Assert.True(File.Exists(cfgPath));
                 string[] cfgLines = File.ReadAllLines(cfgPath);
@@ -450,11 +450,11 @@ namespace FluidForge.Tests
         {
             var project = new Test2DProject();
 
-            // 1. Kernel muss DirectGeometryKernel sein (kein PicoGK, kein Xvfb!)
+            // 1. Kernel must be DirectGeometryKernel (no PicoGK, no Xvfb!)
             var kernel = project.CreateKernel();
             Assert.IsType<DirectGeometryKernel>(kernel);
 
-            // 2. CreateStages muss Gmsh2DMesher und Su2Solver mit Dimensions = 2 liefern
+            // 2. CreateStages must return Gmsh2DMesher and Su2Solver with Dimensions = 2
             var simConfig = SimulationConfig.CreateDefault();
             var projConfig = new ProjectConfig();
             var context = new ProjectContext("Test2D", null, null, simConfig, projConfig);

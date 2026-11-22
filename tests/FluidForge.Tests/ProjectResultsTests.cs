@@ -9,8 +9,7 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-25: Ergebnisse liegen je Projekt getrennt, und jeder Lauf legt daneben, womit er
-    /// gerechnet hat.
+    /// TODO-25: Results are stored per project, and each run records what it computed with.
     /// </summary>
     public class ProjectResultsTests : IDisposable
     {
@@ -30,7 +29,7 @@ namespace FluidForge.Tests
         private static ProjectConfig ProjectNamed(string name) => new ProjectConfig { ProjectName = name };
 
         // -------------------------------------------------------------------
-        // Ergebnisse/<Projekt>/
+        // results/<Project>/
         // -------------------------------------------------------------------
 
         [Fact]
@@ -39,12 +38,11 @@ namespace FluidForge.Tests
             string directory = SimulationContext.DefaultWorkingDirectory(ProjectNamed("MantaAuv"));
 
             Assert.Equal("MantaAuv", Path.GetFileName(directory));
-            Assert.Equal("Ergebnisse", Path.GetFileName(Path.GetDirectoryName(directory)));
+            Assert.Equal(OutputConventions.ResultsRootDirectory, Path.GetFileName(Path.GetDirectoryName(directory)));
         }
 
         /// <summary>
-        /// Der eigentliche Punkt: zwei Projekte dürfen sich die Simulation_Results.csv nicht
-        /// gegenseitig überschreiben.
+        /// The main point: two projects must not overwrite each other's results.csv.
         /// </summary>
         [Fact]
         public void Two_Projects_Do_Not_Share_A_Results_Folder()
@@ -65,36 +63,36 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ohne Projektnamen bleibt es beim gemeinsamen Ordner. Im Lauf kommt das nicht vor —
-        /// die Registry erzwingt den Namen —, aber es soll nicht abstürzen.
+        /// Without a project name, the shared folder is used. This does not happen in a real
+        /// run — the registry enforces the name —, but it should not crash.
         /// </summary>
         [Fact]
         public void Without_A_Project_Name_The_Shared_Folder_Is_Used()
         {
             string directory = SimulationContext.DefaultWorkingDirectory(new ProjectConfig());
 
-            Assert.Equal("Ergebnisse", Path.GetFileName(directory));
+            Assert.Equal(OutputConventions.ResultsRootDirectory, Path.GetFileName(directory));
         }
 
         [Fact]
         public void The_Csv_Lands_In_The_Project_Folder()
         {
             var project = ProjectNamed("MantaAuv");
-            string working = Path.Combine(_root, "Ergebnisse", project.ProjectName);
+            string working = Path.Combine(_root, OutputConventions.ResultsRootDirectory, project.ProjectName);
 
             var context = new SimulationContext(SimulationConfig.CreateDefault(), project, working);
             context.EnsureDirectories();
             context.History.Add(new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.5f });
             context.ExportToCsv();
 
-            Assert.True(File.Exists(Path.Combine(working, "Simulation_Results.csv")));
+            Assert.True(File.Exists(Path.Combine(working, OutputConventions.ResultsCsvFileName)));
         }
 
         // -------------------------------------------------------------------
         // effective-config.json
         // -------------------------------------------------------------------
 
-        /// <summary>Baut einen Kontext, wie ihn Program.cs nach dem Laden hätte.</summary>
+        /// <summary>Builds a context as Program.cs would have after loading.</summary>
         private ProjectContext LoadedContext()
         {
             string projectDirectory = Path.Combine(_root, "src", "projects", "MantaAuv");
@@ -114,7 +112,7 @@ namespace FluidForge.Tests
                 "MantaAuv", projectDirectory, null, simulation.Value, ProjectNamed("MantaAuv"));
 
             context.Record("simulation.json", simulation);
-            context.LoadSolverOptions<Su2SolverOptions>("su2");   // trägt sich selbst ein
+            context.LoadSolverOptions<Su2SolverOptions>("su2");   // registers itself
 
             return context;
         }
@@ -124,22 +122,22 @@ namespace FluidForge.Tests
         {
             JsonObject content = EffectiveConfigWriter.Build(LoadedContext());
 
-            Assert.Equal("MantaAuv", content["Projekt"]!.GetValue<string>());
+            Assert.Equal("MantaAuv", content["Project"]!.GetValue<string>());
 
-            var sections = content["Abschnitte"]!.AsObject();
+            var sections = content["Sections"]!.AsObject();
             Assert.True(sections.ContainsKey("simulation.json"));
             Assert.True(sections.ContainsKey("solvers/su2.json"));
 
-            // Die Werte, mit denen gerechnet wurde ...
+            // The values used for the computation ...
             var simulation = sections["simulation.json"]!.AsObject();
-            Assert.Equal(3, simulation["Werte"]!["MaxIterations"]!.GetValue<int>());
+            Assert.Equal(3, simulation["Values"]!["MaxIterations"]!.GetValue<int>());
 
-            // ... und die Datei, aus der jeder einzelne stammt.
-            string origin = simulation["HerkunftJeSchluessel"]!["MpiCores"]!.GetValue<string>();
+            // ... and the file each value originated from.
+            string origin = simulation["OriginByKey"]!["MpiCores"]!.GetValue<string>();
             Assert.EndsWith("simulation.json", origin);
 
-            // Was in keiner Datei stand, fehlt hier — das ist der Code-Standard.
-            Assert.Null(simulation["HerkunftJeSchluessel"]!["BouncerJitter"]);
+            // Whatever was not in any file is absent here — that is the code default.
+            Assert.Null(simulation["OriginByKey"]!["BouncerJitter"]);
         }
 
         [Fact]
@@ -147,31 +145,31 @@ namespace FluidForge.Tests
         {
             JsonObject content = EffectiveConfigWriter.Build(LoadedContext());
 
-            var su2 = content["Abschnitte"]!["solvers/su2.json"]!.AsObject();
+            var su2 = content["Sections"]!["solvers/su2.json"]!.AsObject();
 
-            Assert.Equal("SST", su2["Werte"]!["TurbulenceModel"]!.GetValue<string>());
-            // Nicht genannt, also Code-Standard — und der muss trotzdem im Protokoll stehen.
-            Assert.Equal(1025.0f, su2["Werte"]!["Density"]!.GetValue<float>());
+            Assert.Equal("SST", su2["Values"]!["TurbulenceModel"]!.GetValue<string>());
+            // Not specified, so code default — and that must still appear in the log.
+            Assert.Equal(1025.0f, su2["Values"]!["Density"]!.GetValue<float>());
         }
 
         [Fact]
         public void The_File_Is_Written_Beside_The_Results()
         {
-            string working = Path.Combine(_root, "Ergebnisse", "MantaAuv");
+            string working = Path.Combine(_root, OutputConventions.ResultsRootDirectory, "MantaAuv");
 
             string path = EffectiveConfigWriter.Write(working, LoadedContext());
 
             Assert.Equal(Path.Combine(working, EffectiveConfigWriter.FileName), path);
             Assert.True(File.Exists(path));
 
-            // Muss sich wieder lesen lassen — sonst nützt das Protokoll später nichts.
+            // Must be readable again — otherwise the log is useless later.
             JsonNode? reread = JsonNode.Parse(File.ReadAllText(path));
-            Assert.Equal("MantaAuv", reread!["Projekt"]!.GetValue<string>());
+            Assert.Equal("MantaAuv", reread!["Project"]!.GetValue<string>());
         }
 
         /// <summary>
-        /// Hat eine maschinenspezifische Datei mitgeredet, steht das in der Datei — sonst wäre
-        /// später nicht erklärbar, warum ein alter Lauf von den hochgeladenen Werten abweicht.
+        /// If a machine-specific file contributed, it is recorded in the file — otherwise it
+        /// would be impossible to explain later why an old run differs from the uploaded values.
         /// </summary>
         [Fact]
         public void Machine_Overrides_Are_Part_Of_The_Record()
@@ -189,18 +187,18 @@ namespace FluidForge.Tests
                 "MantaAuv", projectDirectory, null, simulation.Value, ProjectNamed("MantaAuv"));
             context.Record("simulation.json", simulation);
 
-            var overrides = EffectiveConfigWriter.Build(context)["MaschinenspezifischeUeberschreibungen"]!.AsArray();
+            var overrides = EffectiveConfigWriter.Build(context)["MachineSpecificOverrides"]!.AsArray();
 
             Assert.Single(overrides);
-            Assert.Equal("MaxIterations", overrides[0]!["Schluessel"]!.GetValue<string>());
-            Assert.Equal("10", overrides[0]!["Projektwert"]!.GetValue<string>());
-            Assert.Equal("2", overrides[0]!["WirksamerWert"]!.GetValue<string>());
+            Assert.Equal("MaxIterations", overrides[0]!["Key"]!.GetValue<string>());
+            Assert.Equal("10", overrides[0]!["ProjectValue"]!.GetValue<string>());
+            Assert.Equal("2", overrides[0]!["EffectiveValue"]!.GetValue<string>());
         }
 
         [Fact]
         public void Without_Machine_Files_The_Override_List_Is_Empty()
         {
-            var overrides = EffectiveConfigWriter.Build(LoadedContext())["MaschinenspezifischeUeberschreibungen"]!.AsArray();
+            var overrides = EffectiveConfigWriter.Build(LoadedContext())["MachineSpecificOverrides"]!.AsArray();
 
             Assert.Empty(overrides);
         }

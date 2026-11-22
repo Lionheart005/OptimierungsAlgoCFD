@@ -6,89 +6,81 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Vorgabedaten für den SU2-Solver: Fluideigenschaften, Referenzwerte, CFL-Steuerung
-    /// und die Zuordnung der Ergebnisgrößen (TODO-26).
-    /// Werden aus <c>src/projects/&lt;Name&gt;/solvers/su2.json</c> geladen und per Konstruktor injiziert.
-    /// Die Standardwerte hier entsprechen exakt dem, was vorher in
-    /// <see cref="Su2ConfigGenerator"/> hardcodiert stand.
+    /// Configuration options for the SU2 solver: fluid properties, reference values, CFL control,
+    /// and result metric mapping.
+    /// Loaded from <c>src/projects/&lt;Name&gt;/solvers/su2.json</c> and injected via constructor.
     /// </summary>
     public class Su2SolverOptions : ICalibrationSolverOptions
     {
-        // --- Fluideigenschaften ---
-        /// <summary>Dichte des Mediums in kg/m³ (1025 = Meerwasser).</summary>
+        // --- Fluid properties ---
+        /// <summary>Fluid density in kg/m³ (1025 = seawater).</summary>
         public float Density { get; set; } = 1025.0f;
-        /// <summary>Dynamische Viskosität in Pa·s.</summary>
+        /// <summary>Dynamic viscosity in Pa·s.</summary>
         public float DynamicViscosity { get; set; } = 1.001e-3f;
-        /// <summary>Turbulenzmodell, z.B. SA oder SST.</summary>
+        /// <summary>Turbulence model, e.g. SA or SST.</summary>
         public string TurbulenceModel { get; set; } = "SA";
-        /// <summary>Schallgeschwindigkeit in m/s — rechnet die Mach-Zahl in eine Anströmgeschwindigkeit um.</summary>
+        /// <summary>Speed of sound in m/s — converts Mach number into a freestream velocity.</summary>
         public float SpeedOfSound { get; set; } = 343.2f;
 
         /// <summary>
-        /// Anströmgeschwindigkeit in m/s (TODO-38). Der Löser ist inkompressibel — eine Mach-Zahl
-        /// hat für ihn keine physikalische Bedeutung, sie war nur ein Umweg zur Geschwindigkeit.
+        /// Freestream velocity in m/s. The solver is incompressible — Mach number has no physical
+        /// meaning here and only served as an indirect way to specify velocity.
         /// <para>
-        /// Standard seit 08.11.2026: <c>2.0</c> m/s, passend zum Standardfluid Meerwasser (übliche
-        /// AUV-Reisegeschwindigkeit). Größer 0: dieser Wert gilt, <c>MachNumber</c> und
-        /// <c>SpeedOfSound</c> werden für die Anströmung nicht verwendet.
-        /// <c>0</c> = alter Weg <c>MachNumber × SpeedOfSound</c>.
+        /// Default: <c>2.0</c> m/s, matching standard seawater (typical AUV cruise speed).
+        /// When &gt; 0, this value is used directly and <c>MachNumber</c>/<c>SpeedOfSound</c> are ignored
+        /// for freestream velocity. <c>0</c> = legacy path <c>MachNumber * SpeedOfSound</c>.
         /// </para>
         /// <para>
-        /// Vorsicht beim alten Weg in Wasser: <c>SpeedOfSound</c> steht auf der Schallgeschwindigkeit
-        /// von <b>Luft</b>; Mach 0.1 ergibt damit 34,3 m/s — für ein Unterwasserfahrzeug unrealistisch.
+        /// Caution with the legacy path in water: <c>SpeedOfSound</c> defaults to the speed of sound
+        /// in <b>air</b>; Mach 0.1 yields 34.3 m/s, which is unrealistic for an underwater vehicle.
         /// </para>
         /// </summary>
         public float FreestreamVelocity { get; set; } = 2.0f;
 
-        // --- Dimension & Anstellwinkel (TODO-46) ---
+        // --- Dimensions & Angle of Attack ---
         /// <summary>
-        /// Räumliche Dimension der Simulation: 3 (Standard, 3D-Volumennetz) oder 2 (2D-Flächennetz).
-        /// In 2D liegt der Auftrieb entlang der y-Achse, in 3D entlang der z-Achse.
+        /// Spatial dimension of the simulation: 3 (default, 3D volume mesh) or 2 (2D planar mesh).
+        /// In 2D lift is along the y-axis; in 3D lift is along the z-axis.
         /// </summary>
         public int Dimensions { get; set; } = 3;
 
         /// <summary>
-        /// Anstellwinkel in Grad (Angle of Attack alpha, TODO-46).
-        /// Standard: 0.0°. Bei alpha != 0 wird der Geschwindigkeitsvektor in
-        /// FREESTREAM_VELOCITY und INC_VELOCITY_INIT gedreht (in 2D in der xy-Ebene, in 3D in der xz-Ebene).
+        /// Angle of attack in degrees (alpha).
+        /// Default: 0.0°. For alpha != 0, the velocity vector in FREESTREAM_VELOCITY and
+        /// INC_VELOCITY_INIT is rotated (in the xy-plane for 2D, xz-plane for 3D).
         /// </summary>
         public float AngleOfAttackDeg { get; set; } = 0.0f;
 
-        // --- Referenzwerte ---
+        // --- Reference values ---
         /// <summary>SU2 REF_LENGTH.</summary>
         public float ReferenceLength { get; set; } = 0.01f;
 
         /// <summary>
-        /// Name der Metrik in <c>ModelRecord.PassiveParameters</c>, aus der SU2 REF_AREA gebildet
-        /// wird. Der Wert wird als mm² gelesen und in m² umgerechnet — das ganze Framework
-        /// rechnet in mm. Ein Projekt, das seine Referenzfläche anders nennt, trägt den Namen
-        /// hier ein; fehlt die Metrik zur Laufzeit, warnt <see cref="Su2Solver"/> (TODO-12).
+        /// Metric name in <c>ModelRecord.PassiveParameters</c> used to compute SU2 REF_AREA.
+        /// The value is read in mm² and converted to m² (the entire framework uses mm).
+        /// Projects using a different reference area name configure it here; if missing at runtime,
+        /// <see cref="Su2Solver"/> logs a warning.
         /// </summary>
         public string ReferenceAreaMetric { get; set; } = "FrontalArea";
 
-        // --- Ergebnisgrößen (TODO-26) ---
+        // --- Result metrics ---
 
-        /// <summary>Code-Standard für <see cref="ConvergenceField"/>.</summary>
+        /// <summary>Code default for <see cref="ConvergenceField"/>.</summary>
         public const string DefaultConvergenceField = "DRAG";
 
-        /// <summary>Code-Standard für <see cref="HistoryOutput"/>.</summary>
+        /// <summary>Code default for <see cref="HistoryOutput"/>.</summary>
         public static readonly string[] DefaultHistoryOutput = { "ITER", "RMS_RES", "AERO_COEFF" };
 
         /// <summary>
-        /// Welche Größen der Solver aus der SU2-<c>history.csv</c> in den
-        /// <see cref="ModelRecord"/> übernimmt.
+        /// Maps columns from SU2's <c>history.csv</c> into <see cref="ModelRecord"/>.
         /// <para>
-        /// Links steht der Name, unter dem die Fitness-Formel den Wert in
-        /// <c>PassiveParameters</c> sieht; rechts der Spaltenname in der history.csv
-        /// (<c>CD</c>, <c>CL</c>, <c>CSF</c>, <c>CMx</c>, <c>CMy</c>, <c>CMz</c> — alle aus
-        /// <c>AERO_COEFF</c>). „Lift dazunehmen“ ist damit eine Zeile in der su2.json des
-        /// Projekts und kein Eingriff in <c>Solvers/</c>.
+        /// Keys are the names visible to the fitness function in <c>PassiveParameters</c>; values are
+        /// column names in history.csv (<c>CD</c>, <c>CL</c>, <c>CSF</c>, <c>CMx</c>, <c>CMy</c>, <c>CMz</c>
+        /// from <c>AERO_COEFF</c>). Adding lift is a single line in the project's su2.json.
         /// </para>
         /// <para>
-        /// Der Standard <c>{ "Drag" = "CD" }</c> hält das Verhalten von vor TODO-26 exakt bei.
-        /// Verschachtelte JSON-Objekte werden <b>additiv</b> gemerged: ein Projekt, das nur
-        /// <c>{"Lift":"CL"}</c> schreibt, bekommt <c>Drag</c> aus dem Standard dazu. Eine Größe
-        /// wieder loszuwerden geht nur über diesen Code-Standard.
+        /// Default <c>{ "Drag" = "CD" }</c>. Nested JSON objects are merged <b>additively</b>:
+        /// a project specifying only <c>{"Lift":"CL"}</c> still inherits <c>Drag</c> from the default.
         /// </para>
         /// </summary>
         public Dictionary<string, string> ResultMetrics { get; set; } = new() { ["Drag"] = "CD" };
@@ -98,92 +90,87 @@ namespace FluidForge.Solvers.Cfd
             => (IReadOnlyCollection<string>?)ResultMetrics?.Keys ?? Array.Empty<string>();
 
         /// <summary>
-        /// SU2 <c>CONV_FIELD</c> — die Größe, an der SU2 seine Konvergenz misst. War vor
-        /// TODO-26 fest auf <c>DRAG</c> verdrahtet; ein Projekt, das auf Auftrieb optimiert,
-        /// will hier <c>LIFT</c>. Leer = nicht konfiguriert, dann gilt
-        /// <see cref="DefaultConvergenceField"/>.
+        /// SU2 <c>CONV_FIELD</c> — the quantity SU2 monitors for convergence (e.g. <c>DRAG</c> or <c>LIFT</c>).
+        /// Empty = unconfigured, falling back to <see cref="DefaultConvergenceField"/>.
         /// </summary>
         public string ConvergenceField { get; set; } = DefaultConvergenceField;
 
         /// <summary>
-        /// SU2 <c>HISTORY_OUTPUT</c> — welche Spaltengruppen SU2 überhaupt in die history.csv
-        /// schreibt. <c>AERO_COEFF</c> liefert sämtliche Beiwerte; wer diese Gruppe entfernt,
-        /// nimmt damit auch jeder Zuordnung in <see cref="ResultMetrics"/> die Grundlage.
-        /// Leere Liste = nicht konfiguriert, dann gilt <see cref="DefaultHistoryOutput"/>.
+        /// SU2 <c>HISTORY_OUTPUT</c> — column groups written by SU2 into history.csv.
+        /// <c>AERO_COEFF</c> provides all aerodynamic coefficients. Empty list = unconfigured,
+        /// falling back to <see cref="DefaultHistoryOutput"/>.
         /// </summary>
         public string[] HistoryOutput { get; set; } = (string[])DefaultHistoryOutput.Clone();
 
         /// <summary>
-        /// Schwelle für die relative Schwingung einer Ergebnisgröße über das Cauchy-Fenster
-        /// (Standard: 0.05 = 5 %). Überschreitet die Schwingung (max - min) / |mean| diesen Wert,
-        /// warnt der Solver vor möglicher instationärer Strömung (TODO-35). Nur eine Warnung.
+        /// Threshold for relative oscillation of a result metric over the Cauchy window
+        /// (default: 0.05 = 5%). If (max - min) / |mean| exceeds this limit, the solver warns
+        /// about potential unsteady flow.
         /// </summary>
         public float OscillationWarnLimit { get; set; } = 0.05f;
 
         /// <summary>
-        /// Wenn <c>true</c> (Standard seit 08.11.2026), wird eine Rechnung, deren Kennwerte im Endfenster
-        /// noch gesichert weiterwandern (echte Drift), als fehlgeschlagen markiert
-        /// (<see cref="ModelRecord.SimulationFailed"/> = true). Rechnungen, die nur schwingen
-        /// (instationär, aber stabil), sind davon nicht betroffen (TODO-35).
+        /// When <c>true</c> (default), a run whose metrics are still drifting monotonically in the tail
+        /// window is marked as failed (<see cref="ModelRecord.SimulationFailed"/> = true). Runs that
+        /// only oscillate (unsteady but statistically stationary) are not marked failed.
         /// </summary>
         public bool TreatUnconvergedAsFailed { get; set; } = true;
 
         /// <summary>
-        /// Wenn <c>true</c> (Standard), wird ein stationärer SU2-Lauf, der über das Cauchy-Kriterium
-        /// vor <c>Su2MaxIterations</c> anhält und laut C#-Driftanalyse noch systematisch driftet
-        /// (keine rein stationäre Oszillation), automatisch per <c>RESTART_SOL= YES</c> mit
-        /// verschärftem <c>CONV_CAUCHY_EPS</c> fortgesetzt.
+        /// When <c>true</c> (default), a steady SU2 run that stops via the Cauchy criterion before
+        /// <c>Su2MaxIterations</c> while still drifting systematically is automatically continued via
+        /// <c>RESTART_SOL= YES</c> with a tighter <c>CONV_CAUCHY_EPS</c>.
         /// </summary>
         public bool AutoRestartOnDrift { get; set; } = true;
 
         /// <summary>
-        /// Maximale Anzahl automatischer stationärer Restart-Blöcke je Variante (<c>0</c> = deaktiviert).
+        /// Maximum number of automatic steady restart blocks per variant (<c>0</c> = disabled).
         /// </summary>
         public int MaxConvergenceRestarts { get; set; } = 3;
 
         /// <summary>
-        /// Wie Ergebnisgrößen aus der <c>history.csv</c> übernommen werden (TODO-35, TODO-W3):
+        /// How result metrics are aggregated from <c>history.csv</c>:
         /// <list type="bullet">
-        ///   <item><c>"TailMean"</c> (Standard): Mittel des Endfensters ohne Anlaufphase.</item>
-        ///   <item><c>"Last"</c>: der Wert der letzten Zeile (früheres Verhalten).</item>
-        ///   <item><c>"CauchyWindowMean"</c>: der Mittelwert über die letzten <c>CauchyElements</c> Zeilen.</item>
+        ///   <item><c>"TailMean"</c> (default): mean of the tail window excluding startup transient.</item>
+        ///   <item><c>"Last"</c>: value of the final row.</item>
+        ///   <item><c>"CauchyWindowMean"</c>: mean over the last <c>CauchyElements</c> rows.</item>
         /// </list>
-        /// Ein unbekannter Wert führt zu einer Warnung und dem Rückfall auf <c>"Last"</c>.
+        /// An unknown value logs a warning and falls back to <c>"Last"</c>.
         /// </summary>
         public string ResultAveraging { get; set; } = "TailMean";
 
-        // --- CFL-Steuerung ---
+        // --- CFL control ---
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;
-        /// <summary>CFL_ADAPT_PARAM: Faktor beim Verkleinern.</summary>
+        /// <summary>CFL_ADAPT_PARAM: reduction factor.</summary>
         public float CflAdaptFactorDown { get; set; } = 0.5f;
-        /// <summary>CFL_ADAPT_PARAM: Faktor beim Vergrößern.</summary>
+        /// <summary>CFL_ADAPT_PARAM: growth factor.</summary>
         public float CflAdaptFactorUp { get; set; } = 1.2f;
-        /// <summary>CFL_ADAPT_PARAM: untere Schranke.</summary>
+        /// <summary>CFL_ADAPT_PARAM: lower bound.</summary>
         public float CflAdaptMin { get; set; } = 1.0f;
-        /// <summary>CFL_ADAPT_PARAM: obere Schranke.</summary>
+        /// <summary>CFL_ADAPT_PARAM: upper bound.</summary>
         public float CflAdaptMax { get; set; } = 50.0f;
 
-        // --- y+-Ziel und Grenzschichtprüfung (TODO-41) ---
+        // --- y+ target and boundary-layer check ---
         /// <summary>
-        /// Ziel-y+ für die Wandauflösung der Grenzschicht (Standard 1.5 in 3D) (TODO-41).
+        /// Target y+ for wall boundary-layer resolution (default 1.5 in 3D).
         /// </summary>
         public float TargetYPlus { get; set; } = 1.5f;
 
         /// <summary>
-        /// Warnfaktor für die y+-Prüfung nach der Simulation (Standard 3.0).
-        /// Liegt das 95 %-Quantil (P95) über TargetYPlus * YPlusWarnFactor, warnt der Solver (TODO-41).
+        /// Warning multiplier for post-simulation y+ check (default 3.0).
+        /// If the 95th percentile (P95) exceeds TargetYPlus * YPlusWarnFactor, the solver logs a warning.
         /// </summary>
         public float YPlusWarnFactor { get; set; } = 3.0f;
 
-        // --- Zeitgenauer Modus / URANS (TODO-37) ---
+        // --- Time-accurate mode / URANS ---
         /// <summary>
-        /// Einstellungen für zeitgenaue Simulationen (URANS mit Dual-Time-Stepping) (TODO-37).
+        /// Settings for time-accurate simulations (URANS with dual time-stepping).
         /// </summary>
         public Su2TimeDomainOptions TimeDomain { get; set; } = new();
 
         /// <summary>
-        /// Erstellt eine tiefe Kopie der Optionen (insbes. für temporäre Anpassungen wie Anstellwinkel).
+        /// Creates a deep copy of the options (especially for temporary overrides such as angle of attack).
         /// </summary>
         public Su2SolverOptions Clone()
         {
@@ -195,44 +182,43 @@ namespace FluidForge.Solvers.Cfd
     }
 
     /// <summary>
-    /// Optionen für zeitgenaue CFD-Rechnungen mit SU2 (URANS, Dual-Time-Stepping, TODO-37).
+    /// Options for time-accurate CFD runs with SU2 (URANS, dual time-stepping).
     /// </summary>
     public class Su2TimeDomainOptions
     {
-        /// <summary>Zeitgenaue Rechnung (URANS, Dual-Time-Stepping) aktivieren (TODO-37).</summary>
+        /// <summary>Enable time-accurate simulation (URANS, dual time-stepping).</summary>
         public bool Enabled { get; set; } = false;
 
-        /// <summary>Physikalischer Zeitschritt in Sekunden (0 = automatisch aus StrouhalEstimate und StepsPerPeriod).</summary>
+        /// <summary>Physical time step in seconds (0 = automatic from StrouhalEstimate and StepsPerPeriod).</summary>
         public float TimeStep { get; set; } = 0.0f;
 
         /// <summary>
-        /// Zeitschritte pro Wirbelablöseperiode, wenn TimeStep = 0 ist (Vorgabe 50; bis TODO-W7 waren es 25).
+        /// Time steps per vortex-shedding period when TimeStep = 0 (default 50).
         /// </summary>
         public int StepsPerPeriod { get; set; } = 50;
 
-        /// <summary>Geschätzte Strouhal-Zahl f = St * U / L für die automatische Zeitschrittwahl.</summary>
+        /// <summary>Estimated Strouhal number f = St * U / L for automatic time-step sizing.</summary>
         public float StrouhalEstimate { get; set; } = 0.2f;
 
         /// <summary>
-        /// Anzahl der physikalischen Zeitschritte, die gerechnet werden (bei Neustart aus der stationären Lösung
-        /// zusätzlich zu <see cref="RestartIteration"/> gezählt). Vorgabe 1000 = 20 Perioden bei 50 Schritten je
-        /// Periode (bis TODO-W7: 200 = 8 Perioden, die Mittelung begann mitten im Einschwingen).
+        /// Number of physical time steps to execute (counted in addition to <see cref="RestartIteration"/>
+        /// when restarting from a steady solution). Default 1000 = 20 periods at 50 steps per period.
         /// </summary>
         public int TimeIterations { get; set; } = 1000;
 
-        /// <summary>Anzahl der inneren Pseudo-Zeitschritte pro physikalischem Zeitschritt (INNER_ITER).</summary>
+        /// <summary>Number of inner pseudo-time iterations per physical time step (INNER_ITER).</summary>
         public int InnerIterations { get; set; } = 30;
 
         /// <summary>
-        /// Bruchteil der Zeitschritte, ab dem die Zeitmittelung startet (WINDOW_START_ITER). 0.5 bei 20 Perioden =
-        /// Mittel über die letzten 10 Perioden.
+        /// Fraction of time steps after which time-averaging starts (WINDOW_START_ITER). 0.5 over 20 periods =
+        /// average over the final 10 periods.
         /// </summary>
         public float AveragingStartFraction { get; set; } = 0.5f;
 
         /// <summary>
-        /// Neustart aus einer stationären Lösung (TODO-W7): 0 = Start aus dem Freistrom (wie bisher), 2 = Start aus
-        /// <c>restart_00000.dat</c> und <c>restart_00001.dat</c> (SU2 braucht für die 2. Ordnung zwei Zeitstände).
-        /// Der Recheck legt die Dateien aus der stationären Rechnung selbst an und setzt diesen Wert.
+        /// Restart from a steady solution: 0 = start from freestream, 2 = start from
+        /// <c>restart_00000.dat</c> and <c>restart_00001.dat</c> (SU2 requires two time levels for 2nd order).
+        /// Recheck prepares these files from the steady run and sets this value automatically.
         /// </summary>
         public int RestartIteration { get; set; } = 0;
     }

@@ -7,25 +7,25 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Erzeugt die Hülle des Windkanals (Simulationsdomäne) als Dreiecksliste.
+    /// Generates the wind tunnel shell (simulation domain) as a list of triangles.
     ///
-    /// Vorher kam der Quader aus <c>PicoGK.Utils.mshCreateCube</c>; seit TODO-11 rechnet
-    /// diese Klasse ihn selbst, damit die CFD-Schicht nicht am Geometrie-Kernel hängt.
-    /// Der Quader ist dabei <b>dreieckstreu</b> nachgebaut — gleiche 12 Dreiecke in gleicher
-    /// Reihenfolge und Orientierung, damit Gmsh dieselbe Farfield-Topologie sieht wie bisher.
+    /// Previously, the box came from <c>PicoGK.Utils.mshCreateCube</c>; this class computes it
+    /// directly so the CFD layer has no dependency on the geometry kernel.
+    /// The box is reconstructed with exact triangle fidelity (same 12 triangles in the same
+    /// order and orientation) so Gmsh sees the identical farfield topology.
     /// </summary>
     public static class TunnelGeometry
     {
         /// <summary>
-        /// Achsparalleler Quader mit Kantenlängen <paramref name="size"/> um
-        /// <paramref name="center"/>. 12 Dreiecke, Normalen nach außen.
+        /// Axis-aligned box with edge lengths <paramref name="size"/> centered at
+        /// <paramref name="center"/>. 12 triangles with outward normals.
         /// </summary>
         public static IReadOnlyList<StlTriangle> CreateBox(Vector3 size, Vector3 center)
         {
             Vector3 min = center - size / 2.0f;
             Vector3 max = center + size / 2.0f;
 
-            // Ecken: Bit 0 = X, Bit 1 = Y, Bit 2 = Z (0 = min, 1 = max)
+            // Corners: bit 0 = X, bit 1 = Y, bit 2 = Z (0 = min, 1 = max)
             Vector3 v000 = new Vector3(min.X, min.Y, min.Z);
             Vector3 v001 = new Vector3(min.X, min.Y, max.Z);
             Vector3 v010 = new Vector3(min.X, max.Y, min.Z);
@@ -53,20 +53,20 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Zylinder mit Achse entlang X (= Strömungsrichtung), zentriert auf
-        /// <paramref name="center"/>. Mantel plus zwei Deckel, Normalen nach außen.
-        /// Ergibt <c>4 × <paramref name="segments"/></c> Dreiecke.
+        /// Cylinder with axis along X (flow direction), centered at
+        /// <paramref name="center"/>. Lateral surface plus two end caps, outward normals.
+        /// Produces <c>4 * <paramref name="segments"/></c> triangles.
         /// </summary>
-        /// <param name="segments">Anzahl der Mantelsegmente über den Umfang, mindestens 3.</param>
+        /// <param name="segments">Number of circumferential segments, at least 3.</param>
         public static IReadOnlyList<StlTriangle> CreateCylinder(float diameter, float length, Vector3 center, int segments)
         {
             if (segments < 3)
                 throw new ArgumentOutOfRangeException(nameof(segments), segments,
-                    "Ein Zylinder braucht mindestens 3 Mantelsegmente.");
+                    "A cylinder requires at least 3 circumferential segments.");
             if (diameter <= 0.0f)
-                throw new ArgumentOutOfRangeException(nameof(diameter), diameter, "Der Durchmesser muss positiv sein.");
+                throw new ArgumentOutOfRangeException(nameof(diameter), diameter, "Diameter must be positive.");
             if (length <= 0.0f)
-                throw new ArgumentOutOfRangeException(nameof(length), length, "Die Länge muss positiv sein.");
+                throw new ArgumentOutOfRangeException(nameof(length), length, "Length must be positive.");
 
             float radius = diameter / 2.0f;
             float xMin = center.X - length / 2.0f;
@@ -94,11 +94,11 @@ namespace FluidForge.Solvers.Cfd
             {
                 int next = (i + 1) % segments;
 
-                // Mantel: das Viereck zwischen beiden Ringen, in zwei Dreiecke geteilt.
+                // Lateral surface: quad between the two rings split into two triangles.
                 triangles.Add(new StlTriangle(ringMin[i], ringMin[next], ringMax[next]));
                 triangles.Add(new StlTriangle(ringMin[i], ringMax[next], ringMax[i]));
 
-                // Deckel als Dreiecksfächer um die Achsenmitte.
+                // End caps as triangle fans around the axis center.
                 triangles.Add(new StlTriangle(capCenterMin, ringMin[next], ringMin[i]));   // -X
                 triangles.Add(new StlTriangle(capCenterMax, ringMax[i], ringMax[next]));   // +X
             }

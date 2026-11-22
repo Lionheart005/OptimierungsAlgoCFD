@@ -11,8 +11,8 @@ using FluidForge.Kernels.Planar2D;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// SU2 CFD Solver. Koordiniert Konfigurationsgenerierung, Prozessausführung,
-    /// automatische Konvergenz-Restarts, Ergebnisarchivierung und Diagnostikauswertung.
+    /// SU2 CFD Solver. Coordinates config generation, process execution,
+    /// automatic convergence restarts, result archiving, and diagnostic evaluation.
     /// </summary>
     public class Su2Solver : ISimulationSolver
     {
@@ -21,15 +21,15 @@ namespace FluidForge.Solvers.Cfd
         private readonly Su2DiagnosticsExtractor _diagnostics;
 
         /// <summary>
-        /// Die Anströmung wird einmal pro Lauf gemeldet, nicht bei jeder Variante — sie ändert
-        /// sich zwischen den Varianten nicht, und im Log soll sie trotzdem stehen (TODO-38).
+        /// Freestream velocity is logged once per run rather than per variant because it does not
+        /// change across variants.
         /// </summary>
         private bool _velocityReported;
         private bool _transitionalReported;
         private bool _versionReported;
 
-        /// <param name="options">Vorgabedaten aus solvers/su2.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
-        /// <param name="flow">Gemeinsame Strömungsbedingungen (TODO-38); wenn null, werden sie aus config und options aufgelöst.</param>
+        /// <param name="options">Configuration from the project's solvers/su2.json; defaults apply if omitted.</param>
+        /// <param name="flow">Shared flow conditions; resolved from config and options if null.</param>
         public Su2Solver(Su2SolverOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new Su2SolverOptions();
@@ -41,8 +41,8 @@ namespace FluidForge.Solvers.Cfd
         public FlowConditions? Flow => _flow;
 
         /// <summary>
-        /// Optionaler Test-Hook für die SU2-Prozessausführung (ermöglicht End-to-End-Tests von
-        /// <see cref="Solve"/> ohne echtes <c>SU2_CFD</c>/<c>mpirun</c>).
+        /// Optional test hook for SU2 process execution (enables end-to-end tests of
+        /// <see cref="Solve"/> without an actual <c>SU2_CFD</c>/<c>mpirun</c> binary).
         /// </summary>
         internal Func<string, int, (int ExitCode, string StdOut, string StdErr)>? RunSu2Override { get; set; }
 
@@ -60,7 +60,7 @@ namespace FluidForge.Solvers.Cfd
             FlowConditions flow = _flow ?? FlowConditions.From(config, _options);
             if (!_velocityReported)
             {
-                SimulationLog.Detail($"Anströmung: {flow.Velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({flow.VelocitySource}).");
+                SimulationLog.Detail($"Freestream: {flow.Velocity.ToString("0.###", CultureInfo.InvariantCulture)} m/s ({flow.VelocitySource}).");
                 _velocityReported = true;
             }
 
@@ -78,15 +78,15 @@ namespace FluidForge.Solvers.Cfd
             }
 
             SimulationLog.Detail(
-                $"Anströmung {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
+                $"Freestream {flow.Velocity.ToString("0.0", CultureInfo.InvariantCulture)} m/s, Re_L = {reynolds.ToString("0.0e0", CultureInfo.InvariantCulture)} (L = {lengthMm.ToString("0.0", CultureInfo.InvariantCulture)} mm {lengthSource})");
 
             if (!_transitionalReported && reynolds > 0f && reynolds < 5e5f)
             {
-                SimulationLog.Detail("[HINWEIS] Re_L liegt im laminar-transitionalen Bereich (< 5e5); das Turbulenzmodell rechnet vollturbulent.");
+                SimulationLog.Detail("[INFO] Re_L is in the laminar-transitional regime (< 5e5); turbulence model assumes fully turbulent flow.");
                 _transitionalReported = true;
             }
 
-            SimulationLog.Detail($"Strömungsanalyse läuft für: {Path.GetFileName(meshPath)}...");
+            SimulationLog.Detail($"Running flow analysis for: {Path.GetFileName(meshPath)}...");
 
             string configPath = Path.Combine(workingDirectory, "current_config.cfg");
             string historyPath = Path.Combine(workingDirectory, "history.csv");
@@ -95,7 +95,7 @@ namespace FluidForge.Solvers.Cfd
             Su2RestartController.CleanHistoryFiles(workingDirectory, historyPath);
             if (!isUnsteady)
             {
-                // Verhindert, dass ein fehlender Restart-Export einer neuen Variante auf die Lösung der Vorgängervariante zurückfällt.
+                // Prevents a missing restart export from falling back to the previous variant's solution.
                 Su2RestartController.CleanSteadyRestartFiles(workingDirectory);
             }
 
@@ -105,8 +105,8 @@ namespace FluidForge.Solvers.Cfd
             SimulationConfig originalEffectiveConfig = isControlRun ? config.WithControlRunProfile() : config;
             if (isControlRun)
             {
-                SimulationLog.Detail($"Kontrollrechnung: strenges Profil (bis {originalEffectiveConfig.Su2MaxIterations} Iterationen, Fenster {originalEffectiveConfig.CauchyElements}, "
-                    + $"iterativer Fehler höchstens {originalEffectiveConfig.IterativeToleranceFraction * 100:0} % der Netz-Toleranz).");
+                SimulationLog.Detail($"Control run: strict profile (up to {originalEffectiveConfig.Su2MaxIterations} iterations, window {originalEffectiveConfig.CauchyElements}, "
+                    + $"iterative error at most {originalEffectiveConfig.IterativeToleranceFraction * 100:0}% of mesh tolerance).");
             }
 
             Su2SolverOptions runOptions = _options;
@@ -157,7 +157,7 @@ namespace FluidForge.Solvers.Cfd
                     {
                         if (exitCode != 0 || currentLines == null || currentLines.Length < 2)
                         {
-                            SimulationLog.Warning($"[SU2] Restart #{restartCount} lieferte keine verwertbaren Daten (ExitCode={exitCode}); nutze bisherigen Verlauf.");
+                            SimulationLog.Warning($"[SU2] Restart #{restartCount} yielded no usable data (ExitCode={exitCode}); keeping previous history.");
                             if (previousCumulativeLines != null) File.WriteAllLines(historyPath, previousCumulativeLines);
                             break;
                         }
@@ -195,16 +195,16 @@ namespace FluidForge.Solvers.Cfd
                         flow, effectiveRefLength, steadyRestartFile, convStartIter);
 
                     SimulationLog.Detail(
-                        $"[SU2] Drift nach {totalIterations} Iterationen ({worstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der Grenze) "
-                        + $"-> automatischer Restart #{restartCount}/{_options.MaxConvergenceRestarts} aus {steadyRestartFile} "
-                        + $"(Restbudget={remainingBudget}, CONV_CAUCHY_EPS={currentBlockEps}, CONV_STARTITER={convStartIter}).");
+                        $"[SU2] Drift after {totalIterations} iterations ({worstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}x limit) "
+                        + $"-> automatic restart #{restartCount}/{_options.MaxConvergenceRestarts} from {steadyRestartFile} "
+                        + $"(remaining={remainingBudget}, CONV_CAUCHY_EPS={currentBlockEps}, CONV_STARTITER={convStartIter}).");
                 }
 
                 Su2ResultArchiver.ArchiveRunArtifacts(workingDirectory, meshPath, record, historyPath, configPath);
             }
             catch (Exception e)
             {
-                throw new Exception($"Kritischer Systemfehler beim Ausführen von SU2: {e.Message}");
+                throw new Exception($"Critical system error while running SU2: {e.Message}");
             }
 
             ReadMetricsFromHistory(historyPath, record, originalEffectiveConfig, isControlRun);
@@ -235,7 +235,7 @@ namespace FluidForge.Solvers.Cfd
             if (aoaFromActive || effectiveAoA != 0f)
                 record.PassiveParameters["AngleOfAttackDeg"] = effectiveAoA;
             if (aoaFromActive)
-                SimulationLog.Detail($"Anstellwinkel (aktiv optimiert): {effectiveAoA.ToString("0.##", CultureInfo.InvariantCulture)}°");
+                SimulationLog.Detail($"Angle of attack (actively optimized): {effectiveAoA.ToString("0.##", CultureInfo.InvariantCulture)}°");
 
             return (effectiveAoA, aoaFromActive);
         }
@@ -265,7 +265,7 @@ namespace FluidForge.Solvers.Cfd
                     }
 
                     if (!bounds.IsEmpty && bounds.Size.X > 0f)
-                        return (bounds.Size.X / scaleFactor, "aus der 2D-Bounding-Box");
+                        return (bounds.Size.X / scaleFactor, "from 2D bounding box");
                 }
                 catch { }
             }
@@ -275,12 +275,12 @@ namespace FluidForge.Solvers.Cfd
                 {
                     MeshBounds bounds = StlWriter.ReadBounds(record.StlPath);
                     if (!bounds.IsEmpty && bounds.Size.X > 0f)
-                        return (bounds.Size.X / scaleFactor, "aus der Bounding Box");
+                        return (bounds.Size.X / scaleFactor, "from bounding box");
                 }
                 catch { }
             }
 
-            return (fallbackMm, "aus ReferenceLength");
+            return (fallbackMm, "from ReferenceLength");
         }
 
         private float ResolveEffectiveReferenceLength(ModelRecord record, bool is2dGeometry, float lengthMm)

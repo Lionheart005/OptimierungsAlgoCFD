@@ -1,41 +1,41 @@
-# Handbuch: Eigener 2D-Geometrie-Kernel (`Planar2D`)
+# Guide: Built-in 2D Geometry Kernel (`Planar2D`)
 
-> **Verwandte Dokumentation:**
-> - **Neues 2D-/3D-Projekt anlegen:** [`src/projects/README.md`](../../../projects/README.md) (Vorlage: [`src/projects/_Template2D/`](../../../projects/_Template2D/README.md), Beispiel: [`src/projects/Naca2D/`](../../../projects/Naca2D/))
-> - **3D-Geometrie mit PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../PicoGk/README.md)
-> - **Alle 2D-Vernetzungs- & Solver-Einstellungen:** [`src/projects/BEDIENHANDBUCH.md` (Abschnitt 4.5)](../../../projects/BEDIENHANDBUCH.md#45-solversgmshjson-2d-projekte-gmsh2dmesheroptions)
+> **Related Documentation:**
+> - **Creating a new 2D/3D project:** [`src/projects/README.md`](../../../projects/README.md) (Template: [`src/projects/_Template2D/`](../../../projects/_Template2D/README.md), Example: [`src/projects/Naca2D/`](../../../projects/Naca2D/))
+> - **3D Geometry with PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../PicoGk/README.md)
+> - **All 2D Meshing & Solver Settings:** [`src/projects/BEDIENHANDBUCH.md`](../../../projects/BEDIENHANDBUCH.md)
 
-Der `Planar2D`-Kernel (`FluidForge.Kernels.Planar2D`) ist ein eigens für dieses Framework geschriebener, analytischer 2D-Geometriekern auf Basis von **Clipper2**.
+The `Planar2D` kernel (`FluidForge.Kernels.Planar2D`) is an analytical 2D geometry kernel written specifically for this framework on top of **Clipper2**.
 
-Er wurde bewusst so entworfen, dass er sich beim Programmieren **genauso anfühlt wie PicoGK in 3D** (`Lattice2D` statt `Lattice`, `Shape2D` statt `Voxels`, `BBox2` statt `BBox3`, `BoolAdd`, `BoolSubtract`, `Offset`, `TripleOffset`), dabei aber auf exakten ebenen Vektorkonturen arbeitet — **komplett ohne Voxel-Treppenstufen, ohne OpenGL/Xvfb und in Bruchteilen einer Millisekunde**.
+It is intentionally designed to feel **just like PicoGK in 3D** (`Lattice2D` instead of `Lattice`, `Shape2D` instead of `Voxels`, `BBox2` instead of `BBox3`, `BoolAdd`, `BoolSubtract`, `Offset`, `TripleOffset`), while operating on exact planar vector contours — **completely free of voxel staircase artifacts, without OpenGL/Xvfb, and executing in fractions of a millisecond**.
 
 ---
 
-## 1. Überblick der Klassen
+## 1. Class Overview
 
-| Klasse / Struct | Namespace | Analogon in PicoGK (3D) | Aufgabe |
+| Class / Struct | Namespace | PicoGK (3D) Equivalent | Purpose |
 | --- | --- | --- | --- |
-| [`Shape2D`](Shape2D.cs) | `FluidForge.Kernels.Planar2D` | `Voxels` + `Mesh` | Repräsentiert eine 2D-Form (beliebig viele geschlossene Außenkonturen und innere Löcher). Bietet Grundformen, Splines, Boolesche Operationen, Offset-Verrundungen, Knickpunkterkennung sowie JSON- und SVG-Export. |
-| [`Lattice2D`](Lattice2D.cs) | `FluidForge.Kernels.Planar2D` | `Lattice` | Zweidimensionales Balken-/Skelettgitter aus Kreisknoten (`AddCircle`) und tangentialen Konus-/Kapselbalken (`AddBeam`). |
-| [`BBox2`](BBox2.cs) | `FluidForge.Core` | `BBox3` | Achsenparallele 2D-Bounding-Box (`Min`, `Max`, `Size`, `Center`, `Include`, `Contains`). |
-| [`MeshMetrics2D`](../../Core/Utilities/MeshMetrics2D.cs) / [`ContourMeasurement2D`](../../Core/Utilities/MeshMetrics2D.cs) | `FluidForge.Core` | `PicoGkMeshMetrics` / `MeshMeasurement` | Berechnet Nettofläche (Gaußsche Trapezformel, Löcher werden automatisch abgezogen), Gesamtumfang, Sehnenlänge (`Chord` in X), Dicke (`Thickness` in Y) und Punktanzahl. |
-| [`DirectGeometryKernel`](../../Core/Interfaces/IGeometryKernel.cs) | `FluidForge.Core` | `PicoGkKernel` | Führt den 2D-Generator direkt ohne native C++-Bibliothek und ohne Grafikserver (`xvfb-run`) aus. |
+| [`Shape2D`](Shape2D.cs) | `FluidForge.Kernels.Planar2D` | `Voxels` + `Mesh` | Represents a 2D shape (arbitrary closed outer contours and inner holes). Provides primitives, splines, boolean operations, offset fillets, corner detection, and JSON/SVG export. |
+| [`Lattice2D`](Lattice2D.cs) | `FluidForge.Kernels.Planar2D` | `Lattice` | Two-dimensional beam/skeleton lattice made of circular nodes (`AddCircle`) and tangent tapered/capsule beams (`AddBeam`). |
+| [`BBox2`](BBox2.cs) | `FluidForge.Core` | `BBox3` | Axis-aligned 2D bounding box (`Min`, `Max`, `Size`, `Center`, `Include`, `Contains`). |
+| [`MeshMetrics2D`](../../Core/Utilities/MeshMetrics2D.cs) / [`ContourMeasurement2D`](../../Core/Utilities/MeshMetrics2D.cs) | `FluidForge.Core` | `PicoGkMeshMetrics` / `MeshMeasurement` | Computes net area (shoelace formula, holes subtracted automatically), total perimeter, chord length (`Chord` in X), thickness (`Thickness` in Y), and point count. |
+| [`DirectGeometryKernel`](../../Core/Interfaces/IGeometryKernel.cs) | `FluidForge.Core` | `PicoGkKernel` | Executes the 2D generator directly without a native C++ library or display server (`xvfb-run`). |
 
 ---
 
-## 2. Koordinatensystem & Einheiten
+## 2. Coordinate System & Units
 
-- **Einheit:** Alle Koordinaten, Radien und Abstände sind in **Millimetern (mm)** angegeben.
-- **Anströmrichtung:** Die Strömung in Gmsh/SU2 läuft standardmäßig in **+X-Richtung** (von links nach rechts; der Anstellwinkel `AngleOfAttackDeg` dreht den Anströmvektor).
-  - **Ausdehnung in X (`Bounds.Size.X`):** Sehnenlänge / Körperlänge (`Chord`).
-  - **Ausdehnung in Y (`Bounds.Size.Y`):** Profildicke / Querabmessung (`Thickness`).
+- **Unit:** All coordinates, radii, and distances are in **millimeters (mm)**.
+- **Flow Direction:** By default, flow in Gmsh/SU2 runs in the **+X direction** (left to right; `AngleOfAttackDeg` rotates the freestream vector).
+  - **Extent in X (`Bounds.Size.X`):** Chord / body length (`Chord`).
+  - **Extent in Y (`Bounds.Size.Y`):** Profile thickness / cross-flow extent (`Thickness`).
 
 ---
 
-## 3. Formen erzeugen: Die 3 Wege
+## 3. Creating Shapes: 3 Approaches
 
-### Weg A: Aus einem Skelettgitter (`Lattice2D` → `Shape2D`)
-Genau wie man in PicoGK Stäbe (`AddBeam`) und Kugeln (`AddSphere`) in ein `Lattice` legt, lassen sich in 2D organische Rahmen, Streben oder Rumpfquerschnitte aus Kreisen und Konusbalken aufbauen:
+### Approach A: From a Skeleton Lattice (`Lattice2D` → `Shape2D`)
+Just like placing beams (`AddBeam`) and spheres (`AddSphere`) into a PicoGK `Lattice`, organic frames, struts, or fuselage cross-sections can be built in 2D from circles and tapered beams:
 
 ```csharp
 using System.Numerics;
@@ -43,117 +43,117 @@ using FluidForge.Kernels.Planar2D;
 
 var lattice = new Lattice2D();
 
-// 1. Konusbalken von (0, 0) mit Radius 8 mm nach (60, 0) mit Radius 2 mm
-//    Berechnet exakt die äußeren Tangenten und schließt beide Enden mit Kreisbögen ab.
+// 1. Tapered beam from (0, 0) with radius 8 mm to (60, 0) with radius 2 mm.
+//    Computes exact outer tangents and closes both ends with circular arcs.
 lattice.AddBeam(new Vector2(0f, 0f), new Vector2(60f, 0f), r1: 8f, r2: 2f, capSegments: 64);
 
-// 2. Weiteren Strebenbalken oder Kreisknoten hinzufügen (verschmilzt sofort per Union)
+// 2. Add another strut beam or circular node (immediately merged via union)
 lattice.AddBeam(new Vector2(15f, 0f), new Vector2(30f, 20f), r1: 4f, r2: 1.5f);
 lattice.AddCircle(new Vector2(30f, 20f), radius: 3f, segments: 64);
 
-// 3. In ein Shape2D überführen und Übergänge mit Radius 2 mm organisch ausrunden
+// 3. Convert to Shape2D and organically round transitions with a 2 mm radius
 var shape = new Shape2D(lattice)
     .TripleOffset(2.0f);
 ```
 
-### Weg B: Direkt über Polygone, Kreise oder Catmull-Rom-Splines (`Shape2D`)
-Für Tragflügelprofile (z. B. NACA) oder Freiformkurven können Stützpunkte direkt als Polygon oder glatte Catmull-Rom-Spline übergeben werden:
+### Approach B: Directly via Polygons, Circles, or Catmull-Rom Splines (`Shape2D`)
+For airfoils (e.g., NACA) or freeform curves, points can be passed directly as a polygon or smooth Catmull-Rom spline:
 
 ```csharp
-// 1. Exakte Punktliste (z. B. aus einer analytischen Profilformel wie in Naca2D)
+// 1. Exact point list (e.g., from an analytical airfoil formula as in Naca2D)
 var shape = new Shape2D()
     .AddPolygon(contourPoints);
 
-// 2. Oder weiche Freiformkurve durch wenige Stützpunkte (Catmull-Rom-Spline)
+// 2. Or a smooth freeform curve through control points (Catmull-Rom spline)
 var controlPoints = new List<Vector2>
 {
-    new(50f, 0f),    // Hinterkante
-    new(25f, -6f),   // Unterseite
-    new(0f, 0f),     // Vorderkante (Nase)
-    new(25f, 8f)     // Oberseite
+    new(50f, 0f),    // Trailing edge
+    new(25f, -6f),   // Lower surface
+    new(0f, 0f),     // Leading edge (nose)
+    new(25f, 8f)     // Upper surface
 };
 var splineShape = new Shape2D()
     .AddSpline(controlPoints, samplesPerSegment: 24, closed: true);
 
-// 3. Kreise direkt hinzufügen
+// 3. Add circles directly
 splineShape.AddCircle(new Vector2(10f, 0f), radius: 4f);
 ```
 
 ---
 
-## 4. Boolesche Operationen & Offset-Verrundung (Filleting)
+## 4. Boolean Operations & Offset Filleting
 
-Alle Operationen auf `Shape2D` sind **kettenfähig (Fluent API)** und arbeiten über Clipper2 mit hoher numerischer Präzision:
+All operations on `Shape2D` are **chainable (Fluent API)** and use Clipper2 with high numerical precision:
 
 ```csharp
-// Boolesche Vereinigung (Union), Differenz (Löcher/Abzug) und Schnittmenge (Intersection)
+// Boolean union, difference (holes/cutouts), and intersection
 shape.BoolAdd(otherShape)
      .BoolSubtract(coolingHole)
      .BoolIntersect(boundingBoxShape);
 
-// Kontur nach außen (+d) oder innen (-d) versetzen (mit runden Ecken JoinType.Round)
+// Offset contour outward (+d) or inward (-d) (with rounded corners JoinType.Round)
 shape.Offset(1.5f);
 
-// Zweifacher Versatz (z. B. erst +2 mm schmelzen, dann -2 mm zurück = schließt Innenwinkel)
+// Double offset (e.g., expand +2 mm then shrink -2 mm = closes inner corners)
 shape.DoubleOffset(2.0f, -2.0f);
 
-// Dreifacher Versatz (+r, -2r, +r) analog zu PicoGKs TripleOffset:
-// Rundet gleichzeitig alle scharfen Innen- UND Außenkanten mit Radius r ab!
+// Triple offset (+r, -2r, +r) analogous to PicoGK's TripleOffset:
+// Simultaneously rounds both sharp inner AND outer corners with radius r!
 shape.TripleOffset(1.0f);
 ```
 
-> **Hinweis zu Löchern (`IsHole`):**  
-> Zieht man mit `BoolSubtract` eine Form vollständig im Inneren ab (oder entstehen durch verschränkte Streben geschlossene Hohlräume), verwaltet `Shape2D` diese inneren Schleifen automatisch über ihre Umlaufrichtung. Beim Export und beim Flächenmessen werden Löcher vollautomatisch berücksichtigt.
+> **Note on Holes (`IsHole`):**  
+> When subtracting a shape completely inside another with `BoolSubtract` (or when intersecting struts form enclosed cavities), `Shape2D` automatically tracks these inner loops via their winding direction. Export and area measurements account for holes automatically.
 
 ---
 
-## 5. Automatische Knickpunkterkennung (Wichtig für CFD-Grenzschichten!)
+## 5. Automatic Corner Detection (Critical for CFD Boundary Layers!)
 
-Eine besondere Stärke von `Shape2D` ist die eingebaute **Knickpunkterkennung (`DetectCorners` / `CornerAngleDeg`)**:
+A key strength of `Shape2D` is its built-in **corner detection (`DetectCorners` / `CornerAngleDeg`)**:
 
-- Tragflügelprofile haben oft eine glatte Nase, aber eine **spitze Hinterkante** (oder stumpfe Abrisskanten mit zwei ~90°-Ecken).
-- Wenn Gmsh an einer scharfen Ecke eine strukturierte Grenzschicht ($y^+ \approx 1$) extrudiert, würden sich die Normalen ohne Sonderbehandlung überschneiden oder einschnüren.
-- Beim Speichern mit `shape.SaveContour(path, cornerAngleDeg: 35.0f)` prüft `Shape2D` an jedem Stützpunkt den Richtungsänderungswinkel (Turn-Angle). Überschreitet er `cornerAngleDeg` (Standard: `35°`), wird der Punktindex in `CornerIndices` eingetragen.
-- **`Gmsh2DMesher` liest diese `CornerIndices` automatisch aus**, teilt die Spline dort sauber auf und aktiviert an diesen Knickpunkten Gmshs `FanPoints` (Fächer-Stützpunkte in der Grenzschicht) sowie die lokale Kantenverfeinerung (`EdgeRefinementFactor`).
+- Airfoils typically have a smooth nose but a **sharp trailing edge** (or blunt trailing edges with two ~90° corners).
+- When Gmsh extrudes a structured boundary layer ($y^+ \approx 1$) around a sharp corner, normals would intersect or pinch without special handling.
+- When saving via `shape.SaveContour(path, cornerAngleDeg: 35.0f)`, `Shape2D` checks the directional turn angle at every vertex. If it exceeds `cornerAngleDeg` (default: `35°`), the vertex index is recorded in `CornerIndices`.
+- **`Gmsh2DMesher` reads these `CornerIndices` automatically**, splits the spline cleanly at those vertices, and enables Gmsh's `FanPoints` (fanning points in the boundary layer) as well as local edge refinement (`EdgeRefinementFactor`).
 
 ---
 
-## 6. Vermessen & Exportieren im `IGeometryGenerator`
+## 6. Measuring & Exporting in `IGeometryGenerator`
 
-In einem 2D-Projekt (abgeleitet von [`Cfd2DProjectDefinition`](../../Composition/Cfd2DProjectDefinition.cs)) sieht die Rückgabe in `GenerateAndExport` wie folgt aus:
+In a 2D project (derived from [`Cfd2DProjectDefinition`](../../Composition/Cfd2DProjectDefinition.cs)), `GenerateAndExport` returns results as follows:
 
 ```csharp
-// 1. Kontur für Gmsh2DMesher als JSON speichern (inkl. Knickpunkte & Loch-Flags)
+// 1. Save contour for Gmsh2DMesher as JSON (including corner indices & hole flags)
 string contourPath = Path.Combine(outputDirectory, $"Model_Gen{iteration}_Var{variant}.json");
 shape.SaveContour(contourPath, cornerAngleDeg: 35.0f);
 
-// 2. Optional: SVG-Vektorgrafik zur visuellen Kontrolle speichern
-//    (Zeichnet die Kontur blau und markiert erkannte Knickpunkte als rote Punkte!)
+// 2. Optional: Save SVG vector graphic for visual inspection
+//    (Draws the contour in blue and highlights detected corners as red dots!)
 string svgPath = Path.Combine(outputDirectory, $"Model_Gen{iteration}_Var{variant}.svg");
 shape.SaveSvg(svgPath);
 
-// 3. Geometrie vermessen
+// 3. Measure geometry
 ContourMeasurement2D m = shape.Measure();
-// Verfügbare Eigenschaften auf 'm':
-//   m.Area       -> Nettofläche in mm² (MetricScaling.Area)
-//   m.Perimeter  -> Umfang in mm       (MetricScaling.Linear)
-//   m.Chord      -> Länge in X in mm   (MetricScaling.Linear)
-//   m.Thickness  -> Dicke in Y in mm   (MetricScaling.Linear)
+// Available properties on 'm':
+//   m.Area       -> Net area in mm² (MetricScaling.Area)
+//   m.Perimeter  -> Perimeter in mm  (MetricScaling.Linear)
+//   m.Chord      -> Length in X in mm (MetricScaling.Linear)
+//   m.Thickness  -> Thickness in Y in mm (MetricScaling.Linear)
 //   m.Bounds     -> BBox2 (Min, Max, Size, Center)
-//   m.PointCount -> Anzahl der Konturpunkte
+//   m.PointCount -> Number of contour points
 
-// 4. GeometryResult mit Kind = GeometryKind.Contour2D zurückgeben
+// 4. Return GeometryResult with Kind = GeometryKind.Contour2D
 var result = new GeometryResult
 {
-    StlPath = contourPath,          // Pfad zur .json-Konturdatei für Gmsh2DMesher
-    Kind = GeometryKind.Contour2D   // Kennzeichnet 2D-Kontur (keine 3D-STL-Glättung)
+    StlPath = contourPath,          // Path to .json contour file for Gmsh2DMesher
+    Kind = GeometryKind.Contour2D   // Marks 2D contour (skips 3D STL smoothing)
 };
 
 result.AddMetric("Area", m.Area, MetricScaling.Area);
 result.AddMetric("Perimeter", m.Perimeter, MetricScaling.Linear);
 result.AddMetric("Chord", m.Chord, MetricScaling.Linear);
 result.AddMetric("Thickness", m.Thickness, MetricScaling.Linear);
-// Für SU2 REF_AREA (in 2D ist die Bezugsfläche die Sehnenlänge × 1 m Tiefe):
+// For SU2 REF_AREA (in 2D, the reference area is chord length × 1 m span):
 result.AddMetric("FrontalArea", m.Chord, MetricScaling.Linear);
 
 return result;
@@ -161,6 +161,6 @@ return result;
 
 ---
 
-## 7. Zusammenspiel mit 3D-Projekten (`IHasRepresentativeSection`)
+## 7. Interaction with 3D Projects (`IHasRepresentativeSection`)
 
-Auch ein 3D-Projekt kann den `Planar2D`-Kernel nutzen (das mitgelieferte Beispiel dafür, ein 3D-NACA-Flügel, wurde am 08.11.2026 entfernt; die Funktion selbst ist im Test mit einem Stub abgedeckt), indem seine `IProjectDefinition` zusätzlich das Interface [`IHasRepresentativeSection`](../../Core/Interfaces/IHasRepresentativeSection.cs) implementiert und dort ein `Shape2D` seines charakteristischen Querschnitts zurückgibt. Ist in `simulation.json` unter `MeshCalibration` die Option `"Use2DPrecalibration": true` gesetzt, kalibriert das Framework die Netzfeinheit zuerst blitzschnell in 2D und bestätigt danach nur noch das Ergebnis in 3D.
+A 3D project can also leverage the `Planar2D` kernel by implementing [`IHasRepresentativeSection`](../../Core/Interfaces/IHasRepresentativeSection.cs) on its `IProjectDefinition` and returning a `Shape2D` of its characteristic cross-section. When `"Use2DPrecalibration": true` is set under `MeshCalibration` in `simulation.json`, the framework calibrates mesh fineness rapidly in 2D first and then confirms the result in 3D.

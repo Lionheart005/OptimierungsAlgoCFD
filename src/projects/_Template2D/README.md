@@ -1,20 +1,20 @@
-# `_Template2D` — 2D-Kopiervorlage für neue Profilprojekte
+# `_Template2D` — 2D Project Template
 
-> **Vollständige Schritt-für-Schritt-Anleitung zum Anlegen eines Projekts:** [`src/projects/README.md`](../README.md)  
-> **2D-Modellierungs-Handbuch (`Planar2D`-Kernel: `Shape2D`, `Lattice2D`):** [`src/FluidForge/Kernels/Planar2D/README.md`](../../FluidForge/Kernels/Planar2D/README.md)  
-> **Nachschlagewerk für alle JSON-Einstellungen (inkl. 2D-Vernetzungsoptionen):** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md)
+> **Step-by-step guide for creating a project:** [`src/projects/README.md`](../README.md)  
+> **2D Modeling Manual (`Planar2D` Kernel: `Shape2D`, `Lattice2D`):** [`src/FluidForge/Kernels/Planar2D/README.md`](../../FluidForge/Kernels/Planar2D/README.md)  
+> **Legacy JSON Reference (incl. 2D meshing options):** [`src/projects/BEDIENHANDBUCH.md`](../BEDIENHANDBUCH.md) *(currently in German)*
 
-Dieser Ordner ist **kein eigenständiges Projekt**, sondern die Kopiervorlage für zweidimensionale CFD-Optimierungen (`Shape2D` → `Gmsh2DMesher` → SU2 2D). Er wird über das Skript
+This folder is **not a standalone project**, but the template for 2D CFD optimizations (`Shape2D` → `Gmsh2DMesher` → SU2 2D). Copy it via:
 
 ```powershell
-.\scripts\new-project.ps1 MeinProfil -Template 2D
+.\scripts\new-project.ps1 MyAirfoil -Template 2D
 ```
 
-nach `src/projects/MeinProfil/` kopiert, wobei der Platzhalter `MyProject2D` überall automatisch ersetzt wird. Alle weiteren Schritte zum Anpassen von Kontur, Zielfunktion und Parametern sind zentral in [`src/projects/README.md`](../README.md) beschrieben.
+This copies the template to `src/projects/MyAirfoil/` and automatically replaces `MyProject2D` everywhere. All further steps for customizing the contour, fitness function, and parameters are documented in [`src/projects/README.md`](../README.md).
 
-## Besonderheiten von 2D-CFD-Projekten
+## 2D CFD Project Notes
 
-- **Direkter Geometrie-Kernel (`DirectGeometryKernel`):** Arbeitet direkt auf ebenen Vektorkonturen (`Shape2D`), ohne PicoGK-Voxelgitter und ohne Xvfb/OpenGL.
-- **2D-Netz (`Gmsh2DMesher`):** Erzeugt ein kreisförmiges Fernfeld mit strukturierter Quad-Grenzschicht ($y^+ \approx 1$), Kantenverfeinerung an Vorder-/Hinterkante, Detailbox und Nachlauf-Box.
-- **SU2 2D:** Berechnet 2D-RANS mit `Dimensions = 2` und einstellbarem (oder aktiv optimierbarem) Anstellwinkel `AngleOfAttackDeg`.
-- **Build & Test:** Wie `_Template3D` ist auch `_Template2D` vom Build des Hauptprogramms ausgeschlossen und wird stattdessen vom Testprojekt (`tests/FluidForge.Tests/`) compiliert und geprüft.
+- **Direct geometry kernel (`DirectGeometryKernel`):** Operates directly on planar vector contours (`Shape2D`) without PicoGK voxel grids and without Xvfb/OpenGL.
+- **2D mesh (`Gmsh2DMesher`):** Builds a circular farfield with a structured quad boundary layer ($y^+ \approx 1$), leading/trailing-edge refinement, detail box, and wake box.
+- **SU2 2D:** Solves 2D RANS with `Dimensions = 2` and a fixed or actively optimized angle of attack `AngleOfAttackDeg`.
+- **Build & test:** Like `_Template3D`, `_Template2D` is excluded from the main application build and compiled/tested by `tests/FluidForge.Tests/`.

@@ -11,7 +11,7 @@ namespace FluidForge.Tests
 {
     public class Planar2DKernelTests
     {
-        #region 1. Geometrie-Ergebnis & Rückwärtskompatibilität
+        #region 1. Geometry Result & Backwards Compatibility
 
         [Fact]
         public void GeometryResult_KindAndGeometryPath_AreBackwardsCompatible()
@@ -81,7 +81,7 @@ namespace FluidForge.Tests
 
         #endregion
 
-        #region 3. Boolesche Mengenoperationen
+        #region 3. Boolean Set Operations
 
         [Fact]
         public void AddCircle_ApproximatesPiR2AnalyticalArea()
@@ -91,7 +91,7 @@ namespace FluidForge.Tests
             var m = shape.Measure();
 
             float expectedArea = MathF.PI * r * r; // ~314.159
-            // 128 Segmente haben ~99.96% der echten Kreisfläche
+            // 128 segments give ~99.96% of the true circle area
             Assert.InRange(m.Area, expectedArea * 0.99f, expectedArea * 1.01f);
             Assert.InRange(m.Chord, 19.8f, 20.2f);
             Assert.InRange(m.Thickness, 19.8f, 20.2f);
@@ -100,7 +100,7 @@ namespace FluidForge.Tests
         [Fact]
         public void BoolAdd_TwoOverlappingSquares_MatchesAnalyticalUnionArea()
         {
-            // Quadrat 1: [0, 10] x [0, 10], Fläche = 100
+            // Square 1: [0, 10] x [0, 10], area = 100
             var s1 = new Shape2D().AddPolygon(new[]
             {
                 new Vector2(0f, 0f),
@@ -109,7 +109,7 @@ namespace FluidForge.Tests
                 new Vector2(0f, 10f)
             });
 
-            // Quadrat 2: [5, 15] x [0, 10], Fläche = 100
+            // Square 2: [5, 15] x [0, 10], area = 100
             var s2 = new Shape2D().AddPolygon(new[]
             {
                 new Vector2(5f, 0f),
@@ -118,7 +118,7 @@ namespace FluidForge.Tests
                 new Vector2(5f, 10f)
             });
 
-            // Überlappung ist [5, 10] x [0, 10] = 50. Vereinigung: 100 + 100 - 50 = 150.
+            // Overlap is [5, 10] x [0, 10] = 50. Union: 100 + 100 - 50 = 150.
             s1.BoolAdd(s2);
             var m = s1.Measure();
 
@@ -130,7 +130,7 @@ namespace FluidForge.Tests
         [Fact]
         public void BoolSubtract_SquareMinusCircle_CreatesHoleAndMatchesAnalyticalArea()
         {
-            // Quadrat: [-10, 10] x [-10, 10], Fläche = 400
+            // Square: [-10, 10] x [-10, 10], area = 400
             var square = new Shape2D().AddPolygon(new[]
             {
                 new Vector2(-10f, -10f),
@@ -139,7 +139,7 @@ namespace FluidForge.Tests
                 new Vector2(-10f, 10f)
             });
 
-            // Kreis: r = 5, Fläche = pi * 25 ~ 78.54
+            // Circle: r = 5, area = pi * 25 ~ 78.54
             var circle = new Shape2D().AddCircle(Vector2.Zero, 5f, segments: 64);
             float circleArea = circle.Measure().Area;
 
@@ -150,7 +150,7 @@ namespace FluidForge.Tests
             Assert.InRange(m.Area, expectedArea - 1f, expectedArea + 1f);
             Assert.Equal(20f, m.Chord, 0.1f);
             Assert.Equal(20f, m.Thickness, 0.1f);
-            // Muss 2 Konturen haben: Außenrand und Loch
+            // Must have 2 contours: outer boundary and hole
             Assert.Equal(2, square.Paths.Count);
         }
 
@@ -176,7 +176,7 @@ namespace FluidForge.Tests
             s1.BoolIntersect(s2);
             var m = s1.Measure();
 
-            // Schnittmenge: [5, 10] x [0, 10] = 50
+            // Intersection: [5, 10] x [0, 10] = 50
             Assert.Equal(50f, m.Area, 0.5f);
             Assert.Equal(5f, m.Chord, 0.1f);
             Assert.Equal(10f, m.Thickness, 0.1f);
@@ -184,12 +184,12 @@ namespace FluidForge.Tests
 
         #endregion
 
-        #region 4. Versatz (Offset, DoubleOffset, TripleOffset)
+        #region 4. Offset (Offset, DoubleOffset, TripleOffset)
 
         [Fact]
         public void Offset_SquareByRadius_MatchesAnalyticalExpandedArea()
         {
-            // Quadrat 20 x 20
+            // Square 20 x 20
             var shape = new Shape2D().AddPolygon(new[]
             {
                 new Vector2(0f, 0f),
@@ -199,7 +199,7 @@ namespace FluidForge.Tests
             });
 
             // Offset +r = 5 mm
-            // Analytische Fläche = 20^2 + 4 * (20 * 5) + pi * 5^2 = 400 + 400 + 78.54 = 878.54
+            // Analytical area = 20^2 + 4 * (20 * 5) + pi * 5^2 = 400 + 400 + 78.54 = 878.54
             shape.Offset(5f);
             var m = shape.Measure();
 
@@ -212,7 +212,7 @@ namespace FluidForge.Tests
         [Fact]
         public void TripleOffset_RoundsSquareCorners()
         {
-            // Quadrat 20 x 20
+            // Square 20 x 20
             var shape = new Shape2D().AddPolygon(new[]
             {
                 new Vector2(0f, 0f),
@@ -225,7 +225,7 @@ namespace FluidForge.Tests
             shape.TripleOffset(2.0f);
             var m = shape.Measure();
 
-            // TripleOffset rundet die 4 Ecken ab: Verliert 4 * (1 - pi/4) * r^2 = (4 - pi) * 4 ~ 3.43 mm²
+            // TripleOffset rounds the 4 corners: loses 4 * (1 - pi/4) * r^2 = (4 - pi) * 4 ~ 3.43 mm²
             float expectedArea = 400f - ((4f - MathF.PI) * 4f);
             Assert.InRange(m.Area, expectedArea * 0.98f, expectedArea * 1.02f);
             Assert.True(m.Area < originalArea);
@@ -233,19 +233,19 @@ namespace FluidForge.Tests
 
         #endregion
 
-        #region 5. Lattice2D (Kapsel und Konusbalken)
+        #region 5. Lattice2D (Capsule and Tapered Beam)
 
         [Fact]
         public void Lattice2D_AddBeam_EqualRadiiCapsule_MatchesAnalyticalArea()
         {
             var lattice = new Lattice2D();
-            // Kapsel von (0, 0) nach (20, 0) mit r = 5
+            // Capsule from (0, 0) to (20, 0) with r = 5
             lattice.AddBeam(new Vector2(0f, 0f), new Vector2(20f, 0f), 5f, 5f, capSegments: 64);
 
             var shape = new Shape2D(lattice);
             var m = shape.Measure();
 
-            // Analytisch: Rechteck 20 x 10 = 200 + zwei Halbkreise r=5 (pi * 25 ~ 78.54) = 278.54
+            // Analytical: rectangle 20 x 10 = 200 + two semicircles r=5 (pi * 25 ~ 78.54) = 278.54
             float expectedArea = 200f + (MathF.PI * 25f);
             Assert.InRange(m.Area, expectedArea * 0.99f, expectedArea * 1.01f);
             Assert.InRange(m.Chord, 29.8f, 30.2f);
@@ -256,17 +256,17 @@ namespace FluidForge.Tests
         public void Lattice2D_AddBeam_TaperedConeBeam_GeneratesValidShape()
         {
             var lattice = new Lattice2D();
-            // Konusbalken von (0, 0) mit r1 = 8 nach (30, 0) mit r2 = 2
+            // Tapered beam from (0, 0) with r1 = 8 to (30, 0) with r2 = 2
             float d = 30f, r1 = 8f, r2 = 2f;
             lattice.AddBeam(new Vector2(0f, 0f), new Vector2(d, 0f), r1, r2, capSegments: 64);
 
             var shape = new Shape2D(lattice);
             var m = shape.Measure();
 
-            // Exakte analytische Fläche:
-            // Zwei Tangenten-Trapeze = (r1 + r2) * sqrt(d^2 - (r1 - r2)^2)
-            // Plus Kreissektor r1 = 0.5 * r1^2 * (pi + 2*alpha)
-            // Plus Kreissektor r2 = 0.5 * r2^2 * (pi - 2*alpha)
+            // Exact analytical area:
+            // Two tangent trapezoids = (r1 + r2) * sqrt(d^2 - (r1 - r2)^2)
+            // Plus circular sector r1 = 0.5 * r1^2 * (pi + 2*alpha)
+            // Plus circular sector r2 = 0.5 * r2^2 * (pi - 2*alpha)
             float alpha = MathF.Asin((r1 - r2) / d);
             float lengthTangent = MathF.Sqrt((d * d) - ((r1 - r2) * (r1 - r2)));
             float expectedArea = ((r1 + r2) * lengthTangent)
@@ -274,9 +274,9 @@ namespace FluidForge.Tests
                 + (0.5f * r2 * r2 * (MathF.PI - (2f * alpha)));
 
             Assert.InRange(m.Area, expectedArea * 0.99f, expectedArea * 1.01f);
-            // Ausdehnung in X von -8 bis 32 -> Chord ~ 40
+            // X extent from -8 to 32 -> Chord ~ 40
             Assert.InRange(m.Chord, 39.5f, 40.5f);
-            // Maximale Dicke bei Kreis 1 (Durchmesser 16)
+            // Maximum thickness at circle 1 (diameter 16)
             Assert.InRange(m.Thickness, 15.5f, 16.5f);
         }
 
@@ -284,7 +284,7 @@ namespace FluidForge.Tests
         public void Lattice2D_AddBeam_DegenerateCase_ContainedCircleHandled()
         {
             var lattice = new Lattice2D();
-            // Kreis 1 bei (0, 0) r = 10, Kreis 2 bei (2, 0) r = 3 (Abstand 2 <= |10 - 3| = 7 -> Kreis 2 liegt komplett in Kreis 1)
+            // Circle 1 at (0, 0) r = 10, Circle 2 at (2, 0) r = 3 (distance 2 <= |10 - 3| = 7 -> Circle 2 is completely inside Circle 1)
             lattice.AddBeam(new Vector2(0f, 0f), new Vector2(2f, 0f), 10f, 3f);
 
             var shape = new Shape2D(lattice);
@@ -296,12 +296,12 @@ namespace FluidForge.Tests
 
         #endregion
 
-        #region 6. Spline, Knickpunkterkennung und Export (JSON/SVG)
+        #region 6. Spline, Corner Detection, and Export (JSON/SVG)
 
         [Fact]
         public void DetectCorners_TrailingEdgeDetected_AndCircleHasZeroCorners()
         {
-            // Glatter Kreis: keine Knickpunkte (> 35 Grad)
+            // Smooth circle: no corners (> 35 degrees)
             var circlePoints = new List<Vector2>();
             for (int i = 0; i < 64; i++)
             {
@@ -311,21 +311,21 @@ namespace FluidForge.Tests
             var circleCorners = Shape2D.DetectCorners(circlePoints, 35.0f);
             Assert.Empty(circleCorners);
 
-            // Tragflächenprofil mit spitzer Hinterkante bei (100, 0)
+            // Airfoil profile with sharp trailing edge at (100, 0)
             var airfoilPoints = new List<Vector2>
             {
-                new(100f, 0f),   // Index 0: Hinterkante
+                new(100f, 0f),   // Index 0: trailing edge
                 new(75f, -3f),
                 new(50f, -5f),
                 new(25f, -4f),
-                new(0f, 0f),     // Nasenleiste (rund)
+                new(0f, 0f),     // Leading edge (rounded)
                 new(25f, 6f),
                 new(50f, 8f),
                 new(75f, 5f)
             };
             var airfoilCorners = Shape2D.DetectCorners(airfoilPoints, 35.0f);
 
-            // Index 0 (Hinterkante) muss als scharfer Knickpunkt erkannt werden
+            // Index 0 (trailing edge) must be detected as a sharp corner
             Assert.Contains(0, airfoilCorners);
         }
 
@@ -358,7 +358,7 @@ namespace FluidForge.Tests
 
             try
             {
-                // Quadrat mit quadratischem Loch und 45° Dreieck
+                // Square with square hole and 90° corners
                 var shape = new Shape2D().AddPolygon(new[]
                 {
                     new Vector2(0f, 0f),
@@ -378,11 +378,11 @@ namespace FluidForge.Tests
 
                 float origArea = shape.Measure().Area; // 1600 - 400 = 1200
 
-                // 1. Speichern als JSON
+                // 1. Save as JSON
                 shape.SaveContour(jsonPath);
                 Assert.True(File.Exists(jsonPath));
 
-                // 2. Laden aus JSON DTO
+                // 2. Load from JSON DTO
                 var loadedDto = Shape2D.LoadContour(jsonPath);
                 Assert.Equal(2, loadedDto.Contours.Count);
 
@@ -391,18 +391,18 @@ namespace FluidForge.Tests
                 Assert.NotNull(outer);
                 Assert.NotNull(inner);
 
-                // Quadrat hat 4 Ecken mit 90° Turn
+                // Square has 4 corners with 90° turn
                 Assert.Equal(4, outer.CornerIndices.Count);
                 Assert.Equal(4, inner.CornerIndices.Count);
 
-                // 3. Rekonstruktion als Shape2D
+                // 3. Reconstruct as Shape2D
                 var restoredShape = Shape2D.FromContourFile(jsonPath);
                 var restoredM = restoredShape.Measure();
                 Assert.Equal(origArea, restoredM.Area, 0.5f);
                 Assert.Equal(40f, restoredM.Chord, 0.1f);
                 Assert.Equal(40f, restoredM.Thickness, 0.1f);
 
-                // 4. Speichern als SVG
+                // 4. Save as SVG
                 shape.SaveSvg(svgPath);
                 Assert.True(File.Exists(svgPath));
 
@@ -410,7 +410,7 @@ namespace FluidForge.Tests
                 Assert.Contains("<svg", svgContent);
                 Assert.Contains("viewBox=", svgContent);
                 Assert.Contains("<path", svgContent);
-                Assert.Contains("<circle", svgContent); // Markierte Knickpunkte
+                Assert.Contains("<circle", svgContent); // Marked corners
                 Assert.Contains("</svg>", svgContent);
             }
             finally

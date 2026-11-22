@@ -8,8 +8,8 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für die einfache IDW-Interpolations-Baseline (<see cref="IdwBaselineAlgorithm"/>)
-    /// mit bekannten Stützstellen und injizierbarer Zufallsquelle.
+    /// Tests for the simple IDW interpolation baseline (<see cref="IdwBaselineAlgorithm"/>)
+    /// with known support points and an injectable random source.
     /// </summary>
     public class IdwBaselineAlgorithmTests
     {
@@ -30,7 +30,7 @@ namespace FluidForge.Tests
 
         private static Dictionary<string, float> At(float length) => new() { { "Length", length } };
 
-        /// <summary>Auf einer Stützstelle liefert die IDW-Interpolation exakt deren Fitness.</summary>
+        /// <summary>At a support point, IDW interpolation returns its exact fitness.</summary>
         [Fact]
         public void On_A_Support_Point_The_Surrogate_Returns_Its_Exact_Fitness()
         {
@@ -40,7 +40,7 @@ namespace FluidForge.Tests
             Assert.Equal(1f, Predict(At(90f), samples), 4);
         }
 
-        /// <summary>Genau in der Mitte zweier Stützstellen ist das IDW-Mittel das arithmetische.</summary>
+        /// <summary>Exactly halfway between two support points, the IDW mean is the arithmetic mean.</summary>
         [Fact]
         public void Exactly_Between_Two_Points_The_Estimate_Is_Their_Average()
         {
@@ -49,7 +49,7 @@ namespace FluidForge.Tests
             Assert.Equal(5f, Predict(At(40f), samples), 3);
         }
 
-        /// <summary>Näher an der besseren Stützstelle heißt näher an deren Wert.</summary>
+        /// <summary>Closer to the better support point means closer to its value.</summary>
         [Fact]
         public void The_Estimate_Follows_The_Nearer_Support_Point()
         {
@@ -58,14 +58,14 @@ namespace FluidForge.Tests
             float nearZero = Predict(At(10f), samples);
             float nearHundred = Predict(At(90f), samples);
 
-            Assert.True(nearZero < 50f, $"Erwartet < 50, war {nearZero}");
-            Assert.True(nearHundred > 50f, $"Erwartet > 50, war {nearHundred}");
+            Assert.True(nearZero < 50f, $"Expected < 50, was {nearZero}");
+            Assert.True(nearHundred > 50f, $"Expected > 50, was {nearHundred}");
             Assert.InRange(nearZero, 0f, 100f);
         }
 
         /// <summary>
-        /// Ein höherer IDW-Exponent gewichtet die Nachbarschaft stärker — die Schätzung
-        /// rückt näher an die nächstgelegene Stützstelle.
+        /// A higher IDW exponent weights the neighborhood more strongly — the estimate
+        /// moves closer to the nearest support point.
         /// </summary>
         [Fact]
         public void A_Higher_Idw_Power_Weights_The_Nearest_Point_More()
@@ -75,10 +75,10 @@ namespace FluidForge.Tests
             float soft = Predict(At(25f), samples, power: 1.0f);
             float sharp = Predict(At(25f), samples, power: 6.0f);
 
-            Assert.True(sharp < soft, $"Erwartet schärfer (kleiner): sharp={sharp}, soft={soft}");
+            Assert.True(sharp < soft, $"Expected sharper (smaller): sharp={sharp}, soft={soft}");
         }
 
-        /// <summary>Ohne Stützstellen gibt es nichts zu schätzen — 0 statt Division durch 0.</summary>
+        /// <summary>Without support points there is nothing to estimate — 0 instead of division by 0.</summary>
         [Fact]
         public void Without_Samples_The_Estimate_Is_Zero()
         {
@@ -86,8 +86,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Solange zu wenige gelungene Simulationen vorliegen, baut die IDW-Baseline
-        /// kein Ersatzmodell und stellt keine Kandidaten in die Warteschlange.
+        /// As long as too few successful simulations exist, the IDW baseline builds
+        /// no surrogate model and queues no candidates.
         /// </summary>
         [Fact]
         public void Below_The_Doe_Minimum_No_Candidates_Are_Queued()
@@ -102,8 +102,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Ab genügend Stützstellen füllt die IDW-Baseline die Warteschlange mit genau
-        /// VariantsPerIteration Kandidaten — die dann der Reihe nach ausgegeben werden.
+        /// Once enough support points exist, the IDW baseline fills the queue with exactly
+        /// VariantsPerIteration candidates — which are then handed out sequentially.
         /// </summary>
         [Fact]
         public void With_Enough_Samples_The_Queue_Holds_One_Candidate_Per_Variant()
@@ -126,8 +126,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die vorgeschlagenen Kandidaten liegen in der Nähe des bekannten Optimums,
-        /// nicht gleichverteilt über den Raum. Stützstellen mit Maximum bei 80.
+        /// Proposed candidates lie near the known optimum rather than uniformly
+        /// across the space. Support points with maximum at 80.
         /// </summary>
         [Fact]
         public void Proposed_Candidates_Cluster_Around_The_Known_Optimum()
@@ -148,8 +148,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Fehlgeschlagene Simulationen sind keine Stützstellen und zählen nicht für die
-        /// Mindestanzahl.
+        /// Failed simulations are not support points and do not count towards the
+        /// minimum count.
         /// </summary>
         [Fact]
         public void Failed_Simulations_Are_Not_Support_Points()
@@ -164,8 +164,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Fehlende ParameterBounds-Einträge dürfen weder in PredictFitnessSurrogate noch in
-        /// PrepareNextIteration/GenerateParameters eine KeyNotFoundException auslösen.
+        /// Missing ParameterBounds entries must not throw a KeyNotFoundException in
+        /// PredictFitnessSurrogate or in PrepareNextIteration/GenerateParameters.
         /// </summary>
         [Fact]
         public void Missing_ParameterBounds_Use_Fallback_Without_Throwing()

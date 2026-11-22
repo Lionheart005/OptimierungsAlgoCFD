@@ -3,48 +3,48 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Steuerung des Vertrauensbereichs nach dem Vorbild von TuRBO (TODO-57, F21): Bei vielen
-    /// Parametern sucht der Bayes-Optimierer nicht im ganzen Raum, sondern in einem Würfel um den
-    /// besten Punkt. Der Würfel wächst nach Erfolgen und schrumpft nach Misserfolgen. Fällt er unter
-    /// das Minimum, beginnt die Suche an einer neuen Stelle.
+    /// TuRBO-style trust region state: in high dimensions, the Bayesian optimizer searches
+    /// within an axis-aligned box around the best point rather than the full space. The box
+    /// expands on consecutive successes and shrinks on consecutive failures; once below the
+    /// minimum size, search restarts at a new location.
     /// </summary>
     public sealed class TrustRegionState
     {
-        /// <summary>Ab so vielen freien Parametern schaltet sich der Vertrauensbereich bei "Auto" zu.</summary>
+        /// <summary>Minimum number of free parameters to activate trust region in "Auto" mode.</summary>
         public const int AutoThreshold = 10;
 
         public const double InitialLength = 0.8;
         public const double MaximumLength = 1.6;
-        /// <summary>0,5⁷: nach sieben Halbierungen ist der Bereich ausgereizt.</summary>
+        /// <summary>0.5⁷: after seven halvings, the trust region is exhausted.</summary>
         public static readonly double MinimumLength = Math.Pow(0.5, 7);
 
-        /// <summary>Erfolge in Folge, nach denen die Seitenlänge verdoppelt wird.</summary>
+        /// <summary>Consecutive successes required to double the side length.</summary>
         public const int SuccessTolerance = 3;
 
         private int _successes;
         private int _failures;
 
-        /// <param name="freeDimensions">Anzahl der freien Parameter.</param>
-        /// <param name="variantsPerIteration">Varianten je Iteration (V).</param>
+        /// <param name="freeDimensions">Number of free parameters.</param>
+        /// <param name="variantsPerIteration">Variants per iteration (V).</param>
         public TrustRegionState(int freeDimensions, int variantsPerIteration)
         {
             int v = Math.Max(1, variantsPerIteration);
             FailureTolerance = (int)Math.Ceiling(Math.Max(4.0 / v, freeDimensions / (double)v));
         }
 
-        /// <summary>Aktuelle Seitenlänge L (im Einheitswürfel).</summary>
+        /// <summary>Current side length L (in unit-cube coordinates).</summary>
         public double Length { get; private set; } = InitialLength;
 
-        /// <summary>Misserfolge in Folge, nach denen L halbiert wird: ⌈max(4/V, d/V)⌉.</summary>
+        /// <summary>Consecutive failures required to halve L: ⌈max(4/V, d/V)⌉.</summary>
         public int FailureTolerance { get; }
 
         public int Successes => _successes;
         public int Failures => _failures;
 
-        /// <summary>Ist der Bereich so klein geworden, dass ein Neustart an anderer Stelle sinnvoll ist?</summary>
+        /// <summary>Whether the region has shrunk enough to trigger a restart elsewhere.</summary>
         public bool NeedsRestart => Length < MinimumLength;
 
-        /// <summary>Bei "Auto" ab <see cref="AutoThreshold"/> freien Parametern aktiv, sonst "On" oder "Off".</summary>
+        /// <summary>Active in "Auto" mode starting at <see cref="AutoThreshold"/> free parameters, or via "On"/"Off".</summary>
         public static bool IsActive(string? setting, int freeDimensions)
         {
             switch ((setting ?? "Auto").Trim().ToLowerInvariant())
@@ -56,8 +56,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Meldet das Ergebnis einer Runde. Drei Erfolge in Folge verdoppeln L (höchstens
-        /// <see cref="MaximumLength"/>), <see cref="FailureTolerance"/> Misserfolge in Folge halbieren es.
+        /// Records the outcome of a round. Three consecutive successes double L (up to
+        /// <see cref="MaximumLength"/>); <see cref="FailureTolerance"/> consecutive failures halve it.
         /// </summary>
         public void Register(bool success)
         {
@@ -83,7 +83,7 @@ namespace FluidForge.Core
             }
         }
 
-        /// <summary>Neustart an anderer Stelle: L zurück auf den Anfangswert, Zähler leer.</summary>
+        /// <summary>Restarts at a new location: resets L to initial length and clears counters.</summary>
         public void Restart()
         {
             Length = InitialLength;

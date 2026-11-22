@@ -4,11 +4,9 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Skaliert Geometrie-Parameter auf PicoGK-Arbeitsgröße und zurück.
-    /// 
-    /// BUG-FIX: Skaliert jetzt NUR dimensionsbehaftete Parameter (mm).
-    /// Dimensionslose Parameter wie TailTaper werden NICHT mehr skaliert.
-    /// Die Info, welche Parameter dimensional sind, kommt aus der ProjectConfig.
+    /// Scales geometry parameters to the kernel's working size and restores output metrics.
+    /// Scales ONLY dimensional parameters (mm); dimensionless parameters (e.g., TailTaper)
+    /// are passed through unchanged based on <see cref="ProjectConfig.DimensionalParameters"/>.
     /// </summary>
     public class RubberBandScaler
     {
@@ -16,8 +14,8 @@ namespace FluidForge.Core
         public Dictionary<string, float> ShrunkParameters { get; private set; }
 
         /// <summary>
-        /// Erzeugt je nach Schalter einen echten oder einen neutralen Scaler. Dadurch braucht
-        /// der Aufrufer kein <c>if</c> — der Aus-Fall ist einfach die Identität.
+        /// Creates an active or neutral scaler depending on <paramref name="enabled"/>,
+        /// so callers do not need conditional branching.
         /// </summary>
         public static RubberBandScaler Create(
             bool enabled,
@@ -31,8 +29,7 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Neutraler Scaler: ShrinkFactor 1.0, Parameter unverändert, alle Restore-Methoden
-        /// sind die Identität (weil sie mit 1/1 potenziert multiplizieren).
+        /// Neutral scaler: ShrinkFactor 1.0, parameters unchanged, all Restore methods act as identity.
         /// </summary>
         public static RubberBandScaler CreateNeutral(Dictionary<string, float> realParameters)
             => new RubberBandScaler(realParameters);
@@ -44,17 +41,17 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Erstellt einen neuen Scaler mit expliziter Liste dimensionaler Parameter.
+        /// Creates a scaler with an explicit set of dimensional parameter names.
         /// </summary>
-        /// <param name="realParameters">Die echten Parameter in mm.</param>
-        /// <param name="dimensionalParameters">Parameter die Längen-Dimensionen haben und skaliert werden sollen.</param>
-        /// <param name="targetSize">Zielgröße für PicoGK in mm.</param>
+        /// <param name="realParameters">Physical parameters in mm.</param>
+        /// <param name="dimensionalParameters">Parameter names with length units to scale.</param>
+        /// <param name="targetSize">Target kernel working size in mm.</param>
         public RubberBandScaler(
             Dictionary<string, float> realParameters, 
             HashSet<string> dimensionalParameters,
             float targetSize = 20.0f)
         {
-            // ShrinkFactor basiert nur auf dimensionalen Parametern
+            // ShrinkFactor is based solely on dimensional parameters
             float maxDimension = 0f;
             foreach (var kvp in realParameters)
             {
@@ -66,7 +63,7 @@ namespace FluidForge.Core
 
             ShrinkFactor = maxDimension > 0f ? targetSize / maxDimension : 1.0f;
 
-            // Nur dimensionale Parameter skalieren, Rest unverändert durchreichen
+            // Scale dimensional parameters only; pass dimensionless ones through unchanged
             ShrunkParameters = new Dictionary<string, float>();
             foreach (var kvp in realParameters)
             {
@@ -76,7 +73,7 @@ namespace FluidForge.Core
                 }
                 else
                 {
-                    ShrunkParameters.Add(kvp.Key, kvp.Value); // Dimensionslos → unverändert!
+                    ShrunkParameters.Add(kvp.Key, kvp.Value); // Dimensionless -> unchanged
                 }
             }
         }
@@ -97,4 +94,3 @@ namespace FluidForge.Core
         }
     }
 }
-

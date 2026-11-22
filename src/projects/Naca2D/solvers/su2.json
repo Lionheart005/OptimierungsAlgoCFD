@@ -1,30 +1,30 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  Naca2D -- SU2-Solver (2D)
+  //  Naca2D -- SU2 Solver (2D)
   // ===================================================================
   //
-  // 2D-CFD-Strömungslöser für NACA-Profile (TODO-47).
-  // Randbedingungen (Fernfeld und Wall) und inkompressible RANS (SA)
-  // werden automatisch in 2D erzeugt: Solvers/Cfd/Su2ConfigGenerator.cs
+  // 2D CFD flow solver for NACA airfoils.
+  // Boundary conditions (Farfield and Wall) and incompressible RANS (SA)
+  // are generated automatically in 2D: Solvers/Cfd/Su2ConfigGenerator.cs.
 
-  // --- Fluideigenschaften (Luft auf Meereshöhe, ISA 15 °C) ---
+  // --- Fluid properties (air at sea level, ISA 15 deg C) ---
   "Density": 1.225,
   "DynamicViscosity": 1.81e-5,
   "TurbulenceModel": "SA",
   "SpeedOfSound": 343.2,
   "FreestreamVelocity": 51.48,
 
-  // --- Dimension & Anstellwinkel (TODO-46/47) ---
+  // --- Dimension & angle of attack ---
   "Dimensions": 2,
   "AngleOfAttackDeg": 5.0,
 
-  // --- Referenzwerte ---
-  // In 2D entspricht die Bezugsfläche der Sehnenlänge (REF_AREA = c * 1 m).
+  // --- Reference values ---
+  // In 2D, the reference area equals the chord length (REF_AREA = c * 1 m).
   "ReferenceLength": 0.05,
   "ReferenceAreaMetric": "Chord",
 
-  // --- Ergebnisgrößen: welche Zahl kommt unter welchem Namen an? ---
+  // --- Result metrics: how SU2 columns map to PassiveParameters ---
   "ResultMetrics": {
     "Drag": "CD",
     "Lift": "CL"
@@ -32,16 +32,16 @@
 
   "ConvergenceField": "DRAG",
 
-  // Nicht auskonvergierte Rechnungen (Drift im Endfenster zu gross) duerfen nicht in die Optimierung (TODO-W3).
-  // AutoRestartOnDrift setzt bei fruehem Cauchy-Stopp mit Rest-Drift automatisch per RESTART_SOL fort.
-  // Ergebnis ist das Mittel des Endfensters, nicht der letzte Iterationsschritt.
+  // Unconverged runs (excessive tail-window drift) must not enter optimization.
+  // AutoRestartOnDrift continues automatically via RESTART_SOL on early Cauchy stops with drift.
+  // Result is averaged over the tail window rather than taking the final iteration.
   "TreatUnconvergedAsFailed": true,
   "AutoRestartOnDrift": true,
   "MaxConvergenceRestarts": 3,
   "ResultAveraging": "TailMean",
   "HistoryOutput": [ "ITER", "RMS_RES", "AERO_COEFF" ],
 
-  // --- CFL-Steuerung ---
+  // --- CFL control ---
   "CflNumber": 5.0,
   "CflAdapt": true,
   "CflAdaptFactorDown": 0.5,
@@ -49,7 +49,7 @@
   "CflAdaptMin": 1.0,
   "CflAdaptMax": 50.0,
 
-  // --- y+-Ziel, Grenzschicht- und Schwingungsprüfung ---
+  // --- y+ target, boundary layer, and oscillation check ---
   "TargetYPlus": 1.0,
   "YPlusWarnFactor": 3.0,
   "OscillationWarnLimit": 0.05

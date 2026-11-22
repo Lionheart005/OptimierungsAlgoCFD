@@ -11,41 +11,42 @@ using FluidForge.Core;
 namespace FluidForge.Composition
 {
     /// <summary>
-    /// Fragt die Versionen der externen Programme ab, für den Fahrtenschreiber
-    /// <c>run-info.json</c> (TODO-50). Liegt in <c>Composition</c>, weil es Solver und Kernel
-    /// beim Namen kennt — <c>Core</c> darf das nicht.
+    /// Queries the versions of external tools for the flight recorder
+    /// <c>run-info.json</c> (TODO-50). Lives in <c>Composition</c> because it knows solvers
+    /// and kernels by name — <c>Core</c> must not depend on them.
     ///
     /// <para>
-    /// <b>Ein fehlendes oder stummes Programm bricht nie den Lauf ab.</b> Jeder Aufruf hat eine
-    /// Zeitgrenze und ist in <c>try/catch</c>; was nicht klappt, steht als
-    /// <see cref="Unknown"/> da.
+    /// <b>A missing or unresponsive program never aborts the run.</b> Every invocation has a
+    /// timeout and is wrapped in <c>try/catch</c>; anything that fails is recorded as
+    /// <see cref="Unknown"/>.
     /// </para>
     /// </summary>
     public static class ToolVersionProbe
     {
-        public const string Unknown = "unbekannt";
+        public const string Unknown = "unknown";
 
-        /// <summary>Zeitgrenze je Programmaufruf.</summary>
+        /// <summary>Timeout per tool invocation.</summary>
         public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(20);
 
         private static readonly Regex AnyVersion = new Regex(@"(\d+\.\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
-        // SU2 kennt keinen verlässlichen Versionsschalter. Ohne Argumente gibt es das Banner aus
-        // ("SU2 v7.5.1 \"Blackbird\"") und beschwert sich dann über die fehlende cfg-Datei.
+        // SU2 has no reliable version flag. With no arguments it prints its banner
+        // ("SU2 v7.5.1 \"Blackbird\"") and then complains about the missing cfg file.
         private static readonly Regex Su2Version = new Regex(@"SU2.*?v?(\d+\.\d+\.\d+)", RegexOptions.Compiled);
 
-        // Welche MPI-Variante hinter MpiRunPath steckt. Das offizielle SU2-Binary ist mit MPICH gebaut; unter
-        // OpenMPI startet "-n 12" zwölf unabhängige serielle Kopien, die sich gegenseitig die Dateien überschreiben
-        // (Servertest 06.11.2026) -- ohne jede Fehlermeldung.
+        // Identifies which MPI flavor is behind MpiRunPath. The official SU2 binary is built with MPICH;
+        // under OpenMPI "-n 12" launches twelve independent serial copies that overwrite each other's files
+        // (server test 06.11.2026) -- without any error message.
         private static readonly Regex MpiFlavor = new Regex(@"(Open MPI|OpenRTE|PRRTE|HYDRA|MPICH)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public const string OpenMpi = "OpenMPI";
         public const string Mpich = "MPICH";
 
-        /// <summary>Name → Version für alle Programme des Laufs.</summary>
+        /// <summary>Maps tool name to version for all tools used in the run.</summary>
         public static Dictionary<string, string> Probe(SimulationConfig config)
         {
-            // Dieselbe Auflösung wie beim Rechnen (Tilde, MPICH-Environment, Fallbacks), sonst würde etwas anderes geprüft als gestartet.
+            // Uses the exact same resolution as execution (tilde, MPICH environment, fallbacks),
+            // otherwise a different binary might be probed than actually launched.
             string mpi = ExecutableResolver.Resolve(config.MpiRunPath, "mpi", TextWriter.Null);
 
             return new Dictionary<string, string>
@@ -53,12 +54,12 @@ namespace FluidForge.Composition
                 ["SU2"] = Query(config.Su2Path, "", Su2Version, DefaultTimeout),
                 ["Gmsh"] = Query(config.GmshPath, "--version", AnyVersion, DefaultTimeout),
                 ["mpirun"] = Query(mpi, "--version", AnyVersion, DefaultTimeout),
-                ["MPI-Variante"] = MpiVariant(mpi),
+                ["MPI-Variant"] = MpiVariant(mpi),
                 ["PicoGK"] = PicoGkVersion()
             };
         }
 
-        /// <summary>"OpenMPI", "MPICH" oder <see cref="Unknown"/>.</summary>
+        /// <summary>"OpenMPI", "MPICH", or <see cref="Unknown"/>.</summary>
         public static string MpiVariant(string? mpiRunPath)
         {
             string found = Query(mpiRunPath, "--version", MpiFlavor, DefaultTimeout);
@@ -69,20 +70,20 @@ namespace FluidForge.Composition
                 : Mpich;
         }
 
-        /// <summary>Meldungstext, wenn die MPI-Variante nicht zum SU2-Binary passt; sonst <c>null</c>.</summary>
+        /// <summary>Warning message if the MPI variant does not match the SU2 binary; otherwise <c>null</c>.</summary>
         public static string? MpiWarning(IReadOnlyDictionary<string, string> versions, string mpiRunPath)
         {
-            if (!versions.TryGetValue("MPI-Variante", out string? variant) || variant != OpenMpi) return null;
+            if (!versions.TryGetValue("MPI-Variant", out string? variant) || variant != OpenMpi) return null;
 
-            return $"MpiRunPath '{mpiRunPath}' ist OpenMPI. Das offizielle SU2-Binary ist mit MPICH gebaut: unter OpenMPI läuft "
-                   + "jeder Rechenkern als eigene serielle Kopie und überschreibt die Dateien der anderen. Die Ergebnisse "
-                   + "wären unbrauchbar. In simulation.json 'MpiRunPath' auf das mpiexec des MPICH-Environments setzen "
-                   + "(Server: ~/miniconda/envs/mpich/bin/mpiexec, Einrichtung siehe scripts/README.md).";
+            return $"MpiRunPath '{mpiRunPath}' is OpenMPI. The official SU2 binary is built with MPICH: under OpenMPI "
+                   + "each compute rank runs as a separate serial copy and overwrites the other ranks' files. Results "
+                   + "would be unusable. Set 'MpiRunPath' in simulation.json to the MPICH environment's mpiexec "
+                   + "(server: ~/miniconda/envs/mpich/bin/mpiexec, see scripts/README.md for setup).";
         }
 
         /// <summary>
-        /// Startet <paramref name="program"/> mit <paramref name="arguments"/> in einem leeren
-        /// Temp-Ordner und sucht in stdout und stderr nach <paramref name="pattern"/> (erste Gruppe).
+        /// Launches <paramref name="program"/> with <paramref name="arguments"/> in an empty temp
+        /// directory and searches stdout and stderr for <paramref name="pattern"/> (first capture group).
         /// </summary>
         public static string Query(string? program, string arguments, Regex pattern, TimeSpan timeout)
         {
@@ -92,8 +93,8 @@ namespace FluidForge.Composition
 
             try
             {
-                // Eigener, leerer Arbeitsordner: SU2 ohne Argumente sucht eine default.cfg im
-                // aktuellen Ordner — die soll es dort sicher nicht finden.
+                // Dedicated empty working directory: SU2 without arguments looks for a default.cfg
+                // in the current directory — ensure it never finds one there.
                 Directory.CreateDirectory(sandbox);
 
                 using var process = new Process

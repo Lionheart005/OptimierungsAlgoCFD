@@ -11,8 +11,8 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für TODO-42 (Netzkalibrierung, CalibrationEvaluator, MeshCalibration)
-    /// und TODO-43 (Feine Nachrechnung der Gewinner, ChampionFineVerifier).
+    /// Tests for TODO-42 (Mesh calibration, CalibrationEvaluator, MeshCalibration)
+    /// and TODO-43 (Fine verification of winners, ChampionFineVerifier).
     /// </summary>
     public class CalibrationAndVerificationTests : IDisposable
     {
@@ -37,11 +37,11 @@ namespace FluidForge.Tests
         [Fact]
         public void EvaluateCalibration_MonotonicConvergence_SelectsCoarsestWithinTolerance()
         {
-            // Referenzstufe f=0.5: Cd = 0.0400, Cl = 0.4800
-            // Stufe f=0.71: Cd = 0.04005 (0.125 % Abweichung), Cl = 0.4802 (0.042 % Abweichung)
-            // Stufe f=1.0:  Cd = 0.0402  (0.50 % Abweichung),  Cl = 0.4810 (0.208 % Abweichung) -> innerhalb 2 %!
-            // Stufe f=1.41: Cd = 0.0410  (2.50 % Abweichung) -> über 2 % Toleranz!
-            // Stufe f=2.0:  Cd = 0.0500  (25.0 % Abweichung)
+            // Reference stage f=0.5: Cd = 0.0400, Cl = 0.4800
+            // Stage f=0.71: Cd = 0.04005 (0.125% deviation), Cl = 0.4802 (0.042% deviation)
+            // Stage f=1.0:  Cd = 0.0402  (0.50% deviation),  Cl = 0.4810 (0.208% deviation) -> within 2%!
+            // Stage f=1.41: Cd = 0.0410  (2.50% deviation) -> above 2% tolerance!
+            // Stage f=2.0:  Cd = 0.0500  (25.0% deviation)
             var stages = new List<CalibrationStageData>
             {
                 new(0, 2.0f,  10000, 10.0, new Dictionary<string, float> { ["Cd"] = 0.0500f, ["Cl"] = 0.5000f }, 10f, true, 0.9f, true),
@@ -55,7 +55,7 @@ namespace FluidForge.Tests
 
             Assert.True(decision.Success, decision.SummaryMessage);
             Assert.NotNull(decision.SelectedStage);
-            // Stufe 1.0f ist die gröbste Stufe, deren relative Abweichung für alle Metriken <= 2 % ist
+            // Stage 1.0f is the coarsest stage whose relative deviation for all metrics is <= 2%
             Assert.Equal(1.0f, decision.SelectedStage!.Factor);
             Assert.NotNull(decision.Gci);
             Assert.True(decision.Gci!.IsMonotonic);
@@ -65,12 +65,12 @@ namespace FluidForge.Tests
         [Fact]
         public void EvaluateCalibration_OscillatingSequence_SetsWarning()
         {
-            // Oszillierende Folge für die feinsten Stufen:
-            // Stufe 1.0: Cd = 0.0410
-            // Stufe 0.71: Cd = 0.0390
-            // Stufe 0.5: Cd = 0.0400
+            // Oscillating sequence for the finest stages:
+            // Stage 1.0: Cd = 0.0410
+            // Stage 0.71: Cd = 0.0390
+            // Stage 0.5: Cd = 0.0400
             // eps_32 = 0.0410 - 0.0390 = +0.0020
-            // eps_21 = 0.0390 - 0.0400 = -0.0010 -> eps_32 * eps_21 < 0 (Vorzeichenwechsel)
+            // eps_21 = 0.0390 - 0.0400 = -0.0010 -> eps_32 * eps_21 < 0 (sign change)
             var stages = new List<CalibrationStageData>
             {
                 new(0, 2.0f,  10000, 10.0, new Dictionary<string, float> { ["Cd"] = 0.0500f }, 10f, true, 0.9f, true),
@@ -85,19 +85,19 @@ namespace FluidForge.Tests
             Assert.NotNull(decision.Gci);
             Assert.False(decision.Gci!.IsMonotonic);
             Assert.NotNull(decision.Gci.Warning);
-            Assert.Contains("nicht monoton", decision.Gci.Warning);
+            Assert.Contains("not monotonic", decision.Gci.Warning);
         }
 
         [Fact]
         public void EvaluateCalibration_ToleranceNotReached_ReturnsFailure()
         {
-            // Alle Stufen (außer Referenz) weichen mehr als 1 % ab
+            // All stages (except reference) deviate by more than 2%
             var stages = new List<CalibrationStageData>
             {
                 new(0, 2.0f,  10000, 10.0, new Dictionary<string, float> { ["Cd"] = 0.0500f }, 10f, true, 0.9f, true),
                 new(1, 1.41f, 25000, 25.0, new Dictionary<string, float> { ["Cd"] = 0.0450f }, 12f, true, 0.9f, true),
                 new(2, 1.0f,  70000, 60.0, new Dictionary<string, float> { ["Cd"] = 0.0430f }, 15f, true, 0.9f, true),
-                new(3, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.0415f }, 16f, true, 0.9f, true), // 3.75 % Abweichung
+                new(3, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.0415f }, 16f, true, 0.9f, true), // 3.75% deviation
                 new(4, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.2f, true, 0.9f, true),
             };
 
@@ -107,14 +107,14 @@ namespace FluidForge.Tests
             Assert.Null(decision.SelectedStage);
             Assert.NotNull(decision.FallbackStage);
             Assert.Equal(0.71f, decision.FallbackStage!.Factor);
-            Assert.Contains("Keine Grobstufe erreicht die Toleranz", decision.SummaryMessage);
+            Assert.Contains("No coarse level achieves", decision.SummaryMessage);
         }
 
         [Fact]
         public void EvaluateConfirmation3D_ToleranceNotReached_ReturnsFallbackStage()
         {
-            // B15b: In 3D-Bestätigung (fCoarse=0.71, fMed=0.50, fFine=0.35):
-            // wenn weder fCoarse noch fMed die Toleranz halten, liefert FallbackStage die Stufe fMed
+            // B15b: In 3D confirmation (fCoarse=0.71, fMed=0.50, fFine=0.35):
+            // if neither fCoarse nor fMed holds tolerance, FallbackStage returns stage fMed
             var stages3D = new List<CalibrationStageData>
             {
                 new(1, 0.71f, 50000, 30.0, new Dictionary<string, float> { ["Cd"] = 0.0600f }, 10f, true, 1.2f, true),
@@ -134,8 +134,8 @@ namespace FluidForge.Tests
         [Fact]
         public void EvaluateCalibration_UnconvergedExtraStage_RecoversLastValidReference()
         {
-            // B15a/b: Wenn eine Zusatzstufe (0.25f) nicht konvergiert ist, aber Stufe 6 (0.35f) gültig ist,
-            // wird Stufe 6 als Referenzstufe genutzt.
+            // B15a/b: If an extra stage (0.25f) did not converge, but stage 6 (0.35f) is valid,
+            // stage 6 is used as the reference stage.
             var stages = new List<CalibrationStageData>
             {
                 new(1, 2.00f, 10000, 10.0, new Dictionary<string, float> { ["Cd"] = 0.0500f }, 10f, true, 0.9f, true),
@@ -144,12 +144,12 @@ namespace FluidForge.Tests
                 new(4, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.0410f }, 16f, true, 0.9f, true),
                 new(5, 0.50f, 550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0402f }, 16.2f, true, 0.9f, true),
                 new(6, 0.35f, 1100000, 800.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.5f, true, 0.9f, true),
-                new(7, 0.25f, 0, 900.0, new Dictionary<string, float> { ["Cd"] = 0.0000f }, 0f, false, 0.0f, false), // kaputte Stufe 7
+                new(7, 0.25f, 0, 900.0, new Dictionary<string, float> { ["Cd"] = 0.0000f }, 0f, false, 0.0f, false), // failed stage 7
             };
 
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Cd" }, 0.01f);
 
-            // Stufe 6 (0.35) wurde als Referenz gewählt, nicht die kaputte Stufe 7
+            // Stage 6 (0.35) was chosen as reference, not the failed stage 7
             Assert.Equal(0.35f, decision.ReferenceStage.Factor);
             Assert.True(decision.ReferenceStage.Converged);
             Assert.True(decision.Success);
@@ -160,12 +160,12 @@ namespace FluidForge.Tests
         [Fact]
         public void EvaluateCalibration_UnconvergedStage_IsSkipped()
         {
-            // Stufe 1.0f hätte kleine Abweichung, ist aber nicht konvergiert
+            // Stage 1.0f would have small deviation, but did not converge
             var stages = new List<CalibrationStageData>
             {
                 new(0, 1.41f, 25000, 25.0, new Dictionary<string, float> { ["Cd"] = 0.0450f }, 12f, true, 0.9f, true),
                 new(1, 1.0f,  70000, 60.0, new Dictionary<string, float> { ["Cd"] = 0.0401f }, 15f, false, 0.9f, true), // Converged = false!
-                new(2, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.04005f }, 16f, true, 0.9f, true), // innerhalb Tol
+                new(2, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Cd"] = 0.04005f }, 16f, true, 0.9f, true), // within tol
                 new(3, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.04000f }, 16.2f, true, 0.9f, true),
             };
 
@@ -173,7 +173,7 @@ namespace FluidForge.Tests
 
             Assert.True(decision.Success);
             Assert.NotNull(decision.SelectedStage);
-            // Stufe 1.0f wurde übersprungen; Stufe 0.71f wurde gewählt
+            // Stage 1.0f was skipped; stage 0.71f was selected
             Assert.Equal(0.71f, decision.SelectedStage!.Factor);
         }
 
@@ -183,13 +183,13 @@ namespace FluidForge.Tests
             var stages = new List<CalibrationStageData>
             {
                 new(0, 1.0f,  70000, 60.0, new Dictionary<string, float> { ["Cd"] = 0.0401f }, 15f, true, 0.9f, true),
-                new(1, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.2f, false, 0.9f, true), // Ref nicht konvergiert!
+                new(1, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.2f, false, 0.9f, true), // Ref not converged!
             };
 
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Cd" }, 0.02f);
 
             Assert.False(decision.Success);
-            Assert.Contains("Referenzstufe", decision.SummaryMessage);
+            Assert.Contains("reference level", decision.SummaryMessage);
         }
 
         [Fact]
@@ -198,13 +198,13 @@ namespace FluidForge.Tests
             var stages = new List<CalibrationStageData>
             {
                 new(0, 1.0f,  70000, 60.0, new Dictionary<string, float> { ["Cd"] = 0.0401f }, 15f, true, 0.9f, true),
-                new(1, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.2f, true, 6.0f, false), // Ref YPlus unzulässig!
+                new(1, 0.5f,  550000, 400.0, new Dictionary<string, float> { ["Cd"] = 0.0400f }, 16.2f, true, 6.0f, false), // Ref YPlus invalid!
             };
 
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Cd" }, 0.02f);
 
             Assert.False(decision.Success);
-            Assert.Contains("Referenzstufe", decision.SummaryMessage);
+            Assert.Contains("reference level", decision.SummaryMessage);
         }
 
         [Fact]
@@ -239,13 +239,13 @@ namespace FluidForge.Tests
             Assert.True(float.IsNaN(gci.ExtrapolatedValue));
             Assert.True(float.IsNaN(gci.ExtrapolatedDeviationPercent));
             Assert.NotNull(gci.Warning);
-            Assert.Contains("nicht monoton", gci.Warning);
+            Assert.Contains("not monotonic", gci.Warning);
         }
 
         [Fact]
         public void ComputeGci_MonotonicNonAsymptoticDiverging_MarksNonAsymptoticAndSetsNaN()
         {
-            // eps32 = 102 - 101 = 1, eps21 = 101 - 99 = 2 => ratio = 0.5 <= 1.0 (Differenzen wachsen!)
+            // eps32 = 102 - 101 = 1, eps21 = 101 - 99 = 2 => ratio = 0.5 <= 1.0 (differences grow!)
             var gci = CalibrationEvaluator.ComputeGci(102f, 101f, 99f);
 
             Assert.True(gci.IsMonotonic);
@@ -256,7 +256,7 @@ namespace FluidForge.Tests
             Assert.True(float.IsNaN(gci.ExtrapolatedValue));
             Assert.True(float.IsNaN(gci.ExtrapolatedDeviationPercent));
             Assert.NotNull(gci.Warning);
-            Assert.Contains("nicht im asymptotischen Bereich", gci.Warning);
+            Assert.Contains("not in the asymptotic range", gci.Warning);
         }
 
         [Fact]
@@ -286,7 +286,7 @@ namespace FluidForge.Tests
             var simContext = new SimulationContext(sim, project, _workingDirectory);
             simContext.EnsureDirectories();
 
-            // Monoton, aber nicht asymptotisch bei den feinsten drei Stufen (0.50 -> 0.48, 0.71 -> 0.49, 1.00 -> 0.495 => ratio = 0.5 <= 1)
+            // Monotonic, but not asymptotic on the finest three levels (0.50 -> 0.48, 0.71 -> 0.49, 1.00 -> 0.495 => ratio = 0.5 <= 1)
             var (decision, _) = MeshCalibration.Run(context, simContext, (factor, _) =>
             {
                 var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
@@ -317,14 +317,14 @@ namespace FluidForge.Tests
             Assert.Null(gciNode["GciSelectedPercent"]);
             Assert.Null(gciNode["ExtrapolatedValue"]);
             Assert.False(gciNode["IsAsymptotic"]!.GetValue<bool>());
-            Assert.Contains("nicht im asymptotischen Bereich", gciNode["Warning"]!.GetValue<string>());
+            Assert.Contains("not in the asymptotic range", gciNode["Warning"]!.GetValue<string>());
 
             using var sw = new StringWriter();
             MeshCalibration.PrintSummary(decision, sw);
             string printed = sw.ToString();
             Assert.Contains("n/a", printed);
-            Assert.Contains("[WARNUNG]", printed);
-            Assert.Contains("nicht im asymptotischen Bereich", printed);
+            Assert.Contains(OutputConventions.WarningTag, printed);
+            Assert.Contains("not in the asymptotic range", printed);
         }
 
         #endregion
@@ -332,7 +332,7 @@ namespace FluidForge.Tests
         #region Part 2: MeshCalibration Config Validation and Hints Tests
 
         [Fact]
-        public void ValidateConfig_AutoMode_WithExplicitRefinementFactor_ThrowsKonfigurationException()
+        public void ValidateConfig_AutoMode_WithExplicitRefinementFactor_ThrowsConfigurationException()
         {
             var config = new SimulationConfig
             {
@@ -345,13 +345,13 @@ namespace FluidForge.Tests
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 MeshCalibration.ValidateConfig(config, report, "TestProject"));
 
-            Assert.StartsWith("[KONFIGURATION]", ex.Message);
+            Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
             Assert.Contains("MeshRefinementFactor", ex.Message);
             Assert.Contains("simulation.json", ex.Message);
         }
 
         [Fact]
-        public void ValidateConfig_InvalidMode_ThrowsKonfigurationException()
+        public void ValidateConfig_InvalidMode_ThrowsConfigurationException()
         {
             var config = new SimulationConfig
             {
@@ -361,7 +361,7 @@ namespace FluidForge.Tests
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 MeshCalibration.ValidateConfig(config, null, "TestProject"));
 
-            Assert.StartsWith("[KONFIGURATION]", ex.Message);
+            Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
             Assert.Contains("SuperAutomatic", ex.Message);
         }
 
@@ -377,7 +377,7 @@ namespace FluidForge.Tests
             var report = new ConfigLoadReport();
             report.Origins["MeshRefinementFactor"] = "simulation.json";
 
-            // Soll ohne Ausnahme durchlaufen
+            // Should pass without exception
             MeshCalibration.ValidateConfig(config, report, "TestProject");
         }
 
@@ -403,12 +403,12 @@ namespace FluidForge.Tests
         [Fact]
         public void CheckManualCalibrationHints_OutdatedFingerprint_GeneratesOutdatedHint()
         {
-            string calibDir = Path.Combine(_workingDirectory, "Kalibrierung");
+            string calibDir = Path.Combine(_workingDirectory, OutputConventions.CalibrationDirectory);
             Directory.CreateDirectory(calibDir);
 
-            // Schreibe ein latest_calibration.json mit anderem Fingerabdruck
+            // Write a latest_calibration.json with a different fingerprint
             string json = @"{
-                ""Fingerprint"": ""ALT_FINGERPRINT_12345"",
+                ""Fingerprint"": ""OLD_FINGERPRINT_12345"",
                 ""SelectedFactor"": 0.71,
                 ""Tolerance"": 0.02
             }";
@@ -421,17 +421,17 @@ namespace FluidForge.Tests
             using var sw = new StringWriter();
             MeshCalibration.CheckManualCalibrationHints(context, _workingDirectory, sw);
             string output = sw.ToString();
-            Assert.Contains("veraltet", output);
+            Assert.Contains("stale", output);
         }
 
         [Fact]
         public void CheckManualCalibrationHints_FactorMismatch_GeneratesMismatchHint()
         {
-            string calibDir = Path.Combine(_workingDirectory, "Kalibrierung");
+            string calibDir = Path.Combine(_workingDirectory, OutputConventions.CalibrationDirectory);
             Directory.CreateDirectory(calibDir);
 
             var project = new ProjectConfig { BaseParameters = new Dictionary<string, float> { ["L"] = 100f } };
-            var config = new SimulationConfig { MeshRefinementFactor = 1.41f }; // weicht von 0.71 ab!
+            var config = new SimulationConfig { MeshRefinementFactor = 1.41f }; // differs from 0.71!
             var context = new ProjectContext("Test", _workingDirectory, null, config, project);
             string fingerprint = MeshCalibration.ComputeFingerprint(context);
 
@@ -454,7 +454,7 @@ namespace FluidForge.Tests
         #region Part 3: EffectiveConfigWriter Calibration Output Tests
 
         [Fact]
-        public void EffectiveConfigWriter_Records_WirksamerNetzfaktor_And_Source()
+        public void EffectiveConfigWriter_Records_EffectiveScaleFactor_And_Source()
         {
             var projectDir = Path.Combine(_workingDirectory, "EffConfigProject");
             Directory.CreateDirectory(projectDir);
@@ -465,30 +465,30 @@ namespace FluidForge.Tests
 
             var simContext = new SimulationContext(config, project, projectDir);
             simContext.EffectiveMeshRefinementFactor = 0.71f;
-            simContext.MeshRefinementSource = "KALIBRIERT aus latest_calibration.json";
-            simContext.CalibrationReportPath = "Kalibrierung/latest_calibration.json";
+            simContext.MeshRefinementSource = "CALIBRATED from latest_calibration.json";
+            simContext.CalibrationReportPath = $"{OutputConventions.CalibrationDirectory}/latest_calibration.json";
 
             var doc = EffectiveConfigWriter.Build(context, simContext);
 
-            Assert.True(doc.ContainsKey("WirksamerNetzfaktor"));
-            Assert.InRange(doc["WirksamerNetzfaktor"]!.GetValue<float>(), 0.70f, 0.72f);
+            Assert.True(doc.ContainsKey("EffectiveScaleFactor"));
+            Assert.InRange(doc["EffectiveScaleFactor"]!.GetValue<float>(), 0.70f, 0.72f);
 
-            Assert.True(doc.ContainsKey("NetzfaktorQuelle"));
-            Assert.Equal("KALIBRIERT aus latest_calibration.json", doc["NetzfaktorQuelle"]!.GetValue<string>());
+            Assert.True(doc.ContainsKey("ScaleFactorSource"));
+            Assert.Equal("CALIBRATED from latest_calibration.json", doc["ScaleFactorSource"]!.GetValue<string>());
 
-            Assert.True(doc.ContainsKey("KalibrierBericht"));
-            Assert.Equal("Kalibrierung/latest_calibration.json", doc["KalibrierBericht"]!.GetValue<string>());
+            Assert.True(doc.ContainsKey("CalibrationReport"));
+            Assert.Equal($"{OutputConventions.CalibrationDirectory}/latest_calibration.json", doc["CalibrationReport"]!.GetValue<string>());
         }
 
         [Fact]
         public void ResolveMonitoredMetrics_Reads_ResultMetrics_From_Commented_Su2Json()
         {
-            // Wie die echten Projektdateien: Kommentare und ein abschliessendes Komma.
-            // Vor dem Servertest vom 06.11.2026 scheiterte das Parsen still -> nur "Drag".
+            // Like the real project files: comments and a trailing comma.
+            // Before the server test of 2026-11-06, parsing failed silently -> only "Drag".
             var projectDir = Path.Combine(_workingDirectory, "MetricsProject");
             Directory.CreateDirectory(Path.Combine(projectDir, "solvers"));
             File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
-                "{\n  // Kommentar\n  \"ResultMetrics\": {\n    \"Drag\": \"CD\", // Widerstand\n    \"Lift\": \"CL\",\n  },\n}\n");
+                "{\n  // Comment\n  \"ResultMetrics\": {\n    \"Drag\": \"CD\", // Drag\n    \"Lift\": \"CL\",\n  },\n}\n");
 
             var context = new ProjectContext("MetricsProject", projectDir, null, new SimulationConfig(), new ProjectConfig());
 
@@ -502,11 +502,11 @@ namespace FluidForge.Tests
         [Fact]
         public void CalculateFineFactor_CalculatesCorrectLevels()
         {
-            // Stufe 1: 1.0 / sqrt(2) approx 0.7071
+            // Level 1: 1.0 / sqrt(2) approx 0.7071
             float f1 = ChampionFineVerifier.CalculateFineFactor(1.0f, 1);
             Assert.InRange(f1, 0.70f, 0.71f);
 
-            // Stufe 2: 1.0 / (sqrt(2)^2) = 0.5
+            // Level 2: 1.0 / (sqrt(2)^2) = 0.5
             float f2 = ChampionFineVerifier.CalculateFineFactor(1.0f, 2);
             Assert.InRange(f2, 0.499f, 0.501f);
         }
@@ -542,8 +542,8 @@ namespace FluidForge.Tests
         [Fact]
         public void VerifyFinal_FailedFineSimulation_Is_Not_Counted_As_Verified()
         {
-            // Servertest 06.11.2026: alle drei feinen Rechnungen scheiterten an Gmsh, trotzdem
-            // stand "Rangfolge hält" und FineVerified = 1 in der CSV.
+            // Server test 2026-11-06: all three fine simulations failed at Gmsh, yet
+            // "Ranking holds" and FineVerified = 1 were written to the CSV.
             var config = new SimulationConfig
             {
                 MeshRefinementFactor = 1.0f,
@@ -608,15 +608,15 @@ namespace FluidForge.Tests
                         Iteration = 1,
                         Variant = 1,
                         Fitness = 10.2f,
-                        PassiveParameters = new Dictionary<string, float> { ["Drag"] = 102.0f } // 2% Abweichung
+                        PassiveParameters = new Dictionary<string, float> { ["Drag"] = 102.0f } // 2% deviation
                     };
                 },
                 evaluateFitness: r => { },
                 monitoredMetrics: new[] { "Drag" });
 
             Assert.Equal(1, runsCalled);
-            Assert.Equal(initialHistoryCount, simContext.History.Count); // History bleibt unberührt!
-            Assert.Equal("Fein1_Gen1_Var1", capturedTag);
+            Assert.Equal(initialHistoryCount, simContext.History.Count); // History remains untouched!
+            Assert.Equal("Fine1_Gen1_Var1", capturedTag);
             Assert.InRange(capturedFactor, 0.70f, 0.71f);
 
             Assert.True(champion.PassiveParameters.ContainsKey("FineVerified"));
@@ -624,9 +624,9 @@ namespace FluidForge.Tests
             Assert.True(champion.PassiveParameters.ContainsKey("FineDeviation"));
             Assert.InRange(champion.PassiveParameters["FineDeviation"], 0.019f, 0.021f);
 
-            // Verifikation.csv muss im Ausgabeverzeichnis existieren
-            string csvPath = Path.Combine(_workingDirectory, "Verifikation.csv");
-            Assert.True(File.Exists(csvPath), "Verifikation.csv wurde nicht angelegt.");
+            // verification.csv must exist in the output directory
+            string csvPath = Path.Combine(_workingDirectory, OutputConventions.VerificationCsvFileName);
+            Assert.True(File.Exists(csvPath), $"{OutputConventions.VerificationCsvFileName} was not created.");
             string csvContent = File.ReadAllText(csvPath);
             Assert.Contains("NormalRank", csvContent);
             Assert.Contains("RankingHolds", csvContent);
@@ -676,17 +676,17 @@ namespace FluidForge.Tests
                     capturedTags.Add(tag);
                     return new ModelRecord
                     {
-                        Fitness = tag.StartsWith("Fein1") ? 14.8f : 11.9f,
+                        Fitness = tag.StartsWith("Fine1") ? 14.8f : 11.9f,
                         PassiveParameters = new Dictionary<string, float> { ["Drag"] = 51.0f }
                     };
                 },
                 evaluateFitness: r => { },
                 monitoredMetrics: new[] { "Drag" });
 
-            // Genau 2 Varianten (TopN = 2) gerechnet
+            // Exactly 2 variants (TopN = 2) evaluated
             Assert.Equal(2, capturedTags.Count);
-            Assert.Equal("Fein1_Gen1_Var1", capturedTags[0]);
-            Assert.Equal("Fein2_Gen1_Var2", capturedTags[1]);
+            Assert.Equal("Fine1_Gen1_Var1", capturedTags[0]);
+            Assert.Equal("Fine2_Gen1_Var2", capturedTags[1]);
             Assert.True(r1.PassiveParameters.ContainsKey("FineVerified"));
             Assert.True(r2.PassiveParameters.ContainsKey("FineVerified"));
             Assert.False(r3.PassiveParameters.ContainsKey("FineVerified"));
@@ -737,7 +737,7 @@ namespace FluidForge.Tests
                 monitoredMetrics: new[] { "Drag" });
 
             Assert.Equal(1, calls);
-            Assert.Equal("Fein_Gen2", capturedTag);
+            Assert.Equal("Fine_Gen2", capturedTag);
             Assert.True(winner.PassiveParameters.ContainsKey("FineVerified"));
             Assert.True(winner.PassiveParameters.ContainsKey("FineDeviation"));
         }
@@ -759,7 +759,7 @@ namespace FluidForge.Tests
             var simContext = new SimulationContext(sim, project, _workingDirectory);
             simContext.EnsureDirectories();
 
-            // Exakt angelehnt an BIC_12-MantaAuv-Kalibrierung mit TargetYPlus=1.5 (P95 zwischen 3.36 und 3.61)
+            // Closely modeled on BIC_12 MantaAuv calibration with TargetYPlus=1.5 (P95 between 3.36 and 3.61)
             Func<float, string, ModelRecord> runStage = (factor, _) =>
             {
                 var rec = new ModelRecord { Iteration = 1, Variant = 1, Fitness = 1.0f };
@@ -809,7 +809,7 @@ namespace FluidForge.Tests
 
             Assert.True(decisionOk.Success, decisionOk.SummaryMessage);
 
-            // Jetzt Limit wieder 4.50 (1.5 * 3.0), gemessenes P95 = 4.90 -> klarer Fehlschlag mit Zahlenangabe
+            // Now limit back to 4.50 (1.5 * 3.0), measured P95 = 4.90 -> clear failure with numbers
             File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
                 @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 3.0 }");
             var contextFail = new ProjectContext("Test", projectDir, null, sim, project);
@@ -847,17 +847,17 @@ namespace FluidForge.Tests
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: true, warningWriter: sw));
 
-            Assert.StartsWith("[KONFIGURATION]", ex.Message);
+            Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
             Assert.Contains("Threshold", ex.Message);
             Assert.Contains("1", sw.ToString());
             Assert.Contains("1.5", sw.ToString());
 
-            // Im Manual-/Recheck-Modus (calibrationActive: false) nur Warnung, kein Abbruch:
+            // In Manual/Recheck mode (calibrationActive: false) warning only, no abort:
             using var swManual = new StringWriter();
             MeshCalibration.ValidateYPlusConsistency(context, calibrationActive: false, warningWriter: swManual);
             Assert.Contains("TargetYPlus", swManual.ToString());
 
-            // Mit explizit angehobenem YPlusWarnFactor fuer Threshold (>= 30) ebenfalls kein Abbruch:
+            // With explicitly raised YPlusWarnFactor for Threshold (>= 30) also no abort:
             File.WriteAllText(Path.Combine(projectDir, "solvers", "su2.json"),
                 @"{ ""TargetYPlus"": 1.5, ""YPlusWarnFactor"": 50.0 }");
             var contextThresholdAllowed = new ProjectContext("Test", projectDir, null, SimulationConfig.CreateDefault(), new ProjectConfig());

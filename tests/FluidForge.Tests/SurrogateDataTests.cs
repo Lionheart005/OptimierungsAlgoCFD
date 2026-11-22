@@ -8,7 +8,7 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-53: Parameterraum und die zentrale Regel für Trainingsdaten (F13, F14).
+    /// TODO-53: Parameter space and the central rule for training data (F13, F14).
     /// </summary>
     public class SurrogateDataTests : TempDirectoryTest
     {
@@ -16,7 +16,7 @@ namespace FluidForge.Tests
         {
             var project = new ProjectConfig
             {
-                ProjectName = "Raum",
+                ProjectName = "Space",
                 BaseParameters = new Dictionary<string, float> { ["Length"] = 100f, ["Width"] = 20f, ["Fix"] = 3f },
                 MaxDeviations = new Dictionary<string, float> { ["Length"] = 10f, ["Width"] = 2f, ["Fix"] = 0f },
                 ParameterBounds = bounds ?? new Dictionary<string, (float Min, float Max)>
@@ -57,7 +57,7 @@ namespace FluidForge.Tests
             Assert.Equal(75f, back["Length"], 3);
             Assert.Equal(30f, back["Width"], 3);
             Assert.Equal(3f, back["Fix"]);
-            Assert.Equal(new[] { "Length", "Width", "Fix" }, back.Keys);   // Reihenfolge des Projekts
+            Assert.Equal(new[] { "Length", "Width", "Fix" }, back.Keys);   // project parameter order
         }
 
         [Fact]
@@ -93,7 +93,7 @@ namespace FluidForge.Tests
             var ex = Assert.Throws<InvalidOperationException>(() => ParameterSpace.Create(Context(Root, bounds)));
 
             Assert.Contains("Width", ex.Message);
-            Assert.Contains("src/projects/Raum/project.json", ex.Message);
+            Assert.Contains("src/projects/Space/project.json", ex.Message);
             Assert.Contains("ParameterBounds", ex.Message);
         }
 
@@ -109,7 +109,7 @@ namespace FluidForge.Tests
             Assert.Contains("Length", ex.Message);
         }
 
-        // ---------------------------------------------------------------- Trainingsregel
+        // ---------------------------------------------------------------- Training rule
 
         private static (SimulationContext Context, ParameterSpace Space) WithHistory(string directory, params ModelRecord[] records)
         {
@@ -194,7 +194,7 @@ namespace FluidForge.Tests
             Assert.Equal(new[] { 1, 3 }, set.Records.Select(r => r.Variant));
         }
 
-        // ---------------------------------------------------------------- CSV-Spalte
+        // ---------------------------------------------------------------- CSV column
 
         [Fact]
         public void The_Csv_Has_The_Disqualified_Column_At_The_End()
@@ -205,7 +205,7 @@ namespace FluidForge.Tests
 
             context.ExportToCsv();
 
-            string[] lines = File.ReadAllLines(Path.Combine(Root, "Simulation_Results.csv"));
+            string[] lines = File.ReadAllLines(Path.Combine(Root, OutputConventions.ResultsCsvFileName));
             Assert.EndsWith(";SimulationFailed;Disqualified", lines[0]);
             Assert.EndsWith(";0;0", lines[1]);
             Assert.EndsWith(";0;1", lines[2]);

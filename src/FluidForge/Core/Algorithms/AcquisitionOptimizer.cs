@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Optimiert die Akquisitionsfunktion (Expected Improvement, Erkunder, Vertrauensbereich,
-    /// Batch-Abstoßung und Kriging Believer) auf einem gelernten <see cref="FittedEnsemble"/>.
+    /// Optimizes the acquisition function (Expected Improvement, explorer, trust region,
+    /// batch repulsion, and Kriging Believer) on a fitted <see cref="FittedEnsemble"/>.
     /// </summary>
     internal sealed class AcquisitionOptimizer
     {
@@ -18,10 +18,10 @@ namespace FluidForge.Core
         private const int LocalStarts = 10;
         private const int LocalSteps = 30;
 
-        /// <summary>Wie viele Standardabweichungen über dem Mittel die optimistische Schätzung im Modus "Fitness" liegt (Metrics: bester von 64 Stichproben, etwa 2,4).</summary>
+        /// <summary>Number of standard deviations above the mean for the optimistic estimate in "Fitness" mode (Metrics: best of 64 samples, approx. 2.4).</summary>
         private const double OptimismSigmas = 2.4;
 
-        /// <summary>Kandidaten mit einem Abstoßungsfaktor darunter (Absturzzone, Nähe zu Fehlschlägen) kommen für die Ausweichregel und den Erkunder nicht in Frage.</summary>
+        /// <summary>Candidates with a repulsion factor below this threshold (crash zone, near failures) are excluded from fallback and explorer selection.</summary>
         private const double MinRepulsionFactor = 0.5;
 
         private readonly BayesTuning _tuning;
@@ -79,7 +79,7 @@ namespace FluidForge.Core
 
             if (_trust.NeedsRestart)
             {
-                Console.WriteLine("[BAYES] Vertrauensbereich ausgereizt, erkunde neues Gebiet.");
+                Console.WriteLine($"{OutputConventions.BayesTag} Trust region exhausted; restarting in a new area.");
                 _trustCenter = FindRestartCenter(fit, space);
                 _trust.Restart();
                 _trustSnapshot = new HashSet<ModelRecord>(training.Records);
@@ -93,7 +93,7 @@ namespace FluidForge.Core
 
             double[] center = _trustCenter ?? bestPoint;
             (lo, hi) = TrustBox(center, _trust.Length, fit.Relevance);
-            Console.WriteLine($"[BAYES] Vertrauensbereich: L = {_trust.Length:F3} (Erfolge {_trust.Successes}, Misserfolge {_trust.Failures}/{_trust.FailureTolerance}).");
+            Console.WriteLine($"{OutputConventions.BayesTag} Trust region: L = {_trust.Length:F3} (successes {_trust.Successes}, failures {_trust.Failures}/{_trust.FailureTolerance}).");
             return (lo, hi);
         }
 
@@ -128,7 +128,7 @@ namespace FluidForge.Core
             return (lo, hi);
         }
 
-        /// <summary>Neues Zentrum: der aussichtsreichste Punkt in einem gleichverteilten Pool über den ganzen Raum.</summary>
+        /// <summary>New restart center: the most promising point in a uniform pool over the entire space.</summary>
         private double[] FindRestartCenter(FittedEnsemble fit, ParameterSpace space)
         {
             int d = space.Dimension;
@@ -220,7 +220,7 @@ namespace FluidForge.Core
         {
             bool monteCarlo = _ensemble.ActiveMode == SurrogateTargetMode.Metrics;
 
-            // Stufe 1: ganzer Pool (im Modus "Metrics" mit wenigen Zufallssätzen vorsortiert)
+            // Stage 1: full pool (in "Metrics" mode pre-screened with a small sample count)
             var (ei, _, _, pred, rep) = Score(fit, space, pool, monteCarlo ? ScreenSamples : FullSamples);
             var order = Enumerable.Range(0, pool.Length).OrderByDescending(i => ei[i]).ThenBy(i => i).ToList();
 
@@ -241,18 +241,14 @@ namespace FluidForge.Core
 
             RefineLocally(fit, space, candidates, scores, lo, hi);
 
-            // Bester Kandidat, der nicht auf einer Rechnung oder einem anderen Vorschlag liegt.
+            // Best candidate not colliding with an existing evaluation or another proposal.
             double bestScore = scores.Count > 0 ? scores.Max() : 0.0;
             if (!(bestScore > fit.MeaningfulImprovement))
             {
-                // Nirgends ist eine nennenswerte Verbesserung zu erwarten: das Modell ist sich sehr sicher, oder der
-                // bisher Beste ist ein Ausreißer nach oben (grobes Netz, Wirbelablösung). Bis 08.11.2026 galt hier
-                // schon "exakt null" als Auslöser und die Regel hieß "größte Unsicherheit im ganzen Raum": Das
-                // verbrauchte ganze Runden an den Rändern des Suchraums (Serverlauf: Anstellwinkel 15 bis 30°), obwohl
-                // das Modell dort schlechte Werte vorhersagte. Auch winzige Restwerte der erwarteten Verbesserung
-                // (lange Schwänze des Verhältnisses Lift/Drag im Strömungsabriss) lenkten dorthin. Jetzt wird
-                // verfeinert: weiter dort, wo die vorhergesagte Fitness am höchsten ist. Das Erkunden übernimmt der
-                // Erkunder-Platz.
+                // Nowhere is meaningful improvement expected: the model is very confident, or the
+                // current best is an upward outlier (coarse mesh, vortex shedding). Instead of
+                // wasting rounds on boundary uncertainty, refine where predicted fitness is highest;
+                // exploration is handled by the dedicated explorer slot.
                 FallbackSelections++;
 
                 var shortlist = Enumerable.Range(0, pool.Length)
@@ -271,7 +267,7 @@ namespace FluidForge.Core
         private void RefineLocally(
             FittedEnsemble fit, ParameterSpace space, List<double[]> candidates, List<double> scores, double[] lo, double[] hi)
         {
-            // Lokale Nachschärfung der besten Kandidaten
+            // Local refinement of the top candidates
             var top = Enumerable.Range(0, candidates.Count).OrderByDescending(i => scores[i]).ThenBy(i => i).Take(LocalStarts).ToList();
             foreach (int start in top)
             {
@@ -296,9 +292,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Der Erkunder: größte Unsicherheit, aber nur unter Punkten, die nach Ansicht des Modells noch gut sein
-        /// könnten (Sicherheitsnetz gegen ein selbstsicheres, falsches Modell). Punkte, von denen das Modell
-        /// ziemlich sicher weiß, dass sie schlecht sind, kosten nur eine Rechnung und erkunden nichts.
+        /// Explorer slot: highest uncertainty, restricted to points the model still considers plausible
+        /// (safety net against an overconfident wrong model). Points that the model is confident are
+        /// poor only waste an evaluation and explore nothing useful.
         /// </summary>
         public double[]? PickExplorer(
             FittedEnsemble fit, ParameterSpace space, List<double[]> known, List<double[]> chosen, int d)
@@ -318,14 +314,14 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Erwartete Verbesserung und Unsicherheit für viele Kandidaten. Beides ist mit der Abstoßung von
-        /// fehlgeschlagenen Orten multipliziert.
+        /// Expected improvement and uncertainty for a batch of candidates, multiplied by
+        /// repulsion from failed locations.
         /// </summary>
         /// <remarks>
-        /// <c>Opt</c> ist die optimistische Verbesserung: der beste Wert unter den Stichproben (Modus "Metrics")
-        /// bzw. <c>μ + 2,4·σ</c> (Modus "Fitness"), jeweils gegen den bisher Besten gerechnet. <c>Pred</c> ist die
-        /// Verbesserung der vorhergesagten (mittleren) Fitness, ohne Unsicherheit. <c>Rep</c> ist der
-        /// Abstoßungsfaktor (0..1).
+        /// <c>Opt</c> is the optimistic improvement: the best sample ("Metrics" mode) or
+        /// <c>μ + 2.4·σ</c> ("Fitness" mode), each relative to the current best. <c>Pred</c> is the
+        /// improvement of predicted (mean) fitness without uncertainty. <c>Rep</c> is the
+        /// repulsion factor (0..1).
         /// </remarks>
         private (double[] Ei, double[] Unc, double[] Opt, double[] Pred, double[] Rep) Score(
             FittedEnsemble fit, ParameterSpace space, IReadOnlyList<double[]> points, int samples)
@@ -380,7 +376,7 @@ namespace FluidForge.Core
             return (ei, unc, opt, pred, rep);
         }
 
-        /// <summary>Verbesserung der Fitness, die sich aus den vorhergesagten (mittleren) Kennwerten ergibt; ohne Unsicherheit.</summary>
+        /// <summary>Fitness improvement resulting from predicted (mean) metrics without uncertainty.</summary>
         private double PredictedImprovement(FittedEnsemble fit, ParameterSpace space, double[] point, double[][] mean, int index)
         {
             var passive = new Dictionary<string, float>();
@@ -396,7 +392,7 @@ namespace FluidForge.Core
             return fit.T(f) - fit.BestTransformed;
         }
 
-        /// <returns>Mittlere Verbesserung (erwartete Verbesserung) und größte Verbesserung unter den Stichproben (optimistisch).</returns>
+        /// <returns>Mean improvement (expected improvement) and maximum improvement across samples (optimistic).</returns>
         private (double Mean, double Max) MonteCarloImprovement(
             FittedEnsemble fit, ParameterSpace space, double[] point, double[][] mean, double[][] variance, int index, int samples)
         {
@@ -430,10 +426,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Dämpfung der Auswahlregel (Faktor 0..1): Erfolgswahrscheinlichkeit aus dem Erfolgsmodell,
-        /// dazu die harte Abstoßung um fehlgeschlagene und verworfene Orte (Radius <c>0,05·√d</c>), die bereits gewählten Vorschläge derselben Runde mit dem halben Radius (höchstens 0,05, sonst wirkt er bei vielen Parametern zu stark):
-        /// Kriging Believer allein reicht nicht, wenn das Modell kaum Streuung hat (gemessen am
-        /// 08.11.2026: vier Vorschläge einer Runde lagen fast aufeinander).
+        /// Selection damping (factor 0..1): success probability from the success model,
+        /// plus hard repulsion around failed/rejected points (radius <c>0.05·√d</c>) and
+        /// already chosen proposals in the same round at half radius (capped at 0.05 so it
+        /// does not over-penalize in high dimensions).
         /// </summary>
         private static double Repulsion(FittedEnsemble fit, double[] x)
         {
@@ -456,7 +452,7 @@ namespace FluidForge.Core
             return factor;
         }
 
-        /// <summary>Kriging Believer: der Vorschlag gilt als gerechnet, mit der vorhergesagten Mitte als Ergebnis.</summary>
+        /// <summary>Kriging Believer: treats the proposal as evaluated with the predicted mean as outcome.</summary>
         public void Believe(FittedEnsemble fit, double[] x, Dictionary<string, float> parameters)
         {
             var passive = new Dictionary<string, float>();

@@ -6,76 +6,61 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Findet das Verzeichnis, in dem die Projekte liegen (<c>src/projects/</c>), und darin den
-    /// Ordner eines einzelnen Projekts.
+    /// Locates the projects root directory (<c>src/projects/</c>) and individual project folders.
     ///
-    /// <para>
-    /// Ersetzt die frühere „sechs Ebenen hoch, suche <c>config</c>“-Heuristik durch eine
-    /// benannte Stelle (TODO-22). Gesucht wird in dieser Reihenfolge:
-    /// </para>
+    /// <para>Searches in the following order:</para>
     /// <list type="number">
-    ///   <item>ein explizit übergebener Pfad (Aufrufargument)</item>
-    ///   <item>die Umgebungsvariable <c>SIM_PROJECTS_DIR</c></item>
-    ///   <item>aufwärts vom Arbeitsverzeichnis, bis ein <c>src/projects/</c> auftaucht</item>
+    ///   <item>an explicitly passed path (CLI argument)</item>
+    ///   <item>the <c>SIM_PROJECTS_DIR</c> environment variable</item>
+    ///   <item>upward from the current working directory until <c>src/projects/</c> is found</item>
     /// </list>
     ///
     /// <para>
-    /// Punkt 3 ist der Normalfall und der Grund, warum es diese Klasse gibt: <c>dotnet run</c>
-    /// startet im Projektverzeichnis, die Projektordner liegen aber im Repo-Root.
-    /// </para>
-    ///
-    /// <para>
-    /// Bewusst <b>kein</b> <c>CopyToOutputDirectory</c> in der csproj: die JSONs lägen dann in
-    /// <c>bin/</c>, und eine Änderung an der Quelldatei würde erst nach einem Rebuild wirken.
-    /// Diese Sorte Verwirrung will man bei einem mehrstündigen Lauf nicht.
+    /// JSON config files are intentionally not copied to <c>bin/</c> via <c>CopyToOutputDirectory</c>,
+    /// so edits to source config files take effect immediately without requiring a rebuild.
     /// </para>
     /// </summary>
     public static class ProjectPaths
     {
-        /// <summary>Quellverzeichnis im Repo-Root.</summary>
+        /// <summary>Source directory in the repository root.</summary>
         public const string SourceDirectoryName = "src";
 
-        /// <summary>Verzeichnis unterhalb von <see cref="SourceDirectoryName"/>, in dem die Projekte liegen.</summary>
+        /// <summary>Subdirectory under <see cref="SourceDirectoryName"/> containing project folders.</summary>
         public const string ProjectsDirectoryName = "projects";
 
-        /// <summary>Umgebungsvariable, die das Projektverzeichnis direkt setzt.</summary>
+        /// <summary>Environment variable that overrides the projects root directory.</summary>
         public const string ProjectsDirectoryVariable = "SIM_PROJECTS_DIR";
 
         /// <summary>
-        /// Vorlage für neue Projekte. Zählt nicht als Projekt — sie hat keine
-        /// <c>IProjectDefinition</c> im Code und soll auch keine haben (TODO-23).
+        /// 3D template for new projects. Not counted as a project (has no <c>IProjectDefinition</c>).
         /// </summary>
         public const string TemplateDirectoryName = "_Template3D";
 
         /// <summary>
-        /// 2D-Vorlage für neue Projekte (TODO-47). Zählt ebenfalls nicht als Projekt.
+        /// 2D template for new projects. Not counted as a project.
         /// </summary>
         public const string Template2DDirectoryName = "_Template2D";
 
-        /// <summary>Alles, was so beginnt (3D- und 2D-Vorlage), ist eine Kopiervorlage und kein Projekt.</summary>
+        /// <summary>Any folder starting with this prefix is a template, not a runnable project.</summary>
         public const string TemplatePrefix = "_Template";
 
         /// <summary>
-        /// Manifestdatei eines Projekts. Heißt in <b>jedem</b> Projekt gleich (Entscheidung 2):
-        /// ein Dateiname, der überall derselbe ist, kann nicht mit dem Projektnamen verwechselt
-        /// werden — <c>config/projects/MantaAuv.json</c> konnte das.
+        /// Project manifest filename. Identical across all projects to avoid confusion with the project name.
         /// </summary>
         public const string ManifestFileName = "project.json";
 
-        /// <summary>Wie viele Ebenen nach oben gesucht wird.</summary>
+        /// <summary>Maximum parent directory levels to search upward.</summary>
         private const int MaxParentLevelsToSearch = 6;
 
-        /// <summary>Verzeichnisse, die beim Auflisten von Projekten übersprungen werden.</summary>
+        /// <summary>Directories skipped when listing projects.</summary>
         private static readonly string[] IgnoredDirectories = { "bin", "obj" };
 
         /// <summary>
-        /// Liefert das Verzeichnis, in dem die Projektordner liegen, oder <c>null</c>, wenn keines
-        /// gefunden wurde.
+        /// Returns the directory containing project folders, or <c>null</c> if not found.
         /// </summary>
         /// <param name="explicitPath">
-        /// Ein direkt übergebener Pfad, z.B. aus dem zweiten Aufrufargument. Existiert er nicht,
-        /// wird <c>null</c> geliefert — ein falsch getippter Pfad soll nicht stillschweigend
-        /// durch die Suche ersetzt werden.
+        /// An explicitly provided path. If it does not exist, <c>null</c> is returned immediately
+        /// rather than falling back to directory search.
         /// </param>
         public static string? ResolveProjectsRoot(string? explicitPath = null)
         {
@@ -99,9 +84,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Wurzel des Repositorys: der Ordner, in dem <c>src/projects/</c> liegt (TODO-50).
-        /// Dort stehen <c>.git</c> (lokal) bzw. <c>deploy-info.json</c> und <c>.deploy_hash</c>
-        /// (Server). <c>null</c>, wenn kein Projektverzeichnis gefunden wurde.
+        /// Repository root: the parent of <c>src/projects/</c>, containing <c>.git</c> (local)
+        /// or <c>deploy-info.json</c> and <c>.deploy_hash</c> (server). Returns <c>null</c> if not found.
         /// </summary>
         public static string? ResolveRepositoryRoot(string? explicitPath = null)
         {
@@ -113,9 +97,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Liefert den Ordner eines Projekts. Der Ordnername <b>ist</b> der Projektname
-        /// (Entscheidung 1) — es gibt keine zweite Stelle, an der er stünde.
-        /// Gibt <c>null</c> zurück, wenn es das Projektverzeichnis oder den Ordner nicht gibt.
+        /// Returns a project's directory (the folder name <b>is</b> the project name),
+        /// or <c>null</c> if the projects root or folder does not exist.
         /// </summary>
         public static string? ResolveProjectDirectory(string projectName, string? explicitPath = null)
         {
@@ -124,16 +107,15 @@ namespace FluidForge.Core
             string? root = ResolveProjectsRoot(explicitPath);
             if (root == null) return null;
 
-            // Groß-/Kleinschreibung ignorieren: Linux unterscheidet sie, Windows nicht, und ein
-            // Lauf soll auf beiden Rechnern dasselbe Projekt finden.
+            // Case-insensitive match so Linux and Windows resolve the same project consistently.
             return Directory.EnumerateDirectories(root)
                 .FirstOrDefault(directory => string.Equals(
                     Path.GetFileName(directory), projectName.Trim(), StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
-        /// Alle Projektnamen, die als Ordner vorliegen — alphabetisch, ohne die Vorlage und ohne
-        /// Build-Artefakte. Grundlage für die Startmeldung „unbekanntes Projekt, vorhanden sind …“.
+        /// Lists all project names present as folders — sorted alphabetically, excluding templates
+        /// and build artifacts.
         /// </summary>
         public static IReadOnlyList<string> ListProjectNames(string? explicitPath = null)
         {

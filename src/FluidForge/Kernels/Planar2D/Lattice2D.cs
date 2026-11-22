@@ -5,8 +5,8 @@ using Clipper2Lib;
 namespace FluidForge.Kernels.Planar2D
 {
     /// <summary>
-    /// Zweidimensionales Balkengitter (analog zu PicoGKs Lattice in 3D).
-    /// Erzeugt Kapsel- und Konusbalken mit tangentialen Übergängen und Kreis-Endkappen.
+    /// Two-dimensional beam lattice (analogous to PicoGK's Lattice in 3D).
+    /// Generates capsule and tapered beams with tangent transitions and circular end caps.
     /// </summary>
     public class Lattice2D
     {
@@ -17,7 +17,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Fügt einen kreisförmigen Knoten hinzu.
+        /// Adds a circular node.
         /// </summary>
         public void AddCircle(Vector2 center, float radius, int segments = 64)
         {
@@ -38,8 +38,8 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Fügt einen Kapsel- oder Konusbalken zwischen Punkt a (Radius r1) und Punkt b (Radius r2) hinzu.
-        /// Berechnet exakt die äußeren Tangenten und rundet beide Enden mit Kreisbögen ab.
+        /// Adds a capsule or tapered beam between point a (radius r1) and point b (radius r2).
+        /// Computes exact outer tangents and rounds both ends with circular arcs.
         /// </summary>
         public void AddBeam(Vector2 a, Vector2 b, float r1, float r2, int capSegments = 32)
         {
@@ -50,14 +50,14 @@ namespace FluidForge.Kernels.Planar2D
             Vector2 v = b - a;
             float d = v.Length();
 
-            // Entarteter Fall 1: Zentren fallen praktisch zusammen
+            // Degenerate case 1: centers practically coincide
             if (d <= 1e-6f)
             {
                 AddCircle(a, MathF.Max(r1, r2), capSegments);
                 return;
             }
 
-            // Entarteter Fall 2: Ein Kreis enthält den anderen vollständig (|b - a| <= |r1 - r2|)
+            // Degenerate case 2: one circle completely contains the other (|b - a| <= |r1 - r2|)
             if (d <= MathF.Abs(r1 - r2))
             {
                 if (r1 >= r2)
@@ -67,18 +67,18 @@ namespace FluidForge.Kernels.Planar2D
                 return;
             }
 
-            // Nicht-entarteter Fall: Exakter Konusbalken / Tangentenkapsel
-            // Richtungswinkel der Mittellinie
+            // Non-degenerate case: exact tapered beam / tangent capsule
+            // Centerline direction angle
             double phi = Math.Atan2(v.Y, v.X);
 
-            // Tangenten-Halbwinkel: sin(alpha) = (r1 - r2) / d
+            // Tangent half-angle: sin(alpha) = (r1 - r2) / d
             double sinAlpha = (r1 - r2) / d;
             sinAlpha = Math.Clamp(sinAlpha, -1.0, 1.0);
             double alpha = Math.Asin(sinAlpha);
 
-            // Äußere Normalen an den Tangenten-Berührungspunkten:
-            // Oberer Berührungspunkt hat Winkel thetaUpper = phi + PI/2 - alpha
-            // Unterer Berührungspunkt hat Winkel thetaLower = phi - PI/2 + alpha
+            // Outer normals at the tangent contact points:
+            // Upper contact point has angle thetaUpper = phi + PI/2 - alpha
+            // Lower contact point has angle thetaLower = phi - PI/2 + alpha
             double thetaUpper = phi + (Math.PI * 0.5) - alpha;
             double thetaLower = phi - (Math.PI * 0.5) + alpha;
 
@@ -86,7 +86,7 @@ namespace FluidForge.Kernels.Planar2D
 
             int nCaps = Math.Max(4, capSegments / 2);
 
-            // 1. Kappe an Kreis b (bei b, abnehmender Winkel von thetaUpper nach thetaLower)
+            // 1. Cap at circle b (around b, decreasing angle from thetaUpper to thetaLower)
             double spanB = Math.PI - (2.0 * alpha);
             for (int i = 0; i <= nCaps; i++)
             {
@@ -97,7 +97,7 @@ namespace FluidForge.Kernels.Planar2D
                     b.Y + (r2 * Math.Sin(angle))));
             }
 
-            // 2. Kappe an Kreis a (bei a, abnehmender Winkel von thetaLower nach thetaUpper - 2*PI)
+            // 2. Cap at circle a (around a, decreasing angle from thetaLower to thetaUpper - 2*PI)
             double spanA = Math.PI + (2.0 * alpha);
             for (int i = 0; i <= nCaps; i++)
             {

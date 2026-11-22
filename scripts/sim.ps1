@@ -1,63 +1,65 @@
 ﻿<#
 .SYNOPSIS
-    Steuert den Optimierungslauf auf dem Linux-Rechner der Hochschule von Windows aus.
+    Controls the optimization run on the remote Linux server from Windows.
 
 .DESCRIPTION
-    Windows-Seite der Fernsteuerung. Packt den Quellcode, schiebt ihn per SSH auf den
-    Server und ruft dort scripts/sim-runner.sh auf, das die eigentliche Linux-Arbeit
-    macht (tmux, xvfb-run, Pfade, Start/Stop).
+    Windows side of the remote control. Packages the source code, uploads it to the
+    server via SSH, and invokes scripts/sim-runner.sh there to handle the Linux-side
+    execution (tmux, xvfb-run, paths, start/stop).
 
-    Uebertragen wird per tar + scp, nicht per git: so landen auch nicht-committete
-    Aenderungen auf dem Server und es muss kein GitHub-Token auf dem Hochschulrechner
-    liegen. rsync gibt es unter Windows nicht.
+    Transfer uses tar + scp rather than git so that uncommitted local changes are also
+    deployed and no GitHub token is required on the remote machine. rsync is not
+    available natively on Windows.
 
-    Laeuft beim Deploy bereits eine Simulation und hat sich der Code geaendert, wird
-    sie gestoppt und mit der neuen Version neu gestartet ("-NoRestart" verhindert das).
-    Ist der Code unveraendert, bleibt ein laufender Lauf unangetastet.
+    If a simulation is already running during deploy and the code has changed, it is
+    stopped and restarted with the new version ("-NoRestart" prevents this).
+    If the code is unchanged, a running simulation is left untouched.
 
 .PARAMETER Command
-    deploy   Code hochladen und bauen (startet bei Bedarf neu, siehe oben)
-    run      deploy + starten  -- der Alltagsbefehl
-    resume   Abgebrochenen Lauf fortsetzen (nach Server-Neustart, Absturz oder stop).
-             Laedt nichts hoch und baut nicht: rechnet mit dem Stand auf dem Server weiter.
-    status   Laeuft was? Wie lange? Letzte Logzeilen
-    log      Logdatei live mitlesen (Strg+C beendet nur das Mitlesen, nicht den Lauf)
-    stop     Lauf, tmux-Sitzung und haengende Kindprozesse beenden
-    fetch    Ergebnisse vom Server nach Windows holen (Standard, -Champion oder -All)
-    doctor   Prueft auf dem Server Werkzeuge und Pfade, ohne etwas zu starten
-    build    Nur bauen, nicht starten
-    projects Welche Projekte kennt der Server, und wo liegen schon Ergebnisse?
-    delete   Sauberer Neuanfang: Ergebnisse ALLER Projekte und alle Logs auf dem Server
-             loeschen. Code, Build und *.local.json bleiben. Fragt vorher nach.
+    deploy     Upload code and build (restarts if needed, see above)
+    run        deploy + start -- the everyday command
+    resume     Continue an interrupted run (after server reboot, crash, or stop).
+               Does not upload or build: continues with the code on the server.
+    status     Is anything running? How long? Recent log lines
+    log        Tail the log file live (Ctrl+C only stops tailing, not the run)
+    stop       Stop the run, tmux session, and lingering child processes
+    fetch      Download results from the server to Windows (standard, -Champion, or -All)
+    doctor     Check tools and paths on the server without starting anything
+    build      Build only, do not start
+    projects   List projects known to the server and existing results
+    delete     Clean slate: delete results of ALL projects and all logs on the server.
+               Code, build, and *.local.json remain intact. Prompts for confirmation.
+    calibrate  Deploy and start isolated mesh calibration on the server
+    recheck    Re-evaluate a single variant on a finer mesh (or unsteady URANS)
 
 .EXAMPLE
     .\scripts\sim.ps1 doctor
-    Vor dem ersten Lauf: prueft SU2, mpirun, gmsh, dotnet, tmux und libpicogk.so.
+    Before the first run: checks SU2, mpirun, gmsh, dotnet, tmux, and libpicogk.so.
 
 .EXAMPLE
     .\scripts\sim.ps1 run
-    Code hochladen, bauen, in tmux starten. Danach kann das Fenster zu.
+    Upload code, build, and start in tmux. The terminal window can be closed afterwards.
 
 .EXAMPLE
     .\scripts\sim.ps1 log
-    Live zusehen. Strg+C beendet nur die Anzeige.
+    Follow the log live. Ctrl+C only exits the viewer.
 
 .EXAMPLE
     .\scripts\sim.ps1 delete
-    Vor einem ganz neuen Lauf: zeigt, was auf dem Server liegt, und loescht es nach
-    Rueckfrage. Vorher mit fetch holen, was man behalten will.
+    Before a completely fresh run: shows what is on the server and deletes it after
+    confirmation. Use fetch beforehand to keep anything you need.
 
 .EXAMPLE
     .\scripts\sim.ps1 fetch
-    Holt Standard-Ergebnisse (CSV, effective-config.json, Log, Verlaeufe) nach .\Serverergebnisse\
+    Downloads standard results (CSV, effective-config.json, log, histories) to .\server-results\
 
 .EXAMPLE
     .\scripts\sim.ps1 fetch -Champion
-    Holt Standard-Ergebnisse plus VTU-Dateien des Champions nach .\Serverergebnisse\
+    Downloads standard results plus VTU files of the champion to .\server-results\
 
 .EXAMPLE
     .\scripts\sim.ps1 fetch -All
-    Holt den kompletten Ergebnisse-Ordner (inkl. aller 3D-Dateien) nach .\Serverergebnisse\
+    Downloads the entire results folder (including all 3D files) to .\server-results\
 #>
 [CmdletBinding()]
 param(
@@ -65,58 +67,56 @@ param(
     [ValidateSet('deploy', 'run', 'resume', 'status', 'log', 'stop', 'fetch', 'doctor', 'build', 'projects', 'delete', 'calibrate', 'recheck')]
     [string]$Command = 'status',
 
-    # Name aus ~/.ssh/config. BIC_12 = 192.168.122.121
+    # Host alias from ~/.ssh/config
     [string]$Server = 'BIC_12',
 
-    # Zielverzeichnis auf dem Server, relativ zum Home-Verzeichnis.
-    # Bewusst NICHT das alte Automatisierung_v2: das bleibt als main-Referenz liegen.
+    # Target directory on the server, relative to the home directory.
     [string]$RemoteDir = 'Documents/FluidForge',
 
-    # Der Umschalter zwischen Projekten. Der Name ist der Ordnername unter src/projects/
-    # (Entscheidung 1) und wird als SIM_PROJECT an sim-runner.sh durchgereicht.
+    # Project selector. The name matches the folder name under src/projects/
+    # and is forwarded as SIM_PROJECT to sim-runner.sh.
     #
-    # Die Vorgabe bleibt hier stehen, anders als auf der Server-Seite: dort waere sie
-    # unsichtbar, hier steht sie im Aufruf und wird zusaetzlich gemeldet, sobald ein
-    # projektbezogener Befehl sie benutzt (TODO-28). Welche Namen es gibt:
-    # .\scripts\sim.ps1 projects
+    # The default stays here rather than on the server side: on the server it would
+    # be invisible, whereas here it is explicit and reported whenever a project-scoped
+    # command uses it. List available projects with: .\scripts\sim.ps1 projects
     [string]$Project = 'MantaAuv',
 
-    # Laufende Simulation trotz geaendertem Code weiterlaufen lassen
+    # Keep a running simulation alive even when code has changed
     [switch]$NoRestart,
 
-    # deploy: hochladen erzwingen, auch wenn sich nichts geaendert hat
-    # delete: ohne Rueckfrage loeschen
+    # deploy: force upload even if nothing changed
+    # delete: delete without confirmation prompt
     [switch]$Force,
 
-    # fetch: kompletten Ergebnisse-Ordner statt nur CSV und Log
+    # fetch: download entire results folder instead of only CSV and log
     [switch]$All,
 
-    # fetch: Champion- und Top-N-VTUs mitnehmen
+    # fetch: include champion and top-N VTU files
     [switch]$Champion,
 
-    # log/status: wie viele Zeilen
+    # log/status: number of lines to display
     [int]$Lines = 40,
 
-    # log: nur einmal ausgeben statt mitlaufen
+    # log: print once instead of following live
     [switch]$NoFollow,
 
-    # fetch: Zielordner unter Windows
-    [string]$Out = 'Serverergebnisse',
+    # fetch: local target folder on Windows
+    [string]$Out = 'server-results',
 
-    # recheck: Variante (z. B. Gen3_Var2)
+    # recheck: variant name (e.g. Gen3_Var2)
     [string]$Variant = '',
 
-    # recheck: Verfeinerungsstufen gegenueber dem wirksamen Faktor (Standard 1)
+    # recheck: mesh refinement steps relative to the effective factor (default 1)
     [int]$Finer = 1,
 
-    # recheck: zeitgenaue URANS-Rechnung (Dual-Time-Stepping) fuer Einzelpruefung (TODO-37)
+    # recheck: time-accurate URANS simulation (dual-time stepping) for single-variant check
     [switch]$Unsteady
 )
 
 $ErrorActionPreference = 'Stop'
 
-# UTF-8 fuer Konsole und PowerShell-Pipelines erzwingen, damit Unicode-Boxen (╔═╗, │, ★)
-# und Umlaute von ssh/Linux im VS-Code-Terminal nicht als Codepage-850-Zeichensalat erscheinen.
+# Force UTF-8 for console and PowerShell pipelines so Unicode box characters and symbols
+# from ssh/Linux do not render as garbled codepage-850 text in the VS Code terminal.
 [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
@@ -124,32 +124,31 @@ $OutputEncoding           = [System.Text.Encoding]::UTF8
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $RunnerCall = "bash scripts/sim-runner.sh"
 
-# SSH-Zeitgrenzen fuer JEDEN ssh- und scp-Aufruf dieses Skripts -- bewusst grosszuegig
-# (Entscheidung vom 04.11.2026, siehe .plans/anmerkungen_umsetzung.md, TODO-31):
+# SSH timeouts for EVERY ssh and scp call in this script -- intentionally generous:
 #
-#   ConnectTimeout=60       Verbindungsaufbau samt Schluesselaustausch darf eine volle
-#                           Minute dauern -- auch dann, wenn der Server unter Volllast
-#                           rechnet und sshd entsprechend traege antwortet.
-#   ServerAliveInterval=30  kommt 30 s lang nichts, schickt ssh ein winziges Lebenszeichen ...
-#   ServerAliveCountMax=6   ... und gibt erst nach 6 unbeantworteten auf, also nach
-#                           3 Minuten echter Funkstille.
+#   ConnectTimeout=60       Connection setup and key exchange may take up to a full
+#                           minute -- even when the server is under full CPU load
+#                           and sshd responds slowly.
+#   ServerAliveInterval=30  After 30 s of silence, ssh sends a keepalive packet ...
+#   ServerAliveCountMax=6   ... and gives up only after 6 unanswered probes, i.e.,
+#                           3 minutes of complete connection loss.
 #
-# Ohne diese Werte wartet eine tote VPN-Verbindung UNBEGRENZT und ohne Meldung. Die
-# Lebenszeichen beantwortet sshd selbst, auch wenn der Befehl drueben lange nichts
-# ausgibt (Build, stop) -- ein stiller, aber gesunder Befehl wird also nicht abgebrochen.
-# Nebenbei halten sie den VPN-Tunnel bei "log" aktiv, der sonst im Leerlauf trennen kann.
+# Without these values, a dead VPN tunnel waits INDEFINITELY without any message.
+# sshd answers keepalive probes itself even when the remote command produces no output
+# for a long time (build, stop) -- so a quiet but healthy command is not aborted.
+# It also keeps the VPN tunnel active during "log" when otherwise idle.
 #
-# Bricht hier etwas ab, betrifft das NUR die Verbindung von diesem Rechner aus. Ein Lauf
-# in der tmux-Sitzung auf dem Server rechnet davon unberuehrt weiter.
+# If a connection drops here, it ONLY affects the link from this workstation. A run
+# inside the tmux session on the server continues undisturbed.
 $SshOptions = @('-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=6')
 
-# Verzeichnisse, die auf den Server gehoeren. tests/ bleibt hier: der Server soll
-# rechnen, nicht testen -- und ohne tests/ wuerde die .sln dort nicht bauen,
-# deshalb bauen wir drueben gezielt die csproj.
+# Directories deployed to the server. tests/ stays local: the server should compute,
+# not run unit tests -- and without tests/ the .sln would not build there, so we build
+# the csproj directly on the server.
 $DeployRoots = @('src', 'config', 'scripts')
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 function Write-Step([string]$Text) {
@@ -161,15 +160,14 @@ function Write-Warn([string]$Text) {
     Write-Host "    $Text" -ForegroundColor Yellow
 }
 
-# Alle Dateien, die deployt werden:
-#   - bin/ und obj/     Build-Artefakte, werden drueben neu erzeugt
-#   - *.local.json      maschinenspezifische Ueberlagerungen. Eine
-#                       simulation.local.json auf dem Server ueberlebt dadurch
-#                       jedes Deploy.
-#   - *.md, *.ps1, *.pdf Dokumentation, Berichte und die Windows-Seite selbst.
-#                       Der Server braucht nichts davon -- und weil der Fingerabdruck genau
-#                       ueber diese Liste gebildet wird, wuerde sonst schon eine
-#                       Korrektur in dieser README einen laufenden Lauf neu starten.
+# All files included in deployment:
+#   - bin/ and obj/     Build artifacts, regenerated on the server
+#   - *.local.json      Machine-specific overrides. A simulation.local.json on the
+#                       server survives every deploy.
+#   - *.md, *.ps1, *.pdf Documentation, reports, and the Windows client itself.
+#                       The server needs none of these -- and because the hash is
+#                       computed over this exact list, editing a README will not
+#                       restart a running simulation.
 function Get-DeployFiles {
     $files = @()
     foreach ($root in $DeployRoots) {
@@ -190,8 +188,8 @@ function Get-RelativePath([System.IO.FileInfo]$File) {
     return $relative.Replace('\', '/')
 }
 
-# Fingerabdruck ueber Pfade UND Inhalte. Damit erkennt deploy, ob sich ueberhaupt
-# etwas geaendert hat -- nur dann wird ein laufender Lauf angefasst.
+# Fingerprint over paths AND contents so deploy can detect whether anything actually
+# changed -- only then is a running simulation touched.
 function Get-LocalHash {
     $lines = foreach ($file in Get-DeployFiles) {
         $fileHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
@@ -204,16 +202,14 @@ function Get-LocalHash {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
         $digest = [BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', ''
-        # 16 Stellen reichen zum Vergleichen und bleiben in der Ausgabe lesbar.
+        # 16 hex characters are sufficient for comparison and stay readable in output.
         return $digest.Substring(0, 16).ToLower()
     }
     finally { $sha.Dispose() }
 }
 
-# Fuehrt einen Befehl auf dem Server aus. Die Umgebung (PATH, LD_LIBRARY_PATH)
-# setzt sich sim-runner.sh selbst -- ~/.bashrc greift bei "ssh host befehl" nicht.
-# Commit und Branch fuer deploy-info.json (TODO-50). Direkt aus den Dateien unter .git
-# gelesen: lokal liegt git nur im Ordner von GitHub Desktop und nicht im PATH.
+# Read commit and branch for deploy-info.json directly from .git files:
+# locally, git may only exist inside GitHub Desktop and not on PATH.
 function Get-GitState {
     $state = [ordered]@{ Commit = $null; Branch = $null }
     $gitDir = Join-Path $RepoRoot '.git'
@@ -246,7 +242,7 @@ function Get-GitState {
     return $state
 }
 
-# "true"/"false" nur, wenn ein git gefunden wird (PATH oder GitHub Desktop), sonst "unbekannt".
+# Returns "true"/"false" when git is found (PATH or GitHub Desktop), otherwise "unknown".
 function Get-UncommittedChanges {
     try {
         $git = $null
@@ -257,27 +253,26 @@ function Get-UncommittedChanges {
                 Sort-Object FullName -Descending | Select-Object -First 1
             if ($found) { $git = $found.FullName }
         }
-        if (-not $git) { return 'unbekannt' }
+        if (-not $git) { return 'unknown' }
 
         $changes = & $git -C $RepoRoot status --porcelain 2>$null
-        if ($LASTEXITCODE -ne 0) { return 'unbekannt' }
+        if ($LASTEXITCODE -ne 0) { return 'unknown' }
         if ($changes) { return 'true' }
         return 'false'
     }
-    catch { return 'unbekannt' }
+    catch { return 'unknown' }
 }
 
-# Schreibt deploy-info.json neben .deploy_hash (TODO-50). Das Programm liest daraus den
-# Code-Stand fuer run-info.json -- auf dem Server gibt es kein .git. Uebertragen wird der
-# Inhalt als Base64: PowerShell 5.1 reicht Anfuehrungszeichen in Argumenten an ssh nicht
-# sauber durch, und JSON besteht aus Anfuehrungszeichen.
+# Writes deploy-info.json next to .deploy_hash. The application reads code provenance
+# for run-info.json from it because there is no .git on the server. Payload is sent
+# as Base64 because PowerShell 5.1 does not forward double quotes cleanly to ssh.
 function Write-RemoteDeployInfo([string]$LocalHash) {
     $git = Get-GitState
     $info = [ordered]@{
         Commit             = $git.Commit
         Branch             = $git.Branch
         DeployHash         = $LocalHash
-        DeployZeit         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+        DeployTime         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         UncommittedChanges = Get-UncommittedChanges
     }
     $json = $info | ConvertTo-Json -Compress
@@ -295,24 +290,22 @@ function Invoke-Remote {
     $remote = "cd '$RemoteDir' && $CommandLine"
 
     if ($Quiet) {
-        # Bewusst 2>$null statt 2>&1: PowerShell 5.1 verpackt den stderr eines
-        # nativen Programms bei 2>&1 in ErrorRecords, was zusammen mit
-        # $ErrorActionPreference='Stop' auch bei Exit-Code 0 eine Ausnahme wirft.
+        # Intentionally 2>$null instead of 2>&1: PowerShell 5.1 wraps native stderr in
+        # ErrorRecords, which throws an exception under $ErrorActionPreference='Stop'
+        # even when exit code is 0.
         $output = & ssh @SshOptions $Server $remote 2>$null
         $code = $LASTEXITCODE
     }
-
     else {
-        # Out-Host, nicht einfach "& ssh ...": die Ausgabe eines nativen Programms
-        # landet sonst im Erfolgs-Stream der Funktion und wuerde vom | Out-Null
-        # des Aufrufers mit verschluckt. Out-Host schreibt direkt auf die Konsole.
+        # Out-Host instead of plain "& ssh ...": native output would otherwise enter
+        # the function's success stream and get swallowed by "| Out-Null" at call sites.
         & ssh @SshOptions $Server $remote | Out-Host
         $code = $LASTEXITCODE
         $output = $null
     }
 
     if ($code -ne 0 -and -not $AllowFailure) {
-        throw "Befehl auf $Server fehlgeschlagen (Exit-Code $code): $CommandLine"
+        throw "Command on $Server failed (exit code $code): $CommandLine"
     }
 
     return [pscustomobject]@{ ExitCode = $code; Output = $output }
@@ -323,8 +316,8 @@ function Test-RemoteRunning {
     return ($result.ExitCode -eq 0)
 }
 
-# Liegt auf dem Server ueberhaupt schon ein Stand? Ohne diese Pruefung scheitern
-# status/stop/log/fetch beim allerersten Mal an einem nackten "cd: No such file".
+# Check whether any code has been deployed to the server yet. Without this check,
+# status/stop/log/fetch would fail on first use with a bare "cd: No such file".
 function Test-RemoteDeployed {
     & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
     return ($LASTEXITCODE -eq 0)
@@ -333,8 +326,8 @@ function Test-RemoteDeployed {
 function Assert-RemoteDeployed {
     if (Test-RemoteDeployed) { return }
 
-    throw ("Auf $Server liegt unter '$RemoteDir' noch kein Stand. " +
-           "Erst hochladen mit:  .\scripts\sim.ps1 deploy -Server $Server")
+    throw ("No deployment found on $Server under '$RemoteDir'. " +
+           "Upload first with:  .\scripts\sim.ps1 deploy -Server $Server")
 }
 
 function Get-RemoteLastProject {
@@ -347,7 +340,7 @@ function Get-RemoteLastProject {
 
 function Get-RemoteHash {
     $result = Invoke-Remote -CommandLine "$RunnerCall hash" -Quiet -AllowFailure
-    if ($result.ExitCode -ne 0) { return 'unbekannt' }
+    if ($result.ExitCode -ne 0) { return 'unknown' }
     return ($result.Output | Select-Object -Last 1).ToString().Trim()
 }
 
@@ -362,49 +355,47 @@ function Invoke-Runner {
 
 function Push-Sources {
     $files = Get-DeployFiles
-    if ($files.Count -eq 0) { throw "Keine zu uebertragenden Dateien gefunden - stimmt das Repo-Verzeichnis?" }
+    if ($files.Count -eq 0) { throw "No files found to deploy - is the repository directory correct?" }
 
     $stamp = [Guid]::NewGuid().ToString('N').Substring(0, 8)
     $listFile = Join-Path $env:TEMP "sim-deploy-$stamp.txt"
     $tarFile = Join-Path $env:TEMP "sim-deploy-$stamp.tar.gz"
 
     try {
-        # Dateiliste fuer tar -- identisch mit der Liste, ueber die der Hash geht.
+        # File list for tar -- identical to the list used for hashing.
         $relatives = $files | ForEach-Object { Get-RelativePath $_ }
         [System.IO.File]::WriteAllText($listFile, ($relatives -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
 
-        Write-Host "    $($files.Count) Dateien werden gepackt ..."
+        Write-Host "    Packing $($files.Count) files ..."
         & tar.exe -czf $tarFile -C $RepoRoot -T $listFile
-        if ($LASTEXITCODE -ne 0) { throw "tar ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
+        if ($LASTEXITCODE -ne 0) { throw "tar failed (exit code $LASTEXITCODE)." }
 
         $sizeKb = [math]::Round((Get-Item $tarFile).Length / 1KB, 1)
-        Write-Host "    Archiv: $sizeKb KB - uebertrage nach ${Server}:$RemoteDir"
+        Write-Host "    Archive: $sizeKb KB - uploading to ${Server}:$RemoteDir"
 
         & ssh @SshOptions $Server "mkdir -p '$RemoteDir'"
-        if ($LASTEXITCODE -ne 0) { throw "Konnte $RemoteDir auf $Server nicht anlegen." }
+        if ($LASTEXITCODE -ne 0) { throw "Could not create $RemoteDir on $Server." }
 
         & scp @SshOptions -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
-        if ($LASTEXITCODE -ne 0) { throw "scp ist fehlgeschlagen (Exit-Code $LASTEXITCODE)." }
+        if ($LASTEXITCODE -ne 0) { throw "scp failed (exit code $LASTEXITCODE)." }
 
-        # Verwaiste Dateien entfernen, BEVOR entpackt wird.
+        # Remove orphaned files BEFORE extracting.
         #
-        # Ein Deploy ueberschreibt nur, er loescht nie. Wird eine Datei umbenannt oder
-        # verschoben, liegt sie auf dem Server danach doppelt -- und bei C#-Dateien heisst
-        # das: derselbe Typ zweimal, der Build scheitert mit CS0101. Genau das ist beim
-        # Umzug nach src/projects/ passiert.
+        # A deploy only overwrites; it never deletes. If a file is renamed or moved,
+        # the old copy would remain on the server -- for C# files that means duplicate
+        # types and build failure (CS0101).
         #
-        # Ausgenommen sind *.local.json (die sollen ein Deploy ueberleben, das ist ihr
-        # ganzer Zweck) sowie bin/ und obj/, damit der Build inkrementell bleibt und
-        # libpicogk.so liegen bleibt.
+        # Excluded: *.local.json (meant to survive deploys) and bin/ / obj/ so builds
+        # stay incremental and libpicogk.so remains in place.
         #
-        # Der Tarball liegt zu diesem Zeitpunkt schon drueben: schlaegt das Entpacken
-        # fehl, ist "tar -xzf deploy.tar.gz" im Repo-Verzeichnis die Reparatur.
+        # At this point the tarball is already on the server: if unpacking fails,
+        # running "tar -xzf deploy.tar.gz" in the repo directory recovers it.
         $prune = "find src scripts config -type f ! -name '*.local.json' " +
                  "-not -path '*/bin/*' -not -path '*/obj/*' -delete 2>/dev/null; " +
                  "find src scripts config -type d -empty -delete 2>/dev/null; true"
 
-        # Entpacken, Zeilenenden der Shell-Skripte hart auf LF ziehen (falls sie
-        # doch einmal mit CRLF aus dem git-Checkout kommen) und ausfuehrbar machen.
+        # Extract, normalize shell script line endings to LF (in case they were checked
+        # out with CRLF on Windows), and make them executable.
         $unpack = "$prune && tar -xzf deploy.tar.gz && rm -f deploy.tar.gz && sed -i 's/\r`$//' scripts/*.sh && chmod +x scripts/*.sh"
         Invoke-Remote -CommandLine $unpack | Out-Null
     }
@@ -416,66 +407,62 @@ function Push-Sources {
 function Invoke-Deploy {
     param([switch]$ThenStart, [switch]$ThenCalibrate)
 
-    Write-Step "Deploy nach $Server ($RemoteDir)"
+    Write-Step "Deploy to $Server ($RemoteDir)"
 
     $localHash = Get-LocalHash
     $remoteHash = Get-RemoteHash
     $wasRunning = Test-RemoteRunning
     $changed = ($localHash -ne $remoteHash)
 
-    Write-Host "    Lokaler Stand:  $localHash"
-    Write-Host "    Stand Server:   $remoteHash"
-    if ($wasRunning) { Write-Host "    Auf dem Server laeuft gerade eine Simulation." }
+    Write-Host "    Local hash:  $localHash"
+    Write-Host "    Server hash: $remoteHash"
+    if ($wasRunning) { Write-Host "    A simulation is currently running on the server." }
 
     if (-not $changed -and -not $Force) {
-        Write-Host "    Code unveraendert - kein Upload noetig." -ForegroundColor Green
+        Write-Host "    Code unchanged - no upload needed." -ForegroundColor Green
 
         if ($ThenStart -and -not $wasRunning) {
             Invoke-Start
         }
         elseif ($ThenCalibrate -and -not $wasRunning) {
-            # Frueher fehlte dieser Zweig: "calibrate" ohne Code-Aenderung tat gar nichts.
             Invoke-Calibrate
         }
         elseif ($ThenStart -or $ThenCalibrate) {
-            Write-Host "    Der laufende Lauf bleibt unangetastet." -ForegroundColor Green
+            Write-Host "    Keeping the running simulation untouched." -ForegroundColor Green
         }
         return
     }
 
-    # Der vom Nutzer gewuenschte Fall: geaenderte Version bei laufender Simulation.
     if ($wasRunning -and $NoRestart) {
-        Write-Warn "Geaenderter Code wird hochgeladen, aber NICHT gebaut (-NoRestart)."
-        Write-Warn "Der laufende Lauf rechnet mit der alten Version weiter; ein Build wuerde"
-        Write-Warn "ihm die DLL unter den Fuessen wegziehen."
+        Write-Warn "Changed code will be uploaded, but NOT built (-NoRestart)."
+        Write-Warn "The active run continues with the old version; building would"
+        Write-Warn "pull the DLL out from under the running process."
         Push-Sources
-        # Bewusst KEIN .deploy_hash: der Stand gilt erst als uebernommen, wenn er auch
-        # gebaut ist. Sonst meldet das naechste Deploy "unveraendert" und der Build
-        # unterbleibt fuer immer -- die DLL bliebe auf ewig die alte.
-        Write-Warn "Der Stand gilt als offen; das naechste Deploy baut ihn."
+        # Intentionally do NOT write .deploy_hash: the code is only considered deployed
+        # once it is built. Otherwise the next deploy would report "unchanged" and
+        # skip the build indefinitely.
+        Write-Warn "Changes remain pending; the next deploy will build them."
         return
     }
 
     if ($wasRunning) {
-        Write-Warn "Der laufende Lauf wird gestoppt und danach mit der neuen Version neu gestartet."
+        Write-Warn "Stopping the active run and restarting with the new version."
         Invoke-Runner -Arguments 'stop'
     }
 
     Push-Sources
 
-    Write-Step "Bauen auf $Server"
+    Write-Step "Building on $Server"
     Invoke-Runner -Arguments 'build'
 
-    # Der Hash wird ERST nach einem erfolgreichen Build geschrieben. Stand er vorher da
-    # und der Build scheiterte, meldete jedes weitere Deploy "Code unveraendert" und
-    # baute nie wieder -- der Server rechnete dann dauerhaft mit einer alten DLL,
-    # waehrend alles danach aussah, als sei der neue Stand drueben.
+    # Write hash ONLY after a successful build. If written before a failed build,
+    # subsequent deploys would report "code unchanged" and never rebuild.
     Invoke-Remote -CommandLine "printf '%s' '$localHash' > .deploy_hash" | Out-Null
 
-    # Zum selben Zeitpunkt: Commit, Branch und Deploy-Zeit fuer den Fahrtenschreiber.
-    # Nur Information -- scheitert das, darf der Deploy trotzdem gelten.
+    # Record commit, branch, and deploy timestamp for run-info.json.
+    # Informational only -- failure here must not fail the deploy.
     try { Write-RemoteDeployInfo -LocalHash $localHash }
-    catch { Write-Warn "deploy-info.json konnte nicht geschrieben werden: $($_.Exception.Message)" }
+    catch { Write-Warn "Could not write deploy-info.json: $($_.Exception.Message)" }
 
     if ($wasRunning -or $ThenStart) {
         Invoke-Start
@@ -486,49 +473,49 @@ function Invoke-Deploy {
 }
 
 function Invoke-Start {
-    Write-Step "Starte Lauf '$Project' auf $Server"
+    Write-Step "Starting run '$Project' on $Server"
     Invoke-Runner -Arguments 'start'
     Write-Host ""
-    Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
-    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+    Write-Host "    The run is now detached in a tmux session and survives closing" -ForegroundColor Green
+    Write-Host "    this console. Follow live with:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
-# Abgebrochenen Lauf fortsetzen (TODO-52). Bewusst KEIN Push und KEIN Build (F28): neuer
-# Code heisst neuer Lauf. Weicht der lokale Stand ab, wird nur gewarnt.
+# Resume an interrupted run. Intentionally NO push and NO build: new code requires
+# a new run. Warns if local code differs from the server.
 function Invoke-Resume {
-    Write-Step "Setze abgebrochenen Lauf '$Project' auf $Server fort"
+    Write-Step "Resuming interrupted run '$Project' on $Server"
 
     $localHash = Get-LocalHash
     $remoteHash = Get-RemoteHash
     if ($localHash -ne $remoteHash) {
-        Write-Warn "Lokaler Code weicht vom Server ab. resume rechnet mit dem Stand auf dem Server weiter; neuer"
-        Write-Warn "Code braucht einen neuen Lauf (run)."
+        Write-Warn "Local code differs from server. resume continues with the server's version;"
+        Write-Warn "new code requires a fresh run (run)."
     }
 
     Invoke-Runner -Arguments 'resume'
     Write-Host ""
-    Write-Host "    Der Lauf haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
-    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+    Write-Host "    The run is now detached in a tmux session and survives closing" -ForegroundColor Green
+    Write-Host "    this console. Follow live with:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
 function Invoke-Calibrate {
-    Write-Step "Starte Netzkalibrierung fuer '$Project' auf $Server"
+    Write-Step "Starting mesh calibration for '$Project' on $Server"
     Invoke-Runner -Arguments 'calibrate'
     Write-Host ""
-    Write-Host "    Die Kalibrierung haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
-    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+    Write-Host "    Calibration is now detached in a tmux session and survives closing" -ForegroundColor Green
+    Write-Host "    this console. Follow live with:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
 function Invoke-Recheck {
-    Write-Step "Starte Recheck fuer '$Project' auf $Server"
+    Write-Step "Starting recheck for '$Project' on $Server"
     $rArgs = "recheck"
     if ($Variant) { $rArgs += " '$Variant'" }
     if ($Finer) { $rArgs += " $Finer" }
     if ($Unsteady) { $rArgs += " --unsteady" }
     Invoke-Runner -Arguments $rArgs
     Write-Host ""
-    Write-Host "    Der Recheck haengt jetzt in der tmux-Sitzung und ueberlebt das Schliessen" -ForegroundColor Green
-    Write-Host "    dieser Konsole. Zuschauen mit:  .\scripts\sim.ps1 log" -ForegroundColor Green
+    Write-Host "    Recheck is now detached in a tmux session and survives closing" -ForegroundColor Green
+    Write-Host "    this console. Follow live with:  .\scripts\sim.ps1 log" -ForegroundColor Green
 }
 
 function Invoke-Fetch {
@@ -537,31 +524,31 @@ function Invoke-Fetch {
     $target = Join-Path $RepoRoot (Join-Path $Out "${Server}_${Project}_$stamp")
     New-Item -ItemType Directory -Path $target -Force | Out-Null
 
-    Write-Step "Packe Ergebnisse fuer '$Project' auf $Server (Umfang: $scope)"
+    Write-Step "Packing results for '$Project' on $Server (scope: $scope)"
 
     $packResult = Invoke-Remote -CommandLine "$RunnerCall pack '$Project' '$scope'" -Quiet -AllowFailure
     if ($packResult.ExitCode -ne 0 -or -not $packResult.Output) {
-        throw "Packen auf $Server fehlgeschlagen (Exit-Code $($packResult.ExitCode))."
+        throw "Packing on $Server failed (exit code $($packResult.ExitCode))."
     }
 
     $remoteArchive = ($packResult.Output | Select-Object -Last 1).ToString().Trim()
     if (-not $remoteArchive) {
-        throw "Der Server hat keinen Archivpfad zurueckgegeben."
+        throw "Server did not return an archive path."
     }
 
     $localArchive = Join-Path $env:TEMP "sim-fetch-${Project}-$stamp.tar.gz"
 
     try {
-        Write-Step "Uebertrage Archiv von $Server"
+        Write-Step "Downloading archive from $Server"
         & scp @SshOptions -q "${Server}:$remoteArchive" $localArchive
         if ($LASTEXITCODE -ne 0) {
-            throw "Herunterladen des Archivs von $Server fehlgeschlagen."
+            throw "Failed to download archive from $Server."
         }
 
-        Write-Step "Entpacke Ergebnisse nach $target"
+        Write-Step "Extracting results to $target"
         & tar.exe -xzf $localArchive -C $target
         if ($LASTEXITCODE -ne 0) {
-            throw "Entpacken mit tar.exe fehlgeschlagen (Exit-Code $LASTEXITCODE)."
+            throw "Extraction with tar.exe failed (exit code $LASTEXITCODE)."
         }
     }
     finally {
@@ -572,20 +559,20 @@ function Invoke-Fetch {
     $logPath = Join-Path $target 'simulation.log'
     if (Test-Path -LiteralPath $logPath) {
         $logLines = Get-Content -LiteralPath $logPath -TotalCount 30 -ErrorAction SilentlyContinue
-        $match = $logLines | Select-String -Pattern '^\s*Projekt:\s*(.+)$' | Select-Object -First 1
+        $match = $logLines | Select-String -Pattern '^\s*(?:Project|Projekt):\s*(.+)$' | Select-Object -First 1
         if ($match) {
             $logProject = $match.Matches[0].Groups[1].Value.Trim()
             if ($logProject -and $logProject -ne $Project) {
-                Write-Warn "Das geholte Log gehoert laut Kopfzeile zu Projekt '$logProject', nicht zum gewaehlten '$Project'."
+                Write-Warn "Fetched log header reports project '$logProject', not selected '$Project'."
             }
         }
     }
 
-    $csvPath = Join-Path $target 'Simulation_Results.csv'
+    $csvPath = Join-Path $target 'results.csv'
     if (-not (Test-Path -LiteralPath $csvPath)) {
         Write-Host ""
-        Write-Host "FEHLER: Simulation_Results.csv fuer Projekt '$Project' fehlt nach dem Entpacken." -ForegroundColor Red
-        Write-Host "Auf $Server liegen Ergebnisse fuer folgende Projekte:" -ForegroundColor Red
+        Write-Host "ERROR: results.csv for project '$Project' is missing after extraction." -ForegroundColor Red
+        Write-Host "Results available on $Server for:" -ForegroundColor Red
         $projectsResult = Invoke-Remote -CommandLine "$RunnerCall projects" -Quiet -AllowFailure
         if ($projectsResult.Output) {
             $projectsResult.Output | ForEach-Object { Write-Host "    $_" }
@@ -597,34 +584,32 @@ function Invoke-Fetch {
         Write-Host ("    {0,10:N1} KB  {1}" -f ($_.Length / 1KB), $_.Name)
     }
     Write-Host ""
-    Write-Host "    Fertig: $target" -ForegroundColor Green
+    Write-Host "    Done: $target" -ForegroundColor Green
 }
 
 function Invoke-Delete {
-    Write-Step "Laufreste auf $Server"
+    Write-Step "Run artifacts on $Server"
 
-    # Erst nur auflisten lassen: geloescht wird ueber alle Projekte hinweg, und was
-    # weg ist, ist weg -- das soll man vorher sehen.
+    # List first before deleting across all projects so the user can see what will be removed.
     $listing = Invoke-Remote -CommandLine "$RunnerCall delete" -Quiet -AllowFailure
     $listing.Output | ForEach-Object { Write-Host "    $_" }
 
     switch ($listing.ExitCode) {
         0 { }
         3 { return }
-        1 { throw "Erst den Lauf beenden:  .\scripts\sim.ps1 stop" }
-        # 2 = "Unbekannter Befehl": auf dem Server liegt ein sim-runner.sh von vor
-        # diesem Befehl. sim.ps1 laeuft lokal und ist immer neuer als das Deploy.
-        2 { throw "Der Server kennt 'delete' noch nicht (alter Stand). Erst hochladen:  .\scripts\sim.ps1 deploy" }
-        default { throw "Auflisten auf $Server fehlgeschlagen (Exit-Code $($listing.ExitCode))." }
+        1 { throw "Stop the active run first:  .\scripts\sim.ps1 stop" }
+        # 2 = "Unknown command": older sim-runner.sh on the server.
+        2 { throw "Server does not support 'delete' yet (outdated deployment). Deploy first:  .\scripts\sim.ps1 deploy" }
+        default { throw "Listing on $Server failed (exit code $($listing.ExitCode))." }
     }
 
     if (-not $Force) {
         Write-Host ""
-        Write-Warn "Das loescht die Ergebnisse ALLER Projekte auf dem Server unwiderruflich."
-        Write-Warn "Was du behalten willst, vorher holen:  .\scripts\sim.ps1 fetch -All -Project <Name>"
-        $answer = Read-Host "    Wirklich loeschen? 'ja' eingeben"
-        if ($answer -ne 'ja') {
-            Write-Host "    Abgebrochen - nichts geloescht." -ForegroundColor Green
+        Write-Warn "This permanently deletes results of ALL projects on the server."
+        Write-Warn "Fetch anything you want to keep first:  .\scripts\sim.ps1 fetch -All -Project <Name>"
+        $answer = Read-Host "    Really delete? Type 'yes' to confirm"
+        if ($answer -ne 'yes') {
+            Write-Host "    Aborted - nothing deleted." -ForegroundColor Green
             return
         }
     }
@@ -633,32 +618,29 @@ function Invoke-Delete {
 }
 
 # ---------------------------------------------------------------------------
-# Ablauf
+# Entry point
 # ---------------------------------------------------------------------------
 
 try {
-    # Sagen, mit welchem Projekt gerechnet wird, wenn der Aufruf es nicht nennt. Auf der
-    # Server-Seite ist der stille Standard mit TODO-28 ersatzlos entfallen; hier ist er
-    # bequem und darf bleiben -- aber nicht stumm.
-    #
-    # Bei fetch und status fragen wir das zuletzt auf dem Server gerechnete Projekt ab
-    # (TODO-31); bei deploy, run und doctor gilt weiterhin die Standardvorgabe.
+    # Announce which project will be used when -Project is omitted.
+    # For fetch and status, query the last project run on the server;
+    # for deploy, run, resume, doctor, calibrate, and recheck, fall back to $Project.
     if (-not $PSBoundParameters.ContainsKey('Project')) {
         if (@('status', 'fetch') -contains $Command) {
             Assert-RemoteDeployed
             $remoteLast = Get-RemoteLastProject
             if ($remoteLast) {
                 $Project = $remoteLast
-                Write-Host "Kein -Project angegeben - letzter Lauf auf $Server war '$Project', nehme dieses." -ForegroundColor Yellow
+                Write-Host "No -Project specified - last run on $Server was '$Project', using it." -ForegroundColor Yellow
             }
             else {
-                Write-Warn "Kein -Project angegeben und kein letzter Lauf auf $Server ermittelt, es gilt die Vorgabe '$Project'."
-                Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+                Write-Warn "No -Project specified and no previous run found on $Server; using default '$Project'."
+                Write-Warn "Available projects:  .\scripts\sim.ps1 projects"
             }
         }
         elseif (@('deploy', 'run', 'resume', 'doctor', 'calibrate', 'recheck') -contains $Command) {
-            Write-Warn "Kein -Project angegeben, es gilt die Vorgabe '$Project'."
-            Write-Warn "Welche Projekte es gibt:  .\scripts\sim.ps1 projects"
+            Write-Warn "No -Project specified, using default '$Project'."
+            Write-Warn "Available projects:  .\scripts\sim.ps1 projects"
         }
     }
 
@@ -677,32 +659,28 @@ try {
 
         'build' {
             Assert-RemoteDeployed
-            Write-Step "Bauen auf $Server"
+            Write-Step "Building on $Server"
             Invoke-Runner -Arguments 'build'
         }
 
         'doctor' {
-            # doctor prueft unter anderem die wirksamen Programmpfade und braucht
-            # deshalb einen Stand auf dem Server. Beim allerersten Aufruf laden wir
-            # ihn hier hoch -- gebaut wird dabei bewusst nicht. Die Pfadpruefung
-            # selbst funktioniert erst nach einem Build, weil doctor das Programm
-            # mit --print-config danach fragt (TODO-24); das meldet er auch so.
+            # doctor inspects effective project paths and therefore requires code on the server.
+            # On the very first call, upload without building; path checks succeed after a build
+            # because doctor queries the application via --print-config.
             if (-not (Test-RemoteDeployed)) {
-                Write-Step "Erster Kontakt mit $Server - lade den Code hoch"
+                Write-Step "First contact with $Server - uploading code"
                 Push-Sources
-                # Kein .deploy_hash schreiben: das naechste deploy soll regulaer
-                # hochladen UND bauen, statt sich auf "unveraendert" zu verlassen.
+                # Do not write .deploy_hash: the next deploy should upload AND build normally.
             }
-            Write-Step "Pruefe Umgebung auf $Server"
+            Write-Step "Checking environment on $Server"
             Invoke-Runner -Arguments 'doctor'
         }
 
         'projects' {
             Assert-RemoteDeployed
-            Write-Step "Projekte auf $Server"
-            # Ueber Invoke-Remote und nicht Invoke-Runner: dieser Befehl setzt bewusst
-            # KEIN SIM_PROJECT. Er wird gerade dann gebraucht, wenn man den Namen nicht
-            # kennt -- und der Server soll antworten, ohne einen zu verlangen.
+            Write-Step "Projects on $Server"
+            # Use Invoke-Remote instead of Invoke-Runner: this command intentionally sets
+            # NO SIM_PROJECT so the server lists projects without requiring one.
             Invoke-Remote -CommandLine "$RunnerCall projects" | Out-Null
         }
 
@@ -731,16 +709,16 @@ try {
             $follow = 'yes'
             if ($NoFollow) { $follow = 'no' }
             if ($follow -eq 'yes') {
-                Write-Host "Strg+C beendet nur die Anzeige - der Lauf auf dem Server laeuft weiter." -ForegroundColor Yellow
+                Write-Host "Ctrl+C only stops the log viewer - the simulation on the server keeps running." -ForegroundColor Yellow
             }
-            # Direkt ohne Wrapper, damit Strg+C sauber durchschlaegt.
+            # Direct ssh call without wrapper so Ctrl+C passes through cleanly.
             & ssh @SshOptions $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
         }
     }
 }
 catch {
-    # Klartext statt PowerShell-Stacktrace: die Ursache steht in der Meldung.
+    # Plain message instead of a PowerShell stack trace.
     Write-Host ""
-    Write-Host "FEHLER: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }

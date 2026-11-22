@@ -16,11 +16,11 @@ namespace FluidForge.Tests
             {
                 { "Length", 100.0f },     // Dimensional
                 { "Width", 50.0f },       // Dimensional
-                { "TailTaper", 1.0f }     // Nicht dimensional (dimensionslos)
+                { "TailTaper", 1.0f }     // Non-dimensional (dimensionless)
             };
 
             var dimensionalParams = new HashSet<string> { "Length", "Width" };
-            float targetSize = 20.0f; // Die Max-Dimension (100) soll auf 20 skaliert werden (Faktor 0.2)
+            float targetSize = 20.0f; // The max dimension (100) should be scaled to 20 (factor 0.2)
 
             // Act
             var scaler = new RubberBandScaler(parameters, dimensionalParams, targetSize);
@@ -28,12 +28,12 @@ namespace FluidForge.Tests
             // Assert
             Assert.Equal(0.2f, scaler.ShrinkFactor, 3); // 20 / 100
             
-            // Dimensional skaliert
+            // Scaled dimensionally
             Assert.Equal(20.0f, scaler.ShrunkParameters["Length"]); // 100 * 0.2
             Assert.Equal(10.0f, scaler.ShrunkParameters["Width"]);  // 50 * 0.2
             
-            // Dimensionslos bleibt UNVERÄNDERT
-            Assert.Equal(1.0f, scaler.ShrunkParameters["TailTaper"]); // 1.0, nicht 0.2!
+            // Dimensionless remains UNCHANGED
+            Assert.Equal(1.0f, scaler.ShrunkParameters["TailTaper"]); // 1.0, not 0.2!
         }
 
         [Fact]
@@ -55,7 +55,7 @@ namespace FluidForge.Tests
             Assert.Equal(100.0f, scaler.ShrunkParameters["Length"]);
             Assert.Equal(1.0f, scaler.ShrunkParameters["TailTaper"]);
 
-            // Die Restore-Methoden sind im Aus-Fall die Identität
+            // When disabled, the Restore methods are the identity
             Assert.Equal(42.0f, scaler.RestoreLength(42.0f), 4);
             Assert.Equal(42.0f, scaler.RestoreArea(42.0f), 4);
             Assert.Equal(42.0f, scaler.RestoreVolume(42.0f), 4);

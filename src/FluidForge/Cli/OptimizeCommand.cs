@@ -9,11 +9,11 @@ using FluidForge.Core;
 namespace FluidForge.Cli
 {
     /// <summary>
-    /// Lädt die Projektkonfiguration, führt den Optimierungslauf aus und formatiert Fehlerberichte.
+    /// Loads project configuration, runs the optimization loop, and formats error reports.
     /// </summary>
     internal static class OptimizeCommand
     {
-        /// <summary>Lädt Framework- und Projektkonfiguration und baut daraus den Kontext.</summary>
+        /// <summary>Loads framework and project configuration and builds the <see cref="ProjectContext"/>.</summary>
         public static ProjectContext LoadConfiguration(IProjectDefinition definition, string? projectDirectoryArgument)
         {
             string name = definition.Name;
@@ -21,14 +21,13 @@ namespace FluidForge.Cli
 
             if (projectDirectory == null)
                 throw new InvalidOperationException(
-                    $"[PROJEKT] Zum Projekt '{name}' wurde kein Ordner "
-                    + $"{ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{name}/ gefunden. "
-                    + "Dort liegen project.json, simulation.json und solvers/*.json. Gesucht wurde "
-                    + $"aufwärts von {JsonConfigLoader.Label(Environment.CurrentDirectory)}; ein anderer Ort "
-                    + $"lässt sich über die Umgebungsvariable {ProjectPaths.ProjectsDirectoryVariable} "
-                    + "oder als zweites Aufrufargument angeben.");
+                    $"[PROJECT] No folder {ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{name}/ "
+                    + $"was found for project '{name}'. That folder holds project.json, simulation.json, and solvers/*.json. "
+                    + $"Searched upwards from {JsonConfigLoader.Label(Environment.CurrentDirectory)}; another location "
+                    + $"can be specified via the {ProjectPaths.ProjectsDirectoryVariable} environment variable "
+                    + "or as the second positional argument.");
 
-            Console.WriteLine($"[CONFIG] Projektordner: {JsonConfigLoader.Label(projectDirectory)}");
+            Console.WriteLine($"{OutputConventions.ConfigTag} Project directory: {JsonConfigLoader.Label(projectDirectory)}");
 
             var simulation = JsonConfigLoader.LoadForProject(SimulationConfig.CreateDefault(), "simulation.json", projectDirectory);
             simulation.Report.PrintMachineOverrideWarning(name);
@@ -46,10 +45,12 @@ namespace FluidForge.Cli
             return context;
         }
 
-        /// <summary>Verdrahtet die Bausteine des Projekts und startet den Lauf im Geometrie-Kernel.</summary>
+        /// <summary>Wires the project components and launches the run inside the geometry kernel.</summary>
         public static void RunOptimization(IProjectDefinition definition, ProjectContext context, string[] args, bool resume)
         {
-            Console.WriteLine(resume ? $"[SYSTEM] Setze abgebrochenen Lauf fort: {context.Name}" : $"[SYSTEM] Starte Projekt: {context.Name}");
+            Console.WriteLine(resume
+                ? $"{OutputConventions.SystemTag} Resuming aborted run: {context.Name}"
+                : $"{OutputConventions.SystemTag} Starting project: {context.Name}");
 
             IGeometryGenerator geometry = definition.CreateGeometry(context);
             IFitnessCalculator fitness = definition.CreateFitness(context);
@@ -68,7 +69,7 @@ namespace FluidForge.Cli
             string workingDirectory = simulationContext.WorkingDirectory;
             if (!TryPrepareJournal(context, args, workingDirectory, resume, out int seed, out RunJournal? journal) || journal == null)
             {
-                Console.WriteLine("[WIEDERAUFNAHME] Der Lauf ist bereits abgeschlossen, nichts zu tun.");
+                Console.WriteLine($"{OutputConventions.ResumeTag} Run is already completed; nothing to do.");
                 return;
             }
 
@@ -93,11 +94,11 @@ namespace FluidForge.Cli
 
                     string effectiveConfig = EffectiveConfigWriter.Write(simulationContext.WorkingDirectory, context, simulationContext);
                     Console.WriteLine("==================================================");
-                    Console.WriteLine("  AUTOMATED CFD OPTIMIZATION FRAMEWORK");
-                    Console.WriteLine($"  Projekt:          {context.Name}");
-                    Console.WriteLine($"  Geometrie-Kernel: {kernel.Name}");
-                    Console.WriteLine($"  Ergebnisse:       {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
-                    Console.WriteLine($"  Konfiguration:    {JsonConfigLoader.Label(effectiveConfig)}");
+                    Console.WriteLine("  FLUIDFORGE CFD OPTIMIZATION FRAMEWORK");
+                    Console.WriteLine($"  Project:         {context.Name}");
+                    Console.WriteLine($"  Geometry Kernel: {kernel.Name}");
+                    Console.WriteLine($"  Results:         {JsonConfigLoader.Label(simulationContext.WorkingDirectory)}");
+                    Console.WriteLine($"  Configuration:   {JsonConfigLoader.Label(effectiveConfig)}");
                     Console.WriteLine("==================================================");
 
                     controller.RunOptimization();
@@ -125,7 +126,7 @@ namespace FluidForge.Cli
 
                 seed = plan.Seed;
                 journal = plan.Journal;
-                Console.WriteLine($"[WIEDERAUFNAHME] {plan.StoredSimulations} Rechnung(en) gesichert, Zufalls-Seed {seed} aus dem Journal.");
+                Console.WriteLine($"{OutputConventions.ResumeTag} {plan.StoredSimulations} evaluation(s) restored, random seed {seed} from journal.");
                 RunInfoWriter.AddResume(workingDirectory, plan.StoredSimulations);
                 return true;
             }
@@ -134,10 +135,10 @@ namespace FluidForge.Cli
             Console.WriteLine(RunSeed.Describe(seed, context.Simulation.RandomSeed));
 
             journal = RunJournal.StartNew(workingDirectory, RunResume.CreateHeader(context.Name, seed, configurationSections, source), out string? archived);
-            if (archived != null) Console.WriteLine($"[SYSTEM] Vorheriges Journal archiviert: {JsonConfigLoader.Label(archived)}");
+            if (archived != null) Console.WriteLine($"{OutputConventions.SystemTag} Previous journal archived: {JsonConfigLoader.Label(archived)}");
 
             int copied = RunInfoWriter.CopyProjectSources(context.ProjectDirectory, workingDirectory);
-            Console.WriteLine($"[SYSTEM] Quellstand gesichert: {copied} Datei(en) nach {RunInfoWriter.SourceSnapshotDirectoryName}/");
+            Console.WriteLine($"{OutputConventions.SystemTag} Source snapshot saved: {copied} file(s) to {RunInfoWriter.SourceSnapshotDirectoryName}/");
 
             Dictionary<string, string> toolVersions = ToolVersionProbe.Probe(context.Simulation);
             string? mpiWarning = ToolVersionProbe.MpiWarning(toolVersions, context.Simulation.MpiRunPath);
@@ -156,7 +157,7 @@ namespace FluidForge.Cli
             if (!context.Simulation.MeshCalibration.Mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             {
                 MeshCalibration.CheckManualCalibrationHints(context, simulationContext.WorkingDirectory);
-                Console.WriteLine($"Netzfaktor: {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)} (MANUELL aus simulation.json)");
+                Console.WriteLine($"Mesh factor: {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)} ({OutputConventions.ManualMeshSource})");
                 return;
             }
 
@@ -167,31 +168,31 @@ namespace FluidForge.Cli
             {
                 simulationContext.EffectiveMeshRefinementFactor = decision.SelectedStage.Factor;
                 if (string.IsNullOrEmpty(simulationContext.MeshRefinementSource)
-                    || simulationContext.MeshRefinementSource.StartsWith("MANUELL", StringComparison.OrdinalIgnoreCase))
+                    || simulationContext.MeshRefinementSource.StartsWith("MANUAL", StringComparison.OrdinalIgnoreCase))
                 {
-                    simulationContext.MeshRefinementSource = $"KALIBRIERT am Laufanfang, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, Stufe {decision.SelectedStage.LevelIndex} von {decision.AllStages.Count}, Bericht: {reportRelPath}";
+                    simulationContext.MeshRefinementSource = $"CALIBRATED at run start, tolerance {context.Simulation.MeshCalibration.Tolerance * 100:0.0} %, level {decision.SelectedStage.LevelIndex} of {decision.AllStages.Count}, report: {reportRelPath}";
                 }
                 simulationContext.CalibrationReportPath = reportRelPath;
-                Console.WriteLine($"Netzfaktor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                Console.WriteLine($"Mesh factor: {decision.SelectedStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
             }
             else if (decision.FallbackStage != null)
             {
                 var effectiveStage = decision.FallbackStage;
-                Console.WriteLine($"[WARNUNG] Automatische Netzkalibrierung: {decision.SummaryMessage}");
-                Console.WriteLine($"[WARNUNG] Nutze feinste validierte Rückfall-Stufe {effectiveStage.LevelIndex} (Faktor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}) für den Optimierungslauf.");
+                Console.WriteLine($"{OutputConventions.WarningTag} Automatic mesh calibration: {decision.SummaryMessage}");
+                Console.WriteLine($"{OutputConventions.WarningTag} Using finest validated fallback level {effectiveStage.LevelIndex} (factor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}) for the optimization run.");
                 simulationContext.EffectiveMeshRefinementFactor = effectiveStage.Factor;
-                simulationContext.MeshRefinementSource = $"KALIBRIERT (Rückfall auf Stufe {effectiveStage.LevelIndex}, Faktor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}, Toleranz {context.Simulation.MeshCalibration.Tolerance * 100:0.0} % an Stufen-/Zellgrenze nicht ganz erreicht), Bericht: {reportRelPath}";
+                simulationContext.MeshRefinementSource = $"CALIBRATED (fallback to level {effectiveStage.LevelIndex}, factor {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)}, tolerance {context.Simulation.MeshCalibration.Tolerance * 100:0.0} % not quite reached at stage/cell limit), report: {reportRelPath}";
                 simulationContext.CalibrationReportPath = reportRelPath;
-                Console.WriteLine($"Netzfaktor: {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
+                Console.WriteLine($"Mesh factor: {effectiveStage.Factor.ToString("0.00", CultureInfo.InvariantCulture)} ({simulationContext.MeshRefinementSource})");
             }
             else
             {
                 throw new InvalidOperationException(
-                    $"[KALIBRIERUNG] Automatische Netzkalibrierung fehlgeschlagen: {decision.SummaryMessage}");
+                    $"{OutputConventions.CalibrationTag} Automatic mesh calibration failed: {decision.SummaryMessage}");
             }
         }
 
-        /// <summary>Repo-Wurzel zum Projektordner (dort liegen .git bzw. deploy-info.json).</summary>
+        /// <summary>Repository root for the project folder (contains .git or deploy-info.json).</summary>
         private static string? RepositoryRootOf(ProjectContext context)
         {
             string? projectsRoot = string.IsNullOrEmpty(context.ProjectDirectory)
@@ -200,13 +201,13 @@ namespace FluidForge.Cli
             return ProjectPaths.ResolveRepositoryRoot(projectsRoot);
         }
 
-        /// <summary>Trennt den Bedienfehler vom Absturz.</summary>
+        /// <summary>Distinguishes user configuration/CLI errors from unexpected crashes.</summary>
         public static void Report(Exception exception)
         {
             bool isUserError = exception is InvalidOperationException
                                && exception.Message.StartsWith("[", StringComparison.Ordinal);
             Console.WriteLine();
-            Console.WriteLine(isUserError ? exception.Message : $"[KRITISCHER FEHLER] Programmabbruch:\n{exception}");
+            Console.WriteLine(isUserError ? exception.Message : $"{OutputConventions.ErrorTag} [CRITICAL] Program aborted:\n{exception}");
         }
     }
 }

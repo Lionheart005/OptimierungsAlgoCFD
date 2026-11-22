@@ -1,12 +1,11 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Eine Stufe der Simulationskette: ein Solver mit dem Vernetzer, der sein Netz erzeugt.
+    /// One stage of the simulation chain: a solver paired with the mesher that generates its mesh.
     ///
-    /// Verschiedene Solver brauchen verschiedene Netze (CFD: Fluidraum um das Modell,
-    /// FEM: Solid-Netz des Modells selbst). Wer alles über Gmsh laufen lassen will,
-    /// referenziert in mehreren Stufen einfach dieselbe Mesher-Instanz — der Controller
-    /// vernetzt dann nur einmal.
+    /// Different solvers require different meshes (CFD: fluid domain around the model;
+    /// FEM: solid mesh of the model itself). Stages that share the same mesher instance
+    /// mesh only once.
     /// </summary>
     public record SolverStage(IMeshGenerator Mesher, ISimulationSolver Solver);
 }

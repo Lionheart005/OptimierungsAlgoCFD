@@ -77,7 +77,7 @@ namespace FluidForge.Tests
 
             Assert.Equal(0.5f, effective);
             Assert.Equal(0.5f, sim.BaseVoxelResolution);
-            Assert.Contains("[WARNUNG]", writer.ToString());
+            Assert.Contains(OutputConventions.WarningTag, writer.ToString());
         }
 
         [Fact]
@@ -102,7 +102,7 @@ namespace FluidForge.Tests
             Assert.Equal(0.5f, sim.BaseVoxelResolution);
             string log = writer.ToString();
             Assert.Contains("[INFO] AutoVoxelResolution:", log);
-            Assert.DoesNotContain("[WARNUNG]", log);
+            Assert.DoesNotContain(OutputConventions.WarningTag, log);
         }
 
         [Fact]
@@ -127,7 +127,7 @@ namespace FluidForge.Tests
             Assert.Equal(0.1f, effective, 5);
             string log = writer.ToString();
             Assert.Contains("[INFO] AutoVoxelResolution:", log);
-            Assert.Contains("[WARNUNG]", log);
+            Assert.Contains(OutputConventions.WarningTag, log);
         }
 
         [Fact]
@@ -164,7 +164,7 @@ namespace FluidForge.Tests
             string path = RunJournal.PathFor(dir);
 
             string headerLine = "{\"ZufallsSeed\":42,\"Start\":\"2026-11-10T10:00:00+01:00\"}";
-            string entryLine = "{\"Index\":0,\"Iteration\":1,\"Variant\":1,\"Factor\":1,\"Tag\":\"Kal3\",\"Parameters\":{\"Length\":500},\"Record\":{\"Iteration\":1,\"Variant\":1,\"ActiveParameters\":{\"Length\":500},\"PassiveParameters\":{\"Drag\":0.25},\"Fitness\":1.0,\"SimulationFailed\":false}}";
+            string entryLine = "{\"Index\":0,\"Iteration\":1,\"Variant\":1,\"Factor\":1,\"Tag\":\"Cal3\",\"Parameters\":{\"Length\":500},\"Record\":{\"Iteration\":1,\"Variant\":1,\"ActiveParameters\":{\"Length\":500},\"PassiveParameters\":{\"Drag\":0.25},\"Fitness\":1.0,\"SimulationFailed\":false}}";
             File.WriteAllLines(path, new[] { headerLine, entryLine });
 
             RunJournalContent? content = RunJournal.Read(path);
@@ -173,7 +173,7 @@ namespace FluidForge.Tests
             Assert.Null(content.Entries[0].DurationSeconds);
 
             RunJournal replay = RunJournal.Resume(dir, content);
-            Assert.True(replay.TryReplay(1, 1, 1f, "Kal3", new Dictionary<string, float> { ["Length"] = 500f }, out ModelRecord? rec));
+            Assert.True(replay.TryReplay(1, 1, 1f, "Cal3", new Dictionary<string, float> { ["Length"] = 500f }, out ModelRecord? rec));
             Assert.NotNull(rec);
             Assert.Null(replay.LastReplayedDurationSeconds);
         }
@@ -668,7 +668,7 @@ namespace FluidForge.Tests
                     rec.PassiveParameters["MeshCells_Hexa"] = 2000f;
                     rec.PassiveParameters["MeshCells_Tet"] = 4900f;
                     rec.PassiveParameters["MeshCells_Pyramid"] = 100f;
-                    // Omit Blockage/CD_p/CD_v on Stufe 2 to verify finite-only JSON omission
+                    // Omit Blockage/CD_p/CD_v on stage 2 to verify finite-only JSON omission
                     if (Math.Abs(factor - 1.41f) > 0.02f)
                     {
                         rec.PassiveParameters["TunnelBlockagePercent"] = 2.75f;
@@ -685,7 +685,7 @@ namespace FluidForge.Tests
             Assert.True(File.Exists(jsonPath));
 
             string[] csvLines = File.ReadAllLines(csvPath);
-            Assert.Contains(";Tri;Quad;Prism;Hexa;Tet;Pyramiden;Blockage_%;CD_p;CD_v", csvLines[0]);
+            Assert.Contains(";Tri;Quad;Prism;Hex;Tet;Pyramid;Blockage_pct;CD_p;CD_v", csvLines[0]);
             Assert.Contains(csvLines, l => l.Contains(";120;80;3000;2000;4900;100;2.75;0.14000;0.06000"));
 
             JsonObject jsonRoot = JsonNode.Parse(File.ReadAllText(jsonPath))!.AsObject();

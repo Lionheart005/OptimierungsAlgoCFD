@@ -3,32 +3,29 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Laufzeitumgebung des Geometrie-Kernels (Entscheidung 2).
+    /// Runtime environment of the geometry kernel.
     ///
-    /// Manche Kernel — PicoGK zum Beispiel — müssen erst eine eigene Laufzeitumgebung
-    /// hochfahren, bevor irgendeine Geometrie erzeugt werden darf; der eigentliche
-    /// Programmablauf läuft dann *innerhalb* dieses Aufrufs. Damit
-    /// <c>Program.cs</c> nicht <c>Library.Go(...)</c> und damit PicoGK kennen muss,
-    /// steht dieser Start-Mechanismus hinter dieser Abstraktion.
+    /// Some kernels — such as PicoGK — must initialize their own host runtime before any
+    /// geometry can be created, executing the workflow inside that callback. This abstraction
+    /// keeps <c>Program.cs</c> decoupled from <c>Library.Go(...)</c> and PicoGK.
     ///
-    /// Bewusst getrennt von <see cref="IGeometryGenerator"/>: der Kernel ist
-    /// projektunabhängig (mehrere Projekte teilen sich PicoGK), der Generator nicht.
-    /// Ein Kernel ohne eigene Laufzeitumgebung nutzt <see cref="DirectGeometryKernel"/>.
+    /// Separated from <see cref="IGeometryGenerator"/> because the kernel is project-independent
+    /// while the generator is project-specific. Kernels without a host runtime use
+    /// <see cref="DirectGeometryKernel"/>.
     /// </summary>
     public interface IGeometryKernel
     {
-        /// <summary>Name des Kernels für die Konsolen-Ausgabe.</summary>
+        /// <summary>Kernel name for console output.</summary>
         string Name { get; }
 
         /// <summary>
-        /// Startet den Kernel und führt <paramref name="body"/> in dessen Laufzeitumgebung aus.
-        /// Der Aufruf kehrt erst zurück, wenn <paramref name="body"/> fertig ist.
+        /// Starts the kernel and executes <paramref name="body"/> within its runtime environment.
+        /// Returns only after <paramref name="body"/> completes.
         /// </summary>
         /// <param name="voxelResolution">
-        /// Arbeitsauflösung des Kernels (bei PicoGK die Voxelgröße). Kernel ohne
-        /// Voxel-Modell dürfen den Wert ignorieren.
+        /// Working resolution of the kernel (voxel size for PicoGK). Non-voxel kernels may ignore this.
         /// </param>
-        /// <param name="body">Der Programmablauf, der im Kernel laufen soll.</param>
+        /// <param name="body">The workflow to execute inside the kernel.</param>
         void RunHosted(float voxelResolution, Action body);
     }
 }

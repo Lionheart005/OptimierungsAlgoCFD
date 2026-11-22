@@ -9,7 +9,7 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Automatisches Ende der Optimierung (AutoStop, 09.11.2026): die reine Entscheidungsregel.
+    /// Automatic optimization termination (AutoStop, 2026-11-09): the pure decision rule.
     /// </summary>
     public class AutoStopDecisionTests
     {
@@ -22,7 +22,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Does_Not_Stop_Before_There_Is_A_Reference_Before_The_Window()
         {
-            // 3 Varianten, Fenster 3: es gibt kein "vorher".
+            // 3 variants, window 3: there is no "before".
             var decision = AutoStop.Evaluate(History(5f, 5f, 5f), On(window: 3));
 
             Assert.False(decision.Stop);
@@ -32,7 +32,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Stops_When_The_Best_Value_Stagnates_Inside_The_Window()
         {
-            // vorher: Bestwert 10. Fenster (3): 9, 10.05, 8 -> Bestwert 10.05 = +0,5 % < 1 %.
+            // before: best value 10. Window (3): 9, 10.05, 8 -> best value 10.05 = +0.5% < 1%.
             var decision = AutoStop.Evaluate(History(4f, 10f, 9f, 10.05f, 8f), On(window: 3));
 
             Assert.True(decision.Stop);
@@ -42,7 +42,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Continues_When_The_Window_Brings_Enough_Improvement()
         {
-            // vorher 10, jetzt 10.2 = +2 % >= 1 %.
+            // before 10, now 10.2 = +2% >= 1%.
             var decision = AutoStop.Evaluate(History(10f, 9f, 10.2f, 9f), On(window: 3));
 
             Assert.False(decision.Stop);
@@ -52,7 +52,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Only_The_Last_Window_Counts_Not_Earlier_Progress()
         {
-            // Früher großer Sprung (1 -> 10), danach Stillstand über das ganze Fenster.
+            // Early big jump (1 -> 10), then stagnation across the entire window.
             var decision = AutoStop.Evaluate(History(1f, 10f, 10f, 10f, 10f), On(window: 3));
 
             Assert.True(decision.Stop);
@@ -63,9 +63,9 @@ namespace FluidForge.Tests
         public void Failed_Variants_Count_In_The_Window_But_Never_Provide_The_Best_Value()
         {
             var history = History(10f, 50f, 9f, 9f);
-            history[1].SimulationFailed = true; // trägt eine Fitness, zählt aber nicht als Bestwert
+            history[1].SimulationFailed = true; // carries a fitness value, but never counts as best
 
-            // vorher (2 Varianten): nur die 10 gilt. Fenster: 9, 9 -> keine Verbesserung.
+            // before (2 variants): only 10 counts. Window: 9, 9 -> no improvement.
             var decision = AutoStop.Evaluate(history, On(window: 2));
 
             Assert.True(decision.Stop);
@@ -90,7 +90,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Works_With_Negative_Fitness_Values()
         {
-            // -10 -> -9.95: 0,5 % besser bezogen auf |vorher|.
+            // -10 -> -9.95: 0.5% better relative to |before|.
             var decision = AutoStop.Evaluate(History(-10f, -12f, -9.95f), On(window: 2));
 
             Assert.True(decision.Stop);
@@ -127,7 +127,7 @@ namespace FluidForge.Tests
     }
 
     /// <summary>
-    /// AutoStop im echten Ablauf des <see cref="WorkflowController"/>, mit Attrappen statt Geometrie und Solver.
+    /// AutoStop in the real <see cref="WorkflowController"/> flow, using mocks instead of geometry and solver.
     /// </summary>
     public class AutoStopWorkflowTests : IDisposable
     {
@@ -145,8 +145,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Jede Runde liefert dieselben Fitnesswerte (= Variantennummer), es wird also nie etwas besser.
-        /// Optional wird in einer Runde ein Sprung eingebaut.
+        /// Each round returns the same fitness values (= variant number), so nothing ever improves.
+        /// Optionally, a jump is injected in one round.
         /// </summary>
         private (SimulationContext Context, WorkflowController Controller) Build(
             int iterations, int variants, AutoStopConfig autoStop, int? jumpInIteration = null)
@@ -183,7 +183,7 @@ namespace FluidForge.Tests
             solver.SetupGet(s => s.Name).Returns("Solver");
 
             var optimizer = new Mock<IOptimizationAlgorithm>();
-            optimizer.SetupGet(o => o.Name).Returns("Test-Optimierer");
+            optimizer.SetupGet(o => o.Name).Returns("Test-Optimizer");
             optimizer.Setup(o => o.GenerateParameters(
                     It.IsAny<SimulationContext>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
                 .Returns((SimulationContext c, int i, int v, int max) => new Dictionary<string, float> { { "Length", 100f + v } });
@@ -221,7 +221,7 @@ namespace FluidForge.Tests
         [Fact]
         public void On_Ends_After_The_First_Iteration_Without_Improvement()
         {
-            // Fenster 2 = eine Runde. Nach Runde 1 fehlt das "vorher", nach Runde 2 ist nichts besser geworden.
+            // Window 2 = one round. After round 1 there is no "before", after round 2 nothing improved.
             var (context, controller) = Build(5, 2, new AutoStopConfig { Mode = "On", MinImprovement = 0.01f, WindowVariants = 2 });
 
             controller.RunOptimization();
@@ -233,9 +233,9 @@ namespace FluidForge.Tests
         [Fact]
         public void An_Improvement_Keeps_The_Run_Going_Until_It_Stagnates_Again()
         {
-            // Fenster 4 = zwei Runden, Sprung von 2 auf 12 in Runde 3.
-            // Nach Runde 2: noch kein "vorher". Nach Runde 3 und 4: vorher 2, jetzt 12 -> weiter.
-            // Nach Runde 5: vorher (Runde 1–3) 12, jetzt 12 -> Stopp.
+            // Window 4 = two rounds, jump from 2 to 12 in round 3.
+            // After round 2: no "before" yet. After round 3 and 4: before 2, now 12 -> continue.
+            // After round 5: before (rounds 1-3) 12, now 12 -> stop.
             var (context, controller) = Build(8, 2,
                 new AutoStopConfig { Mode = "On", MinImprovement = 0.01f, WindowVariants = 4 }, jumpInIteration: 3);
 
@@ -247,7 +247,7 @@ namespace FluidForge.Tests
         [Fact]
         public void The_Upper_Limit_Still_Applies()
         {
-            // Fenster größer als der ganze Lauf: das automatische Ende greift nie, MaxIterations begrenzt.
+            // Window larger than the whole run: automatic stop never triggers, MaxIterations limits.
             var (context, controller) = Build(3, 2, new AutoStopConfig { Mode = "On", WindowVariants = 50 });
 
             controller.RunOptimization();
@@ -258,7 +258,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Invalid_Settings_Abort_Before_The_First_Variant()
         {
-            var (context, controller) = Build(3, 2, new AutoStopConfig { Mode = "Vielleicht" });
+            var (context, controller) = Build(3, 2, new AutoStopConfig { Mode = "Maybe" });
 
             Assert.Throws<InvalidOperationException>(() => controller.RunOptimization());
             Assert.Empty(context.History);

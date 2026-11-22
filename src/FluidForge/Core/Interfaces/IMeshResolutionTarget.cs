@@ -1,8 +1,8 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Optional für einen <see cref="IMeshGenerator"/>: meldet die Ziel-Oberflächenzellgröße (mm)
-    /// bei Netzfaktor 1.0, damit <see cref="VoxelResolutionAdvisor"/> ohne Solver-Abhängigkeit prüfen kann.
+    /// Optional for an <see cref="IMeshGenerator"/>: reports the target surface cell size (mm)
+    /// at refinement factor 1.0 so <see cref="VoxelResolutionAdvisor"/> can check resolution without solver coupling.
     /// </summary>
     public interface IMeshResolutionTarget
     {

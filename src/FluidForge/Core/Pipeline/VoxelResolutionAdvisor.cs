@@ -6,9 +6,9 @@ using System.IO;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Prüft vor dem Start des Geometrie-Kernels, ob die PicoGK-Start-Voxelgröße im Realraum
-    /// ausreichend fein gegenüber der CFD-Oberflächenzellgröße ist, und verfeinert sie
-    /// optional bei aktiviertem <see cref="SimulationConfig.AutoVoxelResolution"/>.
+    /// Checks before starting the geometry kernel whether the PicoGK initial voxel size in physical space
+    /// is sufficiently fine relative to the CFD surface cell size, and optionally refines it when
+    /// <see cref="SimulationConfig.AutoVoxelResolution"/> is enabled.
     /// </summary>
     public static class VoxelResolutionAdvisor
     {
@@ -17,9 +17,9 @@ namespace FluidForge.Core
         public const float AutoRefineRatioToSurfaceCell = 0.75f;
 
         /// <summary>
-        /// Ermittelt die effektive PicoGK-Start-Voxelgröße ohne <paramref name="sim"/> zu mutieren.
-        /// Bei Pipelines ohne <see cref="IMeshResolutionTarget"/> (z. B. 2D) wird
-        /// <see cref="SimulationConfig.BaseVoxelResolution"/> unverändert und ohne Warnung zurückgegeben.
+        /// Resolves the effective PicoGK initial voxel size without mutating <paramref name="sim"/>.
+        /// For pipelines without an <see cref="IMeshResolutionTarget"/> (e.g., 2D),
+        /// <see cref="SimulationConfig.BaseVoxelResolution"/> is returned unchanged without warning.
         /// </summary>
         public static float Resolve(
             SimulationConfig sim,
@@ -90,7 +90,7 @@ namespace FluidForge.Core
                     realVoxelMm = effective / typicalScale;
                     writer.WriteLine(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"[INFO] AutoVoxelResolution: PicoGK-Voxelgröße von {sim.BaseVoxelResolution:0.###} mm auf {effective:0.###} mm verfeinert (Realraum-Voxel {realVoxelMm:0.###} mm, Ziel-Oberflächenzelle {surfaceMm:0.###} mm, Skalenfaktor {typicalScale:0.###})."));
+                        $"[INFO] AutoVoxelResolution: refined PicoGK voxel size from {sim.BaseVoxelResolution:0.###} mm to {effective:0.###} mm (physical voxel {realVoxelMm:0.###} mm, target surface cell {surfaceMm:0.###} mm, scale factor {typicalScale:0.###})."));
                 }
             }
 
@@ -98,7 +98,7 @@ namespace FluidForge.Core
             {
                 writer.WriteLine(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"[WARNUNG] Start-Voxelgröße ({effective:0.###} mm im PicoGK-Raum, Realraum {realVoxelMm:0.###} mm) ist grob gegenüber der Ziel-Oberflächenzellgröße ({surfaceMm:0.###} mm; empfohlen <= {WarningRatioToSurfaceCell * surfaceMm:0.###} mm)."));
+                    $"{OutputConventions.WarningTag} Initial voxel size ({effective:0.###} mm in PicoGK space, {realVoxelMm:0.###} mm physical) is coarse compared to target surface cell size ({surfaceMm:0.###} mm; recommended <= {WarningRatioToSurfaceCell * surfaceMm:0.###} mm)."));
             }
 
             return effective;

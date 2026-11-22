@@ -10,25 +10,25 @@ using System.Text.Json;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Schreibt und pflegt den Fahrtenschreiber <c>Ergebnisse/&lt;Projekt&gt;/run-info.json</c>
-    /// und legt die Kopie des Projektcodes unter <c>Quellstand/</c> an (TODO-50, F24).
+    /// Writes and maintains the flight-recorder <c>results/&lt;Project&gt;/run-info.json</c>
+    /// and creates the project source snapshot under <c>source-snapshot/</c>.
     ///
     /// <para>
-    /// Nichts hier darf einen Lauf abbrechen: Pflege-Aufrufe (<see cref="Finish"/>,
-    /// <see cref="AddResume"/>) fangen jeden Fehler ab und melden ihn nur.
+    /// Nothing here may abort a run: maintenance calls (<see cref="Finish"/>,
+    /// <see cref="AddResume"/>) catch every exception and only log a warning.
     /// </para>
     /// </summary>
     public static class RunInfoWriter
     {
-        public const string FileName = "run-info.json";
+        public const string FileName = OutputConventions.RunInfoFileName;
 
-        /// <summary>Schreibt <c>sim.ps1</c> nach erfolgreichem Build ins Repo-Verzeichnis des Servers.</summary>
+        /// <summary>Written by <c>sim.ps1</c> into the server repository root after a successful build.</summary>
         public const string DeployInfoFileName = "deploy-info.json";
 
-        /// <summary>Fingerabdruck des hochgeladenen Codes (gibt es seit TODO-28).</summary>
+        /// <summary>Fingerprint of the uploaded code.</summary>
         public const string DeployHashFileName = ".deploy_hash";
 
-        public const string SourceSnapshotDirectoryName = "Quellstand";
+        public const string SourceSnapshotDirectoryName = OutputConventions.SourceSnapshotDirectory;
 
         private static readonly JsonSerializerOptions Options = new JsonSerializerOptions
         {
@@ -37,11 +37,11 @@ namespace FluidForge.Core
             PropertyNameCaseInsensitive = true
         };
 
-        /// <summary>Zeitstempel mit Zeitzone, wie er in der Datei steht.</summary>
+        /// <summary>Timestamp with timezone offset, as recorded in the file.</summary>
         public static string Now()
             => DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
 
-        /// <summary>Baut den Anfangsstand des Fahrtenschreibers.</summary>
+        /// <summary>Creates the initial flight-recorder state.</summary>
         public static RunInfo Create(
             string project,
             int seed,
@@ -52,27 +52,27 @@ namespace FluidForge.Core
         {
             return new RunInfo
             {
-                Projekt = project,
-                Start = Now(),
+                Project = project,
+                StartedAt = Now(),
                 Status = RunInfo.StatusRunning,
-                Aufruf = arguments.ToList(),
-                ZufallsSeed = seed,
-                Rechner = new RunInfoMachine
+                CommandLine = arguments.ToList(),
+                RandomSeed = seed,
+                Host = new RunInfoMachine
                 {
                     Name = Environment.MachineName,
-                    Betriebssystem = RuntimeInformation.OSDescription,
-                    Prozessorkerne = Environment.ProcessorCount,
+                    OperatingSystem = RuntimeInformation.OSDescription,
+                    ProcessorCount = Environment.ProcessorCount,
                     DotNet = Environment.Version.ToString()
                 },
-                Quellstand = source,
-                Programme = new Dictionary<string, string>(tools),
-                KonfigurationsHash = configurationHash
+                Source = source,
+                Tools = new Dictionary<string, string>(tools),
+                ConfigHash = configurationHash
             };
         }
 
         public static string PathIn(string workingDirectory) => Path.Combine(workingDirectory, FileName);
 
-        /// <summary>Schreibt die Datei und gibt ihren Pfad zurück.</summary>
+        /// <summary>Writes the file and returns its path.</summary>
         public static string Write(string workingDirectory, RunInfo info)
         {
             Directory.CreateDirectory(workingDirectory);
@@ -81,7 +81,7 @@ namespace FluidForge.Core
             return path;
         }
 
-        /// <summary>Liest die Datei, <c>null</c> wenn sie fehlt oder unlesbar ist.</summary>
+        /// <summary>Reads the file, returning <c>null</c> if missing or unreadable.</summary>
         public static RunInfo? Read(string workingDirectory)
         {
             try
@@ -95,20 +95,20 @@ namespace FluidForge.Core
             }
         }
 
-        /// <summary>Setzt am Ende <c>Status</c> und <c>Ende</c>. Wirft nie.</summary>
+        /// <summary>Sets <c>Status</c> and <c>FinishedAt</c> at the end of a run. Never throws.</summary>
         public static void Finish(string workingDirectory, string status)
         {
             Update(workingDirectory, info =>
             {
                 info.Status = status;
-                info.Ende = Now();
+                info.FinishedAt = Now();
             });
         }
 
         /// <summary>
-        /// Trägt die Version eines Programms unter <c>Programme</c> nach, wenn dort noch nichts oder
-        /// "unbekannt" steht (TODO-W2: SU2 kennt keinen Versionsschalter, die Version steht erst im
-        /// Banner der ersten Rechnung). Fehlt <c>run-info.json</c>, passiert nichts. Wirft nie.
+        /// Updates a tool's version under <c>Tools</c> if it is missing or <c>"unknown"</c>
+        /// (e.g., SU2 has no version flag; its version only appears in the banner of the first run).
+        /// Does nothing if <c>run-info.json</c> is missing. Never throws.
         /// </summary>
         public static void SetProgramVersion(string workingDirectory, string program, string version)
         {
@@ -117,31 +117,31 @@ namespace FluidForge.Core
                 RunInfo? info = Read(workingDirectory);
                 if (info == null) return;
 
-                if (info.Programme.TryGetValue(program, out string? known)
+                if (info.Tools.TryGetValue(program, out string? known)
                     && !string.IsNullOrWhiteSpace(known)
-                    && !known.Equals("unbekannt", StringComparison.OrdinalIgnoreCase))
+                    && !known.Equals("unknown", StringComparison.OrdinalIgnoreCase))
                     return;
 
-                info.Programme[program] = version;
+                info.Tools[program] = version;
                 Write(workingDirectory, info);
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"[WARNUNG] {FileName}: Version von {program} konnte nicht eingetragen werden: {exception.Message}");
+                Console.WriteLine($"{OutputConventions.WarningTag} {FileName}: failed to record version of {program}: {exception.Message}");
             }
         }
 
         /// <summary>
-        /// Vermerkt eine Wiederaufnahme (TODO-52): Eintrag unter <c>Wiederaufnahmen</c>,
-        /// <c>Status</c> wieder auf <c>laeuft</c>. Wirft nie.
+        /// Records a resume event: appends an entry under <c>Resumes</c> and resets
+        /// <c>Status</c> back to <c>running</c>. Never throws.
         /// </summary>
         public static void AddResume(string workingDirectory, int storedSimulations)
         {
             Update(workingDirectory, info =>
             {
-                info.Wiederaufnahmen.Add(new RunInfoResume { Zeit = Now(), UebernommeneRechnungen = storedSimulations });
+                info.Resumes.Add(new RunInfoResume { Timestamp = Now(), AdoptedEvaluations = storedSimulations });
                 info.Status = RunInfo.StatusRunning;
-                info.Ende = null;
+                info.FinishedAt = null;
             });
         }
 
@@ -152,7 +152,7 @@ namespace FluidForge.Core
                 RunInfo? info = Read(workingDirectory);
                 if (info == null)
                 {
-                    Console.WriteLine($"[WARNUNG] {FileName} fehlt oder ist unlesbar — Eintrag übersprungen.");
+                    Console.WriteLine($"{OutputConventions.WarningTag} {FileName} is missing or unreadable — skipping update.");
                     return;
                 }
 
@@ -161,14 +161,14 @@ namespace FluidForge.Core
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"[WARNUNG] {FileName} konnte nicht aktualisiert werden: {exception.Message}");
+                Console.WriteLine($"{OutputConventions.WarningTag} {FileName} could not be updated: {exception.Message}");
             }
         }
 
         /// <summary>
-        /// Code-Stand: <c>deploy-info.json</c> hat Vorrang (Server, dort gibt es kein
-        /// <c>.git</c>). Sonst Commit und Branch aus <c>.git</c> und, falls vorhanden, der
-        /// Inhalt von <c>.deploy_hash</c>. Wirft nie.
+        /// Reads source state: <c>deploy-info.json</c> takes precedence (server, where <c>.git</c>
+        /// is absent). Otherwise reads commit and branch from <c>.git</c> and, if present,
+        /// the contents of <c>.deploy_hash</c>. Never throws.
         /// </summary>
         public static RunInfoSource ReadSourceState(string? repositoryRoot)
         {
@@ -186,15 +186,15 @@ namespace FluidForge.Core
                         source.Commit = Blank(fromDeploy.Commit);
                         source.Branch = Blank(fromDeploy.Branch);
                         source.DeployHash = Blank(fromDeploy.DeployHash);
-                        source.DeployZeit = Blank(fromDeploy.DeployZeit);
-                        source.UncommittedChanges = Blank(fromDeploy.UncommittedChanges) ?? "unbekannt";
+                        source.DeployedAt = Blank(fromDeploy.DeployedAt);
+                        source.UncommittedChanges = Blank(fromDeploy.UncommittedChanges) ?? "unknown";
                         return source;
                     }
                 }
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"[WARNUNG] {DeployInfoFileName} ist unlesbar: {exception.Message}");
+                Console.WriteLine($"{OutputConventions.WarningTag} {DeployInfoFileName} is unreadable: {exception.Message}");
             }
 
             GitInfo? git = GitInfo.Read(repositoryRoot);
@@ -208,16 +208,16 @@ namespace FluidForge.Core
             }
             catch (Exception)
             {
-                // nur Information
+                // informational only
             }
 
             return source;
         }
 
         /// <summary>
-        /// Kopiert <c>*.cs</c> und <c>*.json</c> des Projektordners (ohne <c>bin/</c> und
-        /// <c>obj/</c>) nach <c>&lt;Ergebnisse&gt;/Quellstand/</c>. Der Ordner wird je Lauf neu
-        /// angelegt. Gibt die Zahl der kopierten Dateien zurück. Wirft nie.
+        /// Copies <c>*.cs</c> and <c>*.json</c> from the project directory (excluding <c>bin/</c> and
+        /// <c>obj/</c>) into <c>&lt;results&gt;/source-snapshot/</c>. The folder is recreated per run.
+        /// Returns the number of copied files. Never throws.
         /// </summary>
         public static int CopyProjectSources(string? projectDirectory, string workingDirectory)
         {
@@ -254,20 +254,20 @@ namespace FluidForge.Core
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"[WARNUNG] Kopie des Quellstands fehlgeschlagen: {exception.Message}");
+                Console.WriteLine($"{OutputConventions.WarningTag} Failed to copy project source snapshot: {exception.Message}");
                 return 0;
             }
         }
 
         private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-        /// <summary>Aufbau von <c>deploy-info.json</c>.</summary>
+        /// <summary>Schema of <c>deploy-info.json</c>.</summary>
         private sealed class DeployInfo
         {
             public string? Commit { get; set; }
             public string? Branch { get; set; }
             public string? DeployHash { get; set; }
-            public string? DeployZeit { get; set; }
+            public string? DeployedAt { get; set; }
             public string? UncommittedChanges { get; set; }
         }
     }

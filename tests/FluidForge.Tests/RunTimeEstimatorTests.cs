@@ -10,8 +10,8 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Zeitprognose (Plan zeitschaetzung.md). Geprüft wird nur die Rechnung und die Anzeige, mit Werten, die jeder
-    /// Test selbst setzt, nicht die Einstellungen eines Projekts.
+    /// Run-time forecast (plan zeitschaetzung.md). Only the calculation and display are tested,
+    /// with values set by each test itself, not a project's settings.
     /// </summary>
     public class RunTimeEstimatorTests
     {
@@ -32,15 +32,15 @@ namespace FluidForge.Tests
             return estimator;
         }
 
-        // --- Anzeige -------------------------------------------------------------------------------------
+        // --- Display -------------------------------------------------------------------------------------
 
         [Theory]
         [InlineData(4.0, "4 s")]
         [InlineData(59.6, "1 min")]
         [InlineData(34 * 60.0, "34 min")]
         [InlineData(4 * 3600.0 + 49 * 60.0, "4 h 49 min")]
-        [InlineData(23 * 3600.0 + 59 * 60.0 + 40, "1 T 0 h")]
-        [InlineData(12 * 86400.0 + 17 * 3600.0 + 34 * 60.0, "12 T 18 h")]
+        [InlineData(23 * 3600.0 + 59 * 60.0 + 40, "1 d 0 h")]
+        [InlineData(12 * 86400.0 + 17 * 3600.0 + 34 * 60.0, "12 d 18 h")]
         public void Durations_Are_Readable_And_Keep_The_Days(double seconds, string expected)
         {
             Assert.Equal(expected, SimulationLog.FormatDuration(TimeSpan.FromSeconds(seconds)));
@@ -49,19 +49,19 @@ namespace FluidForge.Tests
         [Fact]
         public void The_Old_Display_Hid_The_Days_The_New_One_Does_Not()
         {
-            // 12 Tage 17 Stunden erschienen früher als "17:34:24".
+            // 12 days 17 hours used to appear as "17:34:24".
             TimeSpan twelveDays = new TimeSpan(12, 17, 34, 24);
-            Assert.StartsWith("12 T", SimulationLog.FormatDuration(twelveDays));
+            Assert.StartsWith("12 d", SimulationLog.FormatDuration(twelveDays));
         }
 
         [Fact]
-        public void A_Date_Carries_The_German_Weekday_Regardless_Of_Culture()
+        public void A_Date_Carries_The_English_Weekday_Regardless_Of_Culture()
         {
-            Assert.Equal("Mo 23.11. 09:00", SimulationLog.FormatDateTime(new DateTime(2026, 11, 23, 9, 0, 0)));
-            Assert.Equal("So 06.12. 07:05", SimulationLog.FormatDateTime(new DateTime(2026, 12, 6, 7, 5, 0)));
+            Assert.Equal("Mon 23.11. 09:00", SimulationLog.FormatDateTime(new DateTime(2026, 11, 23, 9, 0, 0)));
+            Assert.Equal("Sun 06.12. 07:05", SimulationLog.FormatDateTime(new DateTime(2026, 12, 6, 7, 5, 0)));
         }
 
-        // --- Rechnung ------------------------------------------------------------------------------------
+        // --- Calculation ---------------------------------------------------------------------------------
 
         [Fact]
         public void Without_A_Measurement_There_Is_No_Estimate()
@@ -72,7 +72,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Only_The_Last_Ten_Variants_Set_The_Pace()
         {
-            // Zwei teure Ausreißer am Anfang, danach zehnmal 100 s: der alte Gesamtschnitt läge bei 400 s.
+            // Two expensive outliers at the start, then ten times 100 s: the old overall average would be 400 s.
             var estimator = Estimator(Config(), 3, false, new[] { 1000.0, 1000.0 }.Concat(Enumerable.Repeat(100.0, 10)).ToArray());
 
             Assert.Equal(100.0, estimator.RecentMeanSeconds!.Value, 6);
@@ -95,8 +95,8 @@ namespace FluidForge.Tests
         {
             var estimator = Estimator(Config(), 3, false, 100.0);
 
-            // Iteration 4, 7 von 10 Varianten fertig: 3 Varianten offen + 6 volle Iterationen = 63, dazu die Prüfung
-            // der laufenden Iteration und der sechs weiteren = 7. Zusammen 70 x 100 s.
+            // Iteration 4, 7 of 10 variants done: 3 open variants + 6 full iterations = 63, plus the check
+            // for the current iteration and the six remaining = 7. Total 70 x 100 s.
             RunTimeEstimate e = estimator.Estimate(4, 7, iterationFinished: false)!;
 
             Assert.Equal(7000.0, e.Remaining.TotalSeconds, 6);
@@ -110,7 +110,7 @@ namespace FluidForge.Tests
             RunTimeEstimate e = estimator.Estimate(4, 7, iterationFinished: false)!;
 
             Assert.Equal(4, e.IterationNumber);
-            Assert.Equal(400.0, e.IterationRemaining.TotalSeconds, 6); // 3 Varianten + Prüfung
+            Assert.Equal(400.0, e.IterationRemaining.TotalSeconds, 6); // 3 variants + check
         }
 
         [Fact]
@@ -121,8 +121,8 @@ namespace FluidForge.Tests
             RunTimeEstimate e = estimator.Estimate(5, 10, iterationFinished: true)!;
 
             Assert.Equal(6, e.IterationNumber);
-            Assert.Equal(1100.0, e.IterationRemaining.TotalSeconds, 6); // 10 Varianten + Prüfung
-            Assert.Equal(5500.0, e.Remaining.TotalSeconds, 6);           // 5 Iterationen zu je 1100 s
+            Assert.Equal(1100.0, e.IterationRemaining.TotalSeconds, 6); // 10 variants + check
+            Assert.Equal(5500.0, e.Remaining.TotalSeconds, 6);           // 5 iterations of 1100 s each
         }
 
         [Fact]
@@ -143,11 +143,11 @@ namespace FluidForge.Tests
 
             RunTimeEstimate e = estimator.Estimate(1, 1, iterationFinished: false)!;
 
-            // 3D: Zellen wachsen je Stufe mit sqrt(2)^2,4, das strenge Profil rechnet 20000 statt 5000 Iterationen.
+            // 3D: cells grow per stage with sqrt(2)^2.4, the strict profile runs 20000 instead of 5000 iterations.
             double perRun = 100.0 * Math.Pow(Math.Sqrt(2.0), 2.4) * 4.0;
             Assert.Equal(3, e.FineCandidates);
             Assert.Equal(3 * perRun, e.FineVerification.TotalSeconds, 3);
-            // Die Optimierung selbst bleibt davon unberührt: 99 offene Varianten und 10 Champion-Prüfungen.
+            // Optimization itself is unaffected: 99 open variants and 10 champion checks.
             Assert.Equal(100.0 * (99 + 10), e.Remaining.TotalSeconds, 6);
         }
 
@@ -195,14 +195,14 @@ namespace FluidForge.Tests
         public void The_Control_Profile_Never_Makes_The_Fine_Run_Cheaper_Than_A_Normal_One()
         {
             SimulationConfig config = Config("Final");
-            config.ControlRuns.Su2MaxIterations = 1000; // weniger als die normalen 5000
+            config.ControlRuns.Su2MaxIterations = 1000; // fewer than the normal 5000
 
             double factor = RunTimeEstimator.FineCostFactor(config, 3);
 
             Assert.True(factor >= Math.Pow(Math.Sqrt(2.0), 2.4) - 1e-9);
         }
 
-        // --- Zeilen im Log -------------------------------------------------------------------------------
+        // --- Log lines -----------------------------------------------------------------------------------
 
         [Fact]
         public void The_Footer_Without_An_Estimate_Shows_Only_The_Duration()
@@ -210,7 +210,7 @@ namespace FluidForge.Tests
             var lines = SimulationLog.VariantFooterLines(4 * 3600.0 + 49 * 60.0, null, new DateTime(2026, 11, 20, 10, 0, 0));
 
             Assert.Single(lines);
-            Assert.Equal("└─ ⏱ Dauer: 4 h 49 min", lines[0]);
+            Assert.Equal("└─ ⏱ Duration: 4 h 49 min", lines[0]);
         }
 
         [Fact]
@@ -223,11 +223,11 @@ namespace FluidForge.Tests
             var lines = SimulationLog.VariantFooterLines(3600.0, e, now);
 
             Assert.Equal(2, lines.Count);
-            Assert.Contains("Prognose: Optimierung fertig ca.", lines[0]);
+            Assert.Contains("Forecast: Optimization approx.", lines[0]);
             Assert.Contains(SimulationLog.FormatDateTime(now + e.Remaining), lines[0]);
-            Assert.Contains("Rest ≈", lines[0]);
-            Assert.Contains("Prognose: danach Feinprüfung bis zu", lines[1]);
-            Assert.Contains("3 Kandidaten", lines[1]);
+            Assert.Contains("Remaining ≈", lines[0]);
+            Assert.Contains("Forecast: followed by fine verification up to ≈", lines[1]);
+            Assert.Contains("3 candidates", lines[1]);
         }
 
         [Fact]
@@ -238,7 +238,7 @@ namespace FluidForge.Tests
 
             var lines = SimulationLog.VariantFooterLines(3600.0, e, new DateTime(2026, 11, 20, 10, 0, 0));
 
-            Assert.Contains("höchstens", lines[0]);
+            Assert.Contains("at most", lines[0]);
         }
 
         [Fact]
@@ -250,7 +250,7 @@ namespace FluidForge.Tests
 
             string line = SimulationLog.TimeForecastLine(e, now)!;
 
-            Assert.StartsWith("[PROGNOSE] Iteration 6 fertig ca. ", line);
+            Assert.StartsWith("[FORECAST] Iteration 6 done approx. ", line);
             Assert.Contains(SimulationLog.FormatDateTime(now + TimeSpan.FromHours(11)), line);
         }
 
@@ -262,8 +262,8 @@ namespace FluidForge.Tests
     }
 
     /// <summary>
-    /// Die Prognose und der Grenz-Hinweis erscheinen im echten Ablauf des <see cref="WorkflowController"/>,
-    /// nicht nur in den Hilfsfunktionen.
+    /// The forecast and boundary hint appear in the real <see cref="WorkflowController"/> flow,
+    /// not just in the helper functions.
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class RunTimeForecastInTheWorkflowTests : IDisposable
@@ -307,7 +307,7 @@ namespace FluidForge.Tests
             solver.SetupGet(s => s.Name).Returns("Solver");
 
             var optimizer = new Mock<IOptimizationAlgorithm>();
-            optimizer.SetupGet(o => o.Name).Returns("Test-Optimierer");
+            optimizer.SetupGet(o => o.Name).Returns("Test-Optimizer");
             optimizer.Setup(o => o.GenerateParameters(
                     It.IsAny<SimulationContext>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
                 .Returns((SimulationContext c, int i, int v, int max) => new Dictionary<string, float> { { "Length", 100f + v } });
@@ -348,29 +348,29 @@ namespace FluidForge.Tests
         {
             string output = RunAndCapture(lengthUpperBound: 200f);
 
-            // Nach der ersten fertigen Variante gibt es eine Messung, also schon in der Fußzeile.
-            Assert.Contains("Prognose: Optimierung fertig ca.", output);
-            // Nach Iteration 1 der Blick auf die nächste, nach der letzten nur noch "fertig".
-            Assert.Contains("[PROGNOSE] Iteration 2 fertig ca.", output);
-            Assert.Contains("[PROGNOSE] Optimierung fertig", output);
-            // Das alte Format ist weg.
-            Assert.DoesNotContain("Geschätzte Restzeit", output);
+            // After the first finished variant there is a measurement, so already in the footer.
+            Assert.Contains("Forecast: Optimization approx.", output);
+            // After iteration 1 the look-ahead to the next one, after the last one just "done".
+            Assert.Contains("[FORECAST] Iteration 2 done approx.", output);
+            Assert.Contains("[FORECAST] Optimization done", output);
+            // The old format is gone.
+            Assert.DoesNotContain("Estimated remaining time", output);
         }
 
         [Fact]
         public void A_Champion_On_The_Bound_Is_Reported_After_Each_Iteration_Not_Only_At_The_End()
         {
-            // Der Champion jeder Runde ist Variante 2 mit Length = 102: das ist die obere Grenze.
+            // The champion of every round is variant 2 with Length = 102: that is the upper bound.
             string output = RunAndCapture(lengthUpperBound: 102f);
 
-            Assert.Contains("[GRENZE] Champion von Iteration 1 liegt an der Parametergrenze: Length = 102 (obere Grenze 102)", output);
-            Assert.Contains("[GRENZE] Champion von Iteration 2", output);
+            Assert.Contains("[BOUND] Champion of iteration 1 lies on parameter bound: Length = 102 (upper bound 102)", output);
+            Assert.Contains("[BOUND] Champion of iteration 2", output);
         }
 
         [Fact]
         public void A_Champion_Inside_The_Bounds_Triggers_No_Boundary_Line()
         {
-            Assert.DoesNotContain("[GRENZE]", RunAndCapture(lengthUpperBound: 200f));
+            Assert.DoesNotContain("[BOUND]", RunAndCapture(lengthUpperBound: 200f));
         }
     }
 }

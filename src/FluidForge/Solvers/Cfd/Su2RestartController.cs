@@ -8,15 +8,15 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Steuert die Bereinigung von Verlaufs-/Restart-Dateien sowie die automatische
-    /// stationäre Restart-Schleife inkl. Cauchy-Toleranzverschärfung und CSV-Zusammenführung.
+    /// Manages cleanup of history/restart files and the automatic steady restart loop
+    /// including Cauchy tolerance tightening and CSV stitching.
     /// </summary>
     internal static class Su2RestartController
     {
         internal static void CleanHistoryFiles(string workingDirectory, string historyPath)
         {
             if (File.Exists(historyPath)) File.Delete(historyPath);
-            // Alte Neustart-Historien (history_00002.csv) würden sonst fälschlich übernommen (TODO-W7).
+            // Otherwise stale restart histories (history_00002.csv) would be picked up erroneously.
             foreach (string stale in Directory.GetFiles(workingDirectory, "history_*.csv"))
             {
                 try { File.Delete(stale); } catch (IOException) { }
@@ -93,9 +93,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Sucht im Arbeitsverzeichnis nach einer vorhandenen stationären Restart-Lösung
-        /// (<c>restart.dat</c> oder <c>restart_flow.dat</c>, Größe &gt; 0) und wählt bei Vorhandensein
-        /// beider die jüngste Datei aus.
+        /// Searches the working directory for an existing steady restart solution
+        /// (<c>restart.dat</c> or <c>restart_flow.dat</c>, size &gt; 0) and picks the newest if both exist.
         /// </summary>
         internal static string? FindSteadyRestartFile(string workingDirectory)
         {
@@ -119,8 +118,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Verschärft die Cauchy-Toleranz für den nächsten Restart-Block um Faktor 10
-        /// (Untergrenze <c>1e-7</c>).
+        /// Tightens the Cauchy tolerance for the next restart block by a factor of 10
+        /// (floor <c>1e-7</c>).
         /// </summary>
         internal static string TightenTolerance(string? currentTolerance)
         {
@@ -137,8 +136,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Fügt die CSV-Daten eines Restart-Blocks nahtlos an die bisherige kumulative Historie an
-        /// und setzt die Iterationsspalte monoton fort, falls SU2 beim Neustart wieder kleiner gezählt hat.
+        /// Appends a restart block's CSV data seamlessly to the cumulative history
+        /// and keeps the iteration column monotonic if SU2 reset iteration numbering on restart.
         /// </summary>
         internal static string[] StitchHistoryCsv(string[] previousLines, string[] newLines)
         {

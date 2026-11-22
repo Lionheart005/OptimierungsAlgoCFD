@@ -1,31 +1,27 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  MantaAuv -- Projektvorgaben
+  //  MantaAuv -- Project Settings
   // ===================================================================
   //
-  // Die Manifestdatei heisst in JEDEM Projekt "project.json" (Entscheidung 2).
-  // Ein Dateiname, der ueberall derselbe ist, kann nicht mit dem Projektnamen
-  // verwechselt werden -- "config/projects/MantaAuv.json" konnte das.
+  // The manifest file is named "project.json" in EVERY project.
   //
-  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername
-  // (Entscheidung 1): dieser Ordner heisst MantaAuv, also heisst das Projekt so,
-  // und gestartet wird mit
+  // THE PROJECT NAME IS NEVER WRITTEN IN THIS FILE. It comes from the folder name:
+  // this folder is MantaAuv, so the project is MantaAuv, launched via:
   //
   //     .\scripts\sim.ps1 run -Project MantaAuv
   //
-  // Was hier fehlt, kommt aus den Code-Vorgaben in MantaProjectConfig.cs
-  // nebenan. Ein unbekannter Schluessel bricht den Start ab -- ausser INNERHALB
-  // der Zuordnungen unten: dort sind die Schluessel Parameternamen und frei
-  // waehlbar.
+  // Anything omitted here falls back to code defaults in MantaProjectConfig.cs.
+  // An unknown key aborts startup -- except inside the parameter dictionaries below,
+  // where keys are user-defined parameter names.
   //
-  // Nur Zahlen und Namen -- Geometrie-Erzeugung und Fitness-Formel bleiben
-  // C#-Code, nebenan in diesem Ordner (Entscheidung 7).
+  // Numbers and names only -- geometry generation and fitness formula remain C# code
+  // alongside this file.
   //
-  // Das Optimierungsverfahren steht in simulation.json ("OptimizationAlgorithm"),
-  // weil das Verfahren eine Framework-Einstellung ist und keine Projekteigenschaft.
+  // The optimization algorithm is configured in simulation.json ("OptimizationAlgorithm")
+  // because it is a framework setting rather than a project property.
 
-  // --- Startwerte der aktiven Parameter (mm, ausser TailTaper) ---
+  // --- Initial active parameter values (mm, except TailTaper) ---
   "BaseParameters": {
     "Length": 50.0,
     "Width": 40.0,
@@ -34,7 +30,7 @@
     "TailTaper": 1.0
   },
 
-  // --- Anfängliche Mutationsstärke (Sigma-Streuung) ---
+  // --- Initial mutation step sizes (sigma) ---
   "MaxDeviations": {
     "Length": 5.0,
     "Width": 4.0,
@@ -43,7 +39,7 @@
     "TailTaper": 0.1
   },
 
-  // --- Harte Grenzen für physikalische Plausibilität ---
+  // --- Hard bounds for physical plausibility ---
   "ParameterBounds": {
     "Length": { "Min": 30.0, "Max": 100.0 },
     "Width": { "Min": 20.0, "Max": 80.0 },
@@ -52,16 +48,16 @@
     "TailTaper": { "Min": 0.1, "Max": 1.5 }
   },
 
-  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
+  // --- Optimization targets (used by the fitness formula) ---
   // Fitness = (Volume * SensorDistance) / Drag^DragBalanceFactor,
-  // Strafe x0.1 ausserhalb des erlaubten Volumenbereichs.
+  // x0.1 penalty outside the allowed volume range.
   "OptimizationTargets": {
     "MinimumAllowedVolume": 2000.0,
     "MaximumAllowedVolume": 85000.0,
     "DragBalanceFactor": 3.0
   },
 
-  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
-  // TailTaper ist dimensionslos und steht bewusst NICHT in dieser Liste.
+  // --- Dimensional parameters (scaled by RubberBandScaler) ---
+  // TailTaper is dimensionless and intentionally NOT in this list.
   "DimensionalParameters": [ "Length", "Width", "MainRadius", "WingRadius" ]
 }

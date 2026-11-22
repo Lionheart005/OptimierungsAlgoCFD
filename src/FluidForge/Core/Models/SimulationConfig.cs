@@ -1,146 +1,134 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Framework-weite Konfiguration (ehemals GlobalConfig innerhalb von SimulationData).
-    /// Enthält Einstellungen die für ALLE Projekte gelten.
+    /// Framework-wide configuration (formerly GlobalConfig inside SimulationData).
+    /// Contains settings that apply to ALL projects.
     /// </summary>
     public class SimulationConfig
     {
-        // --- PFADE ZU EXTERNER SOFTWARE ---
+        // --- EXTERNAL TOOL PATHS ---
         //
-        // PATH-relativ statt absolut (TODO-24). Vorher standen hier die Pfade eines ganz
-        // bestimmten Servers (/home/lpleissner/...) — ein fremder Nutzer erbte damit eine
-        // Installation, die es auf seinem Rechner nicht gibt, und merkte es erst im Lauf.
-        //
-        // .NET löst einen bloßen Programmnamen in Process.StartInfo.FileName über den PATH
-        // auf, und scripts/sim-runner.sh legt in load_env genau die Verzeichnisse dorthin,
-        // aus denen die alten Pfade stammten. Su2Path wird ohnehin nur als Argument an
-        // mpirun durchgereicht und von diesem selbst aufgelöst.
-        //
-        // Damit entfällt der letzte Grund für eine *.local.json. Findet ein Rechner die
-        // Programme trotzdem nicht, meldet das `.\scripts\sim.ps1 doctor` vor dem Lauf.
+        // PATH-relative by default. .NET resolves bare executable names via PATH in
+        // Process.StartInfo.FileName, and Su2Path is passed as an argument to mpirun.
+        // Run `.\scripts\sim.ps1 doctor` to verify tool availability before a run.
         public string MpiRunPath { get; set; } = "mpirun";
         public string Su2Path { get; set; } = "SU2_CFD";
         public string GmshPath { get; set; } = "gmsh";
 
-        // 1. Zeit & Umfang
+        // 1. Time & Budget
         public int MaxIterations { get; set; } = 10;
         public int VariantsPerIteration { get; set; } = 10;
 
         /// <summary>
-        /// Automatisches Ende (09.11.2026): beendet den Lauf früher, wenn sich der Bestwert kaum noch
-        /// verbessert. <see cref="MaxIterations"/> × <see cref="VariantsPerIteration"/> bleibt die Obergrenze.
+        /// Automatic early stopping: ends the run early when the best fitness barely improves
+        /// anymore. <see cref="MaxIterations"/> × <see cref="VariantsPerIteration"/> remains the upper bound.
         /// </summary>
         public AutoStopConfig AutoStop { get; set; } = new();
 
         public float BaseVoxelResolution { get; set; } = 0.5f;
         /// <summary>
-        /// Verfeinert bei 3D-<see cref="Solvers.Cfd.GmshCfdMesher"/>-Läufen die effektive PicoGK-Start-Voxelgröße
-        /// automatisch (bis zur Sicherheitsuntergrenze von 0,1 mm), falls die reale Voxelgröße größer als
-        /// 80 % der Ziel-Oberflächenzellgröße ist. Ändert nicht die gespeicherte Konfiguration/Fingerprint.
+        /// For 3D <c>GmshCfdMesher</c> runs, automatically refines the effective PicoGK starting
+        /// voxel size (down to a 0.1 mm safety floor) if the real voxel size exceeds 80% of the
+        /// target surface cell size. Does not mutate the saved configuration or fingerprint.
         /// </summary>
         public bool AutoVoxelResolution { get; set; } = false;
         public float TargetPicoGkSize { get; set; } = 50.0f;
         public int VoxelSmoothingIterations { get; set; } = 40;
         public int VoxelSmoothingPremeltingSteps { get; set; } = 2;
 
-        // 1a. Abschaltbare Framework-Bausteine
+        // 1a. Toggleable Framework Building Blocks
         /// <summary>
-        /// Skaliert die Geometrie auf <see cref="TargetPicoGkSize"/> und die Metriken zurück.
-        /// Aus: der Geometrie-Kernel arbeitet direkt mit den echten Maßen, ScaleFactor bleibt 1.
+        /// Scales geometry to <see cref="TargetPicoGkSize"/> and rescales metrics back.
+        /// When disabled, the geometry kernel operates directly in real dimensions (ScaleFactor = 1).
         /// </summary>
         public bool UseRubberBandScaler { get; set; } = true;
         /// <summary>
-        /// Glättet die exportierte STL. Aus: die STL kommt unverändert aus dem Voxel-Modell.
+        /// Smooths the exported STL. When disabled, the STL is exported directly from the voxel model.
         /// </summary>
         public bool UseStlSmoothing { get; set; } = true;
         /// <summary>
-        /// Berechnet <c>FrontalArea</c> in 3D als wahre projizierte Silhouette (Schattenfläche in der
-        /// YZ-Ebene quer zur Anströmrichtung X) statt als Rechteck des Hüllquaders (<c>Size.Y × Size.Z</c>).
-        /// Aus (<c>false</c>): bisherige Hüllquader-Näherung (<c>FrontalBoxArea</c>).
+        /// Computes <c>FrontalArea</c> in 3D as the true projected silhouette (shadow area in the
+        /// YZ plane perpendicular to flow direction X) instead of the bounding-box rectangle (<c>Size.Y × Size.Z</c>).
         /// </summary>
         public bool UseProjectedFrontalArea { get; set; } = true;
 
-        // 2. CFD & SU2 Einstellungen
+        // 2. CFD & SU2 Settings
         public float MachNumber { get; set; } = 0.1f;
 
         /// <summary>
-        /// Globaler Netzverfeinerungsfaktor. Standard ist 1.0 (Basisgrößen aus gmsh.json).
-        /// Werte &lt; 1.0 verfeinern das Netz (z. B. 0.5 halbiert alle Zielzellgrößen),
-        /// Werte &gt; 1.0 vergröbern es für schnelle Vorabläufe.
+        /// Global mesh refinement factor. Default is 1.0 (baseline sizes from gmsh.json).
+        /// Values &lt; 1.0 refine the mesh (e.g., 0.5 halves all target cell sizes);
+        /// values &gt; 1.0 coarsen it for fast preliminary runs.
         /// </summary>
         public float MeshRefinementFactor { get; set; } = 1.0f;
 
         /// <summary>
-        /// Obergrenze der SU2-Iterationen je normaler Variante. 3000 reicht für RANS mit y+ ≈ 1 in 2D
-        /// und 3D; eine ruhige Rechnung hört über das Cauchy-Kriterium früher auf (Vorgabe seit 08.11.2026,
-        /// vorher 500/150/1e-4: viele Rechnungen endeten unkonvergiert).
+        /// Maximum SU2 iterations per normal variant. 3000 is sufficient for RANS with y+ ≈ 1
+        /// in 2D and 3D; well-behaved runs stop earlier via the Cauchy criterion.
         /// </summary>
         public int Su2MaxIterations { get; set; } = 3000;
         public int CauchyElements { get; set; } = 300;
         public string CauchyTolerance { get; set; } = "1e-5";
 
         /// <summary>
-        /// Wie weit der <b>iterative</b> Fehler einer normalen Variante unter der Netz-Toleranz
-        /// (<see cref="MeshCalibrationConfig.Tolerance"/>) liegen muss, damit die Rechnung als
-        /// auskonvergiert gilt (TODO-W3). 0.25 = ein Viertel, also bei 2 % Netz-Toleranz höchstens
-        /// 0,5 % Drift im Endfenster. Gemessen wird die Drift der Kennwerte, nicht das Residuum.
+        /// Maximum allowed iterative error of a normal variant as a fraction of the mesh tolerance
+        /// (<see cref="MeshCalibrationConfig.Tolerance"/>) to be considered converged.
+        /// 0.25 = one quarter (e.g., at 2% mesh tolerance, at most 0.5% drift in the trailing window).
         /// </summary>
         public float IterativeToleranceFraction { get; set; } = 0.25f;
 
         /// <summary>
-        /// Strenges Profil für Kontrollrechnungen (Netzkalibrierung, Feinprüfung, Recheck; TODO-W4).
-        /// Normale Varianten und die Türsteher-Kontrolle (Variante 99) rechnen mit den Werten darüber.
+        /// Strict profile for control runs (mesh calibration, fine verification, recheck).
+        /// Normal variants and bouncer checks (variant 99) use the settings above.
         /// </summary>
         public ControlRunConfig ControlRuns { get; set; } = new();
         public int MpiCores { get; set; } = 12;
         public int GmshCores { get; set; } = 12;
 
-        // 3. Wahl des Optimierungsverfahrens
+        // 3. Optimization Algorithm Selection
         /// <summary>
-        /// Welches Optimierungsverfahren gefahren wird: <c>"Bayes"</c> (Standard seit 08.11.2026) oder <c>"IdwBaseline"</c> (Legacy-Alias <c>"Rsm"</c>).
-        /// Aufgelöst über <see cref="OptimizationAlgorithmFactory"/>; ein unbekannter Name
-        /// führt zu einer Warnung und dem Standardverfahren.
+        /// Optimization algorithm to run: <c>"Bayes"</c> (default) or <c>"IdwBaseline"</c> (legacy alias <c>"Rsm"</c>).
+        /// Resolved via <see cref="OptimizationAlgorithmFactory"/>; an unknown name logs a warning and falls back to default.
         /// </summary>
         public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
 
         /// <summary>
-        /// Startwert aller Zufallsquellen des Laufs (TODO-50, F23). <c>0</c> = beim Start
-        /// automatisch ziehen; der gezogene Wert steht im Log und in <c>run-info.json</c>.
-        /// Ein fester Wert ≠ 0 macht den Lauf exakt wiederholbar. Optimierer bekommen
-        /// <c>new Random(seed)</c>, der Türsteher <c>new Random(seed + 1)</c>.
+        /// Initial seed for all random sources in the run. <c>0</c> = draw automatically at startup;
+        /// the drawn value is recorded in the log and <c>run-info.json</c>.
+        /// A non-zero value makes the run exactly reproducible. Optimizers receive <c>new Random(seed)</c>,
+        /// the bouncer receives <c>new Random(seed + 1)</c>.
         /// </summary>
         public int RandomSeed { get; set; } = 0;
 
-        // 4. Algorithmus IdwBaseline (IDW-Interpolations-Baseline)
+        // 4. Algorithm IdwBaseline (IDW Interpolation Baseline)
         public int IdwVirtualSimulations { get; set; } = 50000;
         public float IdwPower { get; set; } = 3.0f;
         public float IdwExploitationRatio { get; set; } = 0.7f;
         public float IdwExploitationSigma { get; set; } = 0.1f;
 
-        // 4a. Algorithmus Bayes (TODO-55). Alles optional, die Vorgaben passen meist.
-        /// <summary>Einstellungen des Bayes-Optimierers; wirkt nur bei <c>"OptimizationAlgorithm": "Bayes"</c>.</summary>
+        // 4a. Algorithm Bayes. All optional; defaults work for most projects.
+        /// <summary>Bayesian optimizer settings; applies only when <c>"OptimizationAlgorithm": "Bayes"</c>.</summary>
         public BayesConfig Bayes { get; set; } = new();
 
-        // 5. Validierung des Champions (Bouncer)
-        /// <summary>Erlaubte relative Abweichung der Fitness bei der Re-Simulation (0.20 = 20%).</summary>
+        // 5. Champion Validation (Bouncer)
+        /// <summary>Allowed relative fitness deviation during re-simulation (0.20 = 20%).</summary>
         public float BouncerTolerance { get; set; } = 0.20f;
-        /// <summary>Betrag, um den ein zufällig gewählter Parameter für die Re-Simulation verstellt wird.</summary>
+        /// <summary>Relative perturbation applied to a randomly chosen parameter for re-simulation.</summary>
         public float BouncerJitter { get; set; } = 0.01f;
 
-        // 6. Netzkalibrierung & Gewinner-Verifikation (TODO-42 & TODO-43)
-        /// <summary>Automatisierte Netzkalibrierung vor dem Lauf oder per Befehl (TODO-42).</summary>
+        // 6. Mesh Calibration & Champion Verification
+        /// <summary>Automated mesh calibration before the run or via CLI command.</summary>
         public MeshCalibrationConfig MeshCalibration { get; set; } = new();
 
-        /// <summary>Feine Nachrechnung der Gewinner auf verfeinertem Netz (TODO-43).</summary>
+        /// <summary>Fine-mesh verification of top candidates.</summary>
         public ChampionVerificationConfig ChampionVerification { get; set; } = new();
 
         public static SimulationConfig CreateDefault() => new SimulationConfig();
 
         /// <summary>
-        /// Kopie dieser Konfiguration mit dem strengen Profil für Kontrollrechnungen
-        /// (<see cref="ControlRuns"/>): mehr Iterationen, längeres Fenster, schärfere Drift-Grenze.
-        /// Nie weniger Iterationen als die normale Rechnung.
+        /// Returns a copy of this configuration with the strict profile for control runs
+        /// (<see cref="ControlRuns"/>): more iterations, longer window, tighter drift limit.
+        /// Never uses fewer iterations than a normal run.
         /// </summary>
         public SimulationConfig WithControlRunProfile()
         {
@@ -153,8 +141,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Erstellt eine flache Kopie für einen SU2-Fortsetzungsblock mit angepasstem
-        /// Restbudget und verschärfter Cauchy-Toleranz.
+        /// Creates a shallow copy for an SU2 continuation block with adjusted remaining budget
+        /// and tightened Cauchy tolerance.
         /// </summary>
         internal SimulationConfig WithSu2BlockOverrides(int su2MaxIterations, string cauchyTolerance)
         {
@@ -166,127 +154,120 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Automatisches Ende der Optimierung (siehe <see cref="AutoStop"/>). Nach jeder Iteration gilt:
-    /// Hat sich der beste Fitnesswert innerhalb der letzten <see cref="WindowVariants"/> Varianten um
-    /// weniger als <see cref="MinImprovement"/> (relativ) verbessert, endet der Lauf.
+    /// Automatic early stopping of optimization (see <see cref="AutoStop"/>). After each iteration,
+    /// if the best fitness within the last <see cref="WindowVariants"/> variants improved by less than
+    /// <see cref="MinImprovement"/> (relative), the run stops.
     /// </summary>
     public class AutoStopConfig
     {
-        /// <summary>"On" oder "Off" (Standard: Off = Laufdauer nur über MaxIterations × VariantsPerIteration).</summary>
+        /// <summary>"On" or "Off" (default: Off = run duration controlled solely by MaxIterations × VariantsPerIteration).</summary>
         public string Mode { get; set; } = "Off";
 
-        /// <summary>Mindestverbesserung des Bestwerts, relativ zum Bestwert vor dem Fenster (0.01 = 1 %).</summary>
+        /// <summary>Minimum relative improvement of best fitness over the window (0.01 = 1%).</summary>
         public float MinImprovement { get; set; } = 0.01f;
 
-        /// <summary>Über so viele zuletzt gerechnete Varianten wird die Verbesserung gemessen.</summary>
+        /// <summary>Number of trailing variants over which improvement is measured.</summary>
         public int WindowVariants { get; set; } = 20;
     }
 
     /// <summary>
-    /// Einstellungen des Bayes-Optimierers (TODO-55 bis TODO-57). Alles optional.
+    /// Bayesian optimizer settings. All optional.
     /// </summary>
     public class BayesConfig
     {
-        /// <summary>"Auto" (Standard), "Fitness" oder "Metrics". Auto = Metrics, wenn die Fitness des Projekts <c>RequiredMetrics</c> nennt.</summary>
+        /// <summary>"Auto" (default), "Fitness", or "Metrics". Auto uses Metrics if the fitness calculator declares <c>RequiredMetrics</c>.</summary>
         public string SurrogateTarget { get; set; } = "Auto";
 
-        /// <summary>Anzahl der Startrechnungen (Versuchsplan). 0 = automatisch: max(VariantsPerIteration, 2 × freie Parameter + 2).</summary>
+        /// <summary>Number of initial DoE samples. 0 = automatic: max(VariantsPerIteration, 2 × free parameters + 2).</summary>
         public int InitialSamples { get; set; } = 0;
 
     }
 
     /// <summary>
-    /// Interne Stellschrauben des Bayes-Optimierers. Bewusst <b>nicht</b> in <c>simulation.json</c>
-    /// (Entscheidung 08.11.2026: so wenige Einstellungen wie möglich); die Vorgaben passen, und Tests
-    /// können sie über den Konstruktor ändern.
+    /// Internal tuning knobs for the Bayesian optimizer. Intentionally kept out of <c>simulation.json</c>
+    /// to keep user configuration minimal; tests can override them via the constructor.
     /// </summary>
     public sealed class BayesTuning
     {
-        /// <summary>So viele Kandidaten prüft das Modell je Vorschlag auf seiner Landkarte.</summary>
+        /// <summary>Number of candidate points evaluated on the surrogate per proposal.</summary>
         public int CandidatePool { get; init; } = 5000;
 
-        /// <summary>"Auto" (ab 10 freien Parametern), "On" oder "Off": Suche in einem Vertrauensbereich um den besten Punkt.</summary>
+        /// <summary>"Auto" (enabled for >= 10 free parameters), "On", or "Off": search within a trust region around the best point.</summary>
         public string TrustRegion { get; init; } = "Auto";
 
-        /// <summary>Deckel für die Lernmenge. Hält die Rechenzeit des Modells klein (wächst mit n³).</summary>
+        /// <summary>Maximum training set size to bound GP fitting cost (scales as O(n³)).</summary>
         public int MaxTrainingPoints { get; init; } = 400;
     }
 
     /// <summary>
-    /// Strenges Profil für die wenigen, dafür genauen Kontrollrechnungen (TODO-W4).
+    /// Strict profile for the few high-accuracy control runs.
     /// </summary>
     public class ControlRunConfig
     {
-        /// <summary>Höchstzahl der SU2-Iterationen je Kontrollrechnung.</summary>
+        /// <summary>Maximum SU2 iterations per control run.</summary>
         public int Su2MaxIterations { get; set; } = 20000;
 
-        /// <summary>Länge des Konvergenzfensters (Zeilen der history.csv).</summary>
+        /// <summary>Convergence window length (rows in history.csv).</summary>
         public int CauchyElements { get; set; } = 500;
 
         /// <summary>
-        /// SU2-eigene Cauchy-Schwelle (<c>CONV_CAUCHY_EPS</c>). Standard <c>"1e-5"</c>: strengere Werte
-        /// wie <c>1e-6</c> werden in 3D mit Venkatakrishnan-Limiter oft nicht erreicht, wodurch SU2 alle
-        /// 20 000 Iterationen durchläuft; ob eine Rechnung als konvergiert gilt, entscheidet die
-        /// Drift-Prüfung nach dem Lauf (bei Rest-Drift folgt bei Bedarf ein automatischer Restart).
+        /// SU2 Cauchy threshold (<c>CONV_CAUCHY_EPS</c>). Defaults to <c>"1e-5"</c>; tighter values
+        /// like <c>1e-6</c> are often unreachable in 3D with Venkatakrishnan limiter, causing SU2 to run
+        /// all 20,000 iterations. Post-run drift checking determines convergence and triggers automatic restarts if needed.
         /// </summary>
         public string CauchyTolerance { get; set; } = "1e-5";
 
         /// <summary>
-        /// Zulässiger iterativer Fehler als Bruchteil der Netz-Toleranz (0.1 = ein Zehntel, nach
-        /// Celik et al. 2008: der iterative Fehler soll mindestens eine Größenordnung unter dem
-        /// Diskretisierungsfehler liegen).
+        /// Allowed iterative error as a fraction of the mesh tolerance (0.1 = one tenth, following
+        /// Celik et al. 2008: iterative error should be at least an order of magnitude below discretization error).
         /// </summary>
         public float IterativeToleranceFraction { get; set; } = 0.1f;
     }
 
     /// <summary>
-    /// Einstellungen für die automatisierte Netzkalibrierung (TODO-42).
+    /// Settings for automated mesh calibration.
     /// </summary>
     public class MeshCalibrationConfig
     {
-        /// <summary>"Auto" (Standard seit 08.11.2026: Netzfaktor am Laufanfang kalibrieren) oder "Manual" (MeshRefinementFactor gilt).</summary>
+        /// <summary>"Auto" (default: calibrate mesh factor at run start) or "Manual" (use MeshRefinementFactor).</summary>
         public string Mode { get; set; } = "Auto";
 
-        /// <summary>Erlaubte relative Abweichung aller Ergebnisgrößen gegenüber der feinsten Referenzstufe (0.05 = 5 %).</summary>
+        /// <summary>Allowed relative deviation of all monitored metrics compared to the finest reference level (0.05 = 5%).</summary>
         public float Tolerance { get; set; } = 0.05f;
 
-        /// <summary>2D-Vorkalibrierung vor der 3D-Bestätigung nutzen (TODO-48).</summary>
+        /// <summary>Use 2D pre-calibration before 3D confirmation.</summary>
         public bool Use2DPrecalibration { get; set; } = false;
 
         /// <summary>
-        /// Fester Mindestbetrag der zulässigen Abweichung je Kennwert (TODO-W1). Zulässig ist
-        /// <c>|Δ| ≤ Tolerance · |Referenz| + Mindestbetrag</c>: bei Werten nahe 0 (Auftrieb eines
-        /// symmetrischen Profils bei 0°) zählt der Mindestbetrag statt der relativen Abweichung.
-        /// Leer = Vorgaben aus <see cref="MetricTolerance.DefaultAbsolute"/> (Drag 0,0001, Lift 0,005,
-        /// Momente 0,001). Einträge hier überschreiben sie je Kennwertname (additiv); unbekannte Kennwerte: 0.
+        /// Fixed minimum absolute tolerance per metric: allowed deviation is
+        /// <c>|Δ| ≤ Tolerance · |Reference| + AbsoluteTolerance</c>, handling near-zero metrics
+        /// (such as lift of a symmetric airfoil at 0°). Empty = use defaults from
+        /// <see cref="MetricTolerance.DefaultAbsolute"/>. Entries here override per metric name.
         /// </summary>
         public System.Collections.Generic.Dictionary<string, float> AbsoluteTolerances { get; set; } = new();
 
-        /// <summary>Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 2D (TODO-W5).</summary>
+        /// <summary>Upper limit on extrapolated cell count for the finest level in 2D.</summary>
         public long MaxCells2D { get; set; } = 2_000_000;
 
-        /// <summary>
-        /// Obergrenze der hochgerechneten Zellzahl der feinsten Stufe in 3D (TODO-W5). 3 Mio. wie bei MantaAuv
-        /// (Servertest 06.11.2026: 1,3 Mio. Zellen stabil, ~4 h Kalibrierung); mehr kostet schnell Tage.
-        /// </summary>
+        /// <summary>Upper limit on extrapolated cell count for the finest level in 3D.</summary>
         public long MaxCells3D { get; set; } = 3_000_000;
     }
 
     /// <summary>
-    /// Einstellungen für die feine Nachrechnung der Gewinner (TODO-43).
+    /// Settings for fine-mesh verification of top candidates.
     /// </summary>
     public class ChampionVerificationConfig
     {
-        /// <summary>"Off", "Final", "FinalTopN" (Standard: die besten TopN fein nachrechnen) oder "EachIteration".</summary>
+        /// <summary>"Off", "Final", "FinalTopN" (default: re-evaluate top N on fine mesh), or "EachIteration".</summary>
         public string Mode { get; set; } = "FinalTopN";
 
-        /// <summary>Anzahl der besten Varianten am Ende bei Mode = "FinalTopN".</summary>
+        /// <summary>Number of top variants to verify at the end when Mode = "FinalTopN".</summary>
         public int TopN { get; set; } = 3;
 
-        /// <summary>Anzahl der Verfeinerungsstufen gegenüber dem wirksamen Faktor (÷ √2 je Stufe).</summary>
+        /// <summary>Number of refinement steps relative to the effective factor (÷ √2 per step).</summary>
         public int RefinementSteps { get; set; } = 1;
 
-        /// <summary>Relative Abweichung, ab der laut vor Netzabhängigkeit gewarnt wird (0.05 = 5 %).</summary>
+        /// <summary>Relative deviation above which a mesh-dependency warning is emitted (0.05 = 5%).</summary>
         public float Tolerance { get; set; } = 0.05f;
     }
 }

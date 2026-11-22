@@ -6,18 +6,22 @@ obj/
 *.userosscache
 *.sln.docstates
 
-# Maschinenspezifische Konfiguration (überlagert die Basisdateien)
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Machine-specific configuration (overrides base config files)
 *.local.json
 
 # Logs
 *.log
 logs/
 
-# Vom Server zurueckgeholte Laufergebnisse (scripts/sim.ps1 fetch)
+# Run results fetched from the server (scripts/sim.ps1 fetch)
 Serverergebnisse/
 server-results/
 
-# Stand des zuletzt auf den Server geschobenen Codes (liegt nur dort)
+# State of the latest code deployed to the server (server-side only)
 .deploy_hash
 deploy-info.json
 .last_exit
@@ -35,11 +39,10 @@ Thumbs.db
 # PicoGK specific / other
 imgui.ini
 
-# Lokale Einstellungen von Claude Code (Freigaben, ggf. Pfade dieses Rechners).
-# Fiel bisher nur zufaellig unter *.local.json -- hier ausdruecklich, damit eine
-# Umbenennung des Musters oben sie nicht versehentlich ins Repo holt.
+# Local Claude Code settings (permissions, machine-specific paths).
+# Previously matched *.local.json only by coincidence -- listed explicitly so
+# renaming the pattern above does not accidentally commit it.
 .claude/settings.local.json
 
-# Persoenliche Standortbestimmung / Strategie-Diskussion (nicht fuer das oeffentliche Repo)
+# Personal assessment / strategy notes (not for the public repository)
 .plans/strategie_und_projektbewertung.md
-

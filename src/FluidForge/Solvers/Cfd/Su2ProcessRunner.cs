@@ -8,8 +8,8 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Startet den SU2-Prozess (wahlweise per MPI oder direkt im seriellen/OpenMP-Modus)
-    /// und liest die SU2-Version aus der Konsolenausgabe.
+    /// Launches the SU2 process (either via MPI or directly in serial/OpenMP mode)
+    /// and parses the SU2 version from console output.
     /// </summary>
     internal static class Su2ProcessRunner
     {
@@ -18,9 +18,9 @@ namespace FluidForge.Solvers.Cfd
             RegexOptions.Compiled);
 
         /// <summary>
-        /// Bestimmt Programmname, Argumente und ob MPI verwendet wird.
-        /// Wenn <see cref="SimulationConfig.MpiRunPath"/> leer/whitespace/"none" oder
-        /// <see cref="SimulationConfig.MpiCores"/> &lt;= 1 ist, wird SU2 direkt gestartet.
+        /// Determines executable, arguments, and whether MPI is used.
+        /// If <see cref="SimulationConfig.MpiRunPath"/> is empty/whitespace/"none" or
+        /// <see cref="SimulationConfig.MpiCores"/> &lt;= 1, SU2 is started directly.
         /// </summary>
         internal static (string FileName, string Arguments, bool UsesMpi) BuildExecutionCommand(
             SimulationConfig config,
@@ -43,9 +43,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Erstellt die <see cref="ProcessStartInfo"/> für SU2 und setzt im OpenMP-Direct-Mode
-        /// (<c>UsesMpi == false</c> und <c>MpiCores &gt; 1</c>) <c>OMP_NUM_THREADS</c>,
-        /// sofern diese Umgebungsvariable noch nicht gesetzt ist.
+        /// Creates the <see cref="ProcessStartInfo"/> for SU2 and sets <c>OMP_NUM_THREADS</c>
+        /// in OpenMP direct mode (<c>UsesMpi == false</c> and <c>MpiCores &gt; 1</c>) if not already set.
         /// </summary>
         internal static ProcessStartInfo CreateStartInfo(
             string workingDirectory,
@@ -117,8 +116,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Liest die SU2-Version aus dem Startbanner der Konsolenausgabe
-        /// (<c>Release 7.5.1 "Blackbird"</c> bzw. <c>SU2 v7.5.1</c>); <c>null</c>, wenn keines vorkommt.
+        /// Reads the SU2 version from the console startup banner
+        /// (<c>Release 7.5.1 "Blackbird"</c> or <c>SU2 v7.5.1</c>); returns <c>null</c> if absent.
         /// </summary>
         public static string? TryParseVersion(string? consoleOutput)
         {

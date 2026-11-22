@@ -1,37 +1,37 @@
-# `config/` — Notausgang für maschinenspezifische Ausnahmen (`*.local.json`)
+# `config/` — Escape Hatch for Machine-Specific Overrides (`*.local.json`)
 
-> **Weiterführende Dokumente (ohne Doppelung):**
-> - **Bedienung & Alle JSON-Einstellungen (Stufen 1–4):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
-> - **Architektur des Konfigurations-Loaders:** [`src/OptimierungsAlgoCFD/README.md`](../src/OptimierungsAlgoCFD/README.md)
-> - **Server-Steuerung & Deployment:** [`scripts/README.md`](../scripts/README.md)
+> **Related Documentation:**
+> - **Legacy User Manual & JSON Reference (Layers 1–4):** [`src/projects/BEDIENHANDBUCH.md`](../src/projects/BEDIENHANDBUCH.md)
+> - **Configuration Loader Architecture:** [`src/FluidForge/README.md`](../src/FluidForge/README.md)
+> - **Server Control & Deployment:** [`scripts/README.md`](../scripts/README.md)
 
-**Im Normalfall bleibt dieser Ordner bis auf diese README komplett leer.** Alle regulären Einstellungen eines Projekts liegen direkt in dessen Projektordner unter `src/projects/<Projekt>/` (`project.json`, `simulation.json`, `solvers/su2.json`, `solvers/gmsh.json`). Ein Test (`ProjectLayoutTests.The_Config_Folder_Holds_No_Checked_In_Json`) stellt sicher, dass hier niemals versehentlich reguläre JSON-Dateien eingecheckt werden.
+**Under normal circumstances, this folder remains completely empty except for this README.** All regular project settings belong directly in the project folder under `src/projects/<Project>/` (`project.json`, `simulation.json`, `solvers/su2.json`, `solvers/gmsh.json`). An automated test (`ProjectLayoutTests.The_Config_Folder_Holds_No_Checked_In_Json`) ensures that no regular JSON files are ever accidentally committed here.
 
-## Wozu dieser Ordner dient
+## Purpose
 
-Er ist der Ablageort für gitignorierte **`*.local.json`**-Ausnahmedateien, die ausschließlich auf **diesem einen Rechner** für alle Projekte gelten sollen (Stufe 3 der Konfigurationshierarchie; eine `src/projects/<Name>/….local.json` wäre Stufe 4 für genau ein Projekt auf diesem Rechner).
+This directory is the location for gitignored **`*.local.json`** override files that apply exclusively on **this specific machine** across all projects (Layer 3 of the configuration hierarchy; a `src/projects/<Name>/….local.json` file is Layer 4 for a single project on this machine).
 
-Die Deploy-Skripte (`scripts/sim.ps1`) übertragen `*.local.json`-Dateien bewusst **nicht** und löschen sie beim Aufräumen auf dem Server auch nicht.
+The deployment scripts (`scripts/sim.ps1`) intentionally **do not** upload `*.local.json` files and do not delete them during server cleanup.
 
-## Wann man eine `*.local.json` (nicht) verwenden sollte
+## When (Not) to Use a `*.local.json` File
 
-- **Sollstand ist, dass nirgends eine `*.local.json` existiert.** Jede vorhandene `*.local.json` erzeugt beim Programmstart einen unübersehbaren `[WARNUNG]`-Block im Log, der jeden überschriebenen Schlüssel samt Projekt- und Local-Wert auflistet, und wird in `effective-config.json` unter `MaschinenspezifischeUeberschreibungen` dokumentiert.
-- **Nie für kurze Testläufe missbrauchen:** Wer `MaxIterations` oder Physik-Werte testen will, ändert sie direkt in `src/projects/<Projekt>/simulation.json`, damit das, was hochgeladen wird, auch das ist, was rechnet.
-- **Einziger legitimer Anwendungsfall:** Ein Rechner mit ungewöhnlichen Installationspfaden, auf dem `mpirun`, `SU2_CFD` oder `gmsh` weder über den `PATH` noch über die Projekt-Pfade gefunden werden:
+- **Target state is that no `*.local.json` exists anywhere.** Any active `*.local.json` emits a prominent `[WARNING]` block in the startup log listing every overridden key with its project and local values, and is recorded in `effective-config.json`.
+- **Never abuse for quick test runs:** If you want to test `MaxIterations` or physics values, edit `src/projects/<Project>/simulation.json` directly so that what gets uploaded is what actually runs.
+- **Only legitimate use case:** A machine with non-standard installation paths where `mpirun`, `SU2_CFD`, or `gmsh` cannot be found via `PATH` or default search locations:
   ```jsonc
-  // config/simulation.local.json (gitignoriert)
+  // config/simulation.local.json (gitignored)
   {
-    "MpiRunPath": "/pfad/zu/mpirun",
-    "Su2Path": "/pfad/zu/SU2_CFD",
-    "GmshPath": "/pfad/zu/gmsh"
+    "MpiRunPath": "/path/to/mpirun",
+    "Su2Path": "/path/to/SU2_CFD",
+    "GmshPath": "/path/to/gmsh"
   }
   ```
 
-## Eine `*.local.json` auf dem Server prüfen oder löschen
+## Inspecting or Removing a `*.local.json` on the Server
 
-Da `sim.ps1 deploy` lokale Ausnahmedateien auf dem Server niemals anfasst, lassen sie sich dort nur direkt per SSH einsehen und entfernen:
+Because `sim.ps1 deploy` never touches local override files on the server, inspect and remove them via SSH:
 
 ```powershell
-ssh BIC_12 "cat ~/Documents/AutomatisierungCleanVersion/config/simulation.local.json"   # Inhalt prüfen
-ssh BIC_12 "rm  ~/Documents/AutomatisierungCleanVersion/config/simulation.local.json"   # Datei löschen
+ssh BIC_12 "cat ~/Documents/FluidForge/config/simulation.local.json"   # inspect contents
+ssh BIC_12 "rm  ~/Documents/FluidForge/config/simulation.local.json"   # delete file
 ```

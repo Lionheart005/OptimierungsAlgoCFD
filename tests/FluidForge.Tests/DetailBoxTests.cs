@@ -12,7 +12,7 @@ using FluidForge.Solvers.Cfd;
 
 namespace FluidForge.Tests
 {
-    /// <summary>TODO-W6: Detailbox um und hinter dem Modell, feinere Kanten, Fernfeld 500 c mit Wachstum.</summary>
+    /// <summary>TODO-W6: Detail box around and behind the model, finer edges, farfield 500 c with growth.</summary>
     public class DetailBoxTests : IDisposable
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "detailbox_" + Guid.NewGuid().ToString("N"));
@@ -31,7 +31,7 @@ namespace FluidForge.Tests
                 new(c * 0.10f, -c * 0.025f),
             };
 
-            // Abgerundete Nase (Kreisbogen r = 1 mm), damit die Vorderkante kein Knickpunkt (> 35°) ist
+            // Rounded nose (circular arc r = 1 mm) so the leading edge is not a sharp corner (> 35°)
             float rNose = 0.02f * c;
             int noseSteps = 8;
             for (int i = 0; i <= noseSteps; i++)
@@ -78,15 +78,15 @@ namespace FluidForge.Tests
             var lines05 = Geo2D(new Gmsh2DMesherOptions(), 0.5f);
 
             Assert.Contains(lines1, l => l.StartsWith("Field[6] = Box;"));
-            // Profil: x 0..50, y -2,5..4 (Sehne 50): von -5 bis 100 (1 L hinter der Hinterkante)
+            // Airfoil: x 0..50, y -2.5..4 (chord 50): from -5 to 100 (1 L behind trailing edge)
             Assert.Equal(-5f, Value(lines1, "Field[6].XMin"), 1);
             Assert.Equal(100f, Value(lines1, "Field[6].XMax"), 1);
-            // quer: Profilhöhe plus 0,25 L = 12,5 je Seite
+            // cross-stream: airfoil height plus 0.25 L = 12.5 per side
             Assert.True(Value(lines1, "Field[6].YMax") - Value(lines1, "Field[6].YMin") > 25f);
-            // Zellgröße L/100 = 0,5 mm, halbiert bei Faktor 0,5
+            // cell size L/100 = 0.5 mm, halved at factor 0.5
             Assert.Equal(0.5f, Value(lines1, "Field[6].VIn"), 3);
             Assert.Equal(0.25f, Value(lines05, "Field[6].VIn"), 3);
-            // eingebunden ins Minimum der Hintergrundfelder
+            // included in the minimum of background fields
             Assert.Contains(lines1, l => l.StartsWith("Field[5].FieldsList") && l.Contains("6"));
         }
 
@@ -97,9 +97,9 @@ namespace FluidForge.Tests
 
             Assert.DoesNotContain(lines, l => l.StartsWith("Field[6]"));
             Assert.Contains(lines, l => l.Trim() == "Background Field = 3;");
-            // Ohne Kantenverfeinerung haben alle Konturpunkte dieselbe Größe.
+            // Without edge refinement, all contour points have the same size.
             var sizes = lines.Where(l => l.StartsWith("Point(") && l.Contains("}")).Select(l => l.Split(',').Last()).Distinct().ToList();
-            Assert.True(sizes.Count <= 4, "Konturpunkte sollten (bis auf das Fernfeld) eine Größe haben.");
+            Assert.True(sizes.Count <= 4, "Contour points should have one size (except for the farfield).");
         }
 
         [Fact]
@@ -107,14 +107,14 @@ namespace FluidForge.Tests
         {
             var lines = Geo2D(new Gmsh2DMesherOptions());
 
-            // Gmsh 4.11 rechnet mit Distanz-/Ball-Feldern unter der Wandzellgröße bei aktiver Grenzschicht
-            // endlos (Servertest 06.11.2026): die Kantenverfeinerung läuft deshalb nur über Punktgrößen.
+            // Gmsh 4.11 loops endlessly with distance/ball fields below wall cell size when boundary layer is active
+            // (server test 2026-11-06): edge refinement therefore runs solely via point sizes.
             Assert.DoesNotContain(lines, l => l.StartsWith("Field[7]") || l.StartsWith("Field[8]"));
 
             var contourPoints = lines.Where(l => l.StartsWith("Point(") && l.Contains(", 0,")).ToList();
             float Size(string l) => float.Parse(l.Split(',').Last().Replace("};", "").Replace("}", "").Trim(), CultureInfo.InvariantCulture);
             float min = contourPoints.Min(Size), max = contourPoints.Max(Size);
-            // Konturzellgröße c/100 = 0,5 mm; an den Kanten ein Viertel davon.
+            // Contour cell size c/100 = 0.5 mm; a quarter of that at the edges.
             Assert.Equal(0.125f, min, 3);
             Assert.True(max > 0.4f);
         }
@@ -127,8 +127,8 @@ namespace FluidForge.Tests
 
             int splinesOn = on.Count(l => l.StartsWith("Spline("));
             int splinesOff = off.Count(l => l.StartsWith("Spline("));
-            // Teilungspunkte 0,1 L hinter der Vorderkante und vor der Hinterkante, oben und unten.
-            Assert.True(splinesOn > splinesOff, $"{splinesOn} Splines mit, {splinesOff} ohne Kantenverfeinerung.");
+            // Split points 0.1 L behind the leading edge and ahead of the trailing edge, top and bottom.
+            Assert.True(splinesOn > splinesOff, $"{splinesOn} splines with, {splinesOff} without edge refinement.");
         }
 
         [Fact]
@@ -138,10 +138,10 @@ namespace FluidForge.Tests
 
             float distMax = Value(lines, "Field[3].DistMax");
             float sizeMax = Value(lines, "Field[3].SizeMax");
-            // 0,4 · 500 c = 200 c = 10 000 mm Wachstumsstrecke bis zur Fernfeldzelle 25 c = 1 250 mm
+            // 0.4 * 500 c = 200 c = 10,000 mm growth distance up to farfield cell 25 c = 1,250 mm
             Assert.Equal(10000f, distMax, 0);
             Assert.Equal(1250f, sizeMax, 0);
-            // Steigung der Zellgröße über den Abstand: ~0,12 statt früher ~3,4
+            // Slope of cell size over distance: ~0.12 instead of ~3.4 previously
             float slope = (sizeMax - Value(lines, "Field[3].SizeMin")) / (distMax - Value(lines, "Field[3].DistMin"));
             Assert.InRange(slope, 0.05f, 0.25f);
         }
@@ -162,7 +162,7 @@ namespace FluidForge.Tests
             var flow = new FlowConditions(2.0f, 1025f, 0.001001f, "test");
             var config = SimulationConfig.CreateDefault();
 
-            Assert.True(new GmshMesherOptions().DetailBox); // Standard seit 08.11.2026
+            Assert.True(new GmshMesherOptions().DetailBox); // Default since 2026-11-08
 
             var off = new GmshMesherOptions { DetailBox = false, BoundaryLayerMode = "Threshold" };
             new GmshCfdMesher(off, flow).WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f);
@@ -173,7 +173,7 @@ namespace FluidForge.Tests
             var lines = File.ReadAllLines(path);
 
             Assert.Contains(lines, l => l.StartsWith("Field[5] = Box;"));
-            Assert.Equal(1.0f, Value(lines, "Field[5].VIn"), 3); // 2 mm × Faktor 0,5
+            Assert.Equal(1.0f, Value(lines, "Field[5].VIn"), 3); // 2 mm * factor 0.5
             Assert.Contains(lines, l => l.StartsWith("Field[4].FieldsList") && l.Contains("2") && l.Contains("3") && l.Contains("5"));
         }
 
@@ -221,7 +221,7 @@ namespace FluidForge.Tests
             Assert.Contains(linesDefault, l => l.Trim() == "Field[5].ZMin = dminZ - dz_pad;");
             Assert.Contains(linesDefault, l => l.Trim() == "Field[5].ZMax = dmaxZ + dz_pad;");
 
-            // Deaktivierbar über 0 (und <= 0)
+            // Can be disabled via 0 (and <= 0)
             string pathZero = Path.Combine(_dir, "detail_zero_floor.geo");
             new GmshCfdMesher(new GmshMesherOptions
             {
@@ -254,7 +254,7 @@ namespace FluidForge.Tests
             var config = SimulationConfig.CreateDefault();
             float refinementFactor = 0.5f;
 
-            // Prism: Schritt 1 (Wall_*.geo)
+            // Prism: Step 1 (Wall_*.geo)
             var prismOptions = new GmshMesherOptions
             {
                 BoundaryLayerMode = "Prism",
@@ -315,7 +315,7 @@ namespace FluidForge.Tests
             };
             string[] baseGeo = WriteAndRead(baseline, "base", out string[] baseWall);
 
-            // 1. DetailBoxCellSize ändern -> Wall_*.geo bleibt exakt identisch
+            // 1. Change DetailBoxCellSize -> Wall_*.geo stays identical
             var changedDetail = new GmshMesherOptions
             {
                 BoundaryLayerMode = "Prism",
@@ -327,7 +327,7 @@ namespace FluidForge.Tests
             Assert.Equal(baseWall, detailWall);
             Assert.Equal(7.5f, Value(detailGeo, "Field[5].VIn"), 3);
 
-            // 2. BoundaryLayerSizeMax ändern -> Wall_*.geo bleibt exakt identisch; nur Schritt 2 / VOut ändert sich
+            // 2. Change BoundaryLayerSizeMax -> Wall_*.geo stays identical; only Step 2 / VOut changes
             var changedSizeMax = new GmshMesherOptions
             {
                 BoundaryLayerMode = "Prism",
@@ -341,7 +341,7 @@ namespace FluidForge.Tests
             Assert.Equal(240.0f, Value(sizeMaxGeo, "Mesh.MeshSizeMax"), 3);
             Assert.Equal(3.0f, Value(sizeMaxGeo, "Field[5].VIn"), 3);
 
-            // 3. SurfaceCellSize ändern -> Field[5].VOut bleibt unverändert
+            // 3. Change SurfaceCellSize -> Field[5].VOut remains unchanged
             var changedSurface = new GmshMesherOptions
             {
                 BoundaryLayerMode = "Prism",

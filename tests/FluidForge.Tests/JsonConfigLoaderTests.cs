@@ -34,7 +34,7 @@ namespace FluidForge.Tests
         {
             var config = JsonConfigLoader.Load(
                 SimulationConfig.CreateDefault(),
-                Path.Combine(_directory, "gibtsnicht.json"));
+                Path.Combine(_directory, "doesnotexist.json"));
 
             Assert.Equal(10, config.MaxIterations);
             Assert.Equal("gmsh", config.GmshPath);
@@ -48,7 +48,7 @@ namespace FluidForge.Tests
             var config = JsonConfigLoader.Load(SimulationConfig.CreateDefault(), path);
 
             Assert.Equal(3, config.MaxIterations);
-            // Nicht genannte Werte bleiben auf dem Standard
+            // Unspecified values remain at their defaults
             Assert.Equal(10, config.VariantsPerIteration);
             Assert.Equal(0.2f, config.BouncerTolerance, 5);
         }
@@ -61,14 +61,14 @@ namespace FluidForge.Tests
 
             var config = JsonConfigLoader.Load(SimulationConfig.CreateDefault(), basePath, localPath);
 
-            Assert.Equal(@"C:\gmsh\gmsh.exe", config.GmshPath); // lokal gewinnt
-            Assert.Equal(12, config.MpiCores);                  // aus der Basisdatei
+            Assert.Equal(@"C:\gmsh\gmsh.exe", config.GmshPath); // local wins
+            Assert.Equal(12, config.MpiCores);                  // from base file
         }
 
         [Fact]
         public void Invalid_Json_Throws_With_File_Name()
         {
-            string path = WriteFile("simulation.json", "{ kaputt ");
+            string path = WriteFile("simulation.json", "{ broken ");
 
             var ex = Assert.Throws<InvalidOperationException>(
                 () => JsonConfigLoader.Load(SimulationConfig.CreateDefault(), path));
@@ -77,9 +77,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Rauchtest für die mitgelieferte src/projects/MantaAuv/simulation.json: sie muss gefunden werden
-        /// (Suche nach oben, weil die Tests aus bin/Debug/net9.0 laufen) und sich laden lassen (gültiges JSON,
-        /// nur bekannte Schlüssel). Die WERTE darin sind Einstellungen zum Ausprobieren und werden nicht geprüft.
+        /// Smoke test for the bundled src/projects/MantaAuv/simulation.json: it must be found
+        /// (searching upwards, because tests run from bin/Debug/net9.0) and load cleanly (valid JSON,
+        /// only known keys). The VALUES inside are trial settings and are not checked.
         /// </summary>
         [Fact]
         public void Repository_Config_File_Is_Found_And_Loads()
@@ -91,7 +91,7 @@ namespace FluidForge.Tests
         public void Comments_And_Trailing_Commas_Are_Accepted()
         {
             string path = WriteFile("simulation.json", @"{
-                // Kommentar
+                // Comment
                 ""MpiCores"": 4,
             }");
 

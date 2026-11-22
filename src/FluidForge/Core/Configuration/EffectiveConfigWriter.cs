@@ -9,26 +9,26 @@ using System.Text.Json.Nodes;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Schreibt <c>Ergebnisse/&lt;Projekt&gt;/effective-config.json</c> — die Konfiguration, mit
-    /// der dieser Lauf tatsächlich gerechnet hat, samt Herkunft je Schlüssel (TODO-25).
+    /// Writes <c>results/&lt;Project&gt;/effective-config.json</c> — the exact configuration
+    /// used by this run, including the origin of every key.
     ///
     /// <para>
-    /// <b>Wozu:</b> die Ergebnis-CSV überlebt Monate, die JSON-Dateien werden bis dahin
-    /// zehnmal geändert. Ohne diese Datei lässt sich später nicht mehr sagen, mit welcher
-    /// Netzfeinheit oder welchem Laufumfang ein alter Datensatz entstanden ist. Sie liegt
-    /// deshalb bewusst <b>neben</b> den Ergebnissen und nicht bei den Quellen.
+    /// <b>Purpose:</b> the results CSV survives for months, while the JSON config files may be
+    /// edited many times. Without this snapshot, it would later be impossible to tell which mesh
+    /// refinement or run budget produced an old dataset. It is therefore placed deliberately
+    /// <b>alongside</b> the results rather than with the sources.
     /// </para>
     ///
     /// <para>
-    /// Das ist eine Ausgabedatei, kein Konfigurationsdokument — sie darf deshalb maschinell
-    /// erzeugt werden. Die mitgelieferten <c>*.json</c> unter <c>src/projects/</c> dagegen
-    /// nie: dort steckt die Erklärung in den Kommentaren, und ein Serialisierer wirft die weg.
+    /// This is an output artifact, not a configuration file — so it may be machine-generated.
+    /// The hand-authored <c>*.json</c> files under <c>src/projects/</c>, on the other hand,
+    /// must never be machine-rewritten, as their inline comments carry essential documentation.
     /// </para>
     /// </summary>
     public static class EffectiveConfigWriter
     {
-        /// <summary>Dateiname im Ergebnisordner.</summary>
-        public const string FileName = "effective-config.json";
+        /// <summary>Output filename in the working directory.</summary>
+        public const string FileName = OutputConventions.EffectiveConfigFileName;
 
         private static readonly JsonSerializerOptions Options = new JsonSerializerOptions
         {
@@ -36,9 +36,9 @@ namespace FluidForge.Core
         };
 
         /// <summary>
-        /// Schreibt die Datei in <paramref name="workingDirectory"/> und gibt den Pfad zurück.
-        /// Muss aufgerufen werden, <b>nachdem</b> alle Solver-Optionen geladen sind — sonst
-        /// fehlen sie in der Aufstellung.
+        /// Writes the file into <paramref name="workingDirectory"/> and returns its path.
+        /// Must be called <b>after</b> all solver options are loaded — otherwise they would
+        /// be missing from the snapshot.
         /// </summary>
         public static string Write(string workingDirectory, ProjectContext context, SimulationContext? simContext = null)
         {
@@ -50,10 +50,10 @@ namespace FluidForge.Core
             return path;
         }
 
-        /// <summary>Baut den Inhalt. Getrennt vom Schreiben, damit er ohne Datei prüfbar ist.</summary>
+        /// <summary>Builds the JSON object. Separated from writing so it can be tested without I/O.</summary>
         public static JsonObject Build(ProjectContext context) => Build(context, null);
 
-        /// <summary>Baut den Inhalt unter Berücksichtigung des optionalen SimulationContext (TODO-42).</summary>
+        /// <summary>Builds the JSON object, optionally incorporating <see cref="SimulationContext"/>.</summary>
         public static JsonObject Build(ProjectContext context, SimulationContext? simContext)
         {
             var sections = new JsonObject();
@@ -66,11 +66,10 @@ namespace FluidForge.Core
 
                 sections[loaded.Name] = new JsonObject
                 {
-                    // Die Werte so, wie der Lauf sie benutzt hat.
-                    ["Werte"] = JsonSerializer.SerializeToNode(loaded.Value, loaded.Value.GetType(), Options),
-                    // Und je Schlüssel die Datei, die ihn gewonnen hat. Was hier fehlt, stand
-                    // in keiner Datei und kam aus dem Code-Standard.
-                    ["HerkunftJeSchluessel"] = origins
+                    // Values actually used by the run.
+                    ["Values"] = JsonSerializer.SerializeToNode(loaded.Value, loaded.Value.GetType(), Options),
+                    // Per key, the file that provided it. Keys absent here came from code defaults.
+                    ["OriginByKey"] = origins
                 };
             }
 
@@ -79,31 +78,31 @@ namespace FluidForge.Core
             {
                 machineOverrides.Add(new JsonObject
                 {
-                    ["Datei"] = entry.File,
-                    ["Schluessel"] = entry.Key,
-                    ["Projektwert"] = entry.PreviousValue,
-                    ["WirksamerWert"] = entry.NewValue
+                    ["File"] = entry.File,
+                    ["Key"] = entry.Key,
+                    ["ProjectValue"] = entry.PreviousValue,
+                    ["EffectiveValue"] = entry.NewValue
                 });
             }
 
             return new JsonObject
             {
-                ["Hinweis"] =
-                    "Automatisch erzeugt. Haelt fest, womit dieser Lauf gerechnet hat -- die "
-                    + "Quelldateien koennen sich seitdem geaendert haben. Nicht von Hand bearbeiten; "
-                    + "Einstellungen gehoeren nach src/projects/<Name>/.",
-                ["Projekt"] = context.Name,
-                ["Projektordner"] = context.ProjectDirectory == null
+                ["Note"] =
+                    "Auto-generated. Records the exact settings used by this run -- source "
+                    + "config files may have changed since. Do not edit manually; "
+                    + "settings belong in src/projects/<Name>/.",
+                ["Project"] = context.Name,
+                ["ProjectDirectory"] = context.ProjectDirectory == null
                     ? null
                     : JsonConfigLoader.Label(context.ProjectDirectory),
-                ["Zeitpunkt"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
-                ["WirksamerNetzfaktor"] = simContext != null ? simContext.EffectiveMeshRefinementFactor : context.Simulation.MeshRefinementFactor,
-                ["NetzfaktorQuelle"] = simContext != null ? simContext.MeshRefinementSource : "MANUELL aus simulation.json",
-                ["KalibrierBericht"] = simContext?.CalibrationReportPath,
-                ["Abschnitte"] = sections,
-                // Normalerweise leer. Ist sie es nicht, hat eine gitignorierte Datei mitgeredet,
-                // die niemand hochgeladen hat -- und das erklaert spaeter die Abweichung.
-                ["MaschinenspezifischeUeberschreibungen"] = machineOverrides
+                ["Timestamp"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+                ["EffectiveScaleFactor"] = simContext != null ? simContext.EffectiveMeshRefinementFactor : context.Simulation.MeshRefinementFactor,
+                ["ScaleFactorSource"] = simContext != null ? simContext.MeshRefinementSource : OutputConventions.ManualMeshSource,
+                ["CalibrationReport"] = simContext?.CalibrationReportPath,
+                ["Sections"] = sections,
+                // Normally empty. If non-empty, a gitignored local override file took effect
+                // that was not committed -- explaining any divergence later.
+                ["MachineSpecificOverrides"] = machineOverrides
             };
         }
     }

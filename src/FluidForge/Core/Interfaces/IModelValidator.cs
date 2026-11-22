@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Prüft ob ein Champion physikalisch stabil ist.
-    /// Jedes Projekt kann eigene Validierungskriterien definieren.
+    /// Verifies whether a champion model is physically stable.
+    /// Each project can define its own validation criteria.
     /// </summary>
     public interface IModelValidator
     {

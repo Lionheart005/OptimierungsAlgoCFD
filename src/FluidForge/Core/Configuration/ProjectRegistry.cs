@@ -7,13 +7,12 @@ using System.Reflection;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Findet die Projekte und löst einen Namen in seine Definition auf (TODO-23).
+    /// Discovers projects and resolves a project name to its <see cref="IProjectDefinition"/>.
     ///
     /// <para>
-    /// Gesucht wird per Reflection nach allen nicht-abstrakten <see cref="IProjectDefinition"/>
-    /// in der Assembly (Entscheidung 5) — nicht über Typnamen in einer JSON-Datei. Damit ist ein
-    /// neues Projekt wirklich nur noch ein Ordner: keine Zeile in <c>Program.cs</c>, kein
-    /// <c>case</c>, kein Eintrag in einer Liste.
+    /// Discovers all non-abstract <see cref="IProjectDefinition"/> types in the assembly via reflection,
+    /// so adding a new project requires only adding its folder under <c>src/projects/</c> without
+    /// modifying <c>Program.cs</c> or central switch statements.
     /// </para>
     /// </summary>
     public sealed class ProjectRegistry
@@ -25,21 +24,17 @@ namespace FluidForge.Core
             _definitions = definitions;
         }
 
-        /// <summary>Alle gefundenen Projektdefinitionen, alphabetisch nach Namen.</summary>
+        /// <summary>All discovered project definitions, sorted alphabetically by name.</summary>
         public IReadOnlyList<IProjectDefinition> Definitions => _definitions;
 
-        /// <summary>Die Namen der gefundenen Projekte, alphabetisch.</summary>
+        /// <summary>Names of all discovered projects, sorted alphabetically.</summary>
         public IReadOnlyList<string> Names =>
             _definitions.Select(definition => definition.Name).ToList();
 
         /// <summary>
-        /// Sucht alle Projektdefinitionen in einer Assembly.
+        /// Discovers all project definitions in an assembly (defaults to the Core assembly).
         /// </summary>
-        /// <param name="assembly">
-        /// Ohne Angabe die Assembly, in der dieser Kern liegt — dort landen auch die
-        /// Projektdateien, weil die csproj <c>src/projects/**/*.cs</c> mit hineinzieht.
-        /// </param>
-        /// <exception cref="InvalidOperationException">Zwei Definitionen tragen denselben Namen.</exception>
+        /// <exception cref="InvalidOperationException">Two definitions share the same name.</exception>
         public static ProjectRegistry Discover(Assembly? assembly = null)
         {
             Assembly source = assembly ?? typeof(ProjectRegistry).Assembly;
@@ -51,7 +46,7 @@ namespace FluidForge.Core
             }
             catch (ReflectionTypeLoadException ex)
             {
-                // Eine einzelne unladbare Klasse soll nicht den ganzen Start verhindern.
+                // A single unloadable type must not prevent startup.
                 types = ex.Types.Where(type => type != null).Select(type => type!);
             }
 
@@ -59,26 +54,21 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Baut die Registry aus einer Typliste. Getrennt von <see cref="Discover"/>, damit
-        /// Tests eigene Definitionen einspeisen können, ohne sie in die Assembly zu legen —
-        /// eine Attrappe in der Test-Assembly wäre für einen Scan über den Kern unsichtbar.
+        /// Builds the registry from an explicit list of types (useful for unit tests).
         /// </summary>
         public static ProjectRegistry FromTypes(IEnumerable<Type> types)
         {
             var definitions = types
                 .Where(type => typeof(IProjectDefinition).IsAssignableFrom(type))
                 .Where(type => !type.IsAbstract && !type.IsInterface)
-                // Ohne öffentlichen parameterlosen Konstruktor lässt sich nichts bauen. Das
-                // still zu überspringen wäre falsch — es ist mit hoher Wahrscheinlichkeit ein
-                // Versehen, und ein Projekt, das nicht auftaucht, sucht man lange.
                 .Select(type => Create(type))
                 .ToList();
 
             return FromDefinitions(definitions);
         }
 
-        /// <summary>Baut die Registry aus fertigen Definitionen — der direkteste Weg für Tests.</summary>
-        /// <exception cref="InvalidOperationException">Zwei Definitionen tragen denselben Namen.</exception>
+        /// <summary>Builds the registry from instantiated definitions (for unit tests).</summary>
+        /// <exception cref="InvalidOperationException">Two definitions share the same name.</exception>
         public static ProjectRegistry FromDefinitions(IEnumerable<IProjectDefinition> definitions)
         {
             var sorted = definitions
@@ -91,11 +81,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Löst einen Projektnamen auf. Groß-/Kleinschreibung und Leerzeichen sind egal.
+        /// Resolves a project name (case-insensitive, trimmed).
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Kein Name angegeben oder keine Definition dazu — die Meldung nennt in beiden Fällen
-        /// die vorhandenen Projekte, damit der Nutzer nicht raten muss.
+        /// No name was provided or no matching definition exists.
         /// </exception>
         public IProjectDefinition Resolve(string? projectName)
         {
@@ -103,35 +92,24 @@ namespace FluidForge.Core
 
             if (wanted.Length == 0)
                 throw new InvalidOperationException(
-                    "[PROJEKT] Es wurde kein Projekt angegeben. " + AvailableProjects()
-                    + " Aufruf:  dotnet run -- <Projektname>   oder  .\\scripts\\sim.ps1 run -Project <Projektname>");
+                    "[PROJECT] No project specified. " + AvailableProjects()
+                    + " Usage:  dotnet run -- <ProjectName>   or  .\\scripts\\sim.ps1 run -Project <ProjectName>");
 
             IProjectDefinition? found = _definitions.FirstOrDefault(
                 definition => string.Equals(definition.Name, wanted, StringComparison.OrdinalIgnoreCase));
 
             if (found == null)
                 throw new InvalidOperationException(
-                    $"[PROJEKT] Unbekanntes Projekt '{wanted}'. " + AvailableProjects());
+                    $"[PROJECT] Unknown project '{wanted}'. " + AvailableProjects());
 
             return found;
         }
 
         /// <summary>
-        /// Gleicht Definitionen und Ordner gegeneinander ab: zu jeder Definition muss ein Ordner
-        /// <c>src/projects/&lt;Name&gt;/</c> existieren, und zu jedem Ordner genau eine Definition.
-        ///
-        /// <para>
-        /// Beide Richtungen, weil beide Fehler still wären: ein Ordner ohne Definition wird beim
-        /// Start nie angeboten, eine Definition ohne Ordner findet ihre JSONs nicht und rechnet
-        /// klaglos mit den Code-Standards weiter.
-        /// </para>
-        ///
-        /// <para>
-        /// Gibt es überhaupt kein Projektverzeichnis, wird nichts geprüft und nur ein Hinweis
-        /// ausgegeben — der Abgleich greift erst, wenn die Ordner mit TODO-24 angelegt sind.
-        /// </para>
+        /// Verifies that every definition has a matching <c>src/projects/&lt;Name&gt;/</c> folder
+        /// and every project folder has a matching definition.
         /// </summary>
-        /// <exception cref="InvalidOperationException">Ordner und Definitionen passen nicht zusammen.</exception>
+        /// <exception cref="InvalidOperationException">Folders and definitions do not match.</exception>
         public void AssertFoldersMatchDefinitions(string? projectsRoot = null)
         {
             string? root = ProjectPaths.ResolveProjectsRoot(projectsRoot);
@@ -139,9 +117,8 @@ namespace FluidForge.Core
             if (root == null)
             {
                 Console.WriteLine(
-                    $"[PROJEKT] Kein Verzeichnis {ProjectPaths.SourceDirectoryName}/"
-                    + $"{ProjectPaths.ProjectsDirectoryName}/ gefunden — der Abgleich zwischen "
-                    + "Ordnern und Projektdefinitionen entfällt.");
+                    $"[PROJECT] Directory {ProjectPaths.SourceDirectoryName}/"
+                    + $"{ProjectPaths.ProjectsDirectoryName}/ not found — skipping folder/definition consistency check.");
                 return;
             }
 
@@ -153,9 +130,9 @@ namespace FluidForge.Core
                 if (!folders.Contains(definition.Name, StringComparer.OrdinalIgnoreCase))
                 {
                     problems.Add(
-                        $"Zur Definition {definition.GetType().Name} (Name '{definition.Name}') fehlt der "
-                        + $"Ordner {ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{definition.Name}/. "
-                        + "Ohne ihn findet das Projekt seine JSON-Dateien nicht und rechnet mit den Code-Standards.");
+                        $"Definition {definition.GetType().Name} (Name '{definition.Name}') is missing its folder "
+                        + $"{ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{definition.Name}/. "
+                        + "Without it, the project cannot locate its JSON files and would fall back to code defaults.");
                 }
             }
 
@@ -167,27 +144,27 @@ namespace FluidForge.Core
                 if (matches == 0)
                 {
                     problems.Add(
-                        $"Zum Ordner {ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{folder}/ "
-                        + "gibt es keine IProjectDefinition. Das Projekt lässt sich nicht starten; "
-                        + $"entweder fehlt die Klasse, oder ihr {nameof(IProjectDefinition.Name)} "
-                        + "weicht vom Ordnernamen ab.");
+                        $"Folder {ProjectPaths.SourceDirectoryName}/{ProjectPaths.ProjectsDirectoryName}/{folder}/ "
+                        + "has no matching IProjectDefinition. The project cannot be started; "
+                        + $"either the class is missing or its {nameof(IProjectDefinition.Name)} "
+                        + "differs from the folder name.");
                 }
             }
 
             if (problems.Count == 0) return;
 
             throw new InvalidOperationException(
-                "[PROJEKT] Ordner und Projektdefinitionen passen nicht zusammen:"
+                "[PROJECT] Folders and project definitions do not match:"
                 + Environment.NewLine
                 + string.Join(Environment.NewLine, problems.Select(problem => "          " + problem)));
         }
 
-        /// <summary>Der Satz für Fehlermeldungen: welche Projekte gibt es überhaupt?</summary>
+        /// <summary>Human-readable list of available projects for error messages.</summary>
         public string AvailableProjects()
         {
             return _definitions.Count == 0
-                ? "Es ist überhaupt kein Projekt vorhanden."
-                : "Vorhanden sind: " + string.Join(", ", Names) + ".";
+                ? "No projects are registered."
+                : "Available: " + string.Join(", ", Names) + ".";
         }
 
         private static IProjectDefinition Create(Type type)
@@ -199,9 +176,9 @@ namespace FluidForge.Core
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    $"[PROJEKT] Die Projektdefinition {type.FullName} lässt sich nicht erzeugen: {ex.Message} "
-                    + "Sie braucht einen öffentlichen Konstruktor ohne Parameter — alles Weitere "
-                    + "bekommt sie über den ProjectContext.", ex);
+                    $"[PROJECT] Cannot instantiate project definition {type.FullName}: {ex.Message} "
+                    + "It requires a public parameterless constructor — everything else "
+                    + "is provided via ProjectContext.", ex);
             }
         }
 
@@ -215,13 +192,12 @@ namespace FluidForge.Core
             if (duplicates.Count == 0) return;
 
             string detail = string.Join(Environment.NewLine, duplicates.Select(group =>
-                $"          '{group.Key}' wird beansprucht von: "
+                $"          '{group.Key}' is claimed by: "
                 + string.Join(", ", group.Select(definition => definition.GetType().FullName))));
 
             throw new InvalidOperationException(
-                "[PROJEKT] Zwei Projektdefinitionen tragen denselben Namen. Der Name ist der "
-                + "Ordnername und muss eindeutig sein, sonst hinge es an der Reihenfolge der "
-                + "Reflection, welches Projekt gerechnet wird:" + Environment.NewLine + detail);
+                "[PROJECT] Two project definitions share the same name. The name must match the "
+                + "folder name and be unique:" + Environment.NewLine + detail);
         }
     }
 }

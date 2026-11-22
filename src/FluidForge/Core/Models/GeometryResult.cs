@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Art der erzeugten Geometrie. Standardmäßig 3D-Oberflächennetz (SurfaceStl),
-    /// für 2D-Berechnungen ebene Konturen (Contour2D).
+    /// Kind of generated geometry. Defaults to 3D surface mesh (SurfaceStl);
+    /// planar contours for 2D simulations use Contour2D.
     /// </summary>
     public enum GeometryKind
     {
@@ -13,55 +13,52 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Wie eine Geometrie-Metrik von der PicoGK-Arbeitsgröße auf die reale Größe
-    /// zurückgerechnet wird. Das Projekt deklariert das — der Kern rät nicht mehr
-    /// anhand des Metriknamens.
+    /// How a geometry metric is scaled back from the kernel's working size to physical size.
+    /// Declared explicitly by the project so the core never guesses from metric names.
     /// </summary>
     public enum MetricScaling
     {
-        /// <summary>Dimensionslos (z.B. Verhältnisse, Zählwerte) — unverändert übernehmen.</summary>
+        /// <summary>Dimensionless (e.g., ratios, counts) — keep unchanged.</summary>
         None,
-        /// <summary>Länge (mm) — mit 1/ShrinkFactor multiplizieren.</summary>
+        /// <summary>Length (mm) — multiply by 1 / ShrinkFactor.</summary>
         Linear,
-        /// <summary>Fläche (mm²) — quadratisch zurückskalieren.</summary>
+        /// <summary>Area (mm²) — scale quadratically.</summary>
         Area,
-        /// <summary>Volumen (mm³) — kubisch zurückskalieren.</summary>
+        /// <summary>Volume (mm³) — scale cubically.</summary>
         Volume
     }
 
     /// <summary>
-    /// Flexibles Ergebnis der Geometrie-Erzeugung.
-    /// Ersetzt das starre Tuple (StlPath, Volume, FrontalArea, SensorDistance).
-    /// Jedes Projekt gibt die Metriken zurück, die es braucht — samt Angabe,
-    /// wie sie zurückskaliert werden sollen.
+    /// Flexible output of geometry generation.
+    /// Each project returns the metrics it needs along with how each metric scales.
     /// </summary>
     public class GeometryResult
     {
         /// <summary>
-        /// Art der Geometrie (3D-STL oder 2D-Kontur).
+        /// Kind of geometry (3D STL or 2D contour).
         /// </summary>
         public GeometryKind Kind { get; set; } = GeometryKind.SurfaceStl;
 
         public string StlPath { get; set; } = "";
 
         /// <summary>
-        /// Pfad zur Geometriedatei (STL für 3D, JSON/SVG für 2D).
-        /// Alias für <see cref="StlPath"/> zur vollständigen Abwärtskompatibilität.
+        /// Path to the geometry file (STL for 3D, JSON/SVG for 2D).
+        /// Alias for <see cref="StlPath"/> for full backward compatibility.
         /// </summary>
         public string GeometryPath { get => StlPath; set => StlPath = value; }
 
         public Dictionary<string, float> Metrics { get; set; } = new();
-        // z.B. {"Volume": 4200, "FrontalArea": 850, "SensorDistance": 120}
-        // oder {"Volume": 3000, "SurfaceArea": 1200, "WallThickness": 2.5}
+        // e.g., {"Volume": 4200, "FrontalArea": 850, "SensorDistance": 120}
+        // or {"Volume": 3000, "SurfaceArea": 1200, "WallThickness": 2.5}
 
         /// <summary>
-        /// Rückskalierungs-Dimension pro Metrik. Fehlt ein Eintrag,
-        /// gilt <see cref="MetricScaling.None"/> (Wert wird unverändert übernommen).
+        /// Rescaling dimension per metric. Missing entries default to
+        /// <see cref="MetricScaling.None"/> (kept unchanged).
         /// </summary>
         public Dictionary<string, MetricScaling> MetricScalings { get; set; } = new();
 
         /// <summary>
-        /// Metrik samt Dimension eintragen — der bevorzugte Weg für Projekte.
+        /// Adds a metric along with its scaling dimension — preferred API for projects.
         /// </summary>
         public void AddMetric(string name, float value, MetricScaling scaling = MetricScaling.None)
         {
@@ -70,7 +67,7 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Deklarierte Dimension einer Metrik; <see cref="MetricScaling.None"/>, wenn nichts angegeben wurde.
+        /// Declared scaling dimension of a metric; returns <see cref="MetricScaling.None"/> if unspecified.
         /// </summary>
         public MetricScaling ScalingFor(string name)
             => MetricScalings.TryGetValue(name, out var scaling) ? scaling : MetricScaling.None;

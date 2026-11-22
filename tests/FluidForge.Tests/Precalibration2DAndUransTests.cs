@@ -13,13 +13,13 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für TODO-48 (2D-Vorkalibrierung für 3D-Läufe, IHasRepresentativeSection, 3-Stufen-3D-Bestätigung)
-    /// und TODO-37 (zeitgenauer Modus / URANS mit Dual-Time-Stepping für Einzelprüfungen).
+    /// Tests for TODO-48 (2D precalibration for 3D runs, IHasRepresentativeSection, 3-level 3D confirmation)
+    /// and TODO-37 (time-accurate mode / URANS with dual-time-stepping for single verification runs).
     /// </summary>
     public class Precalibration2DAndUransTests
     {
         // =====================================================================
-        // Part A: 3-Stufen-3D-Bestätigung (CalibrationEvaluator.EvaluateConfirmation3D)
+        // Part A: 3-level 3D confirmation (CalibrationEvaluator.EvaluateConfirmation3D)
         // =====================================================================
 
         [Fact]
@@ -41,8 +41,8 @@ namespace FluidForge.Tests
         [Fact]
         public void EvaluateConfirmation3D_Selects_Coarse_Stage_When_Already_Within_Tolerance()
         {
-            // 3D-Stufen um f2D = 1.0f:
-            // Stufe 1: Grob 1.41, Stufe 2: Medium 1.00, Stufe 3: Referenz 0.71
+            // 3D levels around f2D = 1.0f:
+            // Level 1: Coarse 1.41, Level 2: Medium 1.00, Level 3: Reference 0.71
             var stages = new List<CalibrationStageData>
             {
                 new(LevelIndex: 1, Factor: 1.41f, MeshCells: 10000, DurationSeconds: 10,
@@ -56,7 +56,7 @@ namespace FluidForge.Tests
                     Converged: true, YPlusP95: 0.8f, YPlusOk: true)
             };
 
-            // Toleranz 2 % (0.02). Grobe Stufe weicht um |0.0508 - 0.0500| / 0.0500 = 1.6 % ab -> <= 2 %!
+            // Tolerance 2 % (0.02). Coarse level deviates by |0.0508 - 0.0500| / 0.0500 = 1.6 % -> <= 2 %!
             var decision = CalibrationEvaluator.EvaluateConfirmation3D(1.0f, stages, new[] { "Drag" }, 0.02f);
 
             Assert.True(decision.Success);
@@ -64,7 +64,7 @@ namespace FluidForge.Tests
             Assert.Equal(1, decision.SelectedStage!.LevelIndex);
             Assert.Equal(1.41f, decision.SelectedStage.Factor);
             Assert.NotNull(decision.Gci);
-            Assert.Contains("Grobe 3D-Stufe", decision.SummaryMessage);
+            Assert.Contains("Coarse 3D level", decision.SummaryMessage);
         }
 
         [Fact]
@@ -74,10 +74,10 @@ namespace FluidForge.Tests
             {
                 new(LevelIndex: 1, Factor: 1.41f, MeshCells: 10000, DurationSeconds: 10,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0525f }, Fitness: 20f,
-                    Converged: true, YPlusP95: 1.2f, YPlusOk: true), // Abweichung: 5.0 % -> über 2 %
+                    Converged: true, YPlusP95: 1.2f, YPlusOk: true), // Deviation: 5.0 % -> exceeds 2 %
                 new(LevelIndex: 2, Factor: 1.00f, MeshCells: 25000, DurationSeconds: 20,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0505f }, Fitness: 20f,
-                    Converged: true, YPlusP95: 1.0f, YPlusOk: true), // Abweichung: 1.0 % -> innerhalb 2 %
+                    Converged: true, YPlusP95: 1.0f, YPlusOk: true), // Deviation: 1.0 % -> within 2 %
                 new(LevelIndex: 3, Factor: 0.71f, MeshCells: 65000, DurationSeconds: 50,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0500f }, Fitness: 20f,
                     Converged: true, YPlusP95: 0.8f, YPlusOk: true)
@@ -89,7 +89,7 @@ namespace FluidForge.Tests
             Assert.NotNull(decision.SelectedStage);
             Assert.Equal(2, decision.SelectedStage!.LevelIndex);
             Assert.Equal(1.00f, decision.SelectedStage.Factor);
-            Assert.Contains("2D-Stufe", decision.SummaryMessage);
+            Assert.Contains("2D level", decision.SummaryMessage);
         }
 
         [Fact]
@@ -99,10 +99,10 @@ namespace FluidForge.Tests
             {
                 new(LevelIndex: 1, Factor: 1.41f, MeshCells: 10000, DurationSeconds: 10,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0560f }, Fitness: 20f,
-                    Converged: true, YPlusP95: 1.2f, YPlusOk: true), // Abweichung: 12 %
+                    Converged: true, YPlusP95: 1.2f, YPlusOk: true), // Deviation: 12 %
                 new(LevelIndex: 2, Factor: 1.00f, MeshCells: 25000, DurationSeconds: 20,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0520f }, Fitness: 20f,
-                    Converged: true, YPlusP95: 1.0f, YPlusOk: true), // Abweichung: 4 %
+                    Converged: true, YPlusP95: 1.0f, YPlusOk: true), // Deviation: 4 %
                 new(LevelIndex: 3, Factor: 0.71f, MeshCells: 65000, DurationSeconds: 50,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0500f }, Fitness: 20f,
                     Converged: true, YPlusP95: 0.8f, YPlusOk: true)
@@ -112,7 +112,7 @@ namespace FluidForge.Tests
 
             Assert.False(decision.Success);
             Assert.Null(decision.SelectedStage);
-            Assert.Contains("Weder die grobe 3D-Stufe noch der 2D-Faktor", decision.SummaryMessage);
+            Assert.Contains("Neither the coarse 3D level nor the 2D factor", decision.SummaryMessage);
         }
 
         [Fact]
@@ -128,17 +128,17 @@ namespace FluidForge.Tests
                     Converged: true, YPlusP95: 1.0f, YPlusOk: true),
                 new(LevelIndex: 3, Factor: 0.71f, MeshCells: 65000, DurationSeconds: 50,
                     Metrics: new Dictionary<string, float> { ["Drag"] = 0.0500f }, Fitness: 20f,
-                    Converged: false, YPlusP95: 0.8f, YPlusOk: true) // Referenz nicht konvergiert!
+                    Converged: false, YPlusP95: 0.8f, YPlusOk: true) // Reference not converged!
             };
 
             var decision = CalibrationEvaluator.EvaluateConfirmation3D(1.0f, stages, new[] { "Drag" }, 0.02f);
 
             Assert.False(decision.Success);
-            Assert.Contains("3D-Referenzstufe", decision.SummaryMessage);
+            Assert.Contains("3D reference level", decision.SummaryMessage);
         }
 
         // =====================================================================
-        // Part B: Precalibration-Support-Validierung & Section2D
+        // Part B: Precalibration support validation & Section2D
         // =====================================================================
 
         [Fact]
@@ -152,15 +152,15 @@ namespace FluidForge.Tests
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 MeshCalibration.ValidatePrecalibrationSupport(config, manta));
 
-            Assert.Contains("[KALIBRIERUNG]", ex.Message);
+            Assert.Contains(OutputConventions.CalibrationTag, ex.Message);
             Assert.Contains("Use2DPrecalibration", ex.Message);
             Assert.Contains("MantaAuv", ex.Message);
             Assert.Contains("IHasRepresentativeSection", ex.Message);
         }
 
         /// <summary>
-        /// Ein Projekt, das <see cref="IHasRepresentativeSection"/> anbietet, darf die 2D-Vorkalibrierung nutzen.
-        /// (Bis 08.11.2026 diente dafür ein Beispielprojekt; ein Stub tut es genauso.)
+        /// A project providing <see cref="IHasRepresentativeSection"/> may use 2D precalibration.
+        /// (Until 2026-11-08 an example project served this purpose; a stub works just as well.)
         /// </summary>
         [Fact]
         public void ValidatePrecalibrationSupport_Succeeds_For_A_Project_With_A_Representative_Section()
@@ -169,17 +169,17 @@ namespace FluidForge.Tests
             config.MeshCalibration.Use2DPrecalibration = true;
 
             var project = new Mock<IProjectDefinition>();
-            project.SetupGet(p => p.Name).Returns("MitProfilschnitt");
+            project.SetupGet(p => p.Name).Returns("WithProfileSection");
             project.As<IHasRepresentativeSection>();
 
-            // Darf keine Ausnahme werfen:
+            // Must not throw:
             MeshCalibration.ValidatePrecalibrationSupport(config, project.Object);
 
             Assert.IsAssignableFrom<IHasRepresentativeSection>(project.Object);
         }
 
         // =====================================================================
-        // Part C: RunWithPrecalibration2D End-to-End mit Mocks
+        // Part C: RunWithPrecalibration2D End-to-End with mocks
         // =====================================================================
 
         [Fact]
@@ -200,7 +200,7 @@ namespace FluidForge.Tests
                 projConfig.BaseParameters["CamberPosition"] = 40f;
                 projConfig.BaseParameters["MaxThickness"] = 12f;
 
-                var context = new ProjectContext("Beispielprojekt", tempDir, null, simConfig, projConfig);
+                var context = new ProjectContext("SampleProject", tempDir, null, simConfig, projConfig);
                 var simContext = new SimulationContext(simConfig, projConfig, tempDir);
 
                 var stages2DRecorded = new List<(float Factor, string Tag)>();
@@ -224,7 +224,7 @@ namespace FluidForge.Tests
                     stages3DRecorded.Add((factor, tag));
                     var rec = new ModelRecord();
                     rec.PassiveParameters["MeshCells"] = 50000f / (factor * factor * factor);
-                    rec.PassiveParameters["Drag"] = 0.050f + (factor * 0.0003f); // Weicht weniger als 2 % ab
+                    rec.PassiveParameters["Drag"] = 0.050f + (factor * 0.0003f); // Deviates by less than 2 %
                     rec.PassiveParameters["YPlus_P95"] = 1.1f;
                     rec.PassiveParameters["Su2_Converged"] = 1.0f;
                     return rec;
@@ -241,20 +241,20 @@ namespace FluidForge.Tests
                 Assert.NotNull(decision.SelectedStage);
                 Assert.NotEmpty(reportPath);
 
-                // Beide Berichte müssen existieren
+                // Both reports must exist
                 string calibDir = Path.Combine(tempDir, reportPath.Replace('/', Path.DirectorySeparatorChar));
                 Assert.True(File.Exists(Path.Combine(calibDir, "calibration_2d.csv")));
                 Assert.True(File.Exists(Path.Combine(calibDir, "calibration.csv")));
                 Assert.True(File.Exists(Path.Combine(calibDir, "calibration.json")));
 
-                // Latest-Kopien müssen existieren
+                // Latest copies must exist
                 string latestJson = Path.Combine(tempDir, MeshCalibration.CalibrationDirectoryName, MeshCalibration.LatestCalibrationJson);
                 Assert.True(File.Exists(latestJson));
 
-                // Herkunftstext muss korrekt gesetzt sein
-                Assert.Contains("KALIBRIERT: 2D-Vorkalibrierung, in 3D bestätigt", simContext.MeshRefinementSource);
+                // Source text must be set correctly
+                Assert.Contains("CALIBRATED: 2D precalibration, confirmed in 3D", simContext.MeshRefinementSource);
 
-                // 2D-Stufen und 3D-Stufen wurden gerufen
+                // 2D stages and 3D stages were called
                 Assert.NotEmpty(stages2DRecorded);
                 Assert.NotEmpty(stages3DRecorded);
                 Assert.Equal(3, stages3DRecorded.Count);
@@ -266,7 +266,7 @@ namespace FluidForge.Tests
         }
 
         // =====================================================================
-        // Part D: URANS / TimeDomain Config-Generierung
+        // Part D: URANS / TimeDomain config generation
         // =====================================================================
 
         [Fact]
@@ -294,9 +294,9 @@ namespace FluidForge.Tests
                 Assert.Contains("INNER_ITER= 20", lines);
                 Assert.Contains("WINDOW_START_ITER= 180", lines); // 300 * 0.6 = 180
                 Assert.Contains("WINDOW_FUNCTION= HANN_SQUARE", lines);
-                // SU2 7.5.1 verbietet ITER im zeitgenauen Modus (Servertest 06.11.2026).
+                // SU2 7.5.1 forbids ITER in time-accurate mode (server test 2026-11-06).
                 Assert.DoesNotContain(lines, l => l.StartsWith("ITER="));
-                // Zeitmittel mitschreiben, sonst gibt es nur den Momentanwert.
+                // Record time average, otherwise only the instantaneous value is written.
                 Assert.Contains(lines, l => l.StartsWith("HISTORY_OUTPUT=") && l.Contains("TAVG_AERO_COEFF"));
             }
             finally
@@ -316,7 +316,7 @@ namespace FluidForge.Tests
                 options.FreestreamVelocity = 2.0f; // U = 2 m/s
                 options.ReferenceLength = 0.1f;    // L = 0.1 m
                 options.TimeDomain.Enabled = true;
-                options.TimeDomain.TimeStep = 0.0f; // Automatisch!
+                options.TimeDomain.TimeStep = 0.0f; // Automatic!
                 options.TimeDomain.StrouhalEstimate = 0.2f; // f = 0.2 * 2 / 0.1 = 4 Hz -> T = 0.25 s
                 options.TimeDomain.StepsPerPeriod = 25;     // dt = 0.25 / 25 = 0.01 s
 
@@ -336,8 +336,8 @@ namespace FluidForge.Tests
         [Fact]
         public void Urans_Restart_From_Steady_Uses_Absolute_Time_Indices_And_Limits_Output()
         {
-            // Servertest 06.11.2026: TIME_ITER ist ein absoluter Endindex (60 bei Neustart ab 2 = 58 Schritte),
-            // und SU2 schrieb ohne OUTPUT_WRT_FREQ in jedem Zeitschritt eine 6-MB-Restart-Datei.
+            // Server test 2026-11-06: TIME_ITER is an absolute end index (60 when restarting from 2 = 58 steps),
+            // and without OUTPUT_WRT_FREQ SU2 wrote a 6 MB restart file at every time step.
             string path = Path.Combine(Path.GetTempPath(), "su2_urans_restart_" + Guid.NewGuid().ToString("N") + ".cfg");
             try
             {
@@ -352,7 +352,7 @@ namespace FluidForge.Tests
                 string[] lines = File.ReadAllLines(path);
 
                 Assert.Contains("TIME_ITER= 1002", lines);          // 2 + 1000
-                Assert.Contains("WINDOW_START_ITER= 502", lines);   // 2 + 500: letzte 10 von 20 Perioden
+                Assert.Contains("WINDOW_START_ITER= 502", lines);   // 2 + 500: last 10 of 20 periods
                 Assert.Contains("RESTART_SOL= YES", lines);
                 Assert.Contains("RESTART_ITER= 2", lines);
                 Assert.Contains("SOLUTION_FILENAME= restart.dat", lines);
@@ -419,7 +419,7 @@ namespace FluidForge.Tests
             string dirWithout2d = Path.Combine(Path.GetTempPath(), "precal_gmsh3d_" + Guid.NewGuid().ToString("N"));
             try
             {
-                // Fall 1: solvers/gmsh2d.json existiert -> wird direkt geladen
+                // Case 1: solvers/gmsh2d.json exists -> loaded directly
                 Directory.CreateDirectory(Path.Combine(dirWith2d, "solvers"));
                 File.WriteAllText(Path.Combine(dirWith2d, "solvers", "gmsh2d.json"),
                     @"{ ""TargetYPlus"": 0.8, ""BoundaryLayerGrowthRate"": 1.15, ""DetailBoxLengthFactor"": 2.5 }");
@@ -430,7 +430,7 @@ namespace FluidForge.Tests
                 Assert.Equal(1.15f, opt1.BoundaryLayerGrowthRate);
                 Assert.Equal(2.5f, opt1.DetailBoxLengthFactor);
 
-                // Fall 2: kein gmsh2d.json, aber solvers/gmsh.json (mit 3D-Keys) wurde bereits geladen -> kein Schema-Fehler, kompatible Werte werden übernommen
+                // Case 2: no gmsh2d.json, but solvers/gmsh.json (with 3D keys) was already loaded -> no schema error, compatible values are adopted
                 Directory.CreateDirectory(Path.Combine(dirWithout2d, "solvers"));
                 File.WriteAllText(Path.Combine(dirWithout2d, "solvers", "gmsh.json"),
                     @"{ ""TunnelSizeX"": 1200.0, ""TargetYPlus"": 1.75, ""BoundaryLayerGrowthRate"": 1.32, ""DetailBoxLengthFactor"": 2.25 }");

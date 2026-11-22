@@ -8,17 +8,17 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-12: Der Solver kennt keinen festen Metriknamen mehr. Fehlt die konfigurierte
-    /// Metrik, darf er nicht stillschweigend mit einer Ersatzfläche weiterrechnen — der
-    /// CD-Wert wäre dann um Größenordnungen falsch, ohne dass es jemand merkt.
+    /// TODO-12: The solver no longer hardcodes a metric name. If the configured metric
+    /// is missing, it must not silently continue with a fallback area — CD would be
+    /// off by orders of magnitude without anyone noticing.
     ///
-    /// Die Warnungen werden über <c>Console.SetOut</c> mitgelesen — prozessweiter Zustand,
-    /// deshalb nie parallel zu anderen Klassen (siehe <see cref="ProcessWideStateCollection"/>).
+    /// Warnings are captured via <c>Console.SetOut</c> — process-wide state,
+    /// so never run in parallel with other classes (see <see cref="ProcessWideStateCollection"/>).
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class Su2ReferenceAreaTests
     {
-        /// <summary>Ersatzwert 1 mm² in m² — derselbe wie vor TODO-12.</summary>
+        /// <summary>Fallback value 1 mm² in m² — same as before TODO-12.</summary>
         private const float Fallback = 0.000001f;
 
         [Fact]
@@ -34,29 +34,29 @@ namespace FluidForge.Tests
         [Fact]
         public void A_Project_Can_Name_Its_Own_Metric()
         {
-            ModelRecord record = RecordWith("Spantflaeche", 4000.0f);
+            ModelRecord record = RecordWith("CrossSectionArea", 4000.0f);
 
-            float refArea = new Su2Solver(new Su2SolverOptions { ReferenceAreaMetric = "Spantflaeche" })
+            float refArea = new Su2Solver(new Su2SolverOptions { ReferenceAreaMetric = "CrossSectionArea" })
                 .ResolveReferenceArea(record);
 
             Assert.Equal(0.004f, refArea, 9);
         }
 
         /// <summary>
-        /// Genau der Fall aus TODO-12: das Projekt nennt die Metrik anders, als der Solver
-        /// konfiguriert ist. Vorher lief das still durch.
+        /// Exact case from TODO-12: the project names the metric differently from what the solver
+        /// is configured for. Previously this passed silently.
         /// </summary>
         [Fact]
         public void Missing_Metric_Warns_And_Falls_Back()
         {
-            ModelRecord record = RecordWith("Spantflaeche", 4000.0f);
+            ModelRecord record = RecordWith("CrossSectionArea", 4000.0f);
 
             (float refArea, string output) = ResolveAndCaptureConsole(new Su2Solver(), record);
 
             Assert.Equal(Fallback, refArea, 9);
-            Assert.Contains("[WARNUNG]", output);
+            Assert.Contains(OutputConventions.WarningTag, output);
             Assert.Contains("FrontalArea", output);
-            Assert.Contains("Spantflaeche", output);   // die vorhandenen Metriken werden genannt
+            Assert.Contains("CrossSectionArea", output);   // available metrics are listed
         }
 
         [Theory]
@@ -71,7 +71,7 @@ namespace FluidForge.Tests
             (float refArea, string output) = ResolveAndCaptureConsole(solver, record);
 
             Assert.Equal(Fallback, refArea, 9);
-            Assert.Contains("[WARNUNG]", output);
+            Assert.Contains(OutputConventions.WarningTag, output);
         }
 
         [Fact]
@@ -94,7 +94,7 @@ namespace FluidForge.Tests
             Assert.Contains("ReferenceAreaMetric", output);
         }
 
-        /// <summary>Die aufgelöste Fläche landet unverändert als REF_AREA in der SU2-cfg.</summary>
+        /// <summary>The resolved area lands unchanged as REF_AREA in the SU2 cfg.</summary>
         [Fact]
         public void Resolved_Area_Reaches_The_Generated_Config()
         {
@@ -114,7 +114,7 @@ namespace FluidForge.Tests
             }
         }
 
-        // --- Hilfsfunktionen ------------------------------------------------
+        // --- Helper functions -----------------------------------------------
 
         private static ModelRecord RecordWith(string metric, float valueMm2)
         {

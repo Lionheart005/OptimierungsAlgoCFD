@@ -10,10 +10,10 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-19: der Glätter arbeitet auf einer kleinen Test-STL. Wichtigste Zusicherung:
-    /// er rechnet die geglättete Hülle auf die ursprüngliche Bounding Box zurück —
-    /// sonst würde die Geometrie bei jeder Glättung schrumpfen und alle Metriken
-    /// (Volumen, Stirnfläche) driften.
+    /// TODO-19: the smoother operates on a small test STL. Key invariant:
+    /// it rescales the smoothed hull back to the original bounding box —
+    /// otherwise the geometry would shrink on every smoothing pass and all metrics
+    /// (volume, frontal area) would drift.
     /// </summary>
     public class StlSmootherTests : IDisposable
     {
@@ -32,7 +32,7 @@ namespace FluidForge.Tests
 
         private string Path_(string name) => System.IO.Path.Combine(_directory, name);
 
-        /// <summary>Quader als Test-Eingabe — dieselbe Geometrie wie der Windkanal.</summary>
+        /// <summary>Box as test input — the same geometry as the wind tunnel.</summary>
         private string WriteBox(Vector3 size, Vector3 center, string name = "in.stl")
         {
             string path = Path_(name);
@@ -51,7 +51,7 @@ namespace FluidForge.Tests
 
             for (int i = 0; i < count; i++)
             {
-                reader.BaseStream.Seek(12, SeekOrigin.Current);   // Normale
+                reader.BaseStream.Seek(12, SeekOrigin.Current);   // normal
                 for (int v = 0; v < 3; v++)
                 {
                     var vertex = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
@@ -98,8 +98,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Null Iterationen heißt "nicht glätten": die Datei wird nur kopiert. Genau dieser
-        /// Pfad greift, wenn ein Projekt die Glättung über die Konfiguration abschaltet.
+        /// Zero iterations means "do not smooth": the file is simply copied. This exact
+        /// path triggers when a project disables smoothing via configuration.
         /// </summary>
         [Fact]
         public void Zero_Iterations_Copies_The_File_Unchanged()
@@ -112,7 +112,7 @@ namespace FluidForge.Tests
             Assert.Equal(File.ReadAllBytes(input), File.ReadAllBytes(output));
         }
 
-        /// <summary>Gleiche Ein- und Ausgabedatei bei 0 Iterationen darf die Datei nicht zerstören.</summary>
+        /// <summary>Same input and output file with 0 iterations must not destroy the file.</summary>
         [Fact]
         public void Zero_Iterations_In_Place_Keeps_The_File()
         {
@@ -125,8 +125,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die Ausgabe muss ein lesbares binäres STL bleiben: 84 Byte Kopf plus 50 Byte
-        /// je Dreieck, keine überzähligen Bytes.
+        /// Output must remain a valid binary STL: 84-byte header plus 50 bytes
+        /// per triangle, with no extra trailing bytes.
         /// </summary>
         [Fact]
         public void Output_Has_A_Valid_Binary_Stl_Layout()
@@ -141,8 +141,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die Glättung verschiebt Ecken: die Eckpunktmenge ist nach dem Lauf eine andere
-        /// als vorher. Sonst hätte der Aufruf gar nichts getan.
+        /// Smoothing moves vertices: the vertex set after the pass differs from
+        /// before. Otherwise the call would have done nothing.
         /// </summary>
         [Fact]
         public void Smoothing_Actually_Moves_Vertices()

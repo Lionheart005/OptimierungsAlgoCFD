@@ -1,58 +1,50 @@
-# Automatisierte CFD-Formoptimierung
+# FluidForge — Automated CFD Shape Optimization
 
+Inspired by various ideas online and in publications — not least by Leap71 — I wanted to explore what an optimization framework could look like that generates and optimizes complex geometries purely in code, independent of heavy CAD programs with cumbersome GUIs.
 
-Inspiriert durch verschiedene Anregungen im Internet und Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die, unabhängig von großen CAD-Programmen mit umständlichen GUI-Bedienelementen, sondern nur mit Code komplexe Formen generieren und optimieren kann.
-Besonders wichtig war mir, die Pipeline komplett unabhängig von Third-Party-Softwarelösungen zu halten, sodass man das Ganze beliebig komplex aufziehen kann. Es gibt keine Begrenzung bei Parametern, Zielfunktion oder Komplexität der Modelle, noch bei der Laufdauer und Algorithmuswahl. Perspektivisch wäre es das Ziel, ein neuronales Netzwerk anzubinden, das selbst den C#-Code für PicoGK generiert, sowie die Auswertung von n-dimensionalen Optimierungsproblemen übernimmt, die zu komplex für deterministische Brute-Force-Methoden werden. 
+It was especially important to me to keep the pipeline completely independent of proprietary third-party software suites, so that everything can be scaled to arbitrary complexity. There are no limits on parameters, objective functions, model complexity, runtime, or algorithm choice. Long-term, the goal would be to connect a neural network that generates the C# code for PicoGK itself and evaluates n-dimensional optimization problems that become too complex for brute-force methods.
 
-Natürlich ist hier viel mit KI entstanden, ich bin kein Softwareentwickler und deshalb auch sehr offen für Feedback und Kritik. 
+Much of this was built with AI assistance; I am not a professional software developer and therefore very open to feedback and criticism.
 
-Wie es funktioniert:
+## How It Works
 
-Man beschreibt die zu optimierende Form in C#-Code und definiert gewisse Variablen, die man anpassen lassen möchte, z. B. Länge und Höhe, aber auch komplexere Funktionen – eigentlich alles, was man sich mathematisch vorstellen kann. Es wäre theoretisch durchaus denkbar, ein Mandelbrot zu optimieren (warum auch immer man das tun sollte). Nun definiert man passive Parameter, die auch dazugehören, aber indirekt aus der Form resultieren, wie Volumen und Oberfläche. 
-Dann entscheidet man, nach welcher Funktion der Algorithmus optimieren soll. Hier muss man sich gut überlegen, was man eigentlich möchte. Ein Klassiker wäre z. B. Fitness = Volumen / Widerstand (also möglichst großes Volumen bei geringem Widerstand).
+You describe the shape to be optimized in C# code and define active design variables that the optimizer may adjust (such as length and height, or more complex mathematical functions — anything you can express in code). You then define passive parameters that result indirectly from the shape, such as volume and surface area, and choose an objective function (fitness) for the optimizer to maximize. A classic example is `Fitness = Volume / Drag` (maximizing usable volume while minimizing drag).
 
-Nun schickt man sein Bauteil durch die Optimierungsschleife und am Ende gibt einem der Algorithmus die Werte aus, die in der Funktion die beste Fitness (Score) erreichen. 
+You run your component through the optimization loop, and at the end the framework outputs the parameter values that achieved the best fitness score — along with the printable `.stl` model (in 3D) or `.svg`/contour model (in 2D).
 
---> 'Unser Bauteil ist am besten 30 cm lang und 5 cm hoch, um das beste Verhältnis aus Volumen und Widerstand zu bekommen.'
-Und wir bekommen gleich das druckbare .stl-Modell dazu!
+The optimization algorithms and physics solvers are modular and interchangeable while the core pipeline remains the same. Available optimizers are **Bayesian Optimization** (`Bayes`, default) and an inverse-distance-weighted baseline (`IdwBaseline`). `Bayes` learns a surrogate model (Gaussian Process, implemented in pure C# with no pretraining and no GPU) including uncertainty from previous evaluations and proposes candidates where Expected Improvement is highest, saving expensive CFD runs while still simulating every proposed candidate with the real solver. Currently, 2D and 3D fluid simulations in a flow channel are supported using SU2 and Gmsh. The 3D geometry kernel is PicoGK; the 2D kernel (`Planar2D`) is custom-built to follow PicoGK-style conventions.
 
-Die Optimierungsverfahren und die Physik-Solver sind hier austauschbar, das Prinzip bleibt das gleiche. Zur Wahl stehen eine **Bayes-Optimierung** (`Bayes`, Standard) sowie ein Antwortflächen-Verfahren (`Rsm`) und ein evolutionäres Verfahren (`Evolution`). `Bayes`: Sie lernt aus den bisherigen Rechnungen ein Ersatzmodell (Gauß-Prozess, rein in C#, ohne Vortraining und ohne GPU) samt Unsicherheit und rechnet dort weiter, wo die Chance am größten ist, den bisher Besten zu schlagen. Das spart bei teuren Rechnungen Varianten; jede Variante wird trotzdem echt gerechnet. Ich versuche das Programm möglichst problemunabhängig zu halten, bis jetzt sind aber nur Fluidsimulationen in 2D und 3D im Strömungskanal möglich. 
-
-Für die technischen Details sind die folgenden Handbücher und .md-Dateien da. Dort steht alles, was man an Einstellungen wissen muss. (Und halleluja, sind das inzwischen viele, ich habe selber an manchen Stellen den Überblick verloren.)
-
-Für meine Arbeit habe ich jetzt SU2 und Gmsh genutzt für Netz und Simulation. Der 3D-Kernel ist PicoGK, der 2D-Kernel ist selbst geschrieben (...gepromptet) und er versucht, in den Befehlen möglichst nah an PicoGK zu bleiben. 
-
-Ich freu mich über jede Anregung und Interesse! 
+Feedback and contributions are always welcome!
 
 ~ Leonardo Pleißner
 
 ---
 
-## Weiterführende Dokumentation & Handbücher
+## Documentation & Manuals
 
-Die detaillierte Dokumentation ist thematisch aufgeteilt, sodass jedes Thema genau einen zentralen Ort hat:
+Detailed documentation is organized by topic:
 
-- **[Bedienhandbuch (`src/projects/BEDIENHANDBUCH.md`)](src/projects/BEDIENHANDBUCH.md)**  
-  Vollständiges Nachschlagewerk für die Bedienung ohne Programmierkenntnisse: Ablauf eines Laufs, häufige Aufgaben („Ich will …“), Erklärung **aller** JSON-Einstellungen (`project.json`, `simulation.json`, `su2.json`, `gmsh.json` für 3D und 2D), Ergebnisdateien, Konsolenbefehle und Fehlermeldungen. **Hier anfangen.**
-- **[Neues Bauteil / Projekt anlegen (`src/projects/README.md`)](src/projects/README.md)**  
-  Schritt-für-Schritt-Anleitung zum Erstellen eigener 3D- und 2D-Projekte per `.\scripts\new-project.ps1`, Programmierung von Geometrie (`IGeometryGenerator`) und Zielfunktion (`IFitnessCalculator`) sowie Umgang mit den Kopiervorlagen [`_Vorlage3D/`](src/projects/_Vorlage3D/README.md) (3D) und [`_Vorlage2D/`](src/projects/_Vorlage2D/README.md) (2D).
-- **[3D-Geometrie-Handbuch: PicoGK (`src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md`)](src/OptimierungsAlgoCFD/Kernels/PicoGk/README.md)**  
-  Anleitung zur 3D-Voxel-Modellierung mit PicoGK (`Lattice`, `Voxels`, `Mesh`, Boolesche Operationen, `Offset`-Verrundung, STL-Glättung, `PicoGkMeshMetrics`) inkl. Links zur offiziellen PicoGK-Dokumentation.
-- **[2D-Geometrie-Handbuch: Eigener `Planar2D`-Kernel (`src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md`)](src/OptimierungsAlgoCFD/Kernels/Planar2D/README.md)**  
-  Anleitung zum eigens geschriebenen analytischen 2D-Geometriekern (`Shape2D`, `Lattice2D`, `BBox2`, Polygone, Catmull-Rom-Splines, `TripleOffset`, automatische Knickpunkterkennung für 2D-CFD-Grenzschichten, JSON- & SVG-Export).
-- **[Architektur- & Entwicklerhandbuch (`src/OptimierungsAlgoCFD/README.md`)](src/OptimierungsAlgoCFD/README.md)**  
-  Technische Dokumentation des C#-Frameworks: Repository- und Schichtarchitektur (`Core`, `Composition`, `Kernels`, `Solvers`), Interfaces, Datenmodelle, Algorithmen, Konfigurations-Loader, Anbindung von PicoGK, Gmsh und SU2 sowie Test-Architektur.
-- **[Server-, Deployment- & Einrichtungs-Handbuch (`scripts/README.md`)](scripts/README.md)**  
-  Steuerung und Überwachung von Läufen auf dem Linux-Hochschulserver von Windows aus (`sim.ps1`, `sim-runner.sh`, `resume`, `fetch`), Konvergenz-Auswertung (`plot_history.py`) sowie die komplette Anleitung zur erstmaligen Server-Einrichtung ohne Admin-/Sudo-Rechte (`setup_server.sh` & manuelle Installation).
-- **[Software von Dritten (`THIRD_PARTY_NOTICES.md`)](THIRD_PARTY_NOTICES.md)**  
-  Welche Bibliotheken und Programme (PicoGK, Clipper2, SU2, Gmsh, MPICH) benutzt werden, unter welcher Lizenz sie stehen und was daraus folgt.
-- **[Lokale Ausnahmekonfiguration (`config/README.md`)](config/README.md)**  
-  Funktionsweise des Notausgangs über gitignorierte `*.local.json`-Dateien für maschinenspezifische Programmpfade.
-- **[Entwicklungs-Roadmap & Projektpläne (`.plans/README.md`)](.plans/README.md)**  
-  Übersicht über die aktuelle Gesamt-Roadmap v2 ([`ROADMAP.md`](.plans/ROADMAP.md)) sowie die Phasenpläne für Architektur-Entschlackung, Presets & Ziel-/Constraint-Architektur, `LEAP71_ShapeKernel` + OpenFOAM + Hybrid-Optimierer, Benchmark-Validierung und den Ausblick auf LLM-Code-Evolution.
+- **[Legacy User Manual (`src/projects/BEDIENHANDBUCH.md`)](src/projects/BEDIENHANDBUCH.md)**  
+  Comprehensive reference for all JSON settings (`project.json`, `simulation.json`, `su2.json`, `gmsh.json`), CLI commands, and result files. *(Note: This legacy manual is currently still in German and will be replaced by modular English documentation under `docs/` in Phase 2.)*
+- **[Creating a New Component / Project (`src/projects/README.md`)](src/projects/README.md)**  
+  Step-by-step guide for creating custom 3D and 2D projects via `.\scripts\new-project.ps1`, implementing geometry (`IGeometryGenerator`) and fitness (`IFitnessCalculator`), and working with the templates [`_Template3D/`](src/projects/_Template3D/README.md) (3D) and [`_Template2D/`](src/projects/_Template2D/README.md) (2D).
+- **[3D Geometry Manual: PicoGK (`src/FluidForge/Kernels/PicoGk/README.md`)](src/FluidForge/Kernels/PicoGk/README.md)**  
+  Guide to 3D voxel modeling with PicoGK (`Lattice`, `Voxels`, `Mesh`, Boolean operations, `Offset` blending, STL smoothing, `PicoGkMeshMetrics`), including links to the official PicoGK documentation.
+- **[2D Geometry Manual: `Planar2D` Kernel (`src/FluidForge/Kernels/Planar2D/README.md`)](src/FluidForge/Kernels/Planar2D/README.md)**  
+  Guide to the analytical 2D geometry kernel (`Shape2D`, `Lattice2D`, `BBox2`, polygons, Catmull-Rom splines, `TripleOffset`, automatic corner detection for 2D CFD boundary layers, JSON & SVG export).
+- **[Architecture & Developer Guide (`src/FluidForge/README.md`)](src/FluidForge/README.md)**  
+  Technical documentation of the C# framework: repository and layer architecture (`Core`, `Composition`, `Kernels`, `Solvers`), interfaces, data models, algorithms, configuration loader, PicoGK/Gmsh/SU2 integration, and test architecture.
+- **[Server, Deployment & Setup Guide (`scripts/README.md`)](scripts/README.md)**  
+  Running and monitoring jobs on a Linux compute server from Windows (`sim.ps1`, `sim-runner.sh`, `resume`, `fetch`), convergence plotting (`plot_history.py`), and server setup without root/sudo privileges (`setup_server.sh`).
+- **[Third-Party Notices (`THIRD_PARTY_NOTICES.md`)](THIRD_PARTY_NOTICES.md)**  
+  Libraries and external tools used (PicoGK, Clipper2, SU2, Gmsh, MPICH), their licenses, and distribution notes.
+- **[Local Override Configuration (`config/README.md`)](config/README.md)**  
+  How gitignored `*.local.json` files work for machine-specific executable paths.
+- **[Development Roadmap & Plans (`.plans/README.md`)](.plans/README.md)**  
+  Overview of the current roadmap and phase plans.
 
 ---
 
-## Lizenz
+## License
 
-Der Code in diesem Repository steht unter der [MIT-Lizenz](LICENSE). Die verwendeten Bibliotheken und Programme (PicoGK, Clipper2, SU2, Gmsh, MPICH) haben eigene Lizenzen, siehe [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The code in this repository is licensed under the [MIT License](LICENSE). Third-party libraries and external tools (PicoGK, Clipper2, SU2, Gmsh, MPICH) are subject to their own licenses; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

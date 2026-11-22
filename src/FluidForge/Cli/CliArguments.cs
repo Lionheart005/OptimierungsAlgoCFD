@@ -6,11 +6,11 @@ using FluidForge.Core;
 namespace FluidForge.Cli
 {
     /// <summary>
-    /// Geparste CLI-Argumente für <see cref="Program"/>.
+    /// Parsed CLI arguments for <see cref="Program"/>.
     /// </summary>
     internal sealed class CliArguments
     {
-        /// <summary>Umgebungsvariable, die <c>scripts/sim-runner.sh</c> setzt.</summary>
+        /// <summary>Environment variable set by <c>scripts/sim-runner.sh</c>.</summary>
         private const string ProjectVariable = "SIM_PROJECT";
 
         public const string ListProjectsFlag = "--list-projects";
@@ -33,7 +33,7 @@ namespace FluidForge.Cli
 
         public static CliArguments Parse(string[] args)
         {
-            // Flags von Stellungsargumenten trennen, damit die Reihenfolge egal ist.
+            // Separate flags from positional arguments so argument order does not matter.
             var flags = args.Where(argument => argument.StartsWith("--", StringComparison.Ordinal))
                             .Select(argument => argument.Trim().ToLowerInvariant())
                             .ToHashSet();
@@ -97,9 +97,9 @@ namespace FluidForge.Cli
         }
 
         /// <summary>
-        /// Projektname aus dem ersten Argument oder der Umgebungsvariablen. <b>Kein stiller
-        /// Standard mehr:</b> ein Vertipper im Startskript würde sonst klaglos das falsche
-        /// Projekt rechnen — stundenlang, mit plausibel aussehenden Ergebnissen.
+        /// Resolves the project name from the first positional argument or environment variable.
+        /// <b>No silent default:</b> a typo in the launch script would otherwise silently run the
+        /// wrong project for hours with plausible-looking results.
         /// </summary>
         public string ResolveProjectName(ProjectRegistry registry)
         {
@@ -109,14 +109,14 @@ namespace FluidForge.Cli
             string? fromEnvironment = Environment.GetEnvironmentVariable(ProjectVariable);
             if (!string.IsNullOrWhiteSpace(fromEnvironment))
             {
-                Console.WriteLine($"[SYSTEM] Projektname aus {ProjectVariable}.");
+                Console.WriteLine($"{OutputConventions.SystemTag} Project name from {ProjectVariable}.");
                 return fromEnvironment.Trim();
             }
 
             throw new InvalidOperationException(
-                $"[PROJEKT] Es wurde kein Projekt angegeben (weder als Argument noch über {ProjectVariable}). "
+                $"[PROJECT] No project specified (neither as an argument nor via {ProjectVariable}). "
                 + registry.AvailableProjects()
-                + " Aufruf:  .\\scripts\\sim.ps1 run -Project <Projektname>");
+                + " Usage:  .\\scripts\\sim.ps1 run -Project <ProjectName>");
         }
     }
 }

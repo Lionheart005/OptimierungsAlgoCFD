@@ -12,13 +12,13 @@ using FluidForge.Projects.Naca2D;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Spielt echte Rechnungen des Serververgleichs vom 08.11.2026 (Naca2D, 10 × 10, Bayes) nach und prüft,
-    /// was der Optimierer danach vorschlägt.
+    /// Replays real runs from the server comparison on 2026-11-08 (Naca2D, 10 x 10, Bayes) and checks
+    /// what the optimizer proposes afterwards.
     ///
     /// <para>
-    /// Anlass: Im Lauf rechnete Bayes nach sehr guten Ergebnissen ganze Runden Unsinn (Anstellwinkel 15 bis 30°,
-    /// Dicke und Wölbung an den Rändern; das Modell selbst sagte dafür Fitness 0 bis 20 voraus). Ursache war die
-    /// Ausweichregel „größte Unsicherheit im ganzen Raum", sobald die erwartete Verbesserung überall null war.
+    /// Background: in that run, after very good results, Bayes computed entire rounds of nonsense (angle of attack 15 to 30°,
+    /// thickness and camber at the bounds; the model itself predicted fitness 0 to 20 for them). The cause was the
+    /// fallback rule "highest uncertainty in the entire space" as soon as expected improvement was zero everywhere.
     /// </para>
     /// </summary>
     public class BayesRealDataReplayTests
@@ -27,7 +27,7 @@ namespace FluidForge.Tests
 
         public BayesRealDataReplayTests(ITestOutputHelper output) => _output = output;
 
-        /// <summary>Alle Rechnungen bis zu einer Runde; der Optimierer bekommt sie Runde für Runde, wie im Lauf.</summary>
+        /// <summary>All runs up to a given round; the optimizer receives them round by round, just like during a run.</summary>
         private sealed record Replay(List<ModelRecord> Records, int ThroughIteration, Naca2DFitnessCalculator Fitness)
         {
             public double BestFitness => Records.Where(r => !r.SimulationFailed && !r.Disqualified).Max(r => r.Fitness);
@@ -69,9 +69,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Spielt die Runden 1 bis N nach (der Optimierer lernt dabei wie im Lauf Runde für Runde weiter, seine
-        /// eigenen Vorschläge dieser Runden werden verworfen) und liefert dann die Vorschläge für Runde N + 1
-        /// samt der vom Modell dafür vorhergesagten Fitness.
+        /// Replays rounds 1 through N (the optimizer keeps learning round by round as during a run, while its
+        /// own proposals for those rounds are discarded) and returns the proposals for round N + 1
+        /// along with the fitness predicted by the model.
         /// </summary>
         private static (List<double> Predicted, List<Dictionary<string, float>> Parameters, int Fallbacks) Propose(Replay replay, int optimizerSeed)
         {
@@ -111,11 +111,11 @@ namespace FluidForge.Tests
 
         public static IEnumerable<object[]> Situations()
         {
-            // Vor genau diesen Runden schlug das Modell im Lauf Unsinn vor.
-            yield return new object[] { BayesRealDataFixtures.S1, 5 };   // Seed 1, Runde 6
-            yield return new object[] { BayesRealDataFixtures.S1, 7 };   // Seed 1, Runde 8
-            yield return new object[] { BayesRealDataFixtures.S2, 8 };   // Seed 2, Runde 9
-            yield return new object[] { BayesRealDataFixtures.S3, 6 };   // Seed 3, Runde 7
+            // Right before these rounds, the model proposed nonsense during the run.
+            yield return new object[] { BayesRealDataFixtures.S1, 5 };   // Seed 1, Round 6
+            yield return new object[] { BayesRealDataFixtures.S1, 7 };   // Seed 1, Round 8
+            yield return new object[] { BayesRealDataFixtures.S2, 8 };   // Seed 2, Round 9
+            yield return new object[] { BayesRealDataFixtures.S3, 6 };   // Seed 3, Round 7
         }
 
         [Theory]
@@ -133,22 +133,22 @@ namespace FluidForge.Tests
                 int garbage = predicted.Count(p => !(p >= 0.5 * best));
                 garbageTotal += garbage;
                 fallbackTotal += fallbacks;
-                _output.WriteLine($"Seed {seed}: Ausweichregel {fallbacks}x | vorhergesagt: " + string.Join(" ", predicted.Select(p => p.ToString("0", CultureInfo.InvariantCulture))));
+                _output.WriteLine($"Seed {seed}: fallback {fallbacks}x | predicted: " + string.Join(" ", predicted.Select(p => p.ToString("0", CultureInfo.InvariantCulture))));
             }
 
-            _output.WriteLine($"Beste bisher {best:0.0}; Unsinn-Vorschläge (vorhergesagt < 50 % des Besten): {garbageTotal} von {seeds * 10}; Ausweichregel {fallbackTotal}x");
+            _output.WriteLine($"Best so far {best:0.0}; nonsense proposals (predicted < 50% of best): {garbageTotal} of {seeds * 10}; fallback {fallbackTotal}x");
 
-            // Höchstens der Erkunder-Platz je Runde darf schlecht vorhergesagt sein.
+            // At most the explorer slot per round may have a poor prediction.
             Assert.True(garbageTotal <= seeds * 2,
-                $"{garbageTotal} von {seeds * 10} Vorschlägen liegen weit unter dem bisher Besten ({best:0.0}).");
+                $"{garbageTotal} of {seeds * 10} proposals are far below the best so far ({best:0.0}).");
         }
     }
 
     /// <summary>
-    /// Gleiche Lage wie im Serverlauf, aber kontrollierbar: ein Naca2D-ähnliches Problem mit Drag und Lift
-    /// (Modus „Metrics"), dessen Optimum an einer Parametergrenze liegt und das keine Streuung hat. Nach einigen
-    /// Runden ist nirgends mehr eine Verbesserung zu erwarten. Bis zum 08.11.2026 wich die Auswahl dann auf
-    /// „größte Unsicherheit im ganzen Raum" aus und verbrauchte ganze Runden an den Rändern.
+    /// Same situation as in the server run, but controllable: a Naca2D-like problem with Drag and Lift
+    /// ("Metrics" mode), whose optimum lies on a parameter bound and which has no noise. After a few
+    /// rounds, no improvement is expected anywhere. Until 2026-11-08, selection then fell back to
+    /// "highest uncertainty in the entire space" and wasted entire rounds at the bounds.
     /// </summary>
     public class BayesConvergedPhaseTests : TempDirectoryTest
     {
@@ -167,7 +167,7 @@ namespace FluidForge.Tests
                 float t = r.ActiveParameters["MaxThickness"], a = r.ActiveParameters["AngleOfAttackDeg"];
 
                 float lift = 0.11f * a + 0.12f * c;
-                if (a > 12f) lift *= MathF.Exp(-0.35f * (a - 12f));            // Strömungsabriss
+                if (a > 12f) lift *= MathF.Exp(-0.35f * (a - 12f));            // Stall
                 float drag = 0.006f + 0.0004f * t + 0.0000005f * (p - 40f) * (p - 40f) + 0.0006f * a * a
                              + (a > 12f ? 0.02f * (a - 12f) : 0f);
 
@@ -205,8 +205,8 @@ namespace FluidForge.Tests
             }
 
             double share = (double)near / total;
-            _output.WriteLine($"Anteil der Varianten ab Runde 5 mit mindestens 50 % des bisher Besten: {share:P0} ({near} von {total}); Ausweichregel {fallbacks}x");
-            Assert.True(share >= 0.7, $"Nur {share:P0} der späten Varianten liegen in der Nähe des Besten.");
+            _output.WriteLine($"Share of variants from round 5 onwards with at least 50% of best so far: {share:P0} ({near} of {total}); fallback {fallbacks}x");
+            Assert.True(share >= 0.7, $"Only {share:P0} of late variants are near the best.");
         }
     }
 }

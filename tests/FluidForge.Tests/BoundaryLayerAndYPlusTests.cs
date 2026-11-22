@@ -9,8 +9,8 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für TODO-40 (Strukturierte Grenzschicht mit BoundaryLayerCalculator und GmshCfdMesher)
-    /// und TODO-41 (y+-Auswertung und -Prüfung nach jeder CFD-Rechnung).
+    /// Tests for TODO-40 (structured boundary layer with BoundaryLayerCalculator and GmshCfdMesher)
+    /// and TODO-41 (y+ evaluation and check after every CFD run).
     /// </summary>
     public class BoundaryLayerAndYPlusTests : IDisposable
     {
@@ -37,7 +37,7 @@ namespace FluidForge.Tests
         [Fact]
         public void BoundaryLayerCalculator_NacaBenchmark_Matches_Theory()
         {
-            // NACA-Profil in Luft: rho = 1.225, mu = 1.789e-5, U = 68.64 m/s, c = 50 mm, y+ = 1.0, r = 1.2
+            // NACA airfoil in air: rho = 1.225, mu = 1.789e-5, U = 68.64 m/s, c = 50 mm, y+ = 1.0, r = 1.2
             float density = 1.225f;
             float velocity = 68.64f;
             float dynamicViscosity = 1.789e-5f;
@@ -49,20 +49,20 @@ namespace FluidForge.Tests
 
             // Re_L = 1.225 * 68.64 * 0.05 / 1.789e-5 = ~2.35e5
             Assert.InRange(spec.ReynoldsNumber, 2.34e5f, 2.36e5f);
-            // Erste Zellhöhe y1 ≈ 0.0044 - 0.0046 mm
+            // First cell height y1 ≈ 0.0044 - 0.0046 mm
             Assert.InRange(spec.FirstLayerHeightMm, 0.0043f, 0.0047f);
-            // Schichtanzahl N ≈ 24
+            // Layer count N ≈ 24
             Assert.Equal(24, spec.LayerCount);
-            // Grenzschichtdicke delta ≈ 1.56 mm
+            // Boundary layer thickness delta ≈ 1.56 mm
             Assert.InRange(spec.BoundaryLayerThicknessMm, 1.5f, 1.7f);
-            // Gesamtdicke deckt delta ab
+            // Total thickness covers delta
             Assert.True(spec.TotalThicknessMm >= spec.BoundaryLayerThicknessMm);
         }
 
         [Fact]
         public void BoundaryLayerCalculator_MantaAuvBenchmark_Matches_Theory()
         {
-            // MantaAuv in Wasser: rho = 1025, mu = 1.001e-3, U = 2.0 m/s, L = 50 mm, y+ = 1.0, r = 1.2
+            // MantaAuv in water: rho = 1025, mu = 1.001e-3, U = 2.0 m/s, L = 50 mm, y+ = 1.0, r = 1.2
             float density = 1025.0f;
             float velocity = 2.0f;
             float dynamicViscosity = 1.001e-3f;
@@ -74,11 +74,11 @@ namespace FluidForge.Tests
 
             // Re_L = 1025 * 2 * 0.05 / 1.001e-3 = ~1.024e5
             Assert.InRange(spec.ReynoldsNumber, 1.02e5f, 1.03e5f);
-            // Erste Zellhöhe y1 ≈ 0.0098 mm (≈ 0.010 mm)
+            // First cell height y1 ≈ 0.0098 mm (≈ 0.010 mm)
             Assert.InRange(spec.FirstLayerHeightMm, 0.0095f, 0.0105f);
-            // Schichtanzahl N ≈ 20-21
+            // Layer count N ≈ 20-21
             Assert.InRange(spec.LayerCount, 20, 22);
-            // Grenzschichtdicke delta ≈ 1.84 mm
+            // Boundary layer thickness delta ≈ 1.84 mm
             Assert.InRange(spec.BoundaryLayerThicknessMm, 1.75f, 1.95f);
             Assert.True(spec.TotalThicknessMm >= spec.BoundaryLayerThicknessMm);
         }
@@ -122,19 +122,19 @@ namespace FluidForge.Tests
         [Fact]
         public void BoundaryLayerCalculator_Enforces_MinLayers_And_FixedLayers()
         {
-            // minLayers greift, wenn automatische Schichten kleiner wären
+            // minLayers takes effect when automatic layers would be smaller
             var specMin = BoundaryLayerCalculator.Calculate(
                 1025f, 2.0f, 0.001001f, 50.0f,
                 targetYPlus: 1.0f, growthRate: 1.2f, minLayers: 30);
             Assert.Equal(30, specMin.LayerCount);
 
-            // fixedLayers überschreibt automatische Berechnung
+            // fixedLayers overrides automatic calculation
             var specFixed = BoundaryLayerCalculator.Calculate(
                 1025f, 2.0f, 0.001001f, 50.0f,
                 targetYPlus: 1.0f, growthRate: 1.2f, minLayers: 4, fixedLayers: 12);
             Assert.Equal(12, specFixed.LayerCount);
 
-            // fixedLayers kleiner als minLayers wird auf minLayers angehoben
+            // fixedLayers smaller than minLayers is raised to minLayers
             var specFixedMin = BoundaryLayerCalculator.Calculate(
                 1025f, 2.0f, 0.001001f, 50.0f,
                 targetYPlus: 1.0f, growthRate: 1.2f, minLayers: 8, fixedLayers: 3);
@@ -142,15 +142,15 @@ namespace FluidForge.Tests
         }
 
         [Theory]
-        [InlineData(-1f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)]  // Dichte negativ
-        [InlineData(0f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)]   // Dichte 0
-        [InlineData(1000f, -1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)] // Geschwindigkeit negativ
-        [InlineData(1000f, 1f, 0f, 50f, 1f, 1.2f, 4, 0)]   // Viskosität 0
-        [InlineData(1000f, 1f, 1e-3f, 0f, 1f, 1.2f, 4, 0)]  // Länge 0
-        [InlineData(1000f, 1f, 1e-3f, 50f, 0f, 1.2f, 4, 0)] // Ziel-y+ 0
+        [InlineData(-1f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)]  // negative density
+        [InlineData(0f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)]   // zero density
+        [InlineData(1000f, -1f, 1e-3f, 50f, 1f, 1.2f, 4, 0)] // negative velocity
+        [InlineData(1000f, 1f, 0f, 50f, 1f, 1.2f, 4, 0)]   // zero viscosity
+        [InlineData(1000f, 1f, 1e-3f, 0f, 1f, 1.2f, 4, 0)]  // zero length
+        [InlineData(1000f, 1f, 1e-3f, 50f, 0f, 1.2f, 4, 0)] // zero target y+
         [InlineData(1000f, 1f, 1e-3f, 50f, 1f, 1.0f, 4, 0)] // growthRate 1.0
         [InlineData(1000f, 1f, 1e-3f, 50f, 1f, 1.2f, 0, 0)] // minLayers 0
-        [InlineData(1000f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, -1)] // fixedLayers negativ
+        [InlineData(1000f, 1f, 1e-3f, 50f, 1f, 1.2f, 4, -1)] // negative fixedLayers
         public void BoundaryLayerCalculator_Throws_ArgumentOutOfRangeException_On_Invalid_Inputs(
             float rho, float u, float mu, float l, float yPlus, float r, int minL, int fixedL)
         {
@@ -159,7 +159,7 @@ namespace FluidForge.Tests
         }
 
         // ===================================================================
-        //  TODO-40: GmshCfdMesher .geo Generation für Hexa, Prism, Threshold
+        //  TODO-40: GmshCfdMesher .geo Generation for Hexa, Prism, Threshold
         // ===================================================================
 
         [Fact]
@@ -180,13 +180,13 @@ namespace FluidForge.Tests
 
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, scaleFactor: 1.0f);
 
-            // Zwei Schritte (Servertest 06.11.2026): Wandoberfläche, dann Wandschicht + Volumen.
+            // Two steps (server test 2026-11-06): wall surface, then wall layer + volume.
             string wallPath = GmshCfdMesher.WallScriptPath(path);
             Assert.Equal(Path.Combine(_workingDirectory, "Wall_hexa.geo"), wallPath);
             string[] wall = File.ReadAllLines(wallPath);
             string[] lines = File.ReadAllLines(path);
 
-            // Schritt 1: klassifizieren, Vierecke NUR auf der Wand, als eine Fläche speichern
+            // Step 1: classify, quads ONLY on the wall, save as one surface
             Assert.Contains(wall, l => l.Contains("ClassifySurfaces{"));
             Assert.Contains(wall, l => l.Contains("CreateGeometry;"));
             Assert.Contains(wall, l => l.Trim() == "Recombine Surface{wall[]};");
@@ -195,26 +195,26 @@ namespace FluidForge.Tests
             Assert.Contains(wall, l => l.Trim() == "Mesh.MeshSizeMax = 2.5;");
             Assert.Contains(wall, l => l.Trim() == "Physical Surface(1) = {wall[]};");
             Assert.Contains(wall, l => l.Trim() == "Mesh.SaveElementTagType = 2;");
-            // RecombineAll gälte global (auch für den Kanal) und überschrieb sich in Tests gegenseitig
+            // RecombineAll would apply globally (including the tunnel) and overwrote each other in tests
             Assert.DoesNotContain(wall.Concat(lines), l => !l.TrimStart().StartsWith("//") && l.Contains("RecombineAll"));
 
-            // Schritt 2: Wand einlesen, extrudieren, DANACH den Kanal, Volumen auf den Oberseiten
+            // Step 2: load wall, extrude, THEN tunnel, volume on the top faces
             int mergeWall = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_hexa.mesh"));
             int extrude = Array.FindIndex(lines, l => l.Contains("Extrude { Surface{wall[]}; Layers{") && l.Contains("Recombine;"));
             int mergeTunnel = Array.FindIndex(lines, l => l.Trim() == "Merge \"tunnel.stl\";");
             Assert.True(mergeWall >= 0 && extrude > mergeWall && mergeTunnel > extrude,
-                $"Reihenfolge Wand ({mergeWall}) < Extrusion ({extrude}) < Kanal ({mergeTunnel}) verletzt.");
+                $"Order wall ({mergeWall}) < extrude ({extrude}) < tunnel ({mergeTunnel}) violated.");
             Assert.Contains(lines, l => l.Contains("Surface Loop(sl_bl) = {tops[]};"));
             Assert.Contains(lines, l => l.Trim() == "Field[2].SizeMin = 2.5;");
-            // Globales Maximum = Fernfeldgröße, NICHT die Wandgröße (sonst rechnet Gmsh endlos)
+            // Global max = farfield size, NOT wall size (otherwise Gmsh runs endlessly)
             Assert.Contains(lines, l => l.Trim() == "Mesh.MeshSizeMax = 120;");
         }
 
         [Fact]
         public void WriteGeoScript_WallField_Is_Merged_First_And_Used_By_The_Extrusion()
         {
-            // Wandfeld (Richtung x Dicke je Knoten): muss als ERSTE Ansicht (View[0]) eingelesen werden,
-            // die Extrusion nutzt es, die Schichtzahl bleibt wie sie ist (kein Schichtverlust mehr).
+            // Wall field (direction x thickness per node): must be loaded as FIRST view (View[0]),
+            // extrusion uses it, layer count stays as configured (no more layer loss).
             string path = Path.Combine(_workingDirectory, "Meshing_Gen1_Var1.geo");
             string field = GmshCfdMesher.WallFieldPath(path);
             var options = new GmshMesherOptions { BoundaryLayerMode = "Prism", TargetYPlus = 1.0f };
@@ -228,10 +228,10 @@ namespace FluidForge.Tests
             Assert.Equal(Path.Combine(_workingDirectory, "Wall_Gen1_Var1.pos"), field);
             int mergeField = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_Gen1_Var1.pos"));
             int mergeWall = Array.FindIndex(lines, l => l.StartsWith("Merge \"") && l.Contains("Wall_Gen1_Var1.mesh"));
-            Assert.True(mergeField >= 0 && mergeField < mergeWall, "Das Wandfeld muss VOR der Wand eingelesen werden (View[0]).");
+            Assert.True(mergeField >= 0 && mergeField < mergeWall, "Wall field must be loaded BEFORE the wall (View[0]).");
             Assert.Contains("Using View[0]; Recombine;", extrude);
 
-            // ohne Wandfeld extrudiert Gmsh entlang der rohen Normalen (wie bisher)
+            // without wall field, Gmsh extrudes along raw normals (as before)
             mesher.WriteGeoScript(path, "model.stl", "tunnel.stl", config, 1.0f, 1.0f);
             string plain = File.ReadAllLines(path).Single(l => l.StartsWith("Extrude {"));
             Assert.DoesNotContain("Using View", plain);
@@ -244,7 +244,7 @@ namespace FluidForge.Tests
         [Fact]
         public void WriteGeoScript_Layer_Count_Does_Not_Depend_On_The_Wall_Field()
         {
-            // Plan wandschicht_zellzahl.md EZ1: gleiche Schichtzahl und gleiche Höhen für alle Varianten und Stufen.
+            // Plan wandschicht_zellzahl.md EZ1: identical layer count and heights for all variants and stages.
             string pathA = Path.Combine(_workingDirectory, "Meshing_A.geo");
             string pathB = Path.Combine(_workingDirectory, "Meshing_B.geo");
             var mesher = new GmshCfdMesher(new GmshMesherOptions { BoundaryLayerMode = "Prism" },
@@ -262,7 +262,7 @@ namespace FluidForge.Tests
         [Fact]
         public void ExtractGmshError_Picks_The_Cause_And_Skips_The_Summary()
         {
-            // Zeilen aus der Nachstellung vom 09.11.2026 (MantaAuv, Kal4, 21 Schichten)
+            // Lines from the reproduction on 2026-11-09 (MantaAuv, Cal4, 21 layers)
             var lines = new[]
             {
                 "Error   : PLC Error:  A segment and a facet intersect at point",
@@ -281,9 +281,9 @@ namespace FluidForge.Tests
             Assert.StartsWith("PLC Error:", text);
             Assert.Contains("Invalid boundary mesh (segment-facet intersection)", text);
             Assert.DoesNotContain("summary", text);
-            Assert.Null(GmshCfdMesher.ExtractGmshError(new[] { "Warning : 21 ill-shaped tets", "Info    : fertig" }));
+            Assert.Null(GmshCfdMesher.ExtractGmshError(new[] { "Warning : 21 ill-shaped tets", "Info    : done" }));
 
-            // Gmsh färbt Fehlerzeilen ein (ESC[1m ESC[31m ... ESC[0m), auch wenn die Ausgabe in eine Pipe geht
+            // Gmsh colors error lines (ESC[1m ESC[31m ... ESC[0m), even when output goes to a pipe
             string esc = ((char)27).ToString();
             string colored = esc + "[1m" + esc + "[31mError   : Invalid boundary mesh (segment-facet intersection)" + esc + "[0m";
             Assert.Equal("Invalid boundary mesh (segment-facet intersection)", GmshCfdMesher.ExtractGmshError(new[] { colored }));
@@ -322,11 +322,11 @@ namespace FluidForge.Tests
             string[] wall = File.ReadAllLines(GmshCfdMesher.WallScriptPath(path));
             string[] lines = File.ReadAllLines(path);
 
-            // Schritt 1: klassifizieren, aber Dreiecke behalten (keine Vierecke)
+            // Step 1: classify, but keep triangles (no quads)
             Assert.Contains(wall, l => l.Contains("ClassifySurfaces{"));
             Assert.DoesNotContain(wall, l => l.Contains("Recombine"));
-            // Schritt 2: Extrusion MIT "Recombine;" – bei Dreiecken heißt das Prismen statt je drei
-            // Tetraedern; ohne das Schlüsselwort bricht Gmsh ab ("Unable to subdivide extruded mesh").
+            // Step 2: extrusion WITH "Recombine;" - for triangles this produces prisms instead of three
+            // tetrahedra each; without this keyword Gmsh aborts ("Unable to subdivide extruded mesh").
             Assert.Contains(lines, l => l.Contains("Extrude { Surface{wall[]}; Layers{") && l.Contains("Recombine;"));
             Assert.DoesNotContain(lines, l => l.Contains("RecombineAll"));
         }
@@ -386,7 +386,7 @@ NPOIN= 5
         }
 
         // ===================================================================
-        //  TODO-41: Su2SurfaceAnalyzer & y+-Prüfung
+        //  TODO-41: Su2SurfaceAnalyzer & y+ check
         // ===================================================================
 
         [Fact]
@@ -409,7 +409,7 @@ NPOIN= 5
             Assert.Equal(0.5f, stats.Min, 3);
             Assert.Equal(1.5f, stats.Median, 3);
             Assert.Equal(4.0f, stats.Max, 3);
-            // P95 bei 5 Werten: index = 0.95 * 4 = 3.8 -> 2.0 * 0.2 + 4.0 * 0.8 = 3.6
+            // P95 for 5 values: index = 0.95 * 4 = 3.8 -> 2.0 * 0.2 + 4.0 * 0.8 = 3.6
             Assert.InRange(stats.P95, 3.5f, 3.7f);
         }
 
@@ -470,7 +470,7 @@ NPOIN= 5
             var options = new Su2SolverOptions
             {
                 TargetYPlus = 1.0f,
-                YPlusWarnFactor = 2.0f // Warnschwelle = 2.0
+                YPlusWarnFactor = 2.0f // Warning threshold = 2.0
             };
             var solver = new Su2Solver(options);
             var record = new ModelRecord();
@@ -491,8 +491,8 @@ NPOIN= 5
                 Assert.Equal(2.8f, record.PassiveParameters["YPlus_Max"]);
 
                 string consoleLog = sw.ToString();
-                Assert.Contains("[WARNUNG] y+", consoleLog);
-                Assert.Contains("überschreitet das Limit", consoleLog);
+                Assert.Contains($"{OutputConventions.WarningTag} y+", consoleLog);
+                Assert.Contains("exceeds limit", consoleLog);
             }
             finally
             {
@@ -528,7 +528,7 @@ NPOIN= 5
             {
                 solver.EvaluateSurfaceYPlus(csvPath, record);
                 string consoleLog = sw.ToString();
-                Assert.DoesNotContain("[WARNUNG] y+", consoleLog);
+                Assert.DoesNotContain($"{OutputConventions.WarningTag} y+", consoleLog);
             }
             finally
             {
@@ -537,9 +537,9 @@ NPOIN= 5
         }
 
         [Fact]
-        public void GenerateMesh_On_Gmsh_Failure_Copies_Geo_To_FehlerLogs()
+        public void GenerateMesh_On_Gmsh_Failure_Copies_Geo_To_ErrorLogs()
         {
-            // Threshold: ein einziges .geo. Bei "Prism" (Standard) scheitert zuerst das Wandflächen-Skript.
+            // Threshold: a single .geo. With "Prism" (default), the wall-surface script fails first.
             var options = new GmshMesherOptions { BoundaryLayerMode = "Threshold" };
             var mesher = new GmshCfdMesher(options);
             var config = SimulationConfig.CreateDefault();
@@ -553,10 +553,10 @@ NPOIN= 5
 
             Assert.ThrowsAny<Exception>(() => mesher.GenerateMesh(request));
 
-            string errorLogDir = Path.Combine(_workingDirectory, "FehlerLogs");
-            Assert.True(Directory.Exists(errorLogDir), "FehlerLogs-Ordner wurde nicht erstellt.");
+            string errorLogDir = Path.Combine(_workingDirectory, OutputConventions.ErrorLogsDirectory);
+            Assert.True(Directory.Exists(errorLogDir), "Error logs directory was not created.");
             string copiedGeo = Path.Combine(errorLogDir, "Meshing_Gen1_Var1.geo");
-            Assert.True(File.Exists(copiedGeo), ".geo-Skript wurde bei Fehlschlag nicht nach FehlerLogs kopiert.");
+            Assert.True(File.Exists(copiedGeo), ".geo script was not copied to error-logs on failure.");
         }
 
         [Fact]
@@ -585,7 +585,7 @@ NPOIN= 5
             var config = SimulationConfig.CreateDefault();
             config.GmshPath = fakeGmshPath;
 
-            // Geschlossenes Tetraeder als Modell-STL
+            // Closed tetrahedron as model STL
             string stlPath = Path.Combine(_workingDirectory, "model_retry.stl");
             var p0 = Vector3.Zero;
             var p1 = new Vector3(10, 0, 0);
@@ -606,7 +606,7 @@ NPOIN= 5
             Assert.True(File.Exists(meshPath));
             Assert.True(mesher.LastMeshMetrics.TryGetValue("BoundaryLayerClassifyAngleDeg", out float usedAngle));
             Assert.Equal(30.0f, usedAngle);
-            // Das endgültige Wall-Skript enthält den 30°-Winkel (pi/6 ≈ 0.523599)
+            // The final wall script contains the 30° angle (pi/6 ≈ 0.523599)
             string wallScript = GmshCfdMesher.WallScriptPath(Path.Combine(_workingDirectory, "Meshing_Gen1_Var1.geo"));
             Assert.Contains("0.52359", File.ReadAllText(wallScript));
         }
@@ -637,7 +637,7 @@ NPOIN= 5
 
             if (OperatingSystem.IsWindows())
             {
-                // PowerShell-Hilfsskript, aufgerufen über .cmd-Wrapper (funktioniert robust mit gequoteten Pfaden)
+                // PowerShell helper script invoked via .cmd wrapper (works reliably with quoted paths)
                 File.WriteAllText(helperPyOrPs, $@"
 $scriptPath = $args[0]
 $outIdx = [Array]::IndexOf($args, '-o')

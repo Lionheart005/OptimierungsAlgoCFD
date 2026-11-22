@@ -10,12 +10,11 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Generiert SU2 Konfigurationsdateien für CFD-Simulationen.
-    /// Extrahiert aus FluidDynamicsAnalyzer.GenerateSu2Config.
+    /// Generates SU2 configuration files for CFD simulations.
     /// </summary>
     public static class Su2ConfigGenerator
     {
-        /// <summary>SU2-Ausgabegruppe der zeitgemittelten Beiwerte (Spalten <c>tavg[CD]</c> usw.).</summary>
+        /// <summary>SU2 output group for time-averaged aerodynamic coefficients (<c>tavg[CD]</c>, etc.).</summary>
         public const string TimeAveragedHistoryGroup = "TAVG_AERO_COEFF";
 
         public static void Generate(
@@ -70,10 +69,8 @@ namespace FluidForge.Solvers.Cfd
                 options.CflAdaptMax
             }.Select(value => value.ToString(CultureInfo.InvariantCulture)));
 
-            // Beides war vor TODO-26 fest verdrahtet. Leer bedeutet „nicht konfiguriert“ und
-            // fällt ohne Warnung auf den Code-Standard zurück — dasselbe Muster wie bei
-            // TunnelShape (TODO-11) und der Algorithmuswahl (TODO-10). Eine leere Zeile
-            // würde SU2 beim Einlesen sonst um die Ohren fliegen.
+            // Empty means "unconfigured" and falls back to the code default without warning;
+            // an empty line would otherwise cause SU2 to abort on config parsing.
             string convergenceField = string.IsNullOrWhiteSpace(options.ConvergenceField)
                 ? Su2SolverOptions.DefaultConvergenceField
                 : options.ConvergenceField.Trim();
@@ -87,11 +84,11 @@ namespace FluidForge.Solvers.Cfd
             var cfgContent = new List<string> {
                 "%",
                 "% =============================================================================",
-                "% SOLVER & PHYSIK",
-                "% Inkompressible RANS-Gleichungen (Masse + Impuls, konstante Dichte & Viskositaet).",
-                "% Keine Energiegleichung (INC_ENERGY_EQUATION= NO).",
-                "% Turbulenzmodell laut KIND_TURB_MODEL (Standard SA: 1 Gleichung, Transport fuer nu_tilde).",
-                "% Stationaere Rechnung ueber Pseudo-Zeitschritte (Euler implizit).",
+                "% SOLVER & PHYSICS",
+                "% Incompressible RANS equations (mass + momentum, constant density & viscosity).",
+                "% No energy equation (INC_ENERGY_EQUATION= NO).",
+                "% Turbulence model per KIND_TURB_MODEL (default SA: 1-equation transport for nu_tilde).",
+                "% Steady-state solution via pseudo-time stepping (implicit Euler).",
                 "% =============================================================================",
                 "SOLVER= INC_RANS",
                 $"KIND_TURB_MODEL= {options.TurbulenceModel}",
@@ -100,10 +97,10 @@ namespace FluidForge.Solvers.Cfd
                 "INC_ENERGY_EQUATION= NO",
                 "%",
                 "% =============================================================================",
-                "% FLUIDEIGENSCHAFTEN",
-                "% Konstante Dichte und dynamische Viskositaet.",
-                "% Freistromturbulenz ist nicht gesetzt -> SU2 7.5.1 Standardwerte gelten:",
-                "% FREESTREAM_TURBULENCEINTENSITY= 0.05 und FREESTREAM_TURB2LAMVISCRATIO= 10.0",
+                "% FLUID PROPERTIES",
+                "% Constant density and dynamic viscosity.",
+                "% Freestream turbulence unset -> SU2 7.5.1 defaults apply:",
+                "% FREESTREAM_TURBULENCEINTENSITY= 0.05 and FREESTREAM_TURB2LAMVISCRATIO= 10.0",
                 "% =============================================================================",
                 freestreamVelocityLine,
                 $"FREESTREAM_DENSITY= {densityString}",
@@ -111,16 +108,16 @@ namespace FluidForge.Solvers.Cfd
                 $"MU_CONSTANT= {viscosityString}",
                 "%",
                 "% =============================================================================",
-                "% INITIALISIERUNG (Startfeld fuer stationaere Rechnung)",
-                "% INC_VELOCITY_INIT / INC_DENSITY_INIT setzen ueberall Freistromwerte.",
-                "% Beeinflusst nur den Weg zur Loesung, nicht die Loesung selbst.",
+                "% INITIALIZATION (initial field for steady run)",
+                "% INC_VELOCITY_INIT / INC_DENSITY_INIT set freestream values everywhere.",
+                "% Affects only the convergence path, not the converged solution.",
                 "% =============================================================================",
                 $"INC_DENSITY_INIT= {densityString}",
                 initVelocityLine,
                 "%",
                 "% =============================================================================",
-                "% REFERENZWERTE",
-                "% Bezugsgroessen fuer die Berechnung von Beiwerten (CD, CL, Momente).",
+                "% REFERENCE VALUES",
+                "% Reference quantities for aerodynamic coefficients (CD, CL, moments).",
                 "% =============================================================================",
                 $"REF_AREA= {refAreaString}", 
                 $"REF_LENGTH= {refLengthString}",
@@ -129,17 +126,15 @@ namespace FluidForge.Solvers.Cfd
                 "REF_ORIGIN_MOMENT_Z = 0.00",
                 "%",
                 "% =============================================================================",
-                "% RANDBEDINGUNGEN (BOUNDARY CONDITIONS)",
-                "% Markernamen muessen exakt den Physical Surface Namen aus Gmsh entsprechen.",
-                "% Ein Tippfehler fuehrt zum sofortigen Abbruch von SU2.",
-                "% - MARKER_FAR: Fernfeld an der Windkanalhuelle. Stroemungsrichtung folgt allein",
-                "%   aus FREESTREAM_VELOCITY relativ zur Flaechennormale: Einlass bei x-min,",
-                "%   Auslass bei x-max. Alternative getrennte Raender (MARKER_INLET/OUTLET/SYM)",
-                "%   wuerden sechs einzeln benannte Windkanalflaechen erfordern (nicht umgesetzt).",
-                "% - MARKER_HEATFLUX=(Wall, 0.0): no-slip Haftbedingung (v=0) an adiabater Wand.",
-                "%   Da Energiegleichung aus ist, wirkt nur no-slip. Fuer SA gilt nu_tilde=0 an Wand.",
-                "% - MARKER_MONITORING: Oberflaeche, ueber die CD, CL und Momente integriert werden.",
-                "% - MARKER_PLOTTING: Oberflaeche, die in surface.vtu geschrieben wird.",
+                "% BOUNDARY CONDITIONS",
+                "% Marker names must match the Physical Surface names from Gmsh exactly.",
+                "% A typo causes SU2 to abort immediately.",
+                "% - MARKER_FAR: farfield on the wind-tunnel shell. Flow direction follows from",
+                "%   FREESTREAM_VELOCITY relative to surface normal: inlet at x-min, outlet at x-max.",
+                "% - MARKER_HEATFLUX=(Wall, 0.0): no-slip wall condition (v=0) on adiabatic wall.",
+                "%   With energy equation disabled, only no-slip applies (nu_tilde=0 for SA).",
+                "% - MARKER_MONITORING: surface integrated for CD, CL, and moments.",
+                "% - MARKER_PLOTTING: surface written to surface.vtu.",
                 "% =============================================================================",
                 "MARKER_HEATFLUX= ( Wall, 0.0 )",
                 "MARKER_FAR= ( Farfield )",        
@@ -147,9 +142,9 @@ namespace FluidForge.Solvers.Cfd
                 "MARKER_PLOTTING= ( Wall )",
                 "%",
                 "% =============================================================================",
-                "% NUMERISCHE ROBUSTHEIT FUER RANS",
-                "% FDS (Flux Difference Splitting) mit MUSCL (2. Ordnung) und Venkatakrishnan-Limiter.",
-                "% Zeitdiskretisierung: Euler implizit mit adaptiver CFL-Steuerung.",
+                "% NUMERICAL ROBUSTNESS FOR RANS",
+                "% FDS (Flux Difference Splitting) with MUSCL (2nd order) and Venkatakrishnan limiter.",
+                "% Time discretization: implicit Euler with adaptive CFL control.",
                 "% =============================================================================",
                 "CONV_NUM_METHOD_FLOW= FDS",               
                 "MUSCL_FLOW= YES",                         
@@ -162,15 +157,15 @@ namespace FluidForge.Solvers.Cfd
                 "%",
                 "%",
                 "% =============================================================================",
-                "% TURBULENZ NUMERIK",
-                "% Diskretisierung der Turbulenzgleichung (SA) mit SCALAR_UPWIND (1. Ordnung).",
+                "% TURBULENCE NUMERICS",
+                "% Turbulence equation (SA) discretized with SCALAR_UPWIND (1st order).",
                 "% =============================================================================",
                 "CONV_NUM_METHOD_TURB= SCALAR_UPWIND",
                 "%",
                 "% =============================================================================",
-                "% ABBRUCHKRITERIEN",
-                "% Abbruch meist ueber Cauchy (CONV_FIELD ueber CONV_CAUCHY_ELEMS < CONV_CAUCHY_EPS)",
-                "% oder nach ITER. CONV_RESIDUAL_MINVAL= -8 greift bei 3D-RANS selten (Plateau -4..-5).",
+                "% STOPPING CRITERIA",
+                "% Usually stops via Cauchy (CONV_FIELD over CONV_CAUCHY_ELEMS < CONV_CAUCHY_EPS)",
+                "% or at ITER. CONV_RESIDUAL_MINVAL= -8 rarely triggers in 3D RANS (plateaus at -4..-5).",
                 "% =============================================================================",
                 $"ITER= {config.Su2MaxIterations}",          
                 $"CONV_FIELD= {convergenceField}",
@@ -181,7 +176,7 @@ namespace FluidForge.Solvers.Cfd
                 $"HISTORY_OUTPUT= ({historyOutput})",
                 "%",
                 "% =============================================================================",
-                "% NETZ & AUSGABEDATEIEN",
+                "% MESH & OUTPUT FILES",
                 "% =============================================================================",
                 $"MESH_FILENAME= {Path.GetFileName(meshPath)}", 
                 "MESH_FORMAT= SU2",
@@ -217,25 +212,22 @@ namespace FluidForge.Solvers.Cfd
                     dt = period / steps;
                 }
 
-                // TIME_ITER und WINDOW_START_ITER sind ABSOLUTE Zeitindizes: bei Neustart ab Index n zählen
-                // die gerechneten Schritte erst ab n (Servertest 06.11.2026: TIME_ITER 60 und Neustart bei 2 = 58 Schritte).
+                // TIME_ITER and WINDOW_START_ITER are ABSOLUTE time indices: when restarting from index n,
+                // executed steps only count starting at n.
                 int restartIter = Math.Max(0, options.TimeDomain.RestartIteration);
                 int timeSteps = options.TimeDomain.TimeIterations;
                 int windowStart = restartIter + (int)MathF.Round(timeSteps * Math.Clamp(options.TimeDomain.AveragingStartFraction, 0f, 0.95f));
 
                 cfgContent.Add("%");
                 cfgContent.Add("% =============================================================================");
-                cfgContent.Add("% ZEITGENAUER MODUS (URANS / DUAL-TIME-STEPPING, TODO-37)");
+                cfgContent.Add("% TIME-ACCURATE MODE (URANS / DUAL-TIME-STEPPING)");
                 cfgContent.Add("% =============================================================================");
-                // SU2 7.5.1 bricht ab, wenn neben TIME_ITER/INNER_ITER noch ITER steht
-                // ("ITER must not be used when running multizone and/or unsteady problems",
-                // Servertest 06.11.2026).
+                // SU2 7.5.1 aborts if ITER is present alongside TIME_ITER/INNER_ITER.
                 int iterIdx = cfgContent.FindIndex(l => l.StartsWith("ITER=", StringComparison.Ordinal));
                 if (iterIdx >= 0)
-                    cfgContent[iterIdx] = $"% ITER= {config.Su2MaxIterations} entfällt im zeitgenauen Modus (siehe TIME_ITER/INNER_ITER)";
+                    cfgContent[iterIdx] = $"% ITER= {config.Su2MaxIterations} omitted in time-accurate mode (see TIME_ITER/INNER_ITER)";
 
-                // Zeitgemittelte Beiwerte (tavg[CD] usw. ab WINDOW_START_ITER) mitschreiben. Ohne sie
-                // läse der Solver nur den Momentanwert des letzten Zeitschritts.
+                // Include time-averaged coefficients (tavg[CD], etc. from WINDOW_START_ITER onward).
                 int histIdx = cfgContent.FindIndex(l => l.StartsWith("HISTORY_OUTPUT=", StringComparison.Ordinal));
                 if (histIdx >= 0 && !historyFields.Any(f => f.Trim().Equals(TimeAveragedHistoryGroup, StringComparison.OrdinalIgnoreCase)))
                     cfgContent[histIdx] = $"HISTORY_OUTPUT= ({historyOutput}, {TimeAveragedHistoryGroup})";
@@ -246,14 +238,13 @@ namespace FluidForge.Solvers.Cfd
                 cfgContent.Add($"INNER_ITER= {options.TimeDomain.InnerIterations}");
                 cfgContent.Add($"WINDOW_START_ITER= {windowStart}");
                 cfgContent.Add("WINDOW_FUNCTION= HANN_SQUARE");
-                // Ohne diese Zeile schreibt SU2 in jedem Zeitschritt eine Restart-Datei (6 MB je Schritt in 2D,
-                // bei 1000 Schritten 6 GB). Die Endausgabe schreibt es trotzdem (TODO-W7).
+                // Without this line, SU2 writes a restart file at every time step (~6 GB for 1000 steps in 2D).
+                // Final output is still written at the end.
                 cfgContent.Add("OUTPUT_WRT_FREQ= 100000");
 
                 if (restartIter > 0)
                 {
-                    // Neustart aus der stationären Lösung: restart_00000.dat und restart_00001.dat müssen
-                    // im Arbeitsordner liegen (legt Program.RunRecheck an).
+                    // Restart from steady solution: restart_00000.dat and restart_00001.dat must exist in workingDirectory.
                     cfgContent.Add("RESTART_SOL= YES");
                     cfgContent.Add($"RESTART_ITER= {restartIter}");
                     cfgContent.Add("SOLUTION_FILENAME= restart.dat");
@@ -263,7 +254,7 @@ namespace FluidForge.Solvers.Cfd
             {
                 cfgContent.Add("%");
                 cfgContent.Add("% =============================================================================");
-                cfgContent.Add("% STATIONAERER NEUSTART (AP-1)");
+                cfgContent.Add("% STEADY RESTART");
                 cfgContent.Add("% =============================================================================");
                 cfgContent.Add("RESTART_SOL= YES");
                 cfgContent.Add($"SOLUTION_FILENAME= {steadyRestartFile.Trim()}");
@@ -273,31 +264,29 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Die Anströmgeschwindigkeit in m/s (TODO-38): <see cref="Su2SolverOptions.FreestreamVelocity"/>,
-        /// wenn gesetzt — sonst wie vor TODO-38 <c>MachNumber × SpeedOfSound</c>, damit Projekte
-        /// ohne den neuen Schlüssel unverändert rechnen.
+        /// Freestream velocity in m/s: <see cref="Su2SolverOptions.FreestreamVelocity"/> when set,
+        /// otherwise <c>MachNumber * SpeedOfSound</c> for backward compatibility.
         /// </summary>
-        /// <param name="source">Klartext für das Log: woher die Zahl kommt.</param>
+        /// <param name="source">Human-readable log label indicating where the velocity originated.</param>
         public static float ResolveVelocity(SimulationConfig config, Su2SolverOptions options, out string source)
         {
             if (options.FreestreamVelocity > 0f)
             {
-                source = "FreestreamVelocity aus der su2.json (MachNumber wird dafür nicht verwendet)";
+                source = "FreestreamVelocity from su2.json (MachNumber ignored)";
                 return options.FreestreamVelocity;
             }
 
-            source = $"MachNumber {config.MachNumber.ToString(CultureInfo.InvariantCulture)} × SpeedOfSound "
+            source = $"MachNumber {config.MachNumber.ToString(CultureInfo.InvariantCulture)} * SpeedOfSound "
                      + $"{options.SpeedOfSound.ToString(CultureInfo.InvariantCulture)} m/s — "
-                     + "besser direkt 'FreestreamVelocity' in der su2.json setzen";
+                     + "prefer setting 'FreestreamVelocity' directly in su2.json";
             return config.MachNumber * options.SpeedOfSound;
         }
 
         /// <summary>
-        /// Zerlegt eine skalare Geschwindigkeit bei gegebenem Anstellwinkel in ihre
-        /// Vektorkomponenten (TODO-46).
-        /// In 2D liegt der Auftrieb auf +y: (v*cos(a), v*sin(a), 0).
-        /// In 3D liegt der Auftrieb auf +z: (v*cos(a), 0, v*sin(a)).
-        /// Winzige Beträge (|v| &lt; 1e-7) werden auf 0.0 gerundet.
+        /// Decomposes a scalar velocity at a given angle of attack into vector components.
+        /// In 2D lift is along +y: (v*cos(a), v*sin(a), 0).
+        /// In 3D lift is along +z: (v*cos(a), 0, v*sin(a)).
+        /// Tiny magnitudes (|v| &lt; 1e-7) are clamped to 0.0.
         /// </summary>
         public static (float Vx, float Vy, float Vz) ResolveVelocityVector(float speed, float angleOfAttackDeg, int dimensions)
         {
@@ -322,8 +311,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Projiziert eine aerodynamische Kraft aus Körperachsen (Fx, Fy) bei Anströmung
-        /// unter Anstellwinkel alpha in Windachsen (Widerstand D, Auftrieb L) (TODO-46).
+        /// Projects an aerodynamic force from body axes (Fx, Fy) at angle of attack alpha
+        /// into wind axes (drag D, lift L).
         /// D = Fx*cos(a) + Fy*sin(a), L = -Fx*sin(a) + Fy*cos(a).
         /// </summary>
         public static Vector2 ProjectForceToWindAxes(Vector2 bodyForce, float angleOfAttackDeg)

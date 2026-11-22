@@ -10,8 +10,8 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Plan wandschicht_zellzahl.md (WZ4–WZ6, WZ10): Vernetzungsfehler sind keine Strömungsabstürze, Ersatznetze werden
-    /// gekennzeichnet, die Zellgrenze gilt für die gemessene Zellzahl, Netzkennwerte stehen in der CSV.
+    /// Plan wandschicht_zellzahl.md (WZ4–WZ6, WZ10): meshing failures are not flow solver crashes, fallback meshes are
+    /// flagged, the cell limit applies to the measured cell count, mesh metrics are written to CSV.
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class MeshRobustnessTests : IDisposable
@@ -114,7 +114,7 @@ namespace FluidForge.Tests
         public void Any_Other_Error_Is_Not_Marked_As_Mesh_Failure()
         {
             var mesher = new Mock<IMeshGenerator>();
-            mesher.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>())).Throws(new InvalidOperationException("Gmsh fehlt"));
+            mesher.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>())).Throws(new InvalidOperationException("Gmsh missing"));
             var (solver, _) = CountingSolver();
 
             ModelRecord record = Controller(Context(), mesher.Object, solver).RunPipeline(Parameters(), 1, 1);
@@ -148,12 +148,12 @@ namespace FluidForge.Tests
 
             var (solverA, callsA) = CountingSolver();
             SimulationContext below = Context();
-            below.CellLimit = 6000;                   // genau an der Grenze: erlaubt
+            below.CellLimit = 6000;                   // right at the limit: allowed
             Controller(below, mesher.Object, solverA).RunPipeline(Parameters(), 1, 1);
             Assert.Single(callsA);
 
             var (solverB, callsB) = CountingSolver();
-            Controller(Context(), mesher.Object, solverB).RunPipeline(Parameters(), 1, 1);   // CellLimit 0 = keine Grenze
+            Controller(Context(), mesher.Object, solverB).RunPipeline(Parameters(), 1, 1);   // CellLimit 0 = no limit
             Assert.Single(callsB);
         }
 
@@ -164,7 +164,7 @@ namespace FluidForge.Tests
             mesher.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>())).Returns(FakeSu2(6000));
             var (solver, calls) = CountingSolver();
             SimulationContext context = Context();
-            context.CellLimit = 0; // Optimierungsbetrieb (keine aktive Kalibrierstufe)
+            context.CellLimit = 0; // Optimization mode (no active calibration stage)
             context.Config.MeshCalibration.MaxCells3D = 5000;
 
             ModelRecord record = Controller(context, mesher.Object, solver).RunPipeline(Parameters(), 1, 1);
@@ -175,13 +175,13 @@ namespace FluidForge.Tests
             Assert.Empty(calls);
         }
 
-        // ------------------------------------------------------------------ Trainingsdaten (Bayes)
+        // ------------------------------------------------------------------ Training data (Bayes)
 
         private SurrogateTrainingSet TrainingSet(params ModelRecord[] records)
         {
             var project = new ProjectConfig
             {
-                ProjectName = "Raum",
+                ProjectName = "Space",
                 BaseParameters = new Dictionary<string, float> { ["Length"] = 100f },
                 MaxDeviations = new Dictionary<string, float> { ["Length"] = 10f },
                 ParameterBounds = new Dictionary<string, (float Min, float Max)> { ["Length"] = (50f, 150f) },
@@ -214,7 +214,7 @@ namespace FluidForge.Tests
         [Fact]
         public void A_Mesh_Failure_Repels_Locally_But_Does_Not_Teach_The_Success_Model()
         {
-            // FZ7: ein Gmsh-Fehler schreckt nicht die ganze Formzone ab, nur die enge Umgebung
+            // FZ7: a Gmsh error does not repel the entire shape zone, only the immediate vicinity
             var meshFail = Rec(2, 60f);
             meshFail.SimulationFailed = true;
             meshFail.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
@@ -239,7 +239,7 @@ namespace FluidForge.Tests
             Assert.Empty(set.FailedPoints);
         }
 
-        // ------------------------------------------------------------------ Bericht am Laufende
+        // ------------------------------------------------------------------ End-of-run report
 
         [Fact]
         public void Robustness_Report_Counts_Stages_And_Names_The_Special_Shapes()
@@ -256,11 +256,11 @@ namespace FluidForge.Tests
             var lines = MeshRobustnessReport.Lines(new[] { Make(1, 1), Make(2, 1), Make(3, 2), Make(4, 3, 7.5f), failed });
 
             string all = string.Join("\n", lines);
-            Assert.Contains("2 mit Standard-Wandschicht (Stufe A), 1 örtlich gedünnt (Stufe B), 1 mit Ersatznetz (Stufe C), 1 nicht vernetzbar", all);
-            Assert.Contains("Formen mit Ersatznetz", all);
-            Assert.Contains("Variante 4", all);
-            Assert.Contains("Nicht vernetzbare Formen", all);
-            Assert.Contains("Variante 5", all);
+            Assert.Contains("2 with standard boundary layer (Stage A), 1 locally thinned (Stage B), 1 with fallback mesh (Stage C), 1 failed to mesh.", all);
+            Assert.Contains("Shapes using fallback mesh", all);
+            Assert.Contains("Variant 4", all);
+            Assert.Contains("Unmeshable shapes", all);
+            Assert.Contains("Variant 5", all);
         }
 
         [Fact]
@@ -282,7 +282,7 @@ namespace FluidForge.Tests
             Assert.False(ModelRecord.IsMeshMetadataKey("Volume"));
         }
 
-        // ------------------------------------------------------------------ Kalibrierung
+        // ------------------------------------------------------------------ Calibration
 
         private static CalibrationStageData Stage(int level, float factor, int cells, int layers = 0, int wallStage = 0, double seconds = 60)
             => new(level, factor, cells, seconds, new Dictionary<string, float> { ["Drag"] = 1f }, 0f, true, 1f, true,
@@ -291,7 +291,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Cell_Estimate_Uses_The_Measured_Exponent_Not_The_Cube()
         {
-            // MantaAuv 09.11.2026 (gemessen): Faktor 0,71 → 321 952, 0,50 → 696 802, 0,35 → 1 695 747 Zellen
+            // MantaAuv 2026-11-09 (measured): factor 0.71 -> 321,952, 0.50 -> 696,802, 0.35 -> 1,695,747 cells
             var stages = new List<CalibrationStageData>
             {
                 Stage(4, 0.71f, 321_952), Stage(5, 0.50f, 696_802), Stage(6, 0.35f, 1_695_747),
@@ -299,8 +299,8 @@ namespace FluidForge.Tests
 
             long next = MeshCalibration.EstimateNextCells(stages, 0.25f, dimensions: 3);
 
-            // gemessener Exponent ≈ 2,5 → rund 3,9 Mio.; die alte kubische Annahme ergab 4,65 Mio. (und mit nur einer
-            // Messung, Stufe 1, für Faktor 0,5 sogar 3,05 Mio. statt der gemessenen 0,70 Mio.)
+            // measured exponent ≈ 2.5 -> ~3.9M; the old cubic assumption gave 4.65M (and with only one
+            // measurement, stage 1, for factor 0.5 even 3.05M instead of the measured 0.70M)
             Assert.InRange(next, 3_600_000L, 4_300_000L);
             long old = MeshCalibration.EstimateCells(1_695_747, 0.35f, 0.25f, 3);
             Assert.True(next < old);
@@ -318,7 +318,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Cell_Estimate_Exponent_Is_Clamped_To_Half_The_Dimension_And_The_Dimension()
         {
-            // kaum Zuwachs bei feinerem Netz → Exponent nach unten auf 1,5 (3D) begrenzt; mehr als kubisch → auf 3 begrenzt
+            // little growth on finer mesh -> exponent clamped down to 1.5 (3D); more than cubic -> clamped to 3
             var flat = new List<CalibrationStageData> { Stage(1, 1.0f, 1000), Stage(2, 0.5f, 1010) };
             var steep = new List<CalibrationStageData> { Stage(1, 1.0f, 1000), Stage(2, 0.5f, 100_000) };
 
@@ -337,7 +337,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Layer_Mismatch_Between_Stages_Is_Reported()
         {
-            // Bericht-Lauf 09.11.2026: Stufen 1–3 hatten 21, Stufen 4–6 nur 16 Schichten
+            // Report run 2026-11-09: levels 1-3 had 21 layers, levels 4-6 only 16 layers
             var stages = new List<CalibrationStageData>
             {
                 Stage(1, 2.0f, 100, layers: 21, wallStage: 1), Stage(2, 1.41f, 200, layers: 21, wallStage: 1),
@@ -347,8 +347,8 @@ namespace FluidForge.Tests
             string? text = MeshCalibration.DescribeLayerMismatch(stages);
 
             Assert.NotNull(text);
-            Assert.Contains("unterschiedliche Schichtzahlen", text);
-            Assert.Contains("Stufe 4: 16", text);
+            Assert.Contains("differing boundary-layer counts", text);
+            Assert.Contains("Level 4: 16", text);
         }
 
         [Fact]
@@ -367,7 +367,7 @@ namespace FluidForge.Tests
             };
             string? text = MeshCalibration.DescribeLayerMismatch(withFallback);
             Assert.NotNull(text);
-            Assert.Contains("Ersatznetz", text);
+            Assert.Contains("fallback mesh", text);
             Assert.Contains("5", text);
         }
 
@@ -377,7 +377,7 @@ namespace FluidForge.Tests
             Assert.False(string.IsNullOrWhiteSpace(MeshCalibration.MesherSchemeVersion));
         }
 
-        // ------------------------------------------------------------------ Zellgrenze in der Kalibrierung
+        // ------------------------------------------------------------------ Cell limit in calibration
 
         private sealed class Scenario : IDisposable
         {
@@ -403,8 +403,8 @@ namespace FluidForge.Tests
             }
 
             /// <summary>
-            /// Wie die Pipeline: ein Netz über <see cref="SimulationContext.CellLimit"/> rechnet nicht, trägt das Kennzeichen
-            /// und ist gescheitert. Zellen wachsen mit f^−2 (cells0 / f²), CD fällt mit f nicht auf einen festen Wert.
+            /// Like the pipeline: a mesh exceeding <see cref="SimulationContext.CellLimit"/> does not solve, carries the flag
+            /// and is marked failed. Cells grow as f^-2 (cells0 / f²), CD drops with f rather than settling to a fixed value.
             /// </summary>
             public Func<float, string, ModelRecord> Runner(double cells0)
                 => (factor, tag) =>
@@ -430,29 +430,29 @@ namespace FluidForge.Tests
         public void Reference_Stage_Over_The_Measured_Limit_Aborts_The_Calibration_Before_Solving_It()
         {
             using var s = new Scenario(maxCells3D: 100_000);
-            var run = s.Runner(cells0: 40_000);   // Faktor 0,5 → 40 000 / 0,25 = 160 000 Zellen > Grenze 100 000
+            var run = s.Runner(cells0: 40_000);   // Factor 0.5 -> 40,000 / 0.25 = 160,000 cells > limit 100,000
 
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 MeshCalibration.Run(s.Context, s.SimContext, run, new[] { "Drag" }, dimensions: 3));
 
-            Assert.Contains("Referenznetz", ex.Message);
-            Assert.Contains("gemessen", ex.Message);
-            Assert.Equal(0L, s.SimContext.CellLimit);   // aufgeräumt
+            Assert.Contains("Reference mesh", ex.Message);
+            Assert.Contains("measured", ex.Message);
+            Assert.Equal(0L, s.SimContext.CellLimit);   // cleaned up
         }
 
         [Fact]
         public void Extra_Stage_Over_The_Measured_Limit_Is_Not_Solved_And_Ends_The_Refinement()
         {
-            // Faktor 0,5 → 80 000 Zellen (erlaubt), die Vorschau für 0,35 liegt bei ~163 000 (1,63 × Grenze 100 000 → übersprungen),
-            // bei Grenze 120 000 liegt die Vorschau darunter × 1,5 → vernetzt, gemessen zu groß → nicht gerechnet
+            // Factor 0.5 -> 80,000 cells (allowed), preview for 0.35 is ~163,000 (1.63 * limit 100,000 -> skipped),
+            // at limit 120,000 preview is below 1.5x limit -> meshed, measured too large -> not solved
             using var s = new Scenario(maxCells3D: 120_000);
             var run = s.Runner(cells0: 20_000);
 
             var (decision, _) = MeshCalibration.Run(s.Context, s.SimContext, run, new[] { "Drag" }, dimensions: 3);
 
-            Assert.Contains(0.35f, s.Factors);                       // wurde versucht (vernetzt)
-            Assert.DoesNotContain(decision.AllStages, st => Math.Abs(st.Factor - 0.35f) < 0.01f);   // aber nicht gewertet
-            Assert.DoesNotContain(s.Factors, f => f < 0.35f);        // und danach endet es
+            Assert.Contains(0.35f, s.Factors);                       // was attempted (meshed)
+            Assert.DoesNotContain(decision.AllStages, st => Math.Abs(st.Factor - 0.35f) < 0.01f);   // but not counted
+            Assert.DoesNotContain(s.Factors, f => f < 0.35f);        // and refinement stops afterwards
             Assert.Equal(0L, s.SimContext.CellLimit);
         }
     }

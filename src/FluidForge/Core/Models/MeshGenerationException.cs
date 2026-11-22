@@ -3,10 +3,9 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Die Vernetzung ist gescheitert (z. B. Gmsh-Abbruch), unabhängig von der Strömungsrechnung.
-    /// Der <see cref="WorkflowController"/> markiert die Variante dann mit <c>MeshFailed = 1</c>:
-    /// ein Vernetzungsfehler ist kein Strömungsabsturz und darf die Suche nicht von der ganzen
-    /// Formzone abschrecken (Plan wandschicht_zellzahl.md, FZ7).
+    /// Mesh generation failed (e.g., Gmsh failure) independently of the flow solver.
+    /// <see cref="WorkflowController"/> marks the variant with <c>MeshFailed = 1</c>:
+    /// a meshing failure is not a flow crash and should not deter the optimizer from that region.
     /// </summary>
     public sealed class MeshGenerationException : Exception
     {

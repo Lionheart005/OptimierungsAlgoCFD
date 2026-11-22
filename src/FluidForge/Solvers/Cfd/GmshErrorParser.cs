@@ -5,20 +5,20 @@ using System.Text.RegularExpressions;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Zentrale Helfer zum Bereinigen von ANSI-Steuercodes und zum Extrahieren
-    /// aussagekräftiger Fehlerzeilen aus der Gmsh-Ausgabe.
+    /// Centralized helpers for stripping ANSI control codes and extracting
+    /// meaningful error lines from Gmsh output.
     /// </summary>
     internal static class GmshErrorParser
     {
         /// <summary>
-        /// Entfernt ANSI-Farbcodes (<c>ESC[1m</c>, <c>ESC[31m</c> …): Gmsh färbt Fehlerzeilen ein,
-        /// auch wenn die Ausgabe in eine Pipe geht.
+        /// Removes ANSI color codes (<c>ESC[1m</c>, <c>ESC[31m</c>, ...): Gmsh colorizes error lines
+        /// even when output is redirected to a pipe.
         /// </summary>
         public static string StripAnsi(string text)
             => Regex.Replace(text, "\u001B\\[[0-9;]*m", string.Empty);
 
         /// <summary>
-        /// Extrahiert bis zu zwei aussagekräftige Fehlerzeilen aus der vollständigen Gmsh-Ausgabe.
+        /// Extracts up to two meaningful error lines from the full Gmsh output.
         /// </summary>
         public static string? ExtractGmshError(string output)
         {
@@ -29,9 +29,9 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Die aussagekräftigen Fehlerzeilen aus der Gmsh-Ausgabe (höchstens zwei, ohne die
-        /// Schlusszusammenfassung "Mesh generation error summary", Trennlinien und Zähler).
-        /// <c>null</c>, wenn keine vorkommt.
+        /// Meaningful error lines from Gmsh output (at most two, excluding the
+        /// final "Mesh generation error summary", separator lines, and counters).
+        /// Returns <c>null</c> if none are present.
         /// </summary>
         public static string? ExtractGmshError(IEnumerable<string> lines)
         {

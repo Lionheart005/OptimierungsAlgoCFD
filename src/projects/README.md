@@ -1,113 +1,93 @@
-# Projekt- & Bauteilleitfaden (`src/projects/`)
+# Project & Component Guide (`src/projects/`)
 
-> **Weiterführende Dokumente (ohne Doppelung):**
-> - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md)
-> - **3D-Modellierung mit PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../FluidForge/Kernels/PicoGk/README.md)
-> - **2D-Modellierung mit dem eigenen `Planar2D`-Kernel:** [`src/FluidForge/Kernels/Planar2D/README.md`](../FluidForge/Kernels/Planar2D/README.md)
-> - **Framework-Architektur & C#-Entwicklung:** [`src/FluidForge/README.md`](../FluidForge/README.md)
-> - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
-> - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
+> **Related Documentation:**
+> - **Legacy User Manual & Full JSON Reference:** [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md) *(currently still in German; will be replaced by modular English `docs/` in Phase 2)*
+> - **3D Modeling with PicoGK:** [`src/FluidForge/Kernels/PicoGk/README.md`](../FluidForge/Kernels/PicoGk/README.md)
+> - **2D Modeling with the `Planar2D` Kernel:** [`src/FluidForge/Kernels/Planar2D/README.md`](../FluidForge/Kernels/Planar2D/README.md)
+> - **Framework Architecture & C# Development:** [`src/FluidForge/README.md`](../FluidForge/README.md)
+> - **Linux Server Control, Deployment & Setup:** [`scripts/README.md`](../../scripts/README.md)
+> - **Local Override Configuration (`*.local.json`):** [`config/README.md`](../../config/README.md)
 
-Ein **Projekt** ist ein Bauteil, das optimiert werden soll: sein Geometrie-Bauplan,
-seine Zielfunktion und seine Zahlen. Jedes Projekt ist genau ein Ordner hier drin.
+A **project** is a component to be optimized: its geometry generator, its fitness function, and its configuration values. Each project is a single folder here.
 
-```
+```text
 src/projects/
-├── _Template3D/        Kopiervorlage -- kein Projekt, siehe _Template3D/README.md
-├── _Template2D/      2D-Kopiervorlage -- kein Projekt, siehe _Template2D/README.md
-├── MantaAuv/        ein AUV in Mantarochen-Form (3D)
-└── Naca2D/          2D-CFD NACA-Profil mit NASA-TMR-Validierung
+├── _Template3D/     3D project template (not a runnable project; see _Template3D/README.md)
+├── _Template2D/     2D project template (not a runnable project; see _Template2D/README.md)
+├── MantaAuv/        Manta-ray shaped AUV hull (3D)
+└── Naca2D/          2D CFD NACA airfoil with NASA TMR validation
 ```
 
-**Der Ordnername ist der Projektname.** Nicht ein Feld in einer JSON, nicht ein
-Eintrag in einer Liste — der Ordner. Heißt der Ordner `Propeller`, dann läuft das
-Projekt mit
+**The folder name is the project name.** Not a field in a JSON file, not an entry in a list — the folder itself. If the folder is named `Propeller`, you run it with:
 
 ```powershell
 .\scripts\sim.ps1 run -Project Propeller
 ```
 
-Zwei Projekte existieren nebeneinander und kommen sich nicht in die Quere: eigene
-Zahlen, eigener Code, eigene Ergebnisse unter `Ergebnisse/<Projekt>/`. Umgeschaltet
-wird **nur** über den Startaufruf — am Framework unter
-[`src/FluidForge/`](../FluidForge/) ändert sich dafür nichts.
+Projects live side by side without interfering with one another: separate numbers, separate code, separate outputs under `results/<Project>/`. Switching projects only changes the launch argument — nothing in [`src/FluidForge/`](../FluidForge/) is touched.
 
-Welche Projekte es gibt:
+List available projects:
 
 ```powershell
-dotnet run --project src\FluidForge -- --list-projects   # lokal
-.\scripts\sim.ps1 projects                                       # auf dem Server
+dotnet run --project src\FluidForge -- --list-projects   # locally
+.\scripts\sim.ps1 projects                                # on the server
 ```
 
 ---
 
-## So legst du ein Projekt an
+## Creating a New Project
 
-### 1. Ordner erzeugen
+### 1. Create the Folder
 
 ```powershell
-.\scripts\new-project.ps1 Propeller                 # 3D-CFD (Standard)
-.\scripts\new-project.ps1 MeinProfil -Template 2D   # 2D-CFD (direkter 2D-Kernel)
+.\scripts\new-project.ps1 Propeller                 # 3D CFD (default)
+.\scripts\new-project.ps1 MyAirfoil -Template 2D    # 2D CFD (direct 2D kernel)
 ```
 
-Das kopiert `_Template3D/` nach `Propeller/` und ersetzt das Platzhalterwort
-`MyProject` überall — in Dateinamen, Klassennamen, Namensraum und in den
-Kommentarköpfen der JSONs. Der Name muss ein gültiger C#-Bezeichner sein, denn er
-wird auch Klassen- und Namensraumname.
+This copies `_Template3D/` (or `_Template2D/`) to `Propeller/` and replaces the placeholder `MyProject` (or `MyProject2D`) everywhere — in filenames, class names, namespaces, and JSON comment headers. The name must be a valid C# identifier because it also becomes the class and namespace name.
 
-Danach liegt dort:
+The generated folder contains:
 
-```
+```text
 Propeller/
-├── project.json                     Startwerte, Grenzen, Optimierungsziele
-├── simulation.json                  Framework-Einstellungen dieses Projekts
-├── solvers/su2.json                 Strömungslöser
-├── solvers/gmsh.json                Vernetzer
-├── PropellerProject.cs              verdrahtet das Projekt  (IProjectDefinition)
-├── PropellerGeometryGenerator.cs    baut die Geometrie      (IGeometryGenerator)
-└── PropellerFitnessCalculator.cs    bewertet sie            (IFitnessCalculator)
+├── project.json                     Initial values, bounds, optimization targets
+├── simulation.json                  Framework settings for this project
+├── solvers/su2.json                 Flow solver settings
+├── solvers/gmsh.json                Mesher settings
+├── PropellerProject.cs              Wires the project         (IProjectDefinition)
+├── PropellerGeometryGenerator.cs    Builds the geometry       (IGeometryGenerator)
+└── PropellerFitnessCalculator.cs    Scores the geometry       (IFitnessCalculator)
 ```
 
-**Mehr ist nicht anzumelden.** Die `ProjectRegistry` findet die neue Klasse beim
-Start per Reflection: kein `switch`, keine Liste, kein Eintrag in `Program.cs`.
+**No further registration is needed.** `ProjectRegistry` discovers the new class at startup via reflection: no `switch`, no list, no entry in `Program.cs`.
 
-### 2. Parameter festlegen
+### 2. Define Parameters
 
-In `project.json` — und mit denselben Werten in `CreateDefaults()` in
-`PropellerProject.cs`, das ist die Code-Schicht darunter:
+In `project.json` — and with matching defaults in `CreateDefaults()` in `PropellerProject.cs`:
 
 ```jsonc
-"BaseParameters":  { "Length": 50.0, "Width": 30.0 },   // Startwerte in mm
-"MaxDeviations":   { "Length": 5.0,  "Width": 3.0  },   // Mutationsstärke
+"BaseParameters":  { "Length": 50.0, "Width": 30.0 },   // initial values in mm
+"MaxDeviations":   { "Length": 5.0,  "Width": 3.0  },   // initial mutation step (used by IdwBaseline)
 "ParameterBounds": {
-  "Length": { "Min": 20.0, "Max": 100.0 },              // harte Grenzen
+  "Length": { "Min": 20.0, "Max": 100.0 },              // hard bounds
   "Width":  { "Min": 10.0, "Max": 80.0  }
 },
-"DimensionalParameters": [ "Length", "Width" ]          // NUR Längen!
+"DimensionalParameters": [ "Length", "Width" ]          // lengths ONLY!
 ```
 
-Die Namen sind der Vertrag mit dem Geometrie-Generator. Es gibt keine Liste
-erlaubter Parameter: was hier steht, existiert.
+The parameter names form the contract with the geometry generator. There is no fixed list of allowed parameters: whatever you define here exists.
 
-> **`DimensionalParameters` nur für Längen.** Der RubberBandScaler rechnet die
-> Geometrie auf die PicoGK-Arbeitsgröße herunter und die Ergebnisse zurück. Ein
-> Verhältnis, ein Winkel oder ein Zählwert würde dabei verfälscht. MantaAuv lässt
-> `TailTaper` aus genau diesem Grund bewusst weg — das war einmal ein Fehler.
+> **`DimensionalParameters` is for lengths only.** `RubberBandScaler` scales the geometry to PicoGK's working size and scales results back. A ratio, angle, or count would be distorted if scaled. `MantaAuv` intentionally omits `TailTaper` for this reason.
 
-> **Anstellwinkel mitoptimieren:** Heißt ein Parameter `"AngleOfAttackDeg"` (oder
-> `"AngleOfAttack"`), fängt der SU2-Solver ihn automatisch ab, steuert den Anstellwinkel
-> je Variante direkt im Strömungslöser an und legt ihn in `PassiveParameters["AngleOfAttackDeg"]`
-> ab. Der Geometrie-Generator muss das Profil dafür **nicht** rotieren! Niemals in
-> `DimensionalParameters` eintragen (Grad, keine Länge). Details: [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md).
+> **Optimizing angle of attack:** If a parameter is named `"AngleOfAttackDeg"` (or `"AngleOfAttack"`), `Su2Solver` intercepts it automatically, sets the freestream angle of attack per variant directly in SU2, and writes it to `PassiveParameters["AngleOfAttackDeg"]`. The geometry generator does **not** need to rotate the airfoil! Never add it to `DimensionalParameters` (degrees, not a length).
 
-### 3. Geometrie bauen
+### 3. Build the Geometry
 
-> **Ausführliche Modellierungs-Handbücher:**
-> - **Für 3D-Projekte (PicoGK `Lattice`, `Voxels`, `Mesh`):** [`src/FluidForge/Kernels/PicoGk/README.md`](../FluidForge/Kernels/PicoGk/README.md)
-> - **Für 2D-Projekte (Eigener Kernel `Shape2D`, `Lattice2D`, `BBox2`):** [`src/FluidForge/Kernels/Planar2D/README.md`](../FluidForge/Kernels/Planar2D/README.md)
+> **Detailed Modeling Manuals:**
+> - **3D projects (PicoGK `Lattice`, `Voxels`, `Mesh`):** [`src/FluidForge/Kernels/PicoGk/README.md`](../FluidForge/Kernels/PicoGk/README.md)
+> - **2D projects (`Shape2D`, `Lattice2D`, `BBox2`):** [`src/FluidForge/Kernels/Planar2D/README.md`](../FluidForge/Kernels/Planar2D/README.md)
 
-In `PropellerGeometryGenerator.cs`. Die Vorlage baut einen Quader; ersetze
-`BuildVoxelModel` (bzw. `BuildProfileContour` in 2D). Am Ende meldest du deine Messwerte:
+Edit `PropellerGeometryGenerator.cs`. The template builds a simple box; replace `BuildVoxelModel` (or `BuildProfileContour` in 2D) and report your metrics at the end:
 
 ```csharp
 result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
@@ -116,109 +96,71 @@ result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
 result.AddMetric("LengthToWidth", length / width, MetricScaling.None);
 ```
 
-Der Name, den du hier vergibst, ist derselbe, den die Fitness-Formel liest, den
-`ReferenceAreaMetric` in der `su2.json` meinen kann und der als Spalte in der
-`Simulation_Results.csv` auftaucht. Es gibt keine Metrikliste, die gepflegt werden
-müsste.
+The name you pass here is the exact name read by the fitness formula, referenced by `ReferenceAreaMetric` in `su2.json`, and written as a column in `results.csv`.
 
-> **Die Dimension muss stimmen.** Ein falsches `MetricScaling` fällt **nicht** auf:
-> der Wert ist dann um den Skalierungsfaktor hoch 1, 2 oder 3 daneben und sieht
-> trotzdem plausibel aus. `Volume` kubisch, `Area` quadratisch, `Linear` einfach,
-> `None` gar nicht.
+> **Get the scaling dimension right.** An incorrect `MetricScaling` will **not** throw an error: the value will simply be off by $s^1$, $s^2$, or $s^3$ while still looking plausible. `Volume` scales cubically, `Area` quadratically, `Linear` linearly, and `None` not at all.
 
-`PicoGkMeshMetrics.Measure(mesh)` liefert Volumen, Oberfläche und Hüllquader in einem
-Durchgang — PicoGKs eigenes `CalculateProperties` kann die **Oberfläche** nicht.
+`PicoGkMeshMetrics.Measure(mesh)` computes volume, surface area, and bounding box in a single pass — PicoGK's own `CalculateProperties` does not compute **surface area**.
 
-Ein Blick in [`MantaAuv/MantaGeometryGenerator.cs`](MantaAuv/MantaGeometryGenerator.cs)
-zeigt, wie eine richtige Geometrie entsteht: ein `Lattice` aus Rumpf und Flügelfächer,
-über zwei `Offset`-Schritte organisch verschmolzen.
+Look at [`MantaAuv/MantaGeometryGenerator.cs`](MantaAuv/MantaGeometryGenerator.cs) for a real-world example: a `Lattice` combining fuselage and fin-ray wings, organically blended with two `Offset` steps.
 
-### 4. Bewerten
+### 4. Define the Fitness Function
 
-In `PropellerFitnessCalculator.cs`. Die Vorlage minimiert nur den Widerstand:
+Edit `PropellerFitnessCalculator.cs`. The template minimizes drag only:
 
 ```csharp
 record.Fitness = 1.0f / safeDrag;
 ```
 
-**Das Framework maximiert immer die Fitness.** Was klein werden soll, gehört in den
-Nenner; was groß werden soll, in den Zähler. MantaAuv rechnet
-`(Volume × SensorDistance) / Drag^DragBalanceFactor` — Nutzraum und Sensorbasis nach
-oben, Widerstand nach unten, mit einstellbarem Gewicht.
+**The framework always maximizes fitness.** Anything that should be minimized belongs in the denominator; anything that should be maximized belongs in the numerator. `MantaAuv` computes `(Volume * SensorDistance) / Drag^DragBalanceFactor`.
 
-Zahlen für die Formel kommen aus `OptimizationTargets` in der `project.json`. Trage
-ihre Namen in `RequiredTargets` ein: dann bricht ein fehlender Wert beim Verdrahten
-ab und nicht nach Stunden Rechenzeit. Für Messwerte gilt dasselbe über
-`RequiredMetrics` — die prüft der Controller nach der ersten gerechneten Variante.
+Constants for the formula live in `OptimizationTargets` in `project.json`. List their names in `RequiredTargets` so a missing key fails during wiring rather than hours into a run. Do the same for solver/geometry metrics in `RequiredMetrics` — the controller verifies them after the first completed variant.
 
-> **Für den Bayes-Optimierer (`"OptimizationAlgorithm": "Bayes"`):** Nennt `RequiredMetrics` die
-> Kennwerte der Formel, kann er im Modus `"Metrics"` für jeden Kennwert ein eigenes Ersatzmodell
-> lernen und die Fitness über **deine** Formel verrechnen. Strafen und Grenzen (Sprünge) wirken dann
-> automatisch richtig. Das funktioniert nur, wenn die Formel **ausschließlich** mit den Parametern
-> und den Kennwerten aus `RequiredMetrics` rechnet. Liest sie weitere Werte aus `PassiveParameters`,
-> merkt der Optimierer das in einer Gegenprobe und fällt automatisch und ohne Schaden auf den Modus
-> `"Fitness"` zurück. Eine Formel darf zusätzliche Schlüssel **schreiben** (wie `GlideRatio` in
-> `Naca2D`); sie dürfen nur nicht in die Fitness eingehen. Für den Bayes-Optimierer braucht außerdem
-> jeder Parameter Grenzen in `ParameterBounds`.
+> **For Bayesian optimization (`"OptimizationAlgorithm": "Bayes"`):** When `RequiredMetrics` lists the metrics used by the formula, `"Metrics"` mode fits a separate surrogate model per metric and evaluates **your** formula over them, preserving penalties and thresholds accurately. This only works if the formula uses **exclusively** active parameters and metrics declared in `RequiredMetrics` (reading undeclared `PassiveParameters` triggers an automatic fallback to `"Fitness"` mode with a warning). Writing additional derived keys (like `GlideRatio` in `Naca2D`) is fine as long as they do not feed back into `Fitness`. `Bayes` also requires `ParameterBounds` for every active parameter.
 
-> **Vorsicht vor „Reward Hacking".** Optimierungsalgorithmen sind gnadenlos. Ohne
-> eine untere Volumengrenze schrumpft der Algorithmus das Bauteil auf Staubkorngröße,
-> weil das den geringsten Widerstand hat. Harte Grenzen sind kein Beiwerk.
+> **Beware of "reward hacking".** Optimizers are relentless. Without a lower volume bound, the optimizer will shrink the component to dust because tiny bodies have the lowest drag. Hard bounds and penalties are essential.
 
-### 5. Zahlen aufräumen
+### 5. Trim Configuration Noise
 
-`simulation.json` und `solvers/*.json` nennen aus der Vorlage **jeden** Schlüssel mit
-dem Code-Standard als Wert. Das ist als Nachschlagewerk gedacht, nicht als
-Konfiguration: **lösche alles, was du nicht änderst.** Ein Schlüssel mit dem
-Standardwert ist Rauschen, das beim nächsten Framework-Update veraltet.
+The template `simulation.json` and `solvers/*.json` list **every** key with its code default as a reference. In a real project, **delete everything you do not override** — keeping default values is noise that goes stale on framework updates.
 
-Zwei Werte stehen bewusst nicht auf dem Standard: `MaxIterations = 5` und
-`VariantsPerIteration = 5` (statt 10 × 10), damit der erste Lauf überschaubar bleibt.
-Außerdem fehlt `MeshRefinementFactor`: Die Netzkalibrierung steht auf `"Auto"` und
-bestimmt ihn selbst. In 3D dauert sie Stunden; für einen schnellen Rauchtest („läuft die
-Kette PicoGK → STL → Gmsh → SU2 → Fitness durch?“) auf `"Manual"` stellen und den Faktor eintragen.
+Two settings intentionally differ from defaults in the templates: `MaxIterations = 5` and `VariantsPerIteration = 5` (instead of 10 × 10) to keep the first run small. `MeshRefinementFactor` is also omitted because `MeshCalibration` is set to `"Auto"`. In 3D, auto-calibration takes hours; for a quick smoke test ("does PicoGK → STL → Gmsh → SU2 → Fitness run end-to-end?"), set `Mode` to `"Manual"` and specify `MeshRefinementFactor`.
 
-Was welcher Schlüssel im Einzelnen bedeutet, steht im
-[**Bedienhandbuch** (`BEDIENHANDBUCH.md`, Abschnitt 4)](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).
+For details on every JSON key, see the legacy manual [`BEDIENHANDBUCH.md`](BEDIENHANDBUCH.md#4-alle-einstellungen-datei-für-datei).
 
-### 6. Starten
+### 6. Run
 
-Erst ohne Server gegenprüfen, dass die Konfigurationskette steht — das läuft auf
-Windows und braucht kein PicoGK:
+First verify the configuration chain locally (runs on Windows without PicoGK):
 
 ```powershell
 dotnet build FluidForge.sln
 dotnet run --project src\FluidForge --no-build -- Propeller --print-config
 ```
 
-Dann rechnen:
+Then run on the server:
 
 ```powershell
-.\scripts\sim.ps1 doctor -Project Propeller     # Werkzeuge und Pfade auf dem Server
-.\scripts\sim.ps1 run    -Project Propeller     # hochladen, bauen, in tmux starten
-.\scripts\sim.ps1 log                           # zusehen
-.\scripts\sim.ps1 fetch  -Project Propeller     # CSV und effective-config.json holen
+.\scripts\sim.ps1 doctor -Project Propeller     # check tools and paths on server
+.\scripts\sim.ps1 run    -Project Propeller     # deploy, build, start in tmux
+.\scripts\sim.ps1 log                           # tail live log
+.\scripts\sim.ps1 fetch  -Project Propeller     # fetch CSVs and effective-config.json
 ```
 
-Die Ergebnisse liegen unter `Ergebnisse/Propeller/`. Dort landet neben der CSV auch
-`effective-config.json` — die tatsächlich verwendete Konfiguration samt Herkunft je
-Schlüssel. Damit bleibt ein alter Lauf nachvollziehbar, egal was danach an den
-Dateien passiert.
+Results are stored under `results/Propeller/` (and fetched to `server-results/Propeller/`), including `effective-config.json` with the exact provenance of every key.
 
-> **Hinweis zu 3D-Qualität & Telemetrie:** Beim Start prüft `VoxelResolutionAdvisor` die Start-Voxelgröße (`BaseVoxelResolution`) im Realraum gegen die Oberflächen-Zielzellgröße (`AutoVoxelResolution` verfeinert bei Bedarf automatisch). `GmshCfdMesher` garantiert reale Windkanal-Mindestabstände (`>= 5 L / >= 15 L / >= 5 B/H`, `<= 0,3 %` Blockage) unabhängig vom `RubberBandScaler`, und sowohl `Simulation_Results.csv` als auch `Kalibrierung/calibration.csv` protokollieren Zellklassen sowie `Su2_CD_p`/`Su2_CD_v`.
+> **Note on 3D quality & telemetry:** At startup, `VoxelResolutionAdvisor` checks `BaseVoxelResolution` in real-world coordinates against the surface target cell size (`AutoVoxelResolution` refines automatically if enabled). `GmshCfdMesher` guarantees real-world wind-tunnel clearances (`>= 5 L` upstream, `>= 15 L` downstream, `>= 5 W/H` lateral, `<= 0.3%` blockage) independent of `RubberBandScaler`, and both `results.csv` and `calibration/calibration.csv` log cell-type counts as well as `Su2_CD_p` and `Su2_CD_v`.
 
 ---
 
-## Wenn etwas nicht auftaucht
+## Troubleshooting
 
-| Symptom | Ursache |
+| Symptom | Cause |
 |---|---|
-| `Unbekanntes Projekt 'X'. Vorhanden sind: …` | Der Ordnername weicht von `Name` in der Projektdefinition ab, oder der Name ist vertippt |
-| `Zum Ordner src/projects/X/ gibt es keine IProjectDefinition` | Die `XProject.cs` fehlt, ist nicht `public`, hat keinen parameterlosen Konstruktor — oder ihr `Name` stimmt nicht |
-| `Zur Definition XProject fehlt der Ordner …` | Umgekehrter Fall: Klasse da, Ordner nicht (oder anders geschrieben; **Linux unterscheidet Groß- und Kleinschreibung**) |
-| `'…' nennt einen Schlüssel, den der Typ … nicht kennt` | Tippfehler in einer JSON. Die Meldung nennt den nächstähnlichen gültigen Namen |
-| `[WARNUNG] Eine maschinenspezifische Datei ueberschreibt dieses Projekt` | Es liegt eine `*.local.json` herum. Sollstand ist, dass es keine gibt — Werte ins Projekt übernehmen und die Datei löschen |
-| Der Lauf bricht nach der ersten Variante mit fehlenden Metriken ab | `RequiredMetrics` nennt einen Namen, den weder der Generator (`AddMetric`) noch `ResultMetrics` in der `su2.json` liefert |
+| `Unknown project 'X'...` | Folder name differs from `Name` in the project definition, or typo |
+| `No IProjectDefinition found for folder src/projects/X/` | `XProject.cs` is missing, not `public`, lacks a parameterless constructor, or its `Name` does not match |
+| `Missing folder for definition XProject...` | Opposite case: class exists without a matching folder (or case mismatch — **Linux is case-sensitive**) |
+| Unknown key error on startup | Typo in a JSON file. The error message suggests the closest valid key name |
+| `[WARNING]` about machine-specific override | A `*.local.json` file is present. Move permanent settings into the project JSON and delete the local override |
+| Run aborts after the first variant with missing metrics | `RequiredMetrics` lists a name provided by neither `AddMetric` nor `ResultMetrics` in `su2.json` |
 
-Ein Projekt, das nicht startbar ist, zeigt `--list-projects` trotzdem an — unter
-„Ordner ohne Projektdefinition".
+A non-startable project still appears in `--list-projects` under folders without a project definition.

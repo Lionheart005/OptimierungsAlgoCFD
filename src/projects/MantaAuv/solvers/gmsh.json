@@ -1,31 +1,26 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  MantaAuv -- Gmsh-Vernetzer
+  //  MantaAuv -- Gmsh Mesher
   // ===================================================================
   //
-  // Was hier fehlt, kommt aus den Standardwerten in
-  // Solvers/Cfd/GmshMesherOptions.cs. Ein unbekannter Schluessel bricht den
-  // Start ab (TODO-22).
+  // Anything omitted here falls back to defaults in Solvers/Cfd/GmshMesherOptions.cs.
+  // An unknown key aborts startup.
   //
-  // Nicht hier, sondern in ../simulation.json: GmshCores und GmshPath.
+  // Configured in ../simulation.json instead: GmshCores and GmshPath.
   //
-  // Abweichungen fuer einen einzelnen Rechner gehoeren in gmsh.local.json
-  // daneben (gitignored). Sollstand ist, dass es keine gibt.
+  // Machine-specific overrides belong in gmsh.local.json (gitignored).
+  // Target state is that none exist.
   //
-  // Randbedingungen: Die SU2-Markernamen ("Farfield" fuer den Kanal, "Wall" fuer
-  // das Modell) werden im Vernetzungsskript vergeben: Solvers/Cfd/GmshCfdMesher.cs
+  // Boundary markers: SU2 marker names ("Farfield" for the tunnel, "Wall" for the model)
+  // are assigned by Solvers/Cfd/GmshCfdMesher.cs.
 
-  // --- Windkanal (Simulationsdomäne) in mm ---
-  // "Box" = Quader aus TunnelSize*, "Cylinder" = Zylinder mit Achse entlang X
-  // aus TunnelDiameter/TunnelLength/TunnelSegments. Beide sitzen auf TunnelCenter*.
-  // Empfehlung fuer Nachlauf-Erfassung: Den Tunnelmittelpunkt stromabwaerts verschieben
-  // (positives TunnelCenterX), sodass hinter dem Modell mindestens 10 Koerperlaengen (>= 10 L)
-  // Platz bleiben (z. B. bei 50 mm Modell: TunnelCenterX = 100 mm im 600 mm Tunnel ergibt
-  // 4 L vorn und 8 L hinten, oder bei TunnelSizeX = 800 mm und TunnelCenterX = 150 mm >= 10 L hinten).
+  // --- Wind tunnel (simulation domain) in mm ---
+  // "Box" = box from TunnelSize*, "Cylinder" = cylinder along X from TunnelDiameter/TunnelLength/TunnelSegments.
+  // Both are centered at TunnelCenter*. Shift TunnelCenterX downstream (+X) so at least 10 body lengths
+  // (>= 10 L) remain behind the model for wake development.
   "TunnelShape": "Box",
-  // 1200 mm lang, Modell (~100 mm) 300 mm hinter der Mitte: ~6 L davor, ~18 L dahinter fuer den Nachlauf
-  // (Faustregel >= 10 L; Servertest 06.11.2026).
+  // 1200 mm long, model (~100 mm) shifted 300 mm upstream of center: ~6 L ahead, ~18 L behind for wake.
   "TunnelSizeX": 1200.0,
   "TunnelSizeY": 300.0,
   "TunnelSizeZ": 300.0,
@@ -33,47 +28,46 @@
   "TunnelCenterY": 0.0,
   "TunnelCenterZ": 0.0,
 
-  // --- Zylinder-Windkanal (wirkt nur bei TunnelShape = "Cylinder") ---
+  // --- Cylindrical wind tunnel (only active when TunnelShape = "Cylinder") ---
   "TunnelDiameter": 300.0,
   "TunnelLength": 600.0,
   "TunnelSegments": 64,
 
-  // --- Physikalische Domaenengarantien (entkoppelt vom RubberBandScaler in realen mm) ---
-  // Unterschreitet die Tunnelbox diese Mindestabstaende oder ueberschreitet die Blockage das Limit,
-  // weitet GmshCfdMesher die Kanalgrenzen automatisch nach aussen auf (nie nach innen).
+  // --- Physical domain guarantees (decoupled from RubberBandScaler in real mm) ---
+  // If the tunnel box falls below these clearances or exceeds the blockage limit,
+  // GmshCfdMesher automatically expands the domain outward (never inward).
   "TunnelMinUpstreamFactor": 5.0,
   "TunnelMinDownstreamFactor": 15.0,
   "TunnelMinLateralFactor": 5.0,
   "TunnelMaxBlockagePercent": 0.3,
 
-  // --- Grenzschicht-Feld (Gmsh Threshold Field) ---
+  // --- Boundary layer distance field (Gmsh Threshold Field) ---
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
   "BoundaryLayerDistMax": 40.0,
 
-  // --- Wandschicht und Nachlauf (TODO-40, TODO-W6) ---
-  // "Prism": flache Prismenschichten an der Wand (y+ ~ 1,5, am Manta gemessen: SU2 konvergiert).
-  // TargetYPlus bestimmt hier die reale erste Zellhoehe y1 (unabhaengig vom Netzfaktor) und MUSS gleich wie in
-  // solvers/su2.json sein (dort bildet TargetYPlus x YPlusWarnFactor das harte P95-Limit fuer Solver & Auto-Kalibrierung).
-  // Schichtzahl und erste Zellhoehe folgen fuer alle Varianten derselben Regel (Regel aus Re_L und Grenzschichtdicke, ca. 14-16 Schichten statt frueher 21-24).
-  // Die Kehle zwischen Sensorkugel und Fluegel (Radius ~2,4 mm) faltete frueher die 2,2-mm-Schicht; seit 10.11.2026 glaettet das
-  // Programm die Wachstumsrichtungen, statt Schichten wegzulassen (Handbuch 4.4). BoundaryLayerCoverage 1.0 = Schicht deckt delta ab.
-  // "Threshold" (y+ ~ 30-70) bricht bei Auto-Kalibrierung mit Standard-Limit ab (nur fuer "Manual"-Vorablaeufe).
-  // "Hexa" kippt an den scharfen Voxelkanten der Fluegel Uebergangszellen und divergiert (siehe Handbuch 4.4).
+  // --- Wall layer & wake ---
+  // "Prism": flat prism layers at the wall (y+ ~ 1.5; converges reliably on MantaAuv).
+  // TargetYPlus sets the real-world first cell height y1 (independent of mesh factor) and MUST match
+  // solvers/su2.json (where TargetYPlus x YPlusWarnFactor is the hard P95 limit for solver & auto-calibration).
+  // Layer count and y1 follow a consistent rule across all variants (~14-16 layers).
+  // In tight fillets (e.g., sensor sphere to wing), the mesher smooths growth directions rather than dropping layers.
+  // "Threshold" (y+ ~ 30-70) fails auto-calibration under the default limit (use only with "Manual").
+  // "Hexa" produces skewed transition cells on sharp voxel edges and diverges.
   "BoundaryLayerMode": "Prism",
   "TargetYPlus": 1.5,
   "BoundaryLayerGrowthRate": 1.28,
   "WakeRefinement": true,
 
-  // Feine Detailbox direkt um und hinter dem Modell (Maße automatisch aus Körper-Bounding-Box: true/false)
+  // Fine detail box around and behind the model (dimensions derived automatically from body bounding box)
   "DetailBox": true,
   "DetailBoxLengthFactor": 1.5,
   "DetailBoxWidthFactor": 0.25,
   "DetailBoxMinHeightLengthFactor": 0.15,
   "DetailBoxCellSize": 0.0,
 
-  // --- Kruemmungsabhaengige Oberflaechenverfeinerung mit Untergrenze ---
+  // --- Curvature-based surface refinement with minimum size floor ---
   "MeshSizeFromCurvature": true,
   "CurvatureElements": 20,
   "CurvatureMinSizeFactor": 0.5

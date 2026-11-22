@@ -7,28 +7,27 @@ using FluidForge.Core;
 namespace FluidForge.Kernels.PicoGk
 {
     /// <summary>
-    /// PicoGK als Geometrie-Kernel.
+    /// PicoGK geometry kernel.
     ///
-    /// <c>Library.Go(voxelSize, body)</c> fährt die PicoGK-Laufzeitumgebung hoch
-    /// (Voxelfeld-Backend, Log-Datei) und ruft danach <c>body</c> auf. Ohne diesen
-    /// Aufruf darf keine <c>Lattice</c>/<c>Voxels</c>-Instanz erzeugt werden.
+    /// <c>Library.Go(voxelSize, body)</c> initializes the PicoGK runtime
+    /// (voxel backend, log file) and then invokes <c>body</c>. No <c>Lattice</c> or
+    /// <c>Voxels</c> instance may be created outside this call.
     ///
-    /// Diese Datei ist — neben <c>Projects/MantaAuv/</c> — die einzige Stelle
-    /// außerhalb des Projektcodes, die <c>using PicoGK</c> haben darf.
+    /// Apart from <c>Projects/MantaAuv/</c>, this file is the only location outside
+    /// project code that may import <c>using PicoGK</c>.
     /// </summary>
     public class PicoGkKernel : IGeometryKernel
     {
         public string Name => "PicoGK";
 
-        // Library.Go erwartet einen ThreadStart. Der ist signaturgleich zu Action;
-        // die Umwandlung bleibt hier, damit der Framework-Kern mit dem neutralen
-        // Action-Delegaten auskommt.
+        // Library.Go expects a ThreadStart, which is signature-compatible with Action;
+        // the conversion stays here so the framework core only depends on the neutral
+        // Action delegate.
         //
-        // bEndAppWithTask: true -- ohne den Schalter hält Library.Go das Programm offen, bis
-        // jemand das Viewer-Fenster schließt. Unter xvfb-run tut das niemand: jeder PicoGK-Lauf
-        // lief nach seiner letzten Ausgabe endlos weiter (kein "Ende:" im Log, run-info.json
-        // blieb auf "laeuft"), und der unsichtbare Viewer rechnete per Software-OpenGL auf
-        // ~10 Kernen weiter (Servertest 06.11.2026).
+        // bEndAppWithTask: true -- without this flag, Library.Go keeps the process open
+        // until the viewer window is closed. Under xvfb-run nobody closes it, causing
+        // headless runs to hang indefinitely after task completion while software OpenGL
+        // keeps spinning in the background.
         public void RunHosted(float voxelResolution, Action body)
             => Library.Go(voxelResolution, new ThreadStart(body.Invoke), bEndAppWithTask: true);
     }

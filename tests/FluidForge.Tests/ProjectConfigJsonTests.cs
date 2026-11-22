@@ -39,7 +39,7 @@ namespace FluidForge.Tests
                     .Value.ToProjectConfig();
 
                 Assert.Equal(77.0f, loaded.BaseParameters["Length"]);
-                // Nicht genannte Werte bleiben auf der Code-Vorgabe
+                // Unspecified values remain at the code default
                 Assert.Equal(defaults.BaseParameters["Width"], loaded.BaseParameters["Width"]);
                 Assert.Equal(defaults.ParameterBounds["Length"], loaded.ParameterBounds["Length"]);
                 Assert.Equal(defaults.DimensionalParameters, loaded.DimensionalParameters);

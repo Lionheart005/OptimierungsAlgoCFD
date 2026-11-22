@@ -11,12 +11,12 @@ using System.Text.Json.Nodes;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Konfigurations- und Konsistenzprüfungen sowie Fingerabdruck-Berechnung für <see cref="MeshCalibration"/>.
+    /// Configuration and consistency checks as well as fingerprint computation for <see cref="MeshCalibration"/>.
     /// </summary>
     internal static class MeshCalibrationValidation
     {
         /// <summary>
-        /// Regel 1 (Nachvollziehbarkeit): Validiert die Konfiguration vor dem Lauf.
+        /// Rule 1 (traceability): validates the calibration configuration prior to running.
         /// </summary>
         public static void ValidateConfig(SimulationConfig config, ConfigLoadReport? simulationReport, string projectName)
         {
@@ -26,8 +26,8 @@ namespace FluidForge.Core
                 && !mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    $"[KONFIGURATION] Unbekannter MeshCalibration.Mode '{config.MeshCalibration.Mode}'. "
-                    + "Gültig sind 'Manual' und 'Auto'.");
+                    $"{OutputConventions.ConfigTag} Unknown MeshCalibration.Mode '{config.MeshCalibration.Mode}'. "
+                    + "Valid values are 'Manual' and 'Auto'.");
             }
 
             if (mode.Equals("Auto", StringComparison.OrdinalIgnoreCase))
@@ -35,29 +35,28 @@ namespace FluidForge.Core
                 if (simulationReport != null && simulationReport.Origins.TryGetValue("MeshRefinementFactor", out string? originFile))
                 {
                     throw new InvalidOperationException(
-                        $"[KONFIGURATION] Im Auto-Modus wird der Netzfaktor kalibriert. Bitte 'MeshRefinementFactor' "
-                        + $"aus {originFile} entfernen – einzutragen ist nur MeshCalibration.Tolerance.");
+                        $"{OutputConventions.ConfigTag} In Auto mode, the mesh factor is calibrated automatically. Please remove 'MeshRefinementFactor' "
+                        + $"from {originFile} — only MeshCalibration.Tolerance should be specified.");
                 }
             }
         }
 
         /// <summary>
-        /// Validiert, ob das Projekt die 2D-Vorkalibrierung unterstützt (TODO-48).
-        /// Besitzt das Projekt keinen repräsentativen 2D-Querschnitt (IHasRepresentativeSection),
-        /// bricht die Methode mit einer aussagekräftigen Ausnahme ab.
+        /// Validates whether the project supports 2D precalibration (TODO-48).
+        /// Throws an informative exception if the project has no representative 2D cross-section (<see cref="IHasRepresentativeSection"/>).
         /// </summary>
         public static void ValidatePrecalibrationSupport(SimulationConfig config, IProjectDefinition definition)
         {
             if (config.MeshCalibration.Use2DPrecalibration && definition is not IHasRepresentativeSection)
             {
                 throw new InvalidOperationException(
-                    $"[KALIBRIERUNG] 'Use2DPrecalibration' ist in simulation.json aktiviert, aber das Projekt '{definition.Name}' besitzt keinen repräsentativen 2D-Querschnitt (IHasRepresentativeSection). Für 3D-Körper ohne einheitliches Profil (wie MantaAuv) ist eine 2D-Vorkalibrierung physikalisch nicht aussagekräftig – bitte 'Use2DPrecalibration': false setzen.");
+                    $"{OutputConventions.CalibrationTag} 'Use2DPrecalibration' is enabled in simulation.json, but project '{definition.Name}' has no representative 2D cross-section (IHasRepresentativeSection). For 3D bodies without a uniform profile (such as MantaAuv), 2D precalibration is not physically meaningful — please set 'Use2DPrecalibration': false.");
             }
         }
 
         /// <summary>
-        /// Ermittelt die y+-Akzeptanzgrenzen (Standard- und Grobstufen-Limit) aus <see cref="ICalibrationSolverOptions"/>
-        /// (oder generisch aus <c>solvers/*.json</c>), konsistent zur Solver-Prüfung (<c>TargetYPlus × YPlusWarnFactor</c>).
+        /// Resolves the y+ acceptance limits (standard and coarse-level limit) from <see cref="ICalibrationSolverOptions"/>
+        /// (or generically from <c>solvers/*.json</c>), consistent with the solver check (<c>TargetYPlus * YPlusWarnFactor</c>).
         /// </summary>
         public static (float StandardLimit, float CoarseStageLimit) ResolveYPlusLimits(ProjectContext context)
         {
@@ -122,7 +121,7 @@ namespace FluidForge.Core
             float effectiveWarnFactor = warnFactor > 0f && float.IsFinite(warnFactor) ? warnFactor : 3.0f;
             float standardLimit = effectiveTarget * effectiveWarnFactor;
 
-            // Grobe Stufe 1 (Faktor 2.00) darf wie bisher leicht über dem Standard-Limit liegen (mind. +0.5 bzw. +15 %).
+            // Coarse level 1 (factor 2.00) is allowed slightly above the standard limit (at least +0.5 or +15 %).
             float coarseLimit = MathF.Round(MathF.Max(standardLimit + 0.5f, standardLimit * 1.15f), 2);
             return (standardLimit, coarseLimit);
         }
@@ -149,10 +148,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prüft beim Start die Konsistenz zwischen Vernetzer- und Solver-Optionen sowie der
-        /// automatischen Netzkalibrierung: warnt bei abweichendem <c>TargetYPlus</c> zwischen Vernetzer und Solver
-        /// und verhindert einen stundenlangen Fehlstart, wenn <c>BoundaryLayerMode = "Threshold"</c> (y+ ≈ 30–70)
-        /// mit aktiver Auto-Kalibrierung unter niedrigem y+-Limit kombiniert wird.
+        /// Checks startup consistency between mesher and solver options as well as automatic mesh calibration:
+        /// warns if <c>TargetYPlus</c> differs between mesher and solver, and prevents multi-hour doomed runs
+        /// when <c>BoundaryLayerMode = "Threshold"</c> (y+ ≈ 30-70) is combined with active auto-calibration
+        /// under a low y+ limit.
         /// </summary>
         public static void ValidateYPlusConsistency(
             ProjectContext context,
@@ -175,10 +174,10 @@ namespace FluidForge.Core
             {
                 string mismatchMsg =
                     $"solvers/gmsh.json (TargetYPlus = {mesherTarget.Value.ToString("0.##", CultureInfo.InvariantCulture)}) "
-                    + $"und solvers/su2.json (TargetYPlus = {solver.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) weichen voneinander ab. "
-                    + "gmsh.json erzeugt die reale erste Zellhöhe y1, su2.json × YPlusWarnFactor bildet das harte Limit in Solver und Auto-Kalibrierung – bitte angleichen.";
+                    + $"and solvers/su2.json (TargetYPlus = {solver.TargetYPlus.ToString("0.##", CultureInfo.InvariantCulture)}) differ. "
+                    + "gmsh.json sets the actual first cell height y1, while su2.json * YPlusWarnFactor defines the hard limit in solver and auto-calibration — please align them.";
                 if (warningWriter != null)
-                    warningWriter.WriteLine($"[WARNUNG] {mismatchMsg}");
+                    warningWriter.WriteLine($"{OutputConventions.WarningTag} {mismatchMsg}");
                 else
                     SimulationLog.Warning(mismatchMsg);
             }
@@ -194,31 +193,31 @@ namespace FluidForge.Core
                 if (limit < 30f)
                 {
                     throw new InvalidOperationException(
-                        $"[KONFIGURATION] BoundaryLayerMode 'Threshold' in solvers/gmsh.json erzeugt typischerweise y+ ≈ 30–70, "
-                        + $"die automatische Netzkalibrierung prüft aber hart gegen TargetYPlus × YPlusWarnFactor = {limit.ToString("0.00", CultureInfo.InvariantCulture)} "
-                        + "und würde auf der Referenzstufe abbrechen (feinere Netze ändern an y1 nichts). "
-                        + "Für belastbare Läufe 'BoundaryLayerMode': \"Prism\" nutzen – oder für grobe Vorabläufe 'MeshCalibration.Mode': \"Manual\" "
-                        + "mit festem 'MeshRefinementFactor' setzen bzw. 'YPlusWarnFactor' in solvers/su2.json entsprechend anheben.");
+                        $"{OutputConventions.ConfigTag} BoundaryLayerMode 'Threshold' in solvers/gmsh.json typically produces y+ ≈ 30-70, "
+                        + $"but automatic mesh calibration enforces a hard limit of TargetYPlus * YPlusWarnFactor = {limit.ToString("0.00", CultureInfo.InvariantCulture)} "
+                        + "and would abort on the reference level (finer meshes do not change y1). "
+                        + "Use 'BoundaryLayerMode': \"Prism\" for production runs — or for coarse preliminary runs set 'MeshCalibration.Mode': \"Manual\" "
+                        + "with a fixed 'MeshRefinementFactor', or raise 'YPlusWarnFactor' in solvers/su2.json accordingly.");
                 }
             }
         }
 
         /// <summary>
-        /// Berechnet einen SHA256-Fingerabdruck über Startgeometrie (BaseParameters) und alle Solver-/Mesher-JSONs
-        /// unter <c>solvers/*.json</c> inkl. <c>*.local.json</c> (Regel 6).
+        /// Computes a SHA256 fingerprint over the baseline geometry (BaseParameters) and all solver/mesher
+        /// JSON files under <c>solvers/*.json</c> including <c>*.local.json</c> (Rule 6).
         /// </summary>
         public static string ComputeFingerprint(ProjectContext context)
         {
             var sb = new StringBuilder();
             sb.Append("mesher:").Append(MeshCalibration.MesherSchemeVersion).Append(';');
 
-            // 1. Sortierte BaseParameters
+            // 1. Sorted BaseParameters
             foreach (var kvp in context.Project.BaseParameters.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
                 sb.Append($"{kvp.Key}={kvp.Value.ToString("R", CultureInfo.InvariantCulture)};");
             }
 
-            // 2. Alle *.json-Dateien unter solvers/ (inkl. *.local.json), deterministisch alphabetisch sortiert
+            // 2. All *.json files under solvers/ (including *.local.json), deterministically sorted alphabetically
             if (context.ProjectDirectory != null)
             {
                 string solversDir = Path.Combine(context.ProjectDirectory, "solvers");
@@ -239,7 +238,7 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prüft im manuellen Modus, ob eine frühere Kalibrierung vorliegt und gibt Hinweise aus (Regeln 5 &amp; 6).
+        /// In Manual mode, checks whether a prior calibration exists and prints hints (Rules 5 &amp; 6).
         /// </summary>
         public static void CheckManualCalibrationHints(ProjectContext context, string workingDirectory, TextWriter? writer = null)
         {
@@ -258,23 +257,23 @@ namespace FluidForge.Core
 
                 if (!string.IsNullOrEmpty(storedFingerprint) && !storedFingerprint.Equals(currentFingerprint, StringComparison.OrdinalIgnoreCase))
                 {
-                    targetWriter.WriteLine("[HINWEIS] Kalibrierung veraltet (Konfiguration oder Startgeometrie hat sich seitdem geändert).");
+                    targetWriter.WriteLine("[HINT] Calibration is stale (configuration or baseline geometry has changed since then).");
                 }
 
                 if (node["SelectedFactor"] != null)
                 {
                     float selectedFactor = node["SelectedFactor"]!.GetValue<float>();
-                    string timestamp = node["Timestamp"]?.GetValue<string>() ?? "unbekannt";
+                    string timestamp = node["Timestamp"]?.GetValue<string>() ?? "unknown";
 
                     if (Math.Abs(selectedFactor - context.Simulation.MeshRefinementFactor) > 0.001f)
                     {
-                        targetWriter.WriteLine($"[HINWEIS] Letzte Kalibrierung ({timestamp}) empfahl {selectedFactor.ToString("0.00", CultureInfo.InvariantCulture)}, eingetragen ist {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)}.");
+                        targetWriter.WriteLine($"[HINT] Last calibration ({timestamp}) recommended {selectedFactor.ToString("0.00", CultureInfo.InvariantCulture)}, configured value is {context.Simulation.MeshRefinementFactor.ToString("0.00", CultureInfo.InvariantCulture)}.");
                     }
                 }
             }
             catch
             {
-                // Unlesbare Vorgängerkalibrierung wird ignoriert
+                // Unreadable prior calibration is ignored
             }
         }
     }

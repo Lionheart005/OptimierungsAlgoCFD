@@ -12,8 +12,8 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// Tests für AP-2 (ScaleFactor-Konsistenz in <see cref="GmshCfdMesher"/>) und
-    /// AP-3 (physikalischer Windkanal entkoppelt von <c>scaleFactor</c> + Mindestabstände &amp; Blockage).
+    /// Tests for AP-2 (ScaleFactor consistency in <see cref="GmshCfdMesher"/>) and
+    /// AP-3 (physical wind tunnel decoupled from <c>scaleFactor</c> + minimum clearances &amp; blockage).
     /// </summary>
     public class ScaleFactorAndTunnelGuaranteeTests : IDisposable
     {
@@ -34,7 +34,7 @@ namespace FluidForge.Tests
         }
 
         // ===================================================================
-        //  AP-2: ScaleFactor-Konsistenz in .geo-Skripten (Prism, Hexa, Threshold)
+        //  AP-2: ScaleFactor consistency in .geo scripts (Prism, Hexa, Threshold)
         // ===================================================================
 
         [Theory]
@@ -57,7 +57,7 @@ namespace FluidForge.Tests
             string runDir = Path.Combine(_dir, $"{mode}_{scaleFactor.ToString(CultureInfo.InvariantCulture)}");
             Directory.CreateDirectory(runDir);
 
-            // Realer Körper 120 x 40 x 20 mm, in den PicoGK-Arbeitsraum mit scaleFactor skaliert
+            // Real body 120 x 40 x 20 mm, scaled into PicoGK workspace with scaleFactor
             string modelPath = Path.Combine(runDir, "model.stl");
             IReadOnlyList<StlTriangle> realBody = TunnelGeometry.CreateBox(new Vector3(120f, 40f, 20f), Vector3.Zero);
             IReadOnlyList<StlTriangle> picoBody = ScaleTriangles(realBody, scaleFactor);
@@ -86,7 +86,7 @@ namespace FluidForge.Tests
 
             string[] geoLines = File.ReadAllLines(geoPath);
 
-            // Real erwartete Zielwerte (mm * refinementFactor für Zellgrößen, mm für Distanzen)
+            // Expected real-world target values (mm * refinementFactor for cell sizes, mm for distances)
             float expectedSizeMax = 120.0f * refinementFactor;
             float expectedDistMin = 3.0f;
             float expectedDistMax = 40.0f;
@@ -110,7 +110,7 @@ namespace FluidForge.Tests
                 Assert.Equal(expectedSurface, ParseGeoValue(wallLines, "Mesh.MeshSizeMax") / scaleFactor, 3);
                 Assert.Equal(expectedSurface * 0.5f, ParseGeoValue(wallLines, "Mesh.MeshSizeMin") / scaleFactor, 3);
 
-                // Extrude-Schichthöhen bleiben ebenfalls invariant in realen mm
+                // Extrude layer heights also remain invariant in real mm
                 string extrudeLine = geoLines.Single(l => l.StartsWith("Extrude {"));
                 float firstLayerGeo = ParseFirstExtrudeHeight(extrudeLine);
                 BoundaryLayerSpec refSpec = BoundaryLayerCalculator.Calculate(
@@ -129,7 +129,7 @@ namespace FluidForge.Tests
             Assert.Equal(expectedSizeMax, ParseGeoValue(geoLines, "Field[5].VOut") / scaleFactor, 2);
             Assert.Equal(expectedDetailThickness, ParseGeoValue(geoLines, "Field[5].Thickness") / scaleFactor, 3);
 
-            // Rückskalierung auf echte Meter stimmt exakt
+            // Rescaling back to real meters matches exactly
             string expectedScaleString = scaleFactor.ToString(CultureInfo.InvariantCulture);
             Assert.Contains(geoLines, l => l.Trim() == $"Mesh.ScalingFactor = (1.0 / {expectedScaleString}) * 0.001;");
         }
@@ -139,8 +139,8 @@ namespace FluidForge.Tests
         [InlineData("Threshold")]
         public void WriteGeoScript_AutomaticFallbacks_Do_Not_Double_Scale(string mode)
         {
-            // SurfaceCellSize = 0 (Fallback BoundaryLayerSizeMin), WakeCellSize = 0 (lenX/6), DetailBoxCellSize = 0 (2.5 * surfaceSize)
-            // plus kleiner Zellwert (< 0.2), sodass der Thickness-Floor (1.0f * safeScale) greift.
+            // SurfaceCellSize = 0 (fallback BoundaryLayerSizeMin), WakeCellSize = 0 (lenX/6), DetailBoxCellSize = 0 (2.5 * surfaceSize)
+            // plus small cell value (< 0.2), so the thickness floor (1.0f * safeScale) triggers.
             var options = new GmshMesherOptions
             {
                 BoundaryLayerMode = mode,
@@ -185,12 +185,12 @@ namespace FluidForge.Tests
             Assert.Equal(1.0f, ParseGeoValue(lines1, "Field[5].Thickness"), 4);
             Assert.Equal(1.0f, ParseGeoValue(linesScaled, "Field[5].Thickness") / scale, 4);
 
-            // WakeCellSize == 0 verwendet (lenX / 6.0) * factor im PicoGK-Raum (kein Doppel-scale)
+            // WakeCellSize == 0 uses (lenX / 6.0) * factor in PicoGK space (no double-scale)
             Assert.Contains(linesScaled, l => l.Trim() == "Field[3].VIn = (lenX / 6.0) * 0.5;");
         }
 
         // ===================================================================
-        //  AP-3: StlWriter.ReadTriangles Round-Trip & Robustheit
+        //  AP-3: StlWriter.ReadTriangles Round-Trip & Robustness
         // ===================================================================
 
         [Fact]
@@ -209,23 +209,23 @@ namespace FluidForge.Tests
                 Assert.Equal(expected[i].C, actual[i].C);
             }
 
-            // Leeres STL -> leere Liste
+            // Empty STL -> empty list
             string emptyPath = Path.Combine(_dir, "empty.stl");
             StlWriter.WriteBinary(emptyPath, Array.Empty<StlTriangle>());
             Assert.Empty(StlWriter.ReadTriangles(emptyPath));
 
-            // Beschädigte/abgeschnittene Datei -> leere Liste
+            // Corrupt/truncated file -> empty list
             string corruptPath = Path.Combine(_dir, "corrupt.stl");
             File.WriteAllBytes(corruptPath, new byte[40]);
             Assert.Empty(StlWriter.ReadTriangles(corruptPath));
 
-            // Null/leer oder fehlende Datei -> gleiche Exceptions wie ReadBounds
+            // Null/empty or missing file -> same exceptions as ReadBounds
             Assert.Throws<ArgumentException>(() => StlWriter.ReadTriangles(""));
             Assert.Throws<FileNotFoundException>(() => StlWriter.ReadTriangles(Path.Combine(_dir, "missing.stl")));
         }
 
         // ===================================================================
-        //  AP-3: Physikalischer Windkanal entkoppelt von scaleFactor + Garantien
+        //  AP-3: Physical wind tunnel decoupled from scaleFactor + guarantees
         // ===================================================================
 
         [Theory]
@@ -244,7 +244,7 @@ namespace FluidForge.Tests
             string runDir = Path.Combine(_dir, $"tunnel_{shape}_{scaleFactor.ToString(CultureInfo.InvariantCulture)}");
             Directory.CreateDirectory(runDir);
 
-            // Manta-ähnlicher Körper in realen mm: L=118 mm, B=96 mm, H=24 mm, zentriert um (0,0,0)
+            // Manta-like body in real mm: L=118 mm, W=96 mm, H=24 mm, centered at (0,0,0)
             Vector3 realMin = new Vector3(-59f, -48f, -12f);
             Vector3 realMax = new Vector3(59f, 48f, 12f);
             float realFrontalMm2 = 1450.0f;
@@ -283,7 +283,7 @@ namespace FluidForge.Tests
             Assert.Equal(refTunnelReal.Max.Y, recoveredMax.Y, 2);
             Assert.Equal(refTunnelReal.Max.Z, recoveredMax.Z, 2);
 
-            // Telemetrie stimmt unabhängig vom scaleFactor überein
+            // Telemetry matches regardless of scaleFactor
             Assert.Equal(refMesher.LastMeshMetrics["TunnelBlockagePercent"], scaledMesher.LastMeshMetrics["TunnelBlockagePercent"], 4);
             Assert.Equal(refMesher.LastMeshMetrics["TunnelLengthMm"], scaledMesher.LastMeshMetrics["TunnelLengthMm"], 2);
             Assert.Equal(refMesher.LastMeshMetrics["TunnelWidthMm"], scaledMesher.LastMeshMetrics["TunnelWidthMm"], 2);
@@ -297,7 +297,7 @@ namespace FluidForge.Tests
         [InlineData("Cylinder")]
         public void EnsureTunnel_AutoExpands_To_Guarantee_Clearances_And_MaxBlockage(string shape)
         {
-            // Absichtlich viel zu kleiner konfigurierter Kanal: 200 x 80 x 80 mm
+            // Intentionally much too small configured tunnel: 200 x 80 x 80 mm
             var options = new GmshMesherOptions
             {
                 TunnelShape = shape,
@@ -316,7 +316,7 @@ namespace FluidForge.Tests
                 TunnelMaxBlockagePercent = 0.3f,
             };
 
-            // Asymmetrisch verschobener Körper: L=100, B=60, H=20
+            // Asymmetrically shifted body: L=100, W=60, H=20
             Vector3 realMin = new Vector3(-20f, -30f, -10f);
             Vector3 realMax = new Vector3(80f, 30f, 10f);
             float scale = 0.5f;
@@ -333,13 +333,13 @@ namespace FluidForge.Tests
             float modelB = 60f;
             float modelH = 20f;
 
-            // >= 5 L stromauf, >= 15 L stromab
+            // >= 5 L upstream, >= 15 L downstream
             float upstreamClearanceL = (realMin.X - tunnelMin.X) / modelL;
             float downstreamClearanceL = (tunnelMax.X - realMax.X) / modelL;
             Assert.True(upstreamClearanceL >= 5.0f - 1e-4f, $"Upstream {upstreamClearanceL}L < 5L");
             Assert.True(downstreamClearanceL >= 15.0f - 1e-4f, $"Downstream {downstreamClearanceL}L < 15L");
 
-            // >= 5 B in ±Y, >= 5 H in ±Z (auch bei Cylinder mindestens für alle Box-Ecken)
+            // >= 5 W in ±Y, >= 5 H in ±Z (also for Cylinder at least for all box corners)
             float clearMinusY = (realMin.Y - tunnelMin.Y) / modelB;
             float clearPlusY = (tunnelMax.Y - realMax.Y) / modelB;
             float clearMinusZ = (realMin.Z - tunnelMin.Z) / modelH;
@@ -351,7 +351,7 @@ namespace FluidForge.Tests
 
             if (shape == "Cylinder")
             {
-                // Jede der 4 Ecken des erforderlichen Lateral-Rechtecks liegt innerhalb des Zylinderradius
+                // Each of the 4 corners of the required lateral rectangle lies within the cylinder radius
                 float radius = mesher.LastMeshMetrics["TunnelWidthMm"] * 0.5f;
                 float reqMinY = realMin.Y - 5.0f * modelB;
                 float reqMaxY = realMax.Y + 5.0f * modelB;
@@ -361,7 +361,7 @@ namespace FluidForge.Tests
                 foreach (float z in new[] { reqMinZ, reqMaxZ })
                 {
                     float dist = MathF.Sqrt(y * y + z * z);
-                    Assert.True(dist <= radius + 1e-3f, $"Ecke ({y}, {z}) Abstand {dist} > Radius {radius}");
+                    Assert.True(dist <= radius + 1e-3f, $"Corner ({y}, {z}) distance {dist} > radius {radius}");
                 }
             }
 
@@ -371,15 +371,15 @@ namespace FluidForge.Tests
             Assert.True(mesher.LastMeshMetrics["TunnelUpstreamL"] >= 5.0f - 1e-4f);
             Assert.True(mesher.LastMeshMetrics["TunnelDownstreamL"] >= 15.0f - 1e-4f);
 
-            // Alle Tunnel-Telemetrie-Schlüssel zählen als Netz-Metadaten (nicht als Geometrie-Kennwert)
+            // All tunnel telemetry keys count as mesh metadata (not as geometry metrics)
             foreach (string key in new[]
             {
                 "TunnelBlockagePercent", "TunnelLengthMm", "TunnelWidthMm",
                 "TunnelHeightMm", "TunnelUpstreamL", "TunnelDownstreamL"
             })
             {
-                Assert.True(mesher.LastMeshMetrics.ContainsKey(key), $"Fehlender Key {key}");
-                Assert.True(ModelRecord.IsMeshMetadataKey(key), $"{key} muss IsMeshMetadataKey=true liefern.");
+                Assert.True(mesher.LastMeshMetrics.ContainsKey(key), $"Missing key {key}");
+                Assert.True(ModelRecord.IsMeshMetadataKey(key), $"{key} must return IsMeshMetadataKey=true.");
             }
         }
 
@@ -418,7 +418,7 @@ namespace FluidForge.Tests
             }
 
             string logOutput = sw.ToString();
-            Assert.Contains("5.0L vor / 15.0L nach", logOutput);
+            Assert.Contains("5.0L upstream / 15.0L downstream", logOutput);
         }
 
         [Theory]
@@ -443,7 +443,7 @@ namespace FluidForge.Tests
                 TunnelMaxBlockagePercent = 0.3f,
             };
 
-            // Kleines Modell (20 x 10 x 5 mm): Blockage < 0.001 %, Abstände > 100 L -> keine Aufweitung, keine Verkleinerung
+            // Small model (20 x 10 x 5 mm): blockage < 0.001 %, clearances > 100 L -> no expansion, no shrinking
             var modelBounds = new MeshBounds(new Vector3(-10f, -5f, -2.5f), new Vector3(10f, 5f, 2.5f));
             var mesher = new GmshCfdMesher(options);
 
@@ -472,11 +472,11 @@ namespace FluidForge.Tests
                 TunnelMinUpstreamFactor = 5.0f,
                 TunnelMinDownstreamFactor = 15.0f,
                 TunnelMinLateralFactor = 5.0f,
-                TunnelMaxBlockagePercent = 0.0f // deaktiviert
+                TunnelMaxBlockagePercent = 0.0f // disabled
             };
 
-            // Modell 50 x 40 x 40 mm: Lateral 5*40=200 je Seite (+40 = 440 mm), aber ohne Blockage-Aufweitung bliebe es bei 440x440 mm
-            // (Blockage = 1600 / 193600 = 0.826 % > 0.3 %, wird wegen <= 0 nicht aufgeweitet)
+            // Model 50 x 40 x 40 mm: lateral 5*40=200 per side (+40 = 440 mm), without blockage expansion it stays 440x440 mm
+            // (blockage = 1600 / 193600 = 0.826 % > 0.3 %, not expanded because <= 0)
             var modelBounds = new MeshBounds(new Vector3(-25f, -20f, -20f), new Vector3(25f, 20f, 20f));
             var mesher = new GmshCfdMesher(options);
             TunnelSpec spec = mesher.ResolveEffectiveTunnel(modelBounds, 1.0f);
@@ -494,7 +494,7 @@ namespace FluidForge.Tests
             var mesher = new GmshCfdMesher(options);
             var modelBounds = new MeshBounds(new Vector3(-30f, -20f, -10f), new Vector3(30f, 20f, 10f));
 
-            // scale != 1.0 -> Hash-Dateiname statt Static_Windtunnel.stl
+            // scale != 1.0 -> hashed filename instead of Static_Windtunnel.stl
             string first = mesher.EnsureTunnel(_dir, modelBounds, 0.5f, 1200f);
             Assert.NotEqual("Static_Windtunnel.stl", Path.GetFileName(first));
             Assert.StartsWith("Static_Windtunnel_", Path.GetFileName(first));
@@ -504,7 +504,7 @@ namespace FluidForge.Tests
             Assert.Equal(first, second);
             Assert.Equal(firstWrite, File.GetLastWriteTimeUtc(second));
 
-            // Anderer scaleFactor erzeugt eigenen Hash-Dateinamen und überschreibt den ersten nicht
+            // Different scaleFactor produces its own hashed filename and does not overwrite the first
             string otherScale = mesher.EnsureTunnel(_dir, modelBounds, 0.35f, 1200f);
             Assert.NotEqual(first, otherScale);
             Assert.True(File.Exists(first));
@@ -528,15 +528,15 @@ namespace FluidForge.Tests
             var config = SimulationConfig.CreateDefault();
             config.GmshPath = "non_existent_gmsh_binary_12345";
 
-            // Reales Modell 100 x 50 x 30 mm, skaliert mit 0.5 -> 50 x 25 x 15 im STL
+            // Real model 100 x 50 x 30 mm, scaled by 0.5 -> 50 x 25 x 15 in STL
             float scale = 0.5f;
             string stlPath = Path.Combine(_dir, "scaled_body.stl");
             StlWriter.WriteBinary(stlPath, TunnelGeometry.CreateBox(new Vector3(50f, 25f, 15f), Vector3.Zero));
 
             var request = new MeshRequest(stlPath, 1, 1, config, scale, _dir, RefinementFactor: 1.0f);
 
-            // GenerateMesh schlägt erst beim Aufruf der nicht existierenden Gmsh-Binary fehl;
-            // davor wurden Tunnel-STL (mit Blockage <= 0.3 % & Abständen) und .geo geschrieben.
+            // GenerateMesh only fails when invoking the non-existent Gmsh binary;
+            // before that, tunnel STL (with blockage <= 0.3 % & clearances) and .geo were written.
             Assert.ThrowsAny<Exception>(() => mesher.GenerateMesh(request));
 
             Assert.True(mesher.LastMeshMetrics["TunnelBlockagePercent"] <= 0.3f);
@@ -552,7 +552,7 @@ namespace FluidForge.Tests
             Assert.Equal(2.0f, ParseGeoValue(geoLines, "Field[5].VIn") / scale, 3);
         }
 
-        // --- Hilfsfunktionen ---
+        // --- Helper functions ---
 
         private static IReadOnlyList<StlTriangle> ScaleTriangles(IReadOnlyList<StlTriangle> tris, float scale)
             => tris.Select(t => new StlTriangle(t.A * scale, t.B * scale, t.C * scale)).ToList();
@@ -568,7 +568,7 @@ namespace FluidForge.Tests
         {
             // Format: Extrude { Surface{wall[]}; Layers{ {1, 1, ...}, {h1, h2, ...} }; ... }
             Match m = Regex.Match(extrudeLine, @"Layers\{\s*\{[^}]+\},\s*\{([^,}]+)");
-            Assert.True(m.Success, $"Konnte erste Schichthöhe nicht aus Extrude-Zeile lesen: {extrudeLine}");
+            Assert.True(m.Success, $"Could not read first layer height from Extrude line: {extrudeLine}");
             return float.Parse(m.Groups[1].Value.Trim(), CultureInfo.InvariantCulture);
         }
     }

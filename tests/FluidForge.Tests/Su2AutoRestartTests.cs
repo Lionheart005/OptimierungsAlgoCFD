@@ -120,7 +120,7 @@ namespace FluidForge.Tests
 
                         if (observedConfigs.Count == 1)
                         {
-                            // Früher Cauchy-Stopp bei Iteration 200 mit starker Drift in CD
+                            // Early Cauchy stop at iteration 200 with strong drift in CD
                             File.WriteAllLines(
                                 Path.Combine(wd, "history.csv"),
                                 BuildHistoryLines(200, i => 0.050 - 0.0001 * i));
@@ -128,7 +128,7 @@ namespace FluidForge.Tests
                         }
                         else
                         {
-                            // Restart-Block zählt ab 0 neu und konvergiert stabil auf 0.030
+                            // Restart block restarts iteration count from 0 and converges stably to 0.030
                             File.WriteAllLines(
                                 Path.Combine(wd, "history.csv"),
                                 BuildHistoryLines(250, _ => 0.030, startIter: 0));
@@ -152,20 +152,20 @@ namespace FluidForge.Tests
 
                 Assert.Equal(2, observedConfigs.Count);
 
-                // Block 0: Ausgangsconfig ohne RESTART_SOL
+                // Block 0: initial config without RESTART_SOL
                 Assert.Contains("ITER= 1000", observedConfigs[0]);
                 Assert.Contains("CONV_CAUCHY_EPS= 1e-5", observedConfigs[0]);
                 Assert.Contains("CONV_STARTITER= 100", observedConfigs[0]);
                 Assert.DoesNotContain(observedConfigs[0], l => l.StartsWith("RESTART_SOL=", StringComparison.Ordinal));
 
-                // Block 1: Restbudget 800, verschärfte Cauchy-Toleranz 1e-6, CONV_STARTITER= 80, RESTART_SOL= YES
+                // Block 1: remaining budget 800, tightened Cauchy tolerance 1e-6, CONV_STARTITER= 80, RESTART_SOL= YES
                 Assert.Contains("ITER= 800", observedConfigs[1]);
                 Assert.Contains("CONV_CAUCHY_EPS= 1e-6", observedConfigs[1]);
                 Assert.Contains("CONV_STARTITER= 80", observedConfigs[1]);
                 Assert.Contains("RESTART_SOL= YES", observedConfigs[1]);
                 Assert.Contains("SOLUTION_FILENAME= restart_flow.dat", observedConfigs[1]);
 
-                // Kombinierte history.csv hat 450 Datenzeilen mit monotoner Iteration 0..449
+                // Combined history.csv has 450 data rows with monotonic iteration 0..449
                 string[] stitchedLines = File.ReadAllLines(Path.Combine(dir, "history.csv"));
                 Assert.Equal(451, stitchedLines.Length);
                 for (int i = 0; i < 450; i++)
@@ -293,7 +293,7 @@ namespace FluidForge.Tests
             string dirCap = CreateTempDir("su2_ap1_cap");
             try
             {
-                // Fall A: Budget direkt im 1. Block ausgeschöpft (500 von 500)
+                // Case A: budget exhausted directly in 1st block (500 of 500)
                 string meshA = Path.Combine(dirBudget, "Model_Gen1_Var1.su2");
                 File.WriteAllText(meshA, "dummy");
                 int callsA = 0;
@@ -322,7 +322,7 @@ namespace FluidForge.Tests
                 Assert.Equal(1, callsA);
                 Assert.True(recA.SimulationFailed);
 
-                // Fall B: anhaltende Drift über alle Restarts -> Deckel MaxConvergenceRestarts = 2 (max 3 Blöcke)
+                // Case B: persistent drift across all restarts -> cap MaxConvergenceRestarts = 2 (max 3 blocks)
                 string meshB = Path.Combine(dirCap, "Model_Gen1_Var1.su2");
                 File.WriteAllText(meshB, "dummy");
                 int callsB = 0;
@@ -367,7 +367,7 @@ namespace FluidForge.Tests
             {
                 Assert.Null(Su2Solver.FindSteadyRestartFile(dir));
 
-                // Leere Datei wird ignoriert
+                // Empty file is ignored
                 string emptyFlow = Path.Combine(dir, "restart_flow.dat");
                 File.WriteAllText(emptyFlow, string.Empty);
                 Assert.Null(Su2Solver.FindSteadyRestartFile(dir));
@@ -420,11 +420,11 @@ namespace FluidForge.Tests
                 };
                 config.MeshCalibration.Tolerance = 0.05f;
 
-                // 1) ITER erreicht, aber kleine Drift (~0.04-fach) -> "0.0xx-fach der Grenze"
+                // 1) ITER reached, but small drift (~0.04x) -> "0.0xx x limit"
                 string histConverged = Path.Combine(dir, "hist_conv.csv");
                 File.WriteAllLines(histConverged, BuildHistoryLines(200, i => 0.030 + 0.0000003 * i));
 
-                // 2) Driftende Rechnung (> 1-fach) -> "x.xxx-fach der erlaubten Drift"
+                // 2) Drifting run (> 1x) -> "x.xxx x allowed drift"
                 string histDrift = Path.Combine(dir, "hist_drift.csv");
                 File.WriteAllLines(histDrift, BuildHistoryLines(200, i => 0.050 - 0.0001 * i));
 
@@ -434,9 +434,9 @@ namespace FluidForge.Tests
                 Console.SetOut(originalOut);
 
                 string log = captured.ToString();
-                Assert.Matches(@"\d+\.\d{3}-fach der Grenze", log);
-                Assert.Matches(@"\d+\.\d{3}-fach der erlaubten Drift", log);
-                Assert.DoesNotMatch(@"(?<!\d)\d+\.\d-fach", log);
+                Assert.Matches(@"\d+\.\d{3}x limit", log);
+                Assert.Matches(@"\d+\.\d{3}x allowed drift", log);
+                Assert.DoesNotMatch(@"(?<!\d)\d+\.\dx", log);
             }
             finally
             {
@@ -467,14 +467,14 @@ namespace FluidForge.Tests
                 string[] lines = File.ReadAllLines(cfgPath);
                 string[] commentLines = lines.Where(l => l.TrimStart().StartsWith("%")).ToArray();
 
-                // Wahrheitsgemäßer Kommentar zu -8 und ASCII/Längen-Vertrag <= 100
-                Assert.DoesNotContain(commentLines, l => l.Contains("Residuum unter 10^-8 faellt", StringComparison.OrdinalIgnoreCase));
+                // Truthful comment on -8 and ASCII/length contract <= 100
+                Assert.DoesNotContain(commentLines, l => l.Contains("residual drops below 10^-8", StringComparison.OrdinalIgnoreCase));
                 Assert.Contains(commentLines, l => l.Contains("CONV_RESIDUAL_MINVAL= -8", StringComparison.OrdinalIgnoreCase)
-                    && l.Contains("selten", StringComparison.OrdinalIgnoreCase));
+                    && l.Contains("rarely", StringComparison.OrdinalIgnoreCase));
                 foreach (string comment in commentLines)
                 {
-                    Assert.True(comment.Length <= 100, $"Kommentarzeile zu lang ({comment.Length}): {comment}");
-                    Assert.All(comment, ch => Assert.True(ch <= 127, $"Nicht-ASCII '{ch}' in: {comment}"));
+                    Assert.True(comment.Length <= 100, $"Comment line too long ({comment.Length}): {comment}");
+                    Assert.All(comment, ch => Assert.True(ch <= 127, $"Non-ASCII '{ch}' in: {comment}"));
                 }
 
                 Assert.Contains("CONV_STARTITER= 42", lines);

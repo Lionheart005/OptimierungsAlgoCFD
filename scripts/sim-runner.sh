@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# Server-Seite der Fernsteuerung: baut, startet, ueberwacht und stoppt den
-# Optimierungslauf auf dem Linux-Rechner (ohne Sudo).
+# Server-side remote control: builds, starts, monitors, and stops the
+# optimization run on the Linux machine (rootless, no sudo).
 #
-# Wird normalerweise von scripts/sim.ps1 (Windows) per SSH aufgerufen, laesst sich
-# aber genauso von Hand benutzen, wenn man ohnehin per SSH eingeloggt ist:
+# Normally invoked via SSH from scripts/sim.ps1 (Windows), but can also be
+# used directly when logged in via SSH:
 #
-#     cd ~/Documents/AutomatisierungCleanVersion
+#     cd ~/Documents/FluidForge
 #     bash scripts/sim-runner.sh status
 #
-# Fasst die Handgriffe fuer Bauen, Starten, Beobachten und Holen zusammen. Das Erst-Setup
-# des Servers macht setup_server.sh -- dieses Skript setzt voraus, dass Miniconda, SU2,
-# Gmsh, PicoGK und .NET liegen.
+# Combines build, start, monitoring, and packaging commands. Initial server
+# setup is handled by setup_server.sh -- this script assumes Miniconda, SU2,
+# Gmsh, PicoGK, and .NET are already installed.
 
 set -euo pipefail
 
@@ -20,27 +20,18 @@ REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 SESSION="${SIM_SESSION:-sim}"
 
-# KEIN stiller Standard mehr (TODO-28). Hier stand
+# NO silent default project. If SIM_PROJECT is unset or a typo fails to propagate
+# into tmux, we must abort rather than silently computing the wrong project and
+# overwriting its results.
 #
-#     PROJECT_NAME="${SIM_PROJECT:-MantaAuv}"
-#
-# und damit haette jeder Vertipper in SIM_PROJECT -- oder eine Variable, die den Weg in
-# die tmux-Sitzung nicht findet -- klaglos MantaAuv gerechnet. Stundenlang, mit plausibel
-# aussehenden Zahlen, die in Ergebnisse/MantaAuv/ landen und dort die CSV eines echten
-# Laufs ueberschreiben. Program.cs hat denselben Grundsatz seit TODO-23.
-#
-# Welche Befehle ohne Projekt keinen Sinn haben, entscheidet require_project. stop, log,
-# delete, running und hash brauchen keines: sie arbeiten auf dem Prozess bzw. auf Dateien, die
-# es nur einmal gibt.
+# require_project decides which commands need a project. stop, log, delete,
+# running, hash, projects, and lastproject do not need one.
 PROJECT_NAME="${SIM_PROJECT:-}"
 
 APP_PROJECT="$REPO_DIR/src/FluidForge/FluidForge.csproj"
 BIN_DIR="$REPO_DIR/src/FluidForge/bin/Debug/net9.0"
 APP_DLL="$BIN_DIR/FluidForge.dll"
 
-# Seit TODO-24 liegt alles Einstellbare im Projektordner. config/ enthaelt nur noch
-# die README und ggf. eine maschinenspezifische *.local.json -- es ist kein
-# Pflichtverzeichnis mehr und fehlt auf einem frischen Rechner voellig.
 PROJECTS_DIR="$REPO_DIR/src/projects"
 CONFIG_DIR="$REPO_DIR/config"
 
@@ -50,36 +41,31 @@ HASH_FILE="$REPO_DIR/.deploy_hash"
 EXIT_FILE="$REPO_DIR/.last_exit"
 LAST_PROJECT_FILE="$REPO_DIR/.last_project"
 
-# Alles Projektbezogene setzt require_project, nicht der Dateikopf: ohne Projektnamen
-# waeren das Pfade wie ".../Ergebnisse/" -- und die zeigen auf etwas, das existiert.
-# Ergebnisse liegen seit TODO-25 je Projekt getrennt (zwei Projekte ueberschrieben sich
-# vorher gegenseitig die CSV).
+# Project-scoped paths are initialized by require_project after validating PROJECT_NAME.
 PROJECT_DIR=""
 RESULT_DIR=""
 RESULT_CSV=""
 
 PICOGK_BUILD_DIR="${PICOGK_BUILD_DIR:-$HOME/software/PicoGK/build}"
 
-# Das Prozessmuster, an dem wir unseren eigenen Lauf erkennen. Bewusst die DLL und
-# nicht "dotnet": ein pkill auf "dotnet" wuerde jeden anderen .NET-Prozess des
-# Nutzers mit abschiessen.
+# Process pattern used to identify our own run. Intentionally matches the DLL
+# rather than "dotnet" so pkill never kills unrelated .NET processes.
 PROCESS_PATTERN="FluidForge.dll"
 
 # ---------------------------------------------------------------------------
-# Umgebung
+# Environment
 # ---------------------------------------------------------------------------
-# WICHTIG: Bei "ssh host befehl" startet bash nicht-interaktiv, und Ubuntus
-# ~/.bashrc steigt in diesem Fall in den ersten Zeilen wieder aus. Nichts aus
-# conda init oder den MESA-Zeilen in ~/.bashrc ist hier also gesetzt -- jeder
-# Aufruf muss sich seine Umgebung selbst bauen (entspricht Teil 2 der Anleitung).
+# IMPORTANT: "ssh host command" starts a non-interactive bash shell where Ubuntu's
+# ~/.bashrc exits early. Neither conda init nor MESA_* variables are loaded there,
+# so every invocation constructs its own environment here.
 load_env() {
     export PATH="$HOME/miniconda/bin:$HOME/.dotnet:$HOME/software/bin:$HOME/software/gmsh-4.11.1-Linux64/bin:$PATH"
     export LD_LIBRARY_PATH="$HOME/miniconda/lib:${LD_LIBRARY_PATH:-}"
 
-    # Unterdrueckt die hwloc-Warnungen von OpenMPI auf virtualisierten Maschinen
+    # Suppress OpenMPI hwloc warnings on virtualized machines
     export HWLOC_HIDE_ERRORS=1
 
-    # PicoGK zieht OpenGL hoch, auch im Headless-Betrieb: Software-Rendering
+    # PicoGK initializes OpenGL even in headless mode: force software rendering
     export LIBGL_ALWAYS_SOFTWARE=1
     export MESA_GL_VERSION_OVERRIDE=4.1
     export MESA_GLSL_VERSION_OVERRIDE=410
@@ -89,11 +75,11 @@ load_env() {
 }
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helpers
 # ---------------------------------------------------------------------------
 say()  { printf '%s\n' "$*"; }
-ok()   { printf '  [ OK ]  %s\n' "$*"; }
-fail() { printf '  [FEHLT] %s\n' "$*"; }
+ok()   { printf '  [ OK ]    %s\n' "$*"; }
+fail() { printf '  [MISSING] %s\n' "$*"; }
 
 is_running() {
     pgrep -u "$USER" -f "$PROCESS_PATTERN" >/dev/null 2>&1
@@ -107,9 +93,7 @@ has_session() {
     tmux has-session -t "$SESSION" >/dev/null 2>&1
 }
 
-# Die Projektordner, wie das Programm sie auch sieht: ohne die Vorlage und ohne
-# Build-Artefakte -- dasselbe Kriterium wie ProjectPaths.ListProjectNames (TODO-27).
-# Die Liste stammt aus dem Dateisystem und kommt daher auch ohne gebaute DLL zustande.
+# List project directories as seen by the application (excluding templates and build folders).
 list_project_folders() {
     [ -d "$PROJECTS_DIR" ] || return 0
 
@@ -117,62 +101,43 @@ list_project_folders() {
         | grep -Ev '^(_Template3D|_Template2D|bin|obj|\..*)$' | sort || true
 }
 
-# Bricht ab, wenn kein Projekt angegeben wurde, und leitet erst danach die
-# projektbezogenen Pfade ab (TODO-28).
-#
-# Der Parameter ist der Befehlsname DIESES Skripts fuer den Beispielaufruf -- wer
-# 'status' aufgerufen hat, soll 'status' im Beispiel wiederfinden. Die Windows-Zeile
-# nennt bewusst keinen Befehl: sim.ps1 heisst an einer Stelle anders (run statt start).
+# Abort if no project was specified, then derive project-specific paths.
 require_project() {
     local command_name="$1"
 
     if [ -z "$PROJECT_NAME" ]; then
-        say "[RUNNER] FEHLER: Kein Projekt angegeben, und es gibt keine Vorgabe mehr."
-        say "         Von Windows aus:  .\\scripts\\sim.ps1 <befehl> -Project <Name>"
-        say "         Von Hand:         SIM_PROJECT=<Name> bash scripts/sim-runner.sh $command_name"
+        say "[RUNNER] ERROR: No project specified, and there is no default."
+        say "         From Windows:  .\\scripts\\sim.ps1 <command> -Project <Name>"
+        say "         Manually:      SIM_PROJECT=<Name> bash scripts/sim-runner.sh $command_name"
 
         local folders
         folders="$(list_project_folders | tr '\n' ' ')"
         if [ -n "$folders" ]; then
-            say "         Vorhanden sind:   $folders"
+            say "         Available:     $folders"
         else
-            say "         Unter src/projects/ liegt allerdings kein Projekt."
+            say "         No projects found under src/projects/."
         fi
 
         exit 2
     fi
 
-    # Der Name wird unten in die Kommandozeile der tmux-Sitzung eingesetzt und ist
-    # ausserdem Ordner- UND Klassenname (Entscheidung 1, TODO-27). Was kein Bezeichner
-    # ist, kann also nur ein Tippfehler sein -- und hat in einer Kommandozeile nichts
-    # verloren.
+    # Validate identifier characters because PROJECT_NAME is also a C# class/folder name
+    # and is interpolated into the tmux command line.
     case "$PROJECT_NAME" in
         *[!A-Za-z0-9_]* | [!A-Za-z]*)
-            say "[RUNNER] FEHLER: '$PROJECT_NAME' ist kein gueltiger Projektname."
-            say "         Erlaubt sind ein Buchstabe am Anfang, danach Buchstaben, Ziffern"
-            say "         und Unterstrich -- der Name ist auch Ordner- und Klassenname."
+            say "[RUNNER] ERROR: '$PROJECT_NAME' is not a valid project name."
+            say "         Must start with a letter followed by letters, digits, or underscores."
             exit 2
             ;;
     esac
 
     PROJECT_DIR="$PROJECTS_DIR/$PROJECT_NAME"
-    RESULT_DIR="$REPO_DIR/Ergebnisse/$PROJECT_NAME"
-    RESULT_CSV="$RESULT_DIR/Simulation_Results.csv"
+    RESULT_DIR="$REPO_DIR/results/$PROJECT_NAME"
+    RESULT_CSV="$RESULT_DIR/results.csv"
 }
 
-# Fragt das Programm EINMAL nach der wirksamen Konfiguration und merkt sich die Ausgabe.
-#
-# Vorher fischte hier ein sed-Einzeiler in config/simulation.json. Das ging, solange es
-# genau eine Datei gab. Seit TODO-22/24 sind es bis zu vier Schichten ueber mehrere
-# Verzeichnisse -- doctor haette also Pfade geprueft, die im Lauf gar nicht gelten.
-# "--print-config" gibt SCHLUESSEL=WERT aus, eine Zeile je Eintrag, und laeuft vor dem
-# Kernel-Start (also ohne PicoGK und ohne Xvfb).
-#
-# WICHTIG: "das Programm konnte nicht gefragt werden" und "der Schluessel ist nicht
-# konfiguriert" sind zwei verschiedene Befunde. Die erste Fassung hat beides zu
-# "steht nicht in der Konfiguration" verschmolzen und die Ausgabe mit 2>/dev/null
-# verworfen -- ein veralteter Build sah damit aus wie eine kaputte Konfiguration.
-# Das Programm meldet Bedienfehler ausserdem auf stdout, nicht auf stderr.
+# Query the application once for its effective configuration (KEY=VALUE lines).
+# Runs before kernel initialization (no PicoGK / Xvfb required).
 CONFIG_DUMP=""
 CONFIG_ERROR=""
 
@@ -181,20 +146,17 @@ load_effective_config() {
     CONFIG_ERROR=""
 
     if [ ! -f "$APP_DLL" ]; then
-        CONFIG_ERROR="das Programm ist noch nicht gebaut"
+        CONFIG_ERROR="application is not built yet"
         return 0
     fi
 
     if ! CONFIG_DUMP="$(dotnet "$APP_DLL" "$PROJECT_NAME" --print-config 2>&1)"; then
-        CONFIG_ERROR="das Programm hat mit einem Fehler abgebrochen"
+        CONFIG_ERROR="application exited with an error"
         return 0
     fi
 
-    # Der Aufruf lief durch, lieferte aber keine SCHLUESSEL=WERT-Zeilen. Haeufigster
-    # Grund: die DLL auf dem Server ist aelter als "--print-config" und hat das
-    # Argument als Konfigurationsverzeichnis gedeutet.
     if ! printf '%s\n' "$CONFIG_DUMP" | grep -q '^MpiRunPath='; then
-        CONFIG_ERROR="das Programm kennt '--print-config' nicht (veralteter Build?)"
+        CONFIG_ERROR="application does not recognize '--print-config' (outdated build?)"
     fi
 }
 
@@ -202,9 +164,6 @@ config_value() {
     printf '%s\n' "$CONFIG_DUMP" | sed -n "s/^$1=//p" | head -n 1
 }
 
-# Ist das ein ausfuehrbares Programm -- als Pfad oder ueber den PATH? Seit TODO-24
-# stehen in der Konfiguration bloss noch "mpirun", "SU2_CFD" und "gmsh"; load_env legt
-# die passenden Verzeichnisse auf den PATH, und .NET loest den Namen darueber auf.
 resolve_tool() {
     local candidate="$1"
     [ -n "$candidate" ] || return 1
@@ -217,9 +176,8 @@ resolve_tool() {
     command -v "$candidate" 2>/dev/null || return 1
 }
 
-# libpicogk.so neben die DLL legen. Muss nach JEDEM dotnet build passieren --
-# der Build raeumt bin/Debug/net9.0 gelegentlich auf und nimmt die C++-Bibliothek
-# mit (der Hinweis steht so auch in Teil 3 der Anleitung).
+# Ensure libpicogk.so sits next to the DLL. Must run after every dotnet build
+# because MSBuild may clean bin/Debug/net9.0.
 restore_picogk() {
     mkdir -p "$BIN_DIR"
 
@@ -231,62 +189,59 @@ restore_picogk() {
     lib="$(find "$PICOGK_BUILD_DIR" -iname '*picogk.so' 2>/dev/null | head -n 1 || true)"
 
     if [ -z "$lib" ]; then
-        say "[WARNUNG] Keine kompilierte PicoGK-Bibliothek unter $PICOGK_BUILD_DIR gefunden."
-        say "          Ohne libpicogk.so startet der Lauf nicht -- setup_server.sh ausfuehren."
+        say "[WARNING] No compiled PicoGK library found under $PICOGK_BUILD_DIR."
+        say "          Runs will not start without libpicogk.so -- run setup_server.sh."
         return 1
     fi
 
-    # Beide Namen, wie in setup_server.sh: das NuGet-Paket sucht die versionierte Datei.
     cp -f "$lib" "$BIN_DIR/libpicogk.so"
     cp -f "$lib" "$BIN_DIR/libpicogk.26.2.so"
-    say "[RUNNER] libpicogk.so aufgefrischt (Quelle: $lib)"
+    say "[RUNNER] Refreshed libpicogk.so (source: $lib)"
 }
 
 # ---------------------------------------------------------------------------
-# Befehle
+# Commands
 # ---------------------------------------------------------------------------
 
-# Prueft alles, was der Lauf braucht, BEVOR man ihn in tmux wegschickt --
-# die "Goldene Regel" aus der Anleitung, nur vollstaendiger.
 cmd_doctor() {
     require_project doctor
     load_env
     local problems=0
 
-    say "=== Umgebung auf $(hostname) ==="
+    say "=== Environment on $(hostname) ==="
     say "Repo:    $REPO_DIR"
-    say "Projekt: $PROJECT_NAME"
+    say "Project: $PROJECT_NAME"
     say ""
 
-    say "--- Werkzeuge ---"
+    say "--- Tools ---"
     local tool
     for tool in dotnet tmux xvfb-run; do
         if command -v "$tool" >/dev/null 2>&1; then
             ok "$tool -> $(command -v "$tool")"
         else
-            fail "$tool ist nicht im PATH"
+            fail "$tool is not in PATH"
             problems=$((problems + 1))
         fi
     done
 
     say ""
-    say "--- Programmpfade (wirksame Konfiguration des Projekts) ---"
+    say "--- Tool paths (effective project configuration) ---"
 
     load_effective_config
 
     if [ -n "$CONFIG_ERROR" ]; then
-        fail "Die wirksame Konfiguration laesst sich nicht abfragen: $CONFIG_ERROR"
-        say  "          Aufruf war:  dotnet <DLL> $PROJECT_NAME --print-config"
+        fail "Could not query effective configuration: $CONFIG_ERROR"
+        say  "          Command was:  dotnet <DLL> $PROJECT_NAME --print-config"
 
         if [ -n "$CONFIG_DUMP" ]; then
-            say "          Was das Programm gesagt hat:"
+            say "          Application output:"
             printf '%s\n' "$CONFIG_DUMP" | tail -n 15 | while IFS= read -r line; do
                 say "            $line"
             done
         fi
 
-        say "          Das ist KEIN Pfadproblem -- die Pfade wurden gar nicht geprueft."
-        say "          Meist hilft ein frischer Build:  .\\scripts\\sim.ps1 build"
+        say "          This is NOT a path error -- tool paths were not checked."
+        say "          A fresh build usually fixes this:  .\\scripts\\sim.ps1 build"
         problems=$((problems + 1))
     else
         local entry
@@ -295,13 +250,12 @@ cmd_doctor() {
             configured="$(config_value "$entry")"
 
             if [ -z "$configured" ]; then
-                fail "$entry steht nicht in der Konfiguration"
+                fail "$entry is missing from configuration"
                 problems=$((problems + 1))
                 continue
             fi
 
-            # Wie das Programm selbst: heisst es nur mpirun/mpiexec, gewinnt das MPICH-Environment (falls vorhanden)
-            # vor dem PATH, in dem das OpenMPI liegt.
+            # Match application behavior: bare mpirun/mpiexec prefers the dedicated MPICH environment
             if [ "$entry" = "MpiRunPath" ]; then
                 case "$configured" in
                     mpirun|mpiexec) [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ] && configured="$HOME/miniconda/envs/mpich/bin/mpiexec" ;;
@@ -312,91 +266,79 @@ cmd_doctor() {
                 if [ "$resolved" = "$configured" ]; then
                     ok "$entry -> $resolved"
                 else
-                    ok "$entry -> $configured (ueber PATH: $resolved)"
+                    ok "$entry -> $configured (via PATH: $resolved)"
                 fi
 
-                # Das offizielle SU2-Binary ist mit MPICH gebaut. Unter OpenMPI startet "-n 12" zwoelf
-                # unabhaengige serielle Kopien, die sich die Dateien ueberschreiben -- ohne Fehlermeldung.
+                # Official SU2 binary is built with MPICH; OpenMPI launches independent serial copies
                 if [ "$entry" = "MpiRunPath" ] && "$resolved" --version 2>&1 | grep -qiE "open mpi|openrte|prrte"; then
-                    fail "$entry ist OpenMPI, SU2 braucht MPICH (sonst rechnet jeder Kern als eigene serielle Kopie)"
-                    say  "          Eintragen: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (Einrichtung: scripts/README.md)"
+                    fail "$entry is OpenMPI; SU2 requires MPICH (otherwise each rank runs as a serial copy)"
+                    say  "          Set: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (see scripts/README.md)"
                     problems=$((problems + 1))
                 fi
             else
-                fail "$entry -> $configured (weder Datei noch im PATH)"
+                fail "$entry -> $configured (not a file and not in PATH)"
                 case "$configured" in
-                    */*) say "          Der Pfad existiert nicht oder ist nicht ausfuehrbar." ;;
-                    *)   say "          Gesucht im PATH: $PATH" ;;
+                    */*) say "          Path does not exist or is not executable." ;;
+                    *)   say "          Searched PATH: $PATH" ;;
                 esac
-                say "          Eintragen in src/projects/$PROJECT_NAME/simulation.json unter '$entry'."
+                say "          Configure '$entry' in src/projects/$PROJECT_NAME/simulation.json."
                 problems=$((problems + 1))
             fi
         done
     fi
 
     say ""
-    say "--- Projekt ---"
-    if [ -f "$APP_PROJECT" ]; then ok "csproj vorhanden"; else fail "csproj fehlt: $APP_PROJECT"; problems=$((problems + 1)); fi
+    say "--- Project ---"
+    if [ -f "$APP_PROJECT" ]; then ok "csproj present"; else fail "csproj missing: $APP_PROJECT"; problems=$((problems + 1)); fi
 
-    # config/ ist seit TODO-24 KEIN Pflichtverzeichnis mehr: es enthaelt nur noch den
-    # Notausgang, und auf einem frischen Rechner fehlt es schlicht. Was zaehlt, ist der
-    # Projektordner -- ohne ihn findet der Lauf seine Zahlen nicht.
     if [ -d "$PROJECT_DIR" ]; then
-        ok "Projektordner vorhanden: src/projects/$PROJECT_NAME"
+        ok "Project folder present: src/projects/$PROJECT_NAME"
     else
-        fail "Projektordner fehlt: $PROJECT_DIR"
-        say "          Vorhanden sind: $(list_project_folders | tr '\n' ' ')"
-        say "          Gross-/Kleinschreibung zaehlt hier: Linux unterscheidet sie."
+        fail "Project folder missing: $PROJECT_DIR"
+        say "          Available: $(list_project_folders | tr '\n' ' ')"
+        say "          Note: Linux file paths are case-sensitive."
         problems=$((problems + 1))
     fi
 
-    # Eine vorhandene *.local.json ist kein Fehler, aber ein Sonderfall: sie ueberlebt
-    # jedes Deploy und haelt damit Werte fest, die niemand hochgeladen hat.
     local local_files
     local_files="$(find "$CONFIG_DIR" "$PROJECTS_DIR" -name '*.local.json' 2>/dev/null || true)"
     if [ -n "$local_files" ]; then
-        say "  [ACHTUNG] Maschinenspezifische Dateien gefunden:"
+        say "  [NOTICE]  Machine-specific override files found:"
         printf '%s\n' "$local_files" | while IFS= read -r found; do say "            $found"; done
-        say "            Normalerweise sollte es keine geben -- siehe config/README.md."
+        say "            Normally none should exist -- see config/README.md."
     fi
 
-    if [ -f "$APP_DLL" ]; then ok "gebaute DLL vorhanden"; else say "  [INFO]  noch nicht gebaut (sim-runner.sh build)"; fi
+    if [ -f "$APP_DLL" ]; then ok "Built DLL present"; else say "  [INFO]    Not built yet (sim-runner.sh build)"; fi
 
     if [ -f "$BIN_DIR/libpicogk.so" ]; then
-        ok "libpicogk.so liegt neben der DLL"
+        ok "libpicogk.so present next to DLL"
     elif [ -n "$(find "$PICOGK_BUILD_DIR" -iname '*picogk.so' 2>/dev/null | head -n 1 || true)" ]; then
-        say "  [INFO]  libpicogk.so noch nicht kopiert -- macht der build-Schritt"
+        say "  [INFO]    libpicogk.so not copied yet -- build step will copy it"
     else
-        fail "libpicogk.so weder im bin-Ordner noch unter $PICOGK_BUILD_DIR"
+        fail "libpicogk.so missing in bin folder and under $PICOGK_BUILD_DIR"
         problems=$((problems + 1))
     fi
 
     say ""
     if [ "$problems" -eq 0 ]; then
-        say "VALIDIERUNG ERFOLGREICH -- der Lauf kann gestartet werden."
+        say "VALIDATION SUCCEEDED -- ready to start."
         return 0
     fi
 
-    say "VALIDIERUNG FEHLGESCHLAGEN: $problems Problem(e). Lauf NICHT starten."
+    say "VALIDATION FAILED: $problems issue(s). Do NOT start the run."
     return 1
 }
 
-# Bewusst OHNE require_project: gebaut wird das Framework, und das ist fuer alle
-# Projekte dasselbe. Ein Projekt ist nur ein Ordner mit C#-Dateien, den die csproj
-# ueber src/projects/**/*.cs mit hineinzieht (TODO-24).
 cmd_build() {
     load_env
-    say "[RUNNER] Baue das Programm ..."
+    say "[RUNNER] Building application ..."
     dotnet build "$APP_PROJECT" -c Debug --nologo
     restore_picogk
-    say "[RUNNER] Build fertig."
+    say "[RUNNER] Build finished."
 }
 
-# Laeuft INNERHALB der tmux-Sitzung. Nicht von Hand aufrufen.
+# Runs INSIDE the tmux session. Do not invoke manually.
 cmd_foreground() {
-    # Auch hier die Pruefung, nicht nur in cmd_start: dieser Aufruf ist ein eigener
-    # bash-Prozess, den der tmux-Server startet -- er erbt die Umgebung von cmd_start
-    # nicht automatisch. cmd_start setzt SIM_PROJECT deshalb ausdruecklich davor.
     require_project start
     load_env
     cd "$REPO_DIR"
@@ -404,29 +346,23 @@ cmd_foreground() {
     {
         echo "==================================================================="
         echo " Start:    $(date '+%Y-%m-%d %H:%M:%S')"
-        echo " Rechner:  $(hostname)"
+        echo " Host:     $(hostname)"
         echo " Repo:     $REPO_DIR"
-        echo " Projekt:  $PROJECT_NAME"
-        echo " Stand:    $(cat "$HASH_FILE" 2>/dev/null || echo 'unbekannt')"
+        echo " Project:  $PROJECT_NAME"
+        echo " Hash:     $(cat "$HASH_FILE" 2>/dev/null || echo 'unknown')"
         echo "==================================================================="
     } >>"$LOG_FILE"
 
     local rc=0
-    # xvfb-run -a: sucht sich selbst eine freie Display-Nummer, statt auf :99 zu
-    # beharren und an einem alten, haengenden Xvfb zu scheitern.
-    # Nur noch der Projektname. Das zweite Argument war frueher das config-Verzeichnis;
-    # seit TODO-24 waere es das PROJEKT-Verzeichnis, und das findet das Programm selbst,
-    # indem es von hier aus nach src/projects/ aufwaerts sucht.
-    # LP_NUM_THREADS=1: der PicoGK-Viewer rendert unter Xvfb per Software-OpenGL (llvmpipe)
-    # ununterbrochen, sonst auf allen Kernen -- gemessen ~10 Kerne, die SU2 und Gmsh fehlten
-    # (Servertest 06.11.2026). Zu sehen ist das Fenster ohnehin nicht.
+    # xvfb-run -a picks a free display number automatically.
+    # LP_NUM_THREADS=1 prevents software OpenGL (llvmpipe) from saturating all CPU cores.
     LP_NUM_THREADS=1 xvfb-run -a dotnet "$APP_DLL" "$PROJECT_NAME" "$@" >>"$LOG_FILE" 2>&1 || rc=$?
 
     echo "$rc" >"$EXIT_FILE"
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
     {
         echo "==================================================================="
-        echo " Ende:     $(date '+%Y-%m-%d %H:%M:%S')  (Exit-Code $rc)"
+        echo " End:      $(date '+%Y-%m-%d %H:%M:%S')  (exit code $rc)"
         echo "==================================================================="
     } >>"$LOG_FILE"
 
@@ -438,24 +374,21 @@ cmd_start() {
     load_env
 
     if is_running; then
-        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        say "[RUNNER] A run is already active (PID $(running_pid)). Call 'stop' first."
         return 1
     fi
 
     if [ ! -f "$APP_DLL" ]; then
-        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        say "[RUNNER] Not built yet -- building first."
         cmd_build
     else
         restore_picogk || true
     fi
 
-    # Alte, verwaiste Sitzung wegraeumen (z.B. nach einem Absturz)
     if has_session; then
         tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
     fi
 
-    # Vorheriges Log archivieren statt ueberschreiben -- sonst ist nach einem
-    # Neustart nicht mehr nachvollziehbar, woran der letzte Lauf gescheitert ist.
     if [ -s "$LOG_FILE" ]; then
         mkdir -p "$LOG_ARCHIVE"
         mv "$LOG_FILE" "$LOG_ARCHIVE/simulation_$(date '+%Y%m%d_%H%M%S').log"
@@ -464,45 +397,32 @@ cmd_start() {
     rm -f "$EXIT_FILE"
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
 
-    # SIM_PROJECT ausdruecklich davorgesetzt und nicht der Vererbung ueberlassen: die
-    # Kommandozeile startet der tmux-SERVER, und dessen Umgebung stammt von dem Aufruf,
-    # der ihn irgendwann einmal hochgezogen hat. Solange es einen stillen Standard gab,
-    # fiel das nicht auf -- es wurde dann eben MantaAuv gerechnet (TODO-28).
-    # require_project hat den Namen vorher geprueft, das Anfuehrungszeichen haelt.
     tmux new-session -d -s "$SESSION" \
         "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground"
 
-    # Kurz warten und nachsehen, ob der Prozess wirklich hochkommt. Ein Start,
-    # der nach zwei Sekunden schon wieder tot ist, soll hier auffallen und nicht
-    # erst, wenn jemand Stunden spaeter ins Log schaut.
     sleep 3
 
     if is_running; then
-        say "[RUNNER] Gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        say "[RUNNER] Started in tmux session '$SESSION' (PID $(running_pid))."
         return 0
     fi
 
-    say "[RUNNER] FEHLER: Der Lauf ist sofort wieder beendet. Letzte Logzeilen:"
+    say "[RUNNER] ERROR: Run exited immediately. Last log lines:"
     tail -n 25 "$LOG_FILE" 2>/dev/null || true
     return 1
 }
 
-# Setzt einen abgebrochenen Lauf fort (TODO-52). Aufgebaut wie cmd_start, aber mit
-# --resume: das Programm liest Ergebnisse/<Projekt>/Wiederaufnahme/journal.jsonl, nimmt
-# den Seed von dort und spielt die gesicherten Rechnungen wieder ab, statt sie neu zu
-# rechnen. Gebaut wird hier NICHT neu, wenn eine DLL da ist: resume rechnet bewusst mit
-# dem Stand weiter, der auf dem Server liegt (F28).
 cmd_resume() {
     require_project resume
     load_env
 
     if is_running; then
-        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        say "[RUNNER] A run is already active (PID $(running_pid)). Call 'stop' first."
         return 1
     fi
 
     if [ ! -f "$APP_DLL" ]; then
-        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        say "[RUNNER] Not built yet -- building first."
         cmd_build
     else
         restore_picogk || true
@@ -526,11 +446,11 @@ cmd_resume() {
     sleep 3
 
     if is_running; then
-        say "[RUNNER] Fortsetzung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        say "[RUNNER] Resume started in tmux session '$SESSION' (PID $(running_pid))."
         return 0
     fi
 
-    say "[RUNNER] FEHLER: Die Fortsetzung ist sofort wieder beendet. Letzte Logzeilen:"
+    say "[RUNNER] ERROR: Resume exited immediately. Last log lines:"
     tail -n 25 "$LOG_FILE" 2>/dev/null || true
     return 1
 }
@@ -540,12 +460,12 @@ cmd_calibrate() {
     load_env
 
     if is_running; then
-        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        say "[RUNNER] A run is already active (PID $(running_pid)). Call 'stop' first."
         return 1
     fi
 
     if [ ! -f "$APP_DLL" ]; then
-        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        say "[RUNNER] Not built yet -- building first."
         cmd_build
     else
         restore_picogk || true
@@ -568,11 +488,11 @@ cmd_calibrate() {
     sleep 3
 
     if is_running; then
-        say "[RUNNER] Kalibrierung gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        say "[RUNNER] Calibration started in tmux session '$SESSION' (PID $(running_pid))."
         return 0
     fi
 
-    say "[RUNNER] FEHLER: Die Kalibrierung ist sofort wieder beendet. Letzte Logzeilen:"
+    say "[RUNNER] ERROR: Calibration exited immediately. Last log lines:"
     tail -n 25 "$LOG_FILE" 2>/dev/null || true
     return 1
 }
@@ -607,12 +527,12 @@ cmd_recheck() {
     fi
 
     if is_running; then
-        say "[RUNNER] Es laeuft bereits ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        say "[RUNNER] A run is already active (PID $(running_pid)). Call 'stop' first."
         return 1
     fi
 
     if [ ! -f "$APP_DLL" ]; then
-        say "[RUNNER] Noch nicht gebaut -- baue zuerst."
+        say "[RUNNER] Not built yet -- building first."
         cmd_build
     else
         restore_picogk || true
@@ -635,11 +555,11 @@ cmd_recheck() {
     sleep 3
 
     if is_running; then
-        say "[RUNNER] Recheck gestartet in tmux-Sitzung '$SESSION' (PID $(running_pid))."
+        say "[RUNNER] Recheck started in tmux session '$SESSION' (PID $(running_pid))."
         return 0
     fi
 
-    say "[RUNNER] FEHLER: Der Recheck ist sofort wieder beendet. Letzte Logzeilen:"
+    say "[RUNNER] ERROR: Recheck exited immediately. Last log lines:"
     tail -n 25 "$LOG_FILE" 2>/dev/null || true
     return 1
 }
@@ -648,100 +568,83 @@ cmd_stop() {
     load_env
 
     if ! is_running && ! has_session; then
-        say "[RUNNER] Es laeuft nichts."
+        say "[RUNNER] Nothing is running."
         return 0
     fi
 
-    say "[RUNNER] Stoppe Lauf ..."
+    say "[RUNNER] Stopping run ..."
     tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
 
-    # Panic-Button aus Teil 6 der Anleitung, aber auf den eigenen Nutzer begrenzt.
-    # SU2_CFD und mpirun sind Kindprozesse und ueberleben das Ende der Sitzung
-    # sonst -- sie wuerden weiter alle Kerne belegen.
-    #
-    # ACHTUNG: laeuft parallel noch ein zweiter Lauf (z.B. die alte Version in
-    # ~/Documents/Automatisierung_v2 fuer den main-Vergleich), trifft es dessen
-    # SU2- und mpirun-Prozesse mit. Das ist der Preis dafuer, keine verwaisten
-    # Rechenprozesse zurueckzulassen.
     pkill -9 -u "$USER" -f "$PROCESS_PATTERN" >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f SU2_CFD          >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f mpirun           >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f xvfb-run         >/dev/null 2>&1 || true
 
-    # Ein verwaister Xvfb wird bewusst NICHT abgeschossen: "xvfb-run -a" sucht sich
-    # ohnehin eine freie Display-Nummer, ein Ueberbleibsel stoert also nicht.
-    # Wenn doch aufgeraeumt werden soll:  pkill -9 -f Xvfb
-
     sleep 1
 
     if is_running; then
-        say "[RUNNER] WARNUNG: Es laeuft immer noch etwas (PID $(running_pid))."
+        say "[RUNNER] WARNING: Process is still running (PID $(running_pid))."
         return 1
     fi
 
-    say "[RUNNER] Gestoppt."
+    say "[RUNNER] Stopped."
 }
 
 cmd_status() {
     require_project status
     load_env
 
-    say "=== Status auf $(hostname) ==="
+    say "=== Status on $(hostname) ==="
     say "Repo:    $REPO_DIR"
-    say "Projekt: $PROJECT_NAME"
-    say "Stand:   $(cat "$HASH_FILE" 2>/dev/null || echo 'unbekannt')"
+    say "Project: $PROJECT_NAME"
+    say "Hash:    $(cat "$HASH_FILE" 2>/dev/null || echo 'unknown')"
 
     if is_running; then
         local pid
         pid="$(running_pid)"
-        say "Lauf:  LAEUFT (PID $pid, seit $(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' '))"
+        say "Run:     RUNNING (PID $pid, elapsed $(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' '))"
     else
         if [ -f "$EXIT_FILE" ]; then
-            say "Lauf:  gestoppt (letzter Exit-Code: $(cat "$EXIT_FILE"))"
+            say "Run:     stopped (last exit code: $(cat "$EXIT_FILE"))"
         else
-            say "Lauf:  gestoppt"
+            say "Run:     stopped"
         fi
     fi
 
-    if has_session; then say "tmux:  Sitzung '$SESSION' vorhanden"; else say "tmux:  keine Sitzung '$SESSION'"; fi
+    if has_session; then say "tmux:    session '$SESSION' active"; else say "tmux:    no session '$SESSION'"; fi
 
-    # Abgebrochener Lauf (TODO-52): nichts laeuft, aber das Journal hat keine Schlusszeile.
-    # Das ist der Fall nach einem Server-Neustart, einem Stromausfall oder einem 'stop'.
-    # Die Eintraege beginnen mit {"Index", die Schlusszeile mit {"Ende".
-    local journal="$RESULT_DIR/Wiederaufnahme/journal.jsonl"
-    if ! is_running && [ -f "$journal" ] && ! tail -n 1 "$journal" | grep -q '^{"Ende"'; then
+    local journal="$RESULT_DIR/resume/journal.jsonl"
+    if ! is_running && [ -f "$journal" ] && ! tail -n 1 "$journal" | grep -qE '^\{"(End|Ende)"'; then
         local saved
         saved="$(grep -c '^{"Index"' "$journal" || true)"
-        say "Abgebrochener Lauf gefunden: ${saved:-0} Rechnungen gesichert. Fortsetzen mit: .\\scripts\\sim.ps1 resume -Project $PROJECT_NAME"
+        say "Interrupted run found: ${saved:-0} evaluation(s) saved. Resume with: .\\scripts\\sim.ps1 resume -Project $PROJECT_NAME"
     fi
 
-    say "Ergebnisse: Ergebnisse/$PROJECT_NAME/"
+    say "Results: results/$PROJECT_NAME/"
 
     if [ -f "$RESULT_CSV" ]; then
         local records
         records=$(($(wc -l <"$RESULT_CSV") - 1))
-        say "CSV:   $records Datensatz/Datensaetze"
+        say "CSV:     $records record(s)"
     else
-        say "CSV:   noch keine Ergebnisse"
+        say "CSV:     no results yet"
     fi
 
     if [ -f "$LOG_FILE" ]; then
-        # Letzte Zeitprognose des Programms (Fusszeile je Variante und Zeile nach jeder Iteration). Nur lesen:
-        # was dort steht, hat das Programm geschaetzt (gleitendes Fenster, Nachpruefung und Feinpruefung inklusive).
         local forecast
         forecast="$( {
-            grep -a '\[PROGNOSE\]' "$LOG_FILE" | tail -n 1
-            grep -a 'Prognose: Optimierung' "$LOG_FILE" | tail -n 1
-            grep -a 'Prognose: danach' "$LOG_FILE" | tail -n 1
+            grep -aE '\[(FORECAST|PROGNOSE)\]' "$LOG_FILE" | tail -n 1
+            grep -aE '(Forecast: Optimization|Prognose: Optimierung)' "$LOG_FILE" | tail -n 1
+            grep -aE '(Forecast: afterwards|Prognose: danach)' "$LOG_FILE" | tail -n 1
         } | sed 's/\x1b\[[0-9;]*m//g' || true)"
         if [ -n "$forecast" ]; then
             say ""
-            say "--- Prognose (aus dem Log) ---"
+            say "--- Forecast (from log) ---"
             printf '%s\n' "$forecast"
         fi
 
         say ""
-        say "--- letzte Logzeilen ---"
+        say "--- Recent log lines ---"
         tail -n "${1:-12}" "$LOG_FILE" | colorize_log
     fi
 }
@@ -767,19 +670,19 @@ colorize_log() {
         line = $0
         color = ""
 
-        if (line ~ /(\[FEHLER\]|\[KRITISCHER FEHLER\]|\[ABGELEHNT\]|✖)/) {
+        if (line ~ /(\[ERROR\]|\[CRITICAL ERROR\]|\[REJECTED\]|\[FEHLER\]|\[KRITISCHER FEHLER\]|\[ABGELEHNT\]|✖)/) {
             color = RED
-        } else if (line ~ /\[WARNUNG\]/) {
+        } else if (line ~ /(\[WARNING\]|\[WARNUNG\])/) {
             color = YELLOW
-        } else if (line ~ /(★|🏆|ABSOLUTER CHAMPION|\[ERGEBNIS\]|Champion ist|\[OK\] Stabil)/) {
+        } else if (line ~ /(★|🏆|OVERALL CHAMPION|\[RESULT\]|Champion is|\[OK\] Stable|ABSOLUTER CHAMPION|\[ERGEBNIS\]|Champion ist|\[OK\] Stabil)/) {
             color = GREEN
-        } else if (line ~ /(╔|║|╚|===|ITERATION|FINALE GEWINNER-VERIFIKATION|VERIFIKATIONSERGEBNIS|OPTIMIERUNG ERFOLGREICH)/) {
+        } else if (line ~ /(╔|║|╚|===|ITERATION|FINAL WINNER VERIFICATION|VERIFICATION RESULT|OPTIMIZATION SUCCEEDED|FINALE GEWINNER-VERIFIKATION|VERIFIKATIONSERGEBNIS|OPTIMIERUNG ERFOLGREICH)/) {
             color = CYAN
-        } else if (line ~ /(┌─ \[Iteration|--- \[Iteration|--- Variante)/) {
+        } else if (line ~ /(┌─ \[Iteration|--- \[Iteration|--- Variant|--- Variante)/) {
             color = BLUE
-        } else if (line ~ /(▸ Gene:|-> Gene:)/) {
+        } else if (line ~ /(▸ Genes:|-> Genes:|▸ Gene:|-> Gene:)/) {
             color = LIGHT_CYAN
-        } else if (line ~ /(· Diagnose:|· Geometrie:|Anströmung|Strömungsanalyse läuft|\[CONFIG\]|y\+|Wandschicht|Flächennetz generiert|Oberflächengitter)/) {
+        } else if (line ~ /(· Diagnostics:|· Geometry:|Freestream|Flow analysis running|\[CONFIG\]|y\+|Boundary layer|Surface mesh generated)/) {
             color = GRAY
         }
 
@@ -795,102 +698,80 @@ colorize_log() {
 cmd_log() {
     local lines="${1:-40}" follow="${2:-yes}"
     if [ ! -f "$LOG_FILE" ]; then
-        say "[RUNNER] Noch kein Log vorhanden ($LOG_FILE)."
+        say "[RUNNER] No log file yet ($LOG_FILE)."
         return 1
     fi
+
     if [ "$follow" = "yes" ]; then
-        # -F statt -f: cmd_start verschiebt das alte Log nach logs/ und legt ein neues
-        # an. -f bliebe an der verschobenen Datei haengen und zeigte nie wieder etwas;
-        # -F folgt dem Dateinamen und springt auf das neue Log um.
+        # -F follows filename across log rotations in cmd_start
         tail -n "$lines" -F "$LOG_FILE" | colorize_log
     else
         tail -n "$lines" "$LOG_FILE" | colorize_log
     fi
 }
 
-# Sauberer Neuanfang: raeumt alles weg, was Laeufe hinterlassen haben -- ueber ALLE
-# Projekte, damit beim naechsten Lauf keine Modelle, Netze oder Logs eines frueheren
-# (groesseren) Laufs zwischen den neuen liegen. Bewusst OHNE require_project.
-#
-# Geloescht wird nur, was das Programm beim Start ohnehin neu anlegt: Ergebnisse/
-# (EnsureDirectories baut die Unterordner wieder auf), das Log samt Archiv und der
-# letzte Exit-Code. Stehen bleiben Quellen, bin/ und obj/ (Build bleibt gueltig,
-# libpicogk.so bleibt liegen), .deploy_hash (sonst baute das naechste Deploy grundlos
-# neu) und die *.local.json.
-#
-# Ohne "yes" wird nur aufgelistet. Exit-Codes: 0 = etwas da bzw. geloescht,
-# 3 = schon sauber, 1 = ein Lauf ist aktiv.
+# Clean slate: removes results across ALL projects, simulation.log, logs/, .last_exit,
+# and .last_project while preserving source code, bin/, obj/, .deploy_hash, and *.local.json.
 cmd_delete() {
     local confirm="${1:-}"
 
-    # Einem laufenden Programm die Arbeitsdateien unter den Fuessen wegzuziehen, fuehrt
-    # zu einem halben Lauf mit kaputter CSV -- erst stoppen.
     if is_running; then
-        say "[RUNNER] Es laeuft gerade ein Lauf (PID $(running_pid)). Erst 'stop' aufrufen."
+        say "[RUNNER] A run is currently active (PID $(running_pid)). Call 'stop' first."
         return 1
     fi
 
     local targets=() path
-    for path in "$REPO_DIR/Ergebnisse" "$LOG_FILE" "$LOG_ARCHIVE" "$EXIT_FILE" "$LAST_PROJECT_FILE"; do
+    for path in "$REPO_DIR/results" "$LOG_FILE" "$LOG_ARCHIVE" "$EXIT_FILE" "$LAST_PROJECT_FILE"; do
         if [ -e "$path" ]; then targets+=("$path"); fi
     done
 
     if [ "${#targets[@]}" -eq 0 ]; then
-        say "[RUNNER] Nichts zu loeschen -- auf dem Server liegen keine Laufreste."
+        say "[RUNNER] Nothing to delete -- no run artifacts found on the server."
         return 3
     fi
 
     if [ "$confirm" != "yes" ]; then
-        say "Auf $(hostname) wuerde geloescht:"
+        say "Would delete on $(hostname):"
         for path in "${targets[@]}"; do
             say "  ${path#"$REPO_DIR"/}  ($(du -sh "$path" 2>/dev/null | cut -f1))"
         done
-        if [ -d "$REPO_DIR/Ergebnisse" ]; then
-            say "  darin die Projekte: $(find "$REPO_DIR/Ergebnisse" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null)"
+        if [ -d "$REPO_DIR/results" ]; then
+            say "  projects inside: $(find "$REPO_DIR/results" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null)"
         fi
         return 0
     fi
 
     rm -rf -- "${targets[@]}"
 
-    # Eine tmux-Sitzung ohne laufendes Programm ist ein Ueberbleibsel (z.B. nach einem
-    # Absturz) -- gehoert zum Aufraeumen dazu.
     if has_session; then
         tmux kill-session -t "$SESSION" >/dev/null 2>&1 || true
     fi
 
-    say "[RUNNER] Geloescht. Der naechste Lauf beginnt mit leerem Ergebnisse-Ordner und neuem Log."
+    say "[RUNNER] Deleted. The next run will start with an empty results folder and fresh log."
 }
 
 cmd_results() {
     require_project results
 
     if [ ! -f "$RESULT_CSV" ]; then
-        say "[RUNNER] Noch keine Ergebnisse ($RESULT_CSV)."
+        say "[RUNNER] No results yet ($RESULT_CSV)."
         return 1
     fi
     head -n 1 "$RESULT_CSV"
     tail -n "${1:-10}" "$RESULT_CSV"
 }
 
-# Was dieser Server kennt (TODO-28). Bewusst OHNE require_project: das ist der Befehl,
-# den man gerade dann aufruft, wenn man den Projektnamen NICHT weiss.
 cmd_projects() {
     load_env
 
-    say "=== Projekte auf $(hostname) ==="
+    say "=== Projects on $(hostname) ==="
     say "Repo: $REPO_DIR"
     say ""
 
-    # Die massgebliche Liste kommt aus dem Programm: es findet die IProjectDefinition per
-    # Reflection und nennt zusaetzlich Ordner, zu denen keine gehoert -- die sind nicht
-    # startbar und genau das ist beim Anlegen eines Projekts der haeufigste Fehler.
-    # --list-projects braucht selbst kein Projekt und startet keinen Kernel (TODO-23).
     if [ -f "$APP_DLL" ]; then
         dotnet "$APP_DLL" --list-projects
     else
-        say "[INFO] Noch nicht gebaut. Welche Projekte STARTBAR sind, kann nur das"
-        say "       Programm sagen -- hier also bloss die Ordner unter src/projects/:"
+        say "[INFO] Not built yet. Listing folders under src/projects/:"
 
         local folders
         folders="$(list_project_folders)"
@@ -898,36 +779,31 @@ cmd_projects() {
         if [ -n "$folders" ]; then
             printf '%s\n' "$folders" | while IFS= read -r name; do say "  $name"; done
         else
-            say "  (keine)"
+            say "  (none)"
         fi
     fi
 
-    # Die zweite Haelfte der Frage: wo wurde schon gerechnet? Ein Ergebnisordner kann auch
-    # von einem Projekt stammen, das es im Code laengst nicht mehr gibt -- ein Deploy
-    # loescht unter Ergebnisse/ nichts.
     say ""
-    say "--- Ergebnisse (Ergebnisse/<Projekt>/) ---"
+    say "--- Results (results/<Project>/) ---"
 
     local results csv
-    results="$(find "$REPO_DIR/Ergebnisse" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true)"
+    results="$(find "$REPO_DIR/results" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true)"
 
     if [ -z "$results" ]; then
-        say "  (noch keine)"
+        say "  (none yet)"
         return 0
     fi
 
     printf '%s\n' "$results" | while IFS= read -r name; do
-        csv="$REPO_DIR/Ergebnisse/$name/Simulation_Results.csv"
+        csv="$REPO_DIR/results/$name/results.csv"
         if [ -f "$csv" ]; then
-            say "  $name  ($(($(wc -l <"$csv") - 1)) Datensaetze)"
+            say "  $name  ($(($(wc -l <"$csv") - 1)) record(s))"
         else
-            say "  $name  (noch keine CSV)"
+            say "  $name  (no CSV yet)"
         fi
     done
 }
 
-# Gibt den Namen des zuletzt gerechneten Projekts aus (.last_project).
-# Bewusst OHNE require_project: wird von Windows aus abgefragt, wenn kein -Project angegeben wurde.
 cmd_lastproject() {
     if [ -s "$LAST_PROJECT_FILE" ]; then
         cat "$LAST_PROJECT_FILE"
@@ -936,21 +812,19 @@ cmd_lastproject() {
     fi
 }
 
-# Packt die Ergebnisse des angegebenen Projekts in ein komprimiertes Archiv (.tar.gz).
-# Gibt als letzte Zeile auf stdout den Pfad des Archivs aus.
+# Packages results of the specified project into a .tar.gz archive and prints
+# the archive path as the last line on stdout.
 #
-# Umfaenge:
-#   standard: CSV, effective-config.json, run-info.json, Quellstand/, simulation.log,
-#             Analyseergebnisse/Verlaeufe/, Kalibrierung/, Verifikation.csv
-#             (jede Datei/jeder Ordner nur wenn vorhanden)
-#   champion: standard + VTUs des Champions / Top-N (Surface_GenX_VarY.vtu,
-#             Volume_GenX_VarY.vtu aus simulation.log sowie *[Cc]hampion*.vtu)
-#   all:      gesamter Projektordner Ergebnisse/<Projekt>/ plus simulation.log
+# Scopes:
+#   standard: results.csv, effective-config.json, run-info.json, source-snapshot/,
+#             simulation.log, analysis/histories/, analysis/Bayes_History.csv,
+#             calibration/, verification.csv (each if present)
+#   champion: standard + champion/top-N VTU files
+#   all:      entire results/<Project>/ folder plus simulation.log
 cmd_pack() {
     local proj="${1:-}"
     local scope="${2:-standard}"
 
-    # Falls der erste Parameter bereits der Umfang ist und SIM_PROJECT gesetzt war
     if [ "$proj" = "standard" ] || [ "$proj" = "champion" ] || [ "$proj" = "all" ]; then
         if [ -n "$PROJECT_NAME" ]; then
             scope="$proj"
@@ -967,7 +841,7 @@ cmd_pack() {
     case "$scope" in
         standard|champion|all) ;;
         *)
-            say "[RUNNER] FEHLER: Unbekannter Umfang '$scope'. Erlaubt sind: standard, champion, all"
+            say "[RUNNER] ERROR: Unknown scope '$scope'. Allowed: standard, champion, all"
             exit 2
             ;;
     esac
@@ -985,17 +859,15 @@ cmd_pack() {
             have_files=1
         fi
     else
-        # Standard: Simulation_Results.csv, effective-config.json,
-        # Analyseergebnisse/Verlaeufe, Kalibrierung, Verifikation.csv
         local std_items=(
-            "Simulation_Results.csv"
+            "results.csv"
             "effective-config.json"
             "run-info.json"
-            "Quellstand"
-            "Analyseergebnisse/Verlaeufe"
-            "Analyseergebnisse/Bayes_Verlauf.csv"
-            "Kalibrierung"
-            "Verifikation.csv"
+            "source-snapshot"
+            "analysis/histories"
+            "analysis/Bayes_History.csv"
+            "calibration"
+            "verification.csv"
         )
         local result_files=()
         for item in "${std_items[@]}"; do
@@ -1005,25 +877,22 @@ cmd_pack() {
         done
 
         if [ "$scope" = "champion" ]; then
-            # Regel fuer Champion-VTUs:
-            # 1. Alle Dateien in RESULT_DIR, die *Champion*.vtu oder *champion*.vtu heissen
             while IFS= read -r vtu; do
                 if [ -n "$vtu" ]; then
                     result_files+=("${vtu#"$RESULT_DIR"/}")
                 fi
             done < <(find "$RESULT_DIR" -type f \( -name "*Champion*.vtu" -o -name "*champion*.vtu" \) 2>/dev/null || true)
 
-            # 2. Aus simulation.log den ABSOLUTEN CHAMPION auslesen (Surface_GenX_VarY.vtu, Volume_GenX_VarY.vtu)
             if [ -f "$LOG_FILE" ]; then
                 local champ_line
-                champ_line="$(grep -E "ABSOLUTER CHAMPION: Iteration [0-9]+ \| Variante [0-9]+" "$LOG_FILE" | tail -n 1 || true)"
+                champ_line="$(grep -E "OVERALL CHAMPION: Iteration [0-9]+ \| Variant [0-9]+" "$LOG_FILE" | tail -n 1 || true)"
                 if [ -n "$champ_line" ]; then
                     local c_iter c_var
-                    c_iter="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variante \([0-9]\+\).*/\1/p')"
-                    c_var="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variante \([0-9]\+\).*/\2/p')"
+                    c_iter="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variant \([0-9]\+\).*/\1/p')"
+                    c_var="$(echo "$champ_line" | sed -n 's/.*Iteration \([0-9]\+\) | Variant \([0-9]\+\).*/\2/p')"
                     if [ -n "$c_iter" ] && [ -n "$c_var" ]; then
-                        for vtu in "Analyseergebnisse/Surface_Gen${c_iter}_Var${c_var}.vtu" \
-                                   "Analyseergebnisse/Volume_Gen${c_iter}_Var${c_var}.vtu"; do
+                        for vtu in "analysis/Surface_Gen${c_iter}_Var${c_var}.vtu" \
+                                   "analysis/Volume_Gen${c_iter}_Var${c_var}.vtu"; do
                             if [ -f "$RESULT_DIR/$vtu" ]; then
                                 result_files+=("$vtu")
                             fi
@@ -1044,7 +913,6 @@ cmd_pack() {
         fi
     fi
 
-    # Projekt-Log (simulation.log) dazupacken, falls vorhanden
     if [ -f "$LOG_FILE" ]; then
         tar_args+=(-C "$REPO_DIR" "simulation.log")
         have_files=1
@@ -1061,55 +929,54 @@ cmd_pack() {
 
 usage() {
     cat <<'TEXT'
-Aufruf: bash scripts/sim-runner.sh <befehl> [argument]
+Usage: bash scripts/sim-runner.sh <command> [argument]
 
-  doctor              Prueft Werkzeuge und Pfade, bevor ein Lauf startet   [Projekt]
-  build               dotnet build + libpicogk.so neben die DLL legen
-  start               Startet den Lauf in einer tmux-Sitzung (baut bei Bedarf) [Projekt]
-  resume              Setzt einen abgebrochenen Lauf aus dem Journal fort       [Projekt]
-  calibrate           Startet isolierte Netzkalibrierung in tmux          [Projekt]
-  recheck [var] [fin] [--unsteady] Rechnet eine Variante fein nach in tmux [Projekt]
-  stop                Beendet Lauf, tmux-Sitzung und haengende Kindprozesse
-  status [zeilen]     Laeuft was? Wie lange? Letzte Logzeilen                [Projekt]
-  log [zeilen] [no]   Logausgabe; "no" als zweites Argument = nicht mitlaufen
-  results [zeilen]    Kopfzeile und letzte Zeilen der Ergebnis-CSV           [Projekt]
-  projects            Welche Projekte kennt dieser Server, wo liegen Ergebnisse
-  lastproject         Gibt den Namen des zuletzt gerechneten Projekts aus
-  pack [Umfang]       Packt Ergebnisse als tar.gz (standard|champion|all)   [Projekt]
-  delete [yes]        Ergebnisse ALLER Projekte und alle Logs loeschen; ohne "yes"
-                      wird nur aufgelistet
-  running             Exit-Code 0, wenn ein Lauf aktiv ist (fuer Skripte)
-  hash                Gibt den Stand des zuletzt hochgeladenen Codes aus
+  doctor              Check tools and paths before starting a run            [Project]
+  build               dotnet build + copy libpicogk.so next to DLL
+  start               Start run in a tmux session (builds if needed)         [Project]
+  resume              Resume an interrupted run from journal                 [Project]
+  calibrate           Start isolated mesh calibration in tmux                [Project]
+  recheck [var] [fin] [--unsteady] Re-evaluate a variant on finer mesh       [Project]
+  stop                Stop run, tmux session, and lingering child processes
+  status [lines]      Is anything running? Runtime? Recent log lines         [Project]
+  log [lines] [no]    Show log; "no" as second argument = do not follow
+  results [lines]     Header and last lines of results.csv                   [Project]
+  projects            List known projects and existing results on server
+  lastproject         Print the name of the last run project
+  pack [scope]        Pack results as tar.gz (standard|champion|all)         [Project]
+  delete [yes]        Delete results of ALL projects and logs; without "yes"
+                      only lists targets
+  running             Exit code 0 if a run is active (for scripts)
+  hash                Print hash of the last deployed code
 
-Umgebungsvariablen: SIM_SESSION (tmux-Name, Vorgabe "sim"),
-                    SIM_PROJECT (Projektname, OHNE Vorgabe)
+Environment variables: SIM_SESSION (tmux name, default "sim"),
+                       SIM_PROJECT (project name, NO default)
 
-Die mit [Projekt] markierten Befehle brauchen SIM_PROJECT. Es gibt bewusst keinen
-Standard mehr: ein Vertipper wuerde sonst klaglos ein anderes Projekt rechnen und
-dessen Ergebnisse ueberschreiben. Welche Namen es gibt, sagt "projects".
+Commands marked [Project] require SIM_PROJECT. There is intentionally no silent
+default so a typo cannot overwrite another project's results.
 
     SIM_PROJECT=MantaAuv bash scripts/sim-runner.sh status
 TEXT
 }
 
 case "${1:-}" in
-    doctor)     cmd_doctor ;;
-    build)      cmd_build ;;
-    projects)   cmd_projects ;;
-    start)      cmd_start ;;
-    resume)     cmd_resume ;;
-    stop)       cmd_stop ;;
-    status)     cmd_status "${2:-12}" ;;
-    log)        cmd_log "${2:-40}" "${3:-yes}" ;;
-    results)    cmd_results "${2:-10}" ;;
-    delete)     cmd_delete "${2:-}" ;;
-    running)    is_running ;;
-    hash)       cat "$HASH_FILE" 2>/dev/null || echo "unbekannt" ;;
+    doctor)      cmd_doctor ;;
+    build)       cmd_build ;;
+    projects)    cmd_projects ;;
+    start)       cmd_start ;;
+    resume)      cmd_resume ;;
+    stop)        cmd_stop ;;
+    status)      cmd_status "${2:-12}" ;;
+    log)         cmd_log "${2:-40}" "${3:-yes}" ;;
+    results)     cmd_results "${2:-10}" ;;
+    delete)      cmd_delete "${2:-}" ;;
+    running)     is_running ;;
+    hash)        cat "$HASH_FILE" 2>/dev/null || echo "unknown" ;;
     lastproject) cmd_lastproject ;;
-    pack)       cmd_pack "${2:-}" "${3:-standard}" ;;
-    calibrate)  cmd_calibrate ;;
-    recheck)    cmd_recheck "${@:2}" ;;
+    pack)        cmd_pack "${2:-}" "${3:-standard}" ;;
+    calibrate)   cmd_calibrate ;;
+    recheck)     cmd_recheck "${@:2}" ;;
     _foreground) shift; cmd_foreground "$@" ;;
     ""|-h|--help|help) usage ;;
-    *)          say "Unbekannter Befehl: $1"; say ""; usage; exit 2 ;;
+    *)           say "Unknown command: $1"; say ""; usage; exit 2 ;;
 esac

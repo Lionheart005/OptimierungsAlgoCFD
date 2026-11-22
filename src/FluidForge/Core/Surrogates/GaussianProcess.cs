@@ -6,14 +6,14 @@ using System.Threading.Tasks;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Gauß-Prozess (Kriging) mit Matérn-5/2-Kern, einer Längenskala je Parameter (ARD) und gelerntem
-    /// Rauschen (TODO-54, F15). Rein in C#, ohne fremde Bibliothek (F10).
+    /// Gaussian Process (Kriging) with Matérn-5/2 kernel, per-parameter length scales (ARD),
+    /// and learned observation noise. Pure C# implementation without external dependencies.
     ///
     /// <para>
-    /// Kern: <c>k = σ²·(1 + √5·r + 5/3·r²)·exp(−√5·r)</c> mit <c>r² = Σ ((x_i − x'_i) / ℓ_i)²</c>.
-    /// Die Ausgaben werden intern standardisiert (Mittelwert 0, Streuung 1). Die Hyperparameter
-    /// (ln ℓ_i, ln σ², ln σ_n²) werden über die Log-Marginal-Likelihood mit analytischem Gradienten
-    /// bestimmt (Adam, mehrere Starts, Schranken ℓ ∈ [0,01; 20], σ² ∈ [0,05; 20], σ_n² ∈ [1e-6; 0,5]).
+    /// Kernel: <c>k = σ²·(1 + √5·r + 5/3·r²)·exp(−√5·r)</c> with <c>r² = Σ ((x_i − x'_i) / ℓ_i)²</c>.
+    /// Outputs are standardized internally (zero mean, unit variance). Hyperparameters
+    /// (ln ℓ_i, ln σ², ln σ_n²) are fitted via log-marginal-likelihood with analytical gradients
+    /// (multi-start Adam, bounded to ℓ ∈ [0.01, 20], σ² ∈ [0.05, 20], σ_n² ∈ [1e-6, 0.5]).
     /// </para>
     /// </summary>
     public sealed class GaussianProcess : ISurrogateModel
@@ -25,39 +25,39 @@ namespace FluidForge.Core
 
         private readonly Random _random;
 
-        // Daten (Eingaben unverändert, Ausgaben standardisiert)
+        // Training data (inputs unchanged, outputs standardized)
         private readonly List<double[]> _inputs = new();
         private readonly List<double> _outputs = new();
-        private readonly List<double> _extraNoise = new();   // bekannte Unsicherheit je Punkt, standardisiert
+        private readonly List<double> _extraNoise = new();   // known per-point uncertainty, standardized
         private double _outputMean;
         private double _outputScale = 1.0;
         private int _dimension;
 
-        // Hyperparameter im Log-Raum: [ln ℓ_0 … ln ℓ_{d-1}, ln σ², ln σ_n²]
+        // Hyperparameters in log-space: [ln ℓ_0 … ln ℓ_{d-1}, ln σ², ln σ_n²]
         private double[]? _theta;
 
-        // Zerlegung
+        // Cholesky factorization
         private List<double[]> _chol = new();
         private double[][] _cholArray = Array.Empty<double[]>();
         private double[] _alpha = Array.Empty<double>();
 
-        /// <param name="random">Zufallsquelle für die zufälligen Startpunkte der Hyperparameter-Suche.</param>
+        /// <param name="random">Random source for hyperparameter multi-start initialization.</param>
         public GaussianProcess(Random? random = null)
         {
             _random = random ?? new Random(12345);
         }
 
-        /// <summary>Anzahl der Lernpunkte (einschließlich Scheinbeobachtungen).</summary>
+        /// <summary>Number of training points (including pseudo-observations).</summary>
         public int Count => _inputs.Count;
 
-        /// <summary>Gelernte Längenskalen ℓ_i (normierte Einheiten), <c>null</c> vor dem ersten Lernen.</summary>
+        /// <summary>Learned length scales ℓ_i (normalized units), <c>null</c> before fitting.</summary>
         public IReadOnlyList<double>? LengthScales =>
             _theta == null ? null : _theta.Take(_dimension).Select(Math.Exp).ToArray();
 
-        /// <summary>Gelernte Signalvarianz σ² (standardisierte Einheiten).</summary>
+        /// <summary>Learned signal variance σ² (standardized units).</summary>
         public double SignalVariance => _theta == null ? double.NaN : Math.Exp(_theta[_dimension]);
 
-        /// <summary>Gelerntes Rauschen σ_n² (standardisierte Einheiten).</summary>
+        /// <summary>Learned noise variance σ_n² (standardized units).</summary>
         public double NoiseVariance => _theta == null ? double.NaN : Math.Exp(_theta[_dimension + 1]);
 
         /// <inheritdoc/>
@@ -85,29 +85,29 @@ namespace FluidForge.Core
             if (inputs == null) throw new ArgumentNullException(nameof(inputs));
             if (outputs == null) throw new ArgumentNullException(nameof(outputs));
             if (inputs.Count != outputs.Count)
-                throw new ArgumentException($"Eingaben ({inputs.Count}) und Ausgaben ({outputs.Count}) sind verschieden viele.");
+                throw new ArgumentException($"Input count ({inputs.Count}) does not match output count ({outputs.Count}).");
             if (inputs.Count == 0)
-                throw new ArgumentException("Zum Lernen wird mindestens ein Datenpunkt gebraucht.");
+                throw new ArgumentException("At least one training point is required to fit.");
 
             int d = inputs[0].Length;
-            if (d == 0) throw new ArgumentException("Die Eingaben haben keine Dimension.");
+            if (d == 0) throw new ArgumentException("Input vectors have zero dimension.");
 
             for (int i = 0; i < inputs.Count; i++)
             {
                 if (inputs[i].Length != d)
-                    throw new ArgumentException($"Eingabe {i} hat {inputs[i].Length} Dimensionen, erwartet {d}.");
+                    throw new ArgumentException($"Input {i} has {inputs[i].Length} dimensions, expected {d}.");
                 if (inputs[i].Any(v => !double.IsFinite(v)))
-                    throw new ArgumentException($"Eingabe {i} enthält einen nicht endlichen Wert.");
+                    throw new ArgumentException($"Input {i} contains a non-finite value.");
                 if (!double.IsFinite(outputs[i]))
-                    throw new ArgumentException($"Ausgabe {i} ist nicht endlich ({outputs[i]}).");
+                    throw new ArgumentException($"Output {i} is non-finite ({outputs[i]}).");
             }
 
             if (noiseVariances != null)
             {
                 if (noiseVariances.Count != inputs.Count)
-                    throw new ArgumentException($"Unsicherheiten ({noiseVariances.Count}) und Eingaben ({inputs.Count}) sind verschieden viele.");
+                    throw new ArgumentException($"Noise variance count ({noiseVariances.Count}) does not match input count ({inputs.Count}).");
                 if (noiseVariances.Any(v => !double.IsFinite(v) || v < 0))
-                    throw new ArgumentException("Eine Unsicherheit ist negativ oder nicht endlich.");
+                    throw new ArgumentException("A noise variance is negative or non-finite.");
             }
 
             if (_theta != null && _dimension != d) _theta = null;
@@ -117,7 +117,7 @@ namespace FluidForge.Core
             _outputs.Clear();
             foreach (double[] x in inputs) _inputs.Add((double[])x.Clone());
 
-            // Standardisieren
+            // Standardize outputs
             double mean = outputs.Average();
             double variance = outputs.Sum(v => (v - mean) * (v - mean)) / outputs.Count;
             double scale = Math.Sqrt(variance);
@@ -137,7 +137,7 @@ namespace FluidForge.Core
         public (double Mean, double Variance) Predict(double[] input)
         {
             if (_theta == null || _inputs.Count == 0)
-                throw new InvalidOperationException("Das Modell wurde noch nicht gelernt (Fit).");
+                throw new InvalidOperationException("Model has not been fitted yet (Fit).");
 
             double sf2 = Math.Exp(_theta[_dimension]);
             var kstar = new double[_inputs.Count];
@@ -159,9 +159,9 @@ namespace FluidForge.Core
         public void AddPseudoObservation(double[] input, double output)
         {
             if (_theta == null || _inputs.Count == 0)
-                throw new InvalidOperationException("Das Modell wurde noch nicht gelernt (Fit).");
+                throw new InvalidOperationException("Model has not been fitted yet (Fit).");
             if (!double.IsFinite(output) || input.Any(v => !double.IsFinite(v)))
-                throw new ArgumentException("Scheinbeobachtung mit nicht endlichem Wert.");
+                throw new ArgumentException("Pseudo-observation contains a non-finite value.");
 
             double sf2 = Math.Exp(_theta[_dimension]);
             double sn2 = Math.Exp(_theta[_dimension + 1]);
@@ -188,7 +188,7 @@ namespace FluidForge.Core
         }
 
         // ------------------------------------------------------------------------------------
-        // Kern
+        // Kernel
         // ------------------------------------------------------------------------------------
 
         private static double Kernel(double[] a, double[] b, double[] theta, double sf2)
@@ -243,17 +243,17 @@ namespace FluidForge.Core
         }
 
         // ------------------------------------------------------------------------------------
-        // Log-Marginal-Likelihood und Gradient
+        // Log-Marginal Likelihood and Gradient
         // ------------------------------------------------------------------------------------
 
         /// <summary>
-        /// Log-Marginal-Likelihood der (bereits standardisierten) Ausgaben <paramref name="y"/> für die
-        /// Hyperparameter <paramref name="theta"/> (Log-Raum). Öffentlich, damit der analytische Gradient
-        /// gegen finite Differenzen geprüft werden kann.
+        /// Log-marginal likelihood of the (standardized) outputs <paramref name="y"/> for
+        /// hyperparameters <paramref name="theta"/> (log-space). Public so the analytical gradient
+        /// can be verified against finite differences in tests.
         /// </summary>
-        /// <param name="gradient">Wird gefüllt, wenn nicht <c>null</c> (Länge = theta.Length).</param>
-        /// <param name="extraNoise">Bekannte Varianz je Punkt (standardisiert), kommt auf die Diagonale.</param>
-        /// <returns><see cref="double.NegativeInfinity"/>, wenn die Matrix nicht zerlegbar ist.</returns>
+        /// <param name="gradient">Populated if non-null (length = theta.Length).</param>
+        /// <param name="extraNoise">Known per-point variance (standardized), added to the diagonal.</param>
+        /// <returns><see cref="double.NegativeInfinity"/> if the matrix cannot be factored.</returns>
         public static double LogMarginalLikelihood(
             IReadOnlyList<double[]> x, IReadOnlyList<double> y, double[] theta, double[]? gradient,
             IReadOnlyList<double>? extraNoise = null)
@@ -266,7 +266,7 @@ namespace FluidForge.Core
             for (int i = 0; i < d; i++) lengths[i] = Math.Exp(theta[i]);
 
             var k = new double[n][];
-            // Hilfsgröße des Längenskalen-Gradienten: (5/3)·σ²·(1 + s)·exp(−s)
+            // Helper term for length-scale gradient: (5/3)·σ²·(1 + s)·exp(−s)
             double[][]? g = gradient != null ? new double[n][] : null;
 
             for (int i = 0; i < n; i++)
@@ -323,7 +323,7 @@ namespace FluidForge.Core
                     for (int j = 0; j < i; j++)
                     {
                         double w = alpha[i] * alpha[j] - kinv[i][j];
-                        // Beitrag von (i,j) und (j,i), mal ½ aus der Formel → Faktor 1
+                        // Contribution of (i,j) and (j,i), times ½ from the formula → factor 1
                         double kSignal = k[i][j];
                         gSignal += w * kSignal;
 
@@ -344,7 +344,7 @@ namespace FluidForge.Core
         }
 
         // ------------------------------------------------------------------------------------
-        // Hyperparameter-Suche
+        // Hyperparameter Search
         // ------------------------------------------------------------------------------------
 
         private double[] OptimizeHyperparameters()
@@ -355,14 +355,14 @@ namespace FluidForge.Core
             double lengthStart = Math.Clamp(0.3 * Math.Sqrt(d), 0.5, 5.0);
             double[] defaultStart = DefaultTheta(d, lengthStart);
 
-            // Mit weniger als 3 Punkten lässt sich nichts Sinnvolles lernen.
+            // Fewer than 3 points cannot support meaningful hyperparameter learning.
             if (n < 3) return _theta != null ? (double[])_theta.Clone() : defaultStart;
 
             var starts = new List<double[]>();
             if (_theta != null) starts.Add((double[])_theta.Clone());
             starts.Add(defaultStart);
 
-            // Viele Punkte: nur Warmstart und Vorgabe, wenige Schritte (Rechenzeit ~ n³ je Schritt).
+            // Large datasets: warm start and default only, fewer steps (cost scales as O(n³) per step).
             int steps = n <= 100 ? 200 : n <= 200 ? 100 : 40;
             if (n <= 150)
             {
@@ -377,7 +377,7 @@ namespace FluidForge.Core
             }
             else if (_theta != null)
             {
-                starts.RemoveAt(starts.Count - 1);   // nur Warmstart
+                starts.RemoveAt(starts.Count - 1);   // warm start only
             }
 
             var results = new (double[] Theta, double LogLik)[starts.Count];
@@ -421,7 +421,7 @@ namespace FluidForge.Core
                 if (double.IsNegativeInfinity(logLik) || double.IsNaN(logLik) || grad.Any(g => !double.IsFinite(g)))
                 {
                     if (double.IsNegativeInfinity(bestLogLik)) break;
-                    // Zurück zur Mitte zwischen aktuellem und bestem Punkt, Momente zurücksetzen.
+                    // Backtrack halfway toward the best point and reset moments.
                     for (int i = 0; i < p; i++) theta[i] = 0.5 * (theta[i] + bestTheta[i]);
                     Array.Clear(m); Array.Clear(v);
                     continue;
@@ -444,7 +444,7 @@ namespace FluidForge.Core
                 Clamp(theta, d);
             }
 
-            // Der letzte Schritt wurde noch nicht bewertet.
+            // Evaluate the final step.
             double finalLogLik = LogMarginalLikelihood(_inputs, _outputs, theta, null, _extraNoise);
             if (finalLogLik > bestLogLik)
             {

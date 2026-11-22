@@ -1,98 +1,88 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  MantaAuv -- Framework-Einstellungen dieses Projekts
+  //  MantaAuv -- Framework Settings for This Project
   // ===================================================================
   //
-  // Was hier fehlt, kommt aus den Standardwerten in
-  // Core/Models/SimulationConfig.cs. Eingetragen gehoert also nur, was vom
-  // Code-Standard ABWEICHT -- alles andere ist Rauschen, das beim naechsten
-  // Framework-Update veraltet.
+  // Anything omitted here falls back to defaults in Core/Models/SimulationConfig.cs.
+  // Only settings that differ from code defaults need to be listed here.
   //
-  // Ein unbekannter Schluessel bricht den Start ab (TODO-22). Der Abbruch nennt
-  // den Schluessel und den naechstaehnlichen gueltigen Namen.
+  // An unknown key aborts startup and suggests the closest valid name.
   //
-  // Ein zweites Projekt hat seine eigene Datei unter src/projects/<Name>/ und
-  // kommt dieser hier nicht in die Quere.
+  // Each project has its own folder under src/projects/<Name>/ and does not
+  // interfere with other projects.
   //
-  // Maschinenspezifische Ausnahmen gehoeren in eine simulation.local.json
-  // (gitignored). SOLLSTAND IST, DASS ES KEINE GIBT: findet der Start eine,
-  // meldet er sie mit jedem Schluessel, den sie diesem Projekt aushebelt.
+  // Machine-specific overrides belong in simulation.local.json (gitignored).
+  // Target state is that none exist: if found at startup, every overridden key
+  // is logged explicitly.
 
-  // --- Pfade zu externer Software ---
-  //
-  // Es gilt der PATH-relative Code-Standard ("mpirun", "SU2_CFD", "gmsh") aus
-  // Core/Models/SimulationConfig.cs. Auf dem Server setzen scripts/sim-runner.sh
-  // und ExecutableResolver die Suchpfade automatisch; abweichende Rechnerpfade
-  // gehoeren bei Bedarf in eine gitignored simulation.local.json.
-  // Welche Pfade aktiv sind, zeigt `.\scripts\sim.ps1 doctor` vor dem Lauf.
+  // --- External tool paths ---
+  // Uses PATH-relative code defaults ("mpirun", "SU2_CFD", "gmsh") from
+  // Core/Models/SimulationConfig.cs. On the server, scripts/sim-runner.sh and
+  // ExecutableResolver resolve the search paths automatically; machine-specific
+  // overrides belong in a gitignored simulation.local.json.
+  // Run `.\scripts\sim.ps1 doctor` to verify active paths before a run.
 
-  // --- Zeit & Umfang ---
-  // MaxIterations x VariantsPerIteration = Anzahl der gerechneten Varianten.
-  // Fuer einen kurzen Testlauf hier heruntersetzen und neu deployen -- es gibt
-  // kein verstecktes zweites Stellrad mehr.
+  // --- Iterations & budget ---
+  // MaxIterations x VariantsPerIteration = total variants evaluated.
+  // Lower these for a quick test run and redeploy.
   "MaxIterations": 10,
   "VariantsPerIteration": 10,
 
-  // --- Automatisches Ende: aus (Standard). Zum Einschalten die letzte Zeile einkommentieren ---
-  // Der Lauf endet frueher, wenn sich der Bestwert in den letzten WindowVariants Varianten um weniger
-  // als MinImprovement (0.01 = 1 %) verbessert hat; MaxIterations x VariantsPerIteration bleibt die
-  // Obergrenze. Erklaerung: src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // --- Auto-stop: off by default. Uncomment the last line to enable ---
+  // Ends the run early if the best fitness improves by less than MinImprovement (0.01 = 1%)
+  // over the last WindowVariants variants; MaxIterations x VariantsPerIteration remains the cap.
   // "AutoStop": { "Mode": "On", "MinImprovement": 0.01, "WindowVariants": 20 },
   "BaseVoxelResolution": 0.5,
-  // Automatische Verfeinerung der Start-Voxelgroesse bei groben Realraum-Voxeln (> 80 % der Oberflaechen-Zellgroesse) aus.
+  // Disable automatic start voxel refinement for coarse real-world voxels (> 80% of surface cell size).
   "AutoVoxelResolution": false,
   "TargetPicoGkSize": 50.0,
   "VoxelSmoothingIterations": 40,
   "VoxelSmoothingPremeltingSteps": 2,
 
-  // --- Abschaltbare Framework-Bausteine ---
-  // Scaler aus: der Geometrie-Kernel arbeitet mit den echten Massen, ScaleFactor bleibt 1.
-  // Smoother aus: die STL kommt unveraendert aus dem Voxel-Modell.
+  // --- Toggleable framework stages ---
+  // Scaler off: geometry kernel works in real dimensions, ScaleFactor remains 1.
+  // Smoother off: STL is used directly from the voxel model.
   "UseRubberBandScaler": true,
   "UseStlSmoothing": true,
   "UseProjectedFrontalArea": true,
 
   // --- CFD & SU2 ---
-  // Aktueller Stand (AP-1..AP-6): Prismen-Wandschicht (y+ ~ 1,5, Wachstumsrate 1,28), entkoppelter Grosskanal
-  // (>= 5 L vor, >= 15 L hinter, >= 5 B/H seitlich, <= 0,3 % Blockage), MeshSizeFromCurvature = true,
-  // CauchyTolerance = "1e-5" und AutoRestartOnDrift in su2.json.
-  // Ergebnisse vor der Umstellung (y+ 40-70, kleiner Kanal) sind NICHT vergleichbar.
-  // Kein MeshRefinementFactor: der Netzfaktor wird am Laufanfang kalibriert (MeshCalibration unten, Mode "Auto");
-  // ein eingetragener Faktor wuerde den Start im Auto-Modus abbrechen.
+  // Prism boundary layer (y+ ~ 1.5, growth rate 1.28), decoupled large wind tunnel
+  // (>= 5 L upstream, >= 15 L downstream, >= 5 W/H lateral, <= 0.3% blockage),
+  // MeshSizeFromCurvature = true, CauchyTolerance = "1e-5", and AutoRestartOnDrift in su2.json.
+  // MeshRefinementFactor is omitted: calibrated at startup via MeshCalibration ("Auto");
+  // specifying it in Auto mode aborts startup.
   "Su2MaxIterations": 5000,
   "CauchyElements": 300,
   "CauchyTolerance": "1e-5",
   "MpiCores": 12,
   "GmshCores": 12,
 
-  // --- Optimierungsverfahren: "Bayes" (Standard) oder "IdwBaseline" (Legacy-Alias "Rsm") ---
-  // Der Code-Standard ist seit 08.11.2026 "Bayes". MantaAuv traegt es trotzdem ausdruecklich ein (Bericht-Lauf, 09.11.2026),
-  // damit eine spaetere Aenderung des Standards diesen Lauf nicht still umstellt. Ein unbekannter Name warnt und faellt auf den Standard zurueck.
+  // --- Optimization algorithm: "Bayes" (default) or "IdwBaseline" (legacy alias "Rsm") ---
+  // Code default is "Bayes"; MantaAuv specifies it explicitly so future default changes
+  // do not silently alter this project. Unknown names warn and fall back to default.
   "OptimizationAlgorithm": "Bayes",
 
-  // --- IdwBaseline (IDW-Interpolations-Baseline, kein echtes RSM) ---
+  // --- IdwBaseline (inverse-distance-weighted baseline) ---
   "IdwVirtualSimulations": 50000,
   "IdwPower": 3.0,
   "IdwExploitationRatio": 0.7,
   "IdwExploitationSigma": 0.1,
 
-  // --- Bayes-Optimierer (nur bei "OptimizationAlgorithm": "Bayes", alles optional) ---
-  // Meist nicht noetig: "Bayes" laeuft ohne Einstellung. Jeder Parameter braucht Grenzen in
-  // project.json (ParameterBounds); MaxDeviations wirkt bei "Bayes" nicht. Erklaerung der Schluessel:
-  // src/projects/BEDIENHANDBUCH.md, Abschnitt 4.2.
+  // --- Bayesian optimizer (only when "OptimizationAlgorithm": "Bayes", all optional) ---
+  // Usually not needed: "Bayes" runs without settings. Every parameter needs bounds in
+  // project.json (ParameterBounds); MaxDeviations has no effect in "Bayes" mode.
   // "Bayes": {
   //   "SurrogateTarget": "Auto",   // "Auto" | "Fitness" | "Metrics"
-  //   "InitialSamples": 0          // 0 = automatisch: max(VariantsPerIteration, 2 x freie Parameter + 2)
+  //   "InitialSamples": 0          // 0 = automatic: max(VariantsPerIteration, 2 x free params + 2)
   // },
 
-  // --- Kontrollrechnungen und Netzkalibrierung (TODO-W4, TODO-W5) ---
-  // Strenges Profil fuer Kalibrierung, Feinpruefung und Recheck: bis 20000 Iterationen, Fenster 500, CauchyTolerance "1e-5",
-  // erlaubter iterativer Fehler 0,1 x Netz-Toleranz. Die Kalibrierung laeuft automatisch am Laufanfang (~4 h im Servertest 06.11.2026).
-  // MaxCells3D 5 Mio. statt Code-Standard 3 Mio.: Die Grenze gilt fuer die GEMESSENE Zellzahl einer Kalibrierstufe und wird nach dem
-  // Vernetzen geprueft, bevor SU2 rechnet (frueher eine kubische Hochrechnung, die am 09.11.2026 4,4-fach zu hoch lag).
-  // Gemessen: Faktor 0,50 = 0,70 Mio., 0,35 = 1,70 Mio. Zellen (Kalibrierstufe 0,35 rechnete 7,4 h, die ganze Kalibrierung 13,6 h);
-  // Faktor 0,25 wuerde rund 4 Mio. Zellen haben und grob 10 h und mehr kosten.
+  // --- Control runs & mesh calibration ---
+  // Strict profile for calibration, fine verification, and recheck: up to 20000 iterations,
+  // window 500, CauchyTolerance "1e-5", iterative error <= 0.1 x mesh tolerance.
+  // MaxCells3D = 5M (instead of default 3M): checked against the MEASURED cell count after meshing
+  // before SU2 runs. Measured: factor 0.50 = 0.70M, 0.35 = 1.70M cells.
   "ControlRuns": {
     "Su2MaxIterations": 20000,
     "CauchyElements": 500,
@@ -111,9 +101,9 @@
     "RefinementSteps": 1
   },
 
-  // --- Validierung des Champions (Bouncer) ---
-  // Erlaubte relative Abweichung der FITNESS bei der Re-Simulation. Sollte in etwa der Toleranz der Kalibrierung liegen, nicth kleiner.
-  // der Widerstand geht hoch 3 in die Fitness ein (1 % Drag ~ 3 % Fitness), 5 % waere zu knapp.
+  // --- Champion validation (bouncer) ---
+  // Allowed relative FITNESS deviation on re-simulation. Should roughly match calibration tolerance,
+  // not smaller (drag enters fitness cubed: 1% drag ~ 3% fitness, so 5% would be too tight).
   "BouncerTolerance": 0.15,
   "BouncerJitter": 0.01
 }

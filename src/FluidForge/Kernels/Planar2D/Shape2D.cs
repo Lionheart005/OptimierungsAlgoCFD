@@ -11,7 +11,7 @@ using FluidForge.Core;
 namespace FluidForge.Kernels.Planar2D
 {
     /// <summary>
-    /// Serialisierbares DTO für 2D-Konturdaten (kompatibel mit 2D-Meshern wie Gmsh).
+    /// Serializable DTO for 2D contour data (compatible with 2D meshers such as Gmsh).
     /// </summary>
     public class ContourFile2D
     {
@@ -19,32 +19,32 @@ namespace FluidForge.Kernels.Planar2D
     }
 
     /// <summary>
-    /// Einzelne geschlossene Schleife innerhalb einer Konturdatei (Außenrand oder Loch).
+    /// Single closed loop within a contour file (outer boundary or inner hole).
     /// </summary>
     public class ContourLoop2D
     {
-        /// <summary>Stützpunkte der Schleife als [x, y]-Koordinatenpaare in mm.</summary>
+        /// <summary>Control points of the loop as [x, y] coordinate pairs in mm.</summary>
         public List<float[]> Points { get; set; } = new();
 
-        /// <summary>Indizes der Stützpunkte, die scharfe Knickpunkte bilden.</summary>
+        /// <summary>Indices of control points that form sharp corners.</summary>
         public List<int> CornerIndices { get; set; } = new();
 
-        /// <summary>True, wenn die Schleife ein inneres Loch darstellt.</summary>
+        /// <summary>True if the loop represents an inner hole.</summary>
         public bool IsHole { get; set; }
     }
 
     /// <summary>
-    /// Zweidimensionale Form (Menge geschlossener Konturen mit optionalen Löchern).
-    /// Basiert auf Clipper2 (PathsD) und bietet boolesche Operationen, Rundungs-/Versatzoperationen
-    /// sowie Knickpunkterkennung und Export (JSON/SVG).
+    /// Two-dimensional shape (set of closed contours with optional holes).
+    /// Built on Clipper2 (PathsD) and provides boolean operations, rounding/offsetting,
+    /// corner detection, and export (JSON/SVG).
     /// </summary>
     public class Shape2D
     {
         public PathsD Paths { get; private set; } = new();
 
         /// <summary>
-        /// Schwellenwinkel in Grad für die Erkennung scharfer Knickpunkte (z.B. Hinterkante).
-        /// Standard: 35 Grad Richtungsänderung.
+        /// Threshold angle in degrees for detecting sharp corners (e.g., trailing edge).
+        /// Default: 35 degrees turn angle.
         /// </summary>
         public float CornerAngleDeg { get; set; } = 35.0f;
 
@@ -64,10 +64,10 @@ namespace FluidForge.Kernels.Planar2D
                 Paths = new PathsD(lattice.Paths);
         }
 
-        #region Boolesche Operationen (mutierend und kettenfähig)
+        #region Boolean Operations (mutating and fluent)
 
         /// <summary>
-        /// Vereinigt diese Form mit einer anderen (Union).
+        /// Unites this shape with another shape (Union).
         /// </summary>
         public Shape2D BoolAdd(Shape2D other)
         {
@@ -81,7 +81,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Subtrahiert eine andere Form von dieser (Difference).
+        /// Subtracts another shape from this shape (Difference).
         /// </summary>
         public Shape2D BoolSubtract(Shape2D other)
         {
@@ -93,7 +93,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Schneidet diese Form mit einer anderen (Intersect).
+        /// Intersects this shape with another shape (Intersect).
         /// </summary>
         public Shape2D BoolIntersect(Shape2D other)
         {
@@ -110,11 +110,11 @@ namespace FluidForge.Kernels.Planar2D
 
         #endregion
 
-        #region Versatz und Rundung
+        #region Offset and Rounding
 
         /// <summary>
-        /// Versetzt die Konturen nach außen (distanceMm > 0) oder innen (distanceMm &lt; 0).
-        /// Verwendet JoinType.Round für glatte Kanten.
+        /// Offsets the contours outward (distanceMm > 0) or inward (distanceMm &lt; 0).
+        /// Uses JoinType.Round for smooth edges.
         /// </summary>
         public Shape2D Offset(float distanceMm)
         {
@@ -127,7 +127,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Zweifacher Versatz hintereinander.
+        /// Applies two consecutive offsets.
         /// </summary>
         public Shape2D DoubleOffset(float d1Mm, float d2Mm)
         {
@@ -137,8 +137,8 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Dreifacher Versatz (+r, -2r, +r) analog zu PicoGKs TripleOffset:
-        /// Rundet sowohl Innen- als auch Außenkanten gleichmäßig mit Radius r ab.
+        /// Triple offset (+r, -2r, +r) analogous to PicoGK's TripleOffset:
+        /// uniformly rounds both inner and outer corners with radius r.
         /// </summary>
         public Shape2D TripleOffset(float radiusMm)
         {
@@ -151,10 +151,10 @@ namespace FluidForge.Kernels.Planar2D
 
         #endregion
 
-        #region Grundformen und Kurven
+        #region Primitives and Curves
 
         /// <summary>
-        /// Fügt ein geschlossenes Polygon hinzu und vereinigt es mit der bestehenden Form.
+        /// Adds a closed polygon and unites it with the existing shape.
         /// </summary>
         public Shape2D AddPolygon(IReadOnlyList<Vector2> points)
         {
@@ -176,7 +176,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Fügt einen Kreis als Polygon hinzu und vereinigt ihn mit der bestehenden Form.
+        /// Adds a circle as a polygon and unites it with the existing shape.
         /// </summary>
         public Shape2D AddCircle(Vector2 center, float radius, int segments = 64)
         {
@@ -202,8 +202,8 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Erzeugt eine geschlossene oder offene Catmull-Rom-Spline durch gegebene Stützpunkte
-        /// und vereinigt sie als geschlossenes Polygon mit der bestehenden Form.
+        /// Generates a closed or open Catmull-Rom spline through the given points
+        /// and unites it as a closed polygon with the existing shape.
         /// </summary>
         public Shape2D AddSpline(IReadOnlyList<Vector2> controlOrThroughPoints, int samplesPerSegment = 16, bool closed = true)
         {
@@ -271,10 +271,10 @@ namespace FluidForge.Kernels.Planar2D
 
         #endregion
 
-        #region Auswertung und Messung
+        #region Measurement and Evaluation
 
         /// <summary>
-        /// Konvertiert alle Schleifen in Listen von Vector2-Punkten.
+        /// Converts all loops into lists of Vector2 points.
         /// </summary>
         public List<List<Vector2>> ToContourPoints()
         {
@@ -292,7 +292,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Vermisst die 2D-Form (Fläche, Umfang, Sehne in X, Dicke in Y, Punktezahl).
+        /// Measures the 2D shape (area, perimeter, chord in X, thickness in Y, point count).
         /// </summary>
         public ContourMeasurement2D Measure()
         {
@@ -300,7 +300,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Berechnet Fläche und Bounding Box der Form.
+        /// Computes area and bounding box of the shape.
         /// </summary>
         public void CalculateProperties(out float area, out BBox2 boundingBox)
         {
@@ -310,17 +310,17 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Gesamter Umfang aller Konturschleifen in mm.
+        /// Total perimeter of all contour loops in mm.
         /// </summary>
         public float Perimeter => Measure().Perimeter;
 
         #endregion
 
-        #region Knickpunkterkennung und Export
+        #region Corner Detection and Export
 
         /// <summary>
-        /// Erkennt Knickpunkte (Schnittkanten/Ecken) in einer geschlossenen Schleife,
-        /// bei denen der Richtungsänderungswinkel (Turn-Angle) größer als cornerAngleDeg ist.
+        /// Detects corners (sharp edges/vertices) in a closed loop where the
+        /// directional turn angle exceeds cornerAngleDeg.
         /// </summary>
         public static IReadOnlyList<int> DetectCorners(IReadOnlyList<Vector2> loop, float cornerAngleDeg = 35.0f)
         {
@@ -347,7 +347,7 @@ namespace FluidForge.Kernels.Planar2D
                 float dot = Vector2.Dot(vIn, vOut) / (lenIn * lenOut);
                 dot = Math.Clamp(dot, -1.0f, 1.0f);
 
-                // Turn-Winkel: 0° = geradeaus weiter, 90° = rechter Winkel, ~180° = scharfe Spitze/Spitzenkante
+                // Turn angle: 0° = straight ahead, 90° = right angle, ~180° = sharp tip/trailing edge
                 float turnRad = MathF.Acos(dot);
                 float turnDeg = turnRad * (180.0f / MathF.PI);
 
@@ -361,7 +361,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Speichert die Konturen samt markierten Knickpunkten und Loch-Information als JSON-Datei ab.
+        /// Saves the contours including detected corners and hole flags as a JSON file.
         /// </summary>
         public void SaveContour(string path, float? cornerAngleDeg = null)
         {
@@ -400,12 +400,12 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Lädt ein ContourFile2D aus einer JSON-Datei.
+        /// Loads a ContourFile2D from a JSON file.
         /// </summary>
         public static ContourFile2D LoadContour(string path)
         {
             if (!File.Exists(path))
-                throw new FileNotFoundException($"Konturdatei nicht gefunden: {path}", path);
+                throw new FileNotFoundException($"Contour file not found: {path}", path);
 
             string json = File.ReadAllText(path, Encoding.UTF8);
             var fileDto = JsonSerializer.Deserialize<ContourFile2D>(json);
@@ -413,7 +413,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Erzeugt ein Shape2D aus einer zuvor gespeicherten ContourFile2D-JSON-Datei.
+        /// Creates a Shape2D from a previously saved ContourFile2D JSON file.
         /// </summary>
         public static Shape2D FromContourFile(string path)
         {
@@ -450,7 +450,7 @@ namespace FluidForge.Kernels.Planar2D
         }
 
         /// <summary>
-        /// Exportiert die 2D-Form als SVG-Vektorgrafik mit Bounding Box und hervorgehobenen Knickpunkten.
+        /// Exports the 2D shape as an SVG vector graphic with bounding box and highlighted corners.
         /// </summary>
         public void SaveSvg(string path, float strokeWidth = 0.2f)
         {

@@ -4,29 +4,29 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Kombinierte Toleranz für Kennwertvergleiche (TODO-W1): relativer Anteil <b>plus</b> fester
-    /// Mindestbetrag, wie <c>numpy.isclose</c>.
+    /// Combined tolerance for metric comparisons (TODO-W1): relative fraction <b>plus</b> fixed
+    /// absolute floor, analogous to <c>numpy.isclose</c>.
     ///
     /// <para>
-    /// Ein Wert <c>q</c> gilt gegenüber der Referenz <c>q_ref</c> als „in Ordnung“, wenn
-    /// <c>|q − q_ref| ≤ rtol · |q_ref| + atol</c>. Bei großen Werten entscheidet die relative
-    /// Abweichung, bei Werten nahe 0 (Auftrieb eines symmetrischen Profils bei 0°) der feste
-    /// Mindestbetrag. Vorher meldete die Kalibrierung für CL = 0,0001 gegen −0,0005 „1 727 %“
-    /// Abweichung und scheiterte, obwohl beide Werte praktisch 0 sind.
+    /// A value <c>q</c> is considered within tolerance of reference <c>q_ref</c> when
+    /// <c>|q - q_ref| &lt;= rtol * |q_ref| + atol</c>. For large values, the relative deviation
+    /// governs; for values near 0 (e.g., lift of a symmetric airfoil at 0 deg), the fixed
+    /// absolute floor governs. Previously calibration reported "1,727 %" deviation for
+    /// CL = 0.0001 vs -0.0005 and failed even though both values are practically zero.
     /// </para>
     ///
     /// <para>
-    /// Angezeigt wird die <b>normierte Abweichung</b> <c>|Δ| / (rtol · |q_ref| + atol)</c>:
-    /// höchstens 1 heißt in Ordnung, 2 heißt doppelt so weit daneben wie erlaubt.
+    /// Reported is the <b>normalized deviation</b> <c>|Δ| / (rtol * |q_ref| + atol)</c>:
+    /// at most 1 means within tolerance; 2 means twice as far off as allowed.
     /// </para>
     /// </summary>
     public static class MetricTolerance
     {
         /// <summary>
-        /// Vorgaben für den festen Mindestbetrag je Kennwert (dimensionslose Beiwerte):
-        /// Auftrieb und Seitenkraft 0,005 (so auch das NASA-TMR-Kriterium bei α = 0°),
-        /// Widerstand 0,0001 (ein „drag count“, die übliche Auflösungsgrenze), Momente 0,001.
-        /// Unbekannte Kennwerte: 0 (rein relativ, wie bisher).
+        /// Default absolute floors per metric (dimensionless coefficients):
+        /// lift and side force 0.005 (matching the NASA TMR criterion at alpha = 0 deg),
+        /// drag 0.0001 (one drag count, typical resolution limit), moments 0.001.
+        /// Unknown metrics: 0 (purely relative, as before).
         /// </summary>
         public static readonly IReadOnlyDictionary<string, float> DefaultAbsolute =
             new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
@@ -40,8 +40,8 @@ namespace FluidForge.Core
             };
 
         /// <summary>
-        /// Mindestbetrag für <paramref name="metric"/>: Eintrag in <paramref name="overrides"/>
-        /// (<c>MeshCalibration.AbsoluteTolerances</c>), sonst <see cref="DefaultAbsolute"/>, sonst 0.
+        /// Absolute floor for <paramref name="metric"/>: entry from <paramref name="overrides"/>
+        /// (<c>MeshCalibration.AbsoluteTolerances</c>), otherwise <see cref="DefaultAbsolute"/>, otherwise 0.
         /// </summary>
         public static float AbsoluteFor(string metric, IReadOnlyDictionary<string, float>? overrides = null)
         {
@@ -57,13 +57,13 @@ namespace FluidForge.Core
             return DefaultAbsolute.TryGetValue(metric, out float value) ? value : 0f;
         }
 
-        /// <summary>Klassische relative Abweichung <c>|q − q_ref| / |q_ref|</c> (für Berichte).</summary>
+        /// <summary>Classic relative deviation <c>|q - q_ref| / |q_ref|</c> (for reports).</summary>
         public static float Relative(float value, float reference)
             => Math.Abs(value - reference) / Math.Max(Math.Abs(reference), 1e-7f);
 
         /// <summary>
-        /// Normierte Abweichung <c>|q − q_ref| / (rtol · |q_ref| + atol)</c>; höchstens 1 = innerhalb der Toleranz.
-        /// Sind rtol und atol 0, gilt jede Abweichung außer exakter Gleichheit als unendlich groß.
+        /// Normalized deviation <c>|q - q_ref| / (rtol * |q_ref| + atol)</c>; at most 1 = within tolerance.
+        /// If both rtol and atol are 0, any deviation other than exact equality is infinite.
         /// </summary>
         public static float Normalized(float value, float reference, float relativeTolerance, float absoluteTolerance)
         {
@@ -74,15 +74,15 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Relative Toleranz unter Berücksichtigung der Schwankung beider verglichenen Rechnungen
-        /// (<see cref="MetricUncertainty"/>): mindestens die doppelte kombinierte Standardunsicherheit. Bei ruhig
-        /// auskonvergierten Rechnungen (Unsicherheit nahe 0) bleibt es bei der eingestellten Toleranz; bei
-        /// Wirbelablösung verhindert es, dass reines Rauschen als Netzabhängigkeit oder Instabilität zählt.
+        /// Relative tolerance accounting for oscillation in both compared evaluations
+        /// (<see cref="MetricUncertainty"/>): at least twice the combined standard uncertainty.
+        /// For cleanly converged runs (uncertainty near 0), the configured tolerance remains unchanged;
+        /// under vortex shedding, pure noise is prevented from registering as mesh dependence or instability.
         /// </summary>
         public static float WithUncertainty(float tolerance, double uncertaintyA, double uncertaintyB)
             => Math.Max(tolerance, (float)(2.0 * Math.Sqrt(uncertaintyA * uncertaintyA + uncertaintyB * uncertaintyB)));
 
-        /// <summary>Wahr, wenn <paramref name="value"/> innerhalb der kombinierten Toleranz um <paramref name="reference"/> liegt.</summary>
+        /// <summary>True when <paramref name="value"/> lies within the combined tolerance around <paramref name="reference"/>.</summary>
         public static bool Within(float value, float reference, float relativeTolerance, float absoluteTolerance)
             => Normalized(value, reference, relativeTolerance, absoluteTolerance) <= 1.0f;
     }

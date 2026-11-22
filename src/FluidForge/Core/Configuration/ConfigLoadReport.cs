@@ -5,72 +5,61 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Ein Schlüssel, den eine maschinenspezifische <c>*.local.json</c> gegenüber den
-    /// eingecheckten Schichten tatsächlich verändert.
+    /// A key that a machine-specific <c>*.local.json</c> actually changes compared to
+    /// the committed configuration layers.
     /// </summary>
-    /// <param name="File">Dateiname der local-Datei.</param>
-    /// <param name="Key">Schlüsselpfad, z.B. <c>MaxIterations</c> oder <c>BaseParameters.Length</c>.</param>
-    /// <param name="PreviousValue">Was ohne diese Datei gegolten hätte.</param>
-    /// <param name="NewValue">Was jetzt gilt.</param>
+    /// <param name="File">Filename of the local override file.</param>
+    /// <param name="Key">Key path, e.g., <c>MaxIterations</c> or <c>BaseParameters.Length</c>.</param>
+    /// <param name="PreviousValue">Value that would have applied without this file.</param>
+    /// <param name="NewValue">Effective value now in use.</param>
     public sealed record MachineOverride(string File, string Key, string PreviousValue, string NewValue);
 
     /// <summary>
-    /// Was beim Laden einer Konfiguration tatsächlich passiert ist: welcher Schlüssel aus welcher
-    /// Datei gewonnen hat, und welche maschinenspezifische Datei dem Projekt dazwischengefunkt hat.
+    /// Records what happened while loading configuration: which file won each key,
+    /// and which machine-specific file overrode project settings.
     ///
     /// <para>
-    /// Der Bericht ist bewusst Daten und kein reiner Konsolen-Nebeneffekt: TODO-25 schreibt ihn
-    /// zusätzlich als <c>effective-config.json</c> neben die Ergebnisse, damit ein alter Lauf
-    /// rekonstruierbar bleibt, egal was danach an den Dateien passiert.
+    /// Stored as structured data rather than just a console side effect so that
+    /// <c>effective-config.json</c> can preserve full provenance alongside results.
     /// </para>
     /// </summary>
     public sealed class ConfigLoadReport
     {
-        /// <summary>Schlüsselpfad → Datei, aus der der wirksame Wert stammt. Fehlt ein Schlüssel hier, gilt der Code-Standard.</summary>
+        /// <summary>Key path → file from which the effective value originated. Keys absent here use code defaults.</summary>
         public Dictionary<string, string> Origins { get; } = new();
 
-        /// <summary>Schlüssel, die eine <c>*.local.json</c> gegenüber den eingecheckten Schichten verändert.</summary>
+        /// <summary>Keys changed by a <c>*.local.json</c> relative to committed layers.</summary>
         public List<MachineOverride> MachineOverrides { get; } = new();
 
         /// <summary>
-        /// Vorhandene <c>*.local.json</c>-Dateien, die nichts verändern. Sie sind kein Problem,
-        /// sollen aber auch nicht unsichtbar bleiben — sonst sucht jemand später den Grund für
-        /// eine Abweichung in einer Datei, die gar keine verursacht.
+        /// Existing <c>*.local.json</c> files that change no values. Mentioned briefly so
+        /// nobody hunts for a divergence cause in a file that actually has no effect.
         /// </summary>
         public List<string> NeutralMachineFiles { get; } = new();
 
         /// <summary>
-        /// Der auffällige Startblock aus TODO-22. Sollstand nach dem Umbau ist, dass es
-        /// <b>nirgends</b> eine <c>*.local.json</c> gibt: die Programmpfade sind PATH-relativ,
-        /// alles andere ist Projektsache. Jede vorhandene Datei ist damit ein Sonderfall, den
-        /// das Programm bei jedem Start laut meldet — mit jedem einzelnen Schlüssel, den sie
-        /// dem Projekt aushebelt, und beiden Werten.
-        ///
-        /// <para>
-        /// Wertgleiche Schlüssel stehen bewusst nicht drin: sonst ginge die eigentliche Meldung
-        /// im Rauschen unter. Eine local-Datei, die nichts ändert, erzeugt deshalb gar keinen
-        /// Block, sondern nur eine Zeile.
-        /// </para>
+        /// Prominent startup warning block when <c>*.local.json</c> files override project settings.
+        /// Keys with identical values are omitted to avoid noise.
         /// </summary>
         /// <param name="projectName">
-        /// Nur für den Hinweistext, wohin die Werte gehören. Ohne Angabe steht dort ein Platzhalter.
+        /// Used in the hint showing where project settings belong. Uses a placeholder if omitted.
         /// </param>
         public void PrintMachineOverrideWarning(string? projectName = null)
         {
             foreach (string file in NeutralMachineFiles)
-                Console.WriteLine($"[CONFIG] {file}: vorhanden, ändert aber keinen Wert.");
+                Console.WriteLine($"{OutputConventions.ConfigTag} {file}: present, but changes no values.");
 
             if (MachineOverrides.Count == 0) return;
 
-            string target = string.IsNullOrWhiteSpace(projectName) ? "<Projekt>" : projectName.Trim();
+            string target = string.IsNullOrWhiteSpace(projectName) ? "<Project>" : projectName.Trim();
             int keyWidth = Math.Min(28, Math.Max(20, MachineOverrides.Max(entry => entry.Key.Length) + 2));
 
             var files = MachineOverrides.GroupBy(entry => entry.File).ToList();
 
             Console.WriteLine("==================================================================");
             Console.WriteLine(files.Count == 1
-                ? "[WARNUNG] Eine maschinenspezifische Datei überschreibt dieses Projekt:"
-                : $"[WARNUNG] {files.Count} maschinenspezifische Dateien überschreiben dieses Projekt:");
+                ? $"{OutputConventions.WarningTag} A machine-specific file overrides this project:"
+                : $"{OutputConventions.WarningTag} {files.Count} machine-specific files override this project:");
 
             foreach (var group in files)
             {
@@ -79,28 +68,26 @@ namespace FluidForge.Core
                 foreach (MachineOverride entry in group)
                 {
                     Console.WriteLine($"          {entry.Key.PadRight(keyWidth)}"
-                                      + $"Projekt: {entry.PreviousValue}   ->   local: {entry.NewValue}");
+                                      + $"Project: {entry.PreviousValue}   ->   local: {entry.NewValue}");
                 }
             }
 
             Console.WriteLine(files.Count == 1
-                ? "          Normalerweise sollte es diese Datei nicht geben. Gehören die"
-                : "          Normalerweise sollte es diese Dateien nicht geben. Gehören die");
-            Console.WriteLine($"          Werte zum Projekt, dann nach src/projects/{target}/ übernehmen");
-            Console.WriteLine(files.Count == 1 ? "          und die Datei löschen." : "          und die Dateien löschen.");
+                ? "          Normally this file should not exist. If the values belong"
+                : "          Normally these files should not exist. If the values belong");
+            Console.WriteLine($"          to the project, move them to src/projects/{target}/");
+            Console.WriteLine(files.Count == 1 ? "          and delete the local file." : "          and delete the local files.");
             Console.WriteLine("==================================================================");
         }
 
         /// <summary>
-        /// Gibt je Schlüssel die gewinnende Datei aus — nach Datei gruppiert, damit jeder
-        /// Schlüssel genau einmal erscheint und die Liste lesbar bleibt. Vorher stand im Log
-        /// nur „N Einträge übernommen“, was bei vier Schichten nichts mehr aussagt.
+        /// Prints the winning file per key, grouped by file for readability.
         /// </summary>
         public void PrintOrigins()
         {
             if (Origins.Count == 0) return;
 
-            Console.WriteLine("[CONFIG] Herkunft der wirksamen Werte (alles Ungenannte: Code-Standard):");
+            Console.WriteLine($"{OutputConventions.ConfigTag} Origin of effective values (unlisted keys use code defaults):");
 
             foreach (var group in Origins.GroupBy(entry => entry.Value).OrderBy(group => group.Key, StringComparer.Ordinal))
             {
@@ -112,14 +99,14 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Eine geladene Konfigurationsdatei, wie sie in die <c>effective-config.json</c> wandert.
+    /// A loaded configuration file as recorded in <c>effective-config.json</c>.
     /// </summary>
-    /// <param name="Name">Name relativ zum Projektordner, z.B. <c>solvers/su2.json</c>.</param>
-    /// <param name="Value">Das fertige Konfigurationsobjekt, wie der Lauf es benutzt hat.</param>
-    /// <param name="Report">Woher jeder Schlüssel kam.</param>
+    /// <param name="Name">Name relative to the project directory, e.g., <c>solvers/su2.json</c>.</param>
+    /// <param name="Value">The effective configuration object used by the run.</param>
+    /// <param name="Report">Provenance of each key.</param>
     public sealed record LoadedConfiguration(string Name, object Value, ConfigLoadReport Report);
 
-    /// <summary>Ergebnis eines Ladevorgangs: der fertige Wert und der Bericht dazu.</summary>
+    /// <summary>Result of loading a configuration: the effective value and its load report.</summary>
     public sealed class ConfigLoadResult<T> where T : class
     {
         public ConfigLoadResult(T value, ConfigLoadReport report)

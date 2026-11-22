@@ -11,8 +11,8 @@ namespace FluidForge.Tests
     public class SolverOptionsTests
     {
         /// <summary>
-        /// Die SU2-Konfigurationsdatei muss mit den Standard-Optionen physikalisch dasselbe
-        /// beschreiben wie die frühere hardcodierte Fassung.
+        /// The SU2 configuration file with default options must describe the exact same
+        /// physics as the previous hardcoded version.
         /// </summary>
         [Fact]
         public void Generated_Su2_Config_Keeps_The_Previous_Values()
@@ -46,11 +46,11 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // TODO-38: Anströmung direkt in m/s
+        // TODO-38: Freestream velocity directly in m/s
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Standard seit 08.11.2026: 2,0 m/s (passend zum Standardfluid Meerwasser), nicht mehr der Mach-Weg.
+        /// Default since 2026-11-08: 2.0 m/s (matching the default fluid seawater), no longer via Mach.
         /// </summary>
         [Fact]
         public void The_Default_Velocity_Is_Two_Metres_Per_Second()
@@ -61,8 +61,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Mit <c>FreestreamVelocity = 0</c> rechnet ein Projekt exakt wie vor TODO-38:
-        /// Geschwindigkeit = MachNumber × SpeedOfSound.
+        /// With <c>FreestreamVelocity = 0</c>, a project computes exactly as before TODO-38:
+        /// velocity = MachNumber × SpeedOfSound.
         /// </summary>
         [Fact]
         public void Without_A_Velocity_The_Old_Mach_Path_Still_Applies()
@@ -78,14 +78,14 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Eine gesetzte Geschwindigkeit gewinnt — und erreicht beide Stellen der cfg, an denen
-        /// SU2 sie braucht: Freistrom (Randbedingung) und Startfeld.
+        /// An explicit velocity wins — and reaches both places in the cfg where SU2 needs it:
+        /// freestream (boundary condition) and initial field.
         /// </summary>
         [Fact]
         public void A_Set_Velocity_Wins_Over_The_Mach_Number_And_Reaches_The_Config()
         {
             var config = SimulationConfig.CreateDefault();
-            config.MachNumber = 0.3f; // darf keine Rolle mehr spielen
+            config.MachNumber = 0.3f; // must no longer play a role
 
             var options = new Su2SolverOptions { FreestreamVelocity = 2.0f };
 
@@ -139,7 +139,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // TODO-38: FlowConditions, Warnung bei wirkungslosem MachNumber, Reynoldszahl
+        // TODO-38: FlowConditions, warning on unused MachNumber, Reynolds number
         // -------------------------------------------------------------------
 
         [Fact]
@@ -148,7 +148,7 @@ namespace FluidForge.Tests
             var config = SimulationConfig.CreateDefault();
             config.MachNumber = 0.2f;
 
-            // A) Explizite FreestreamVelocity gewinnt
+            // A) Explicit FreestreamVelocity wins
             var optionsWithVel = new Su2SolverOptions
             {
                 FreestreamVelocity = 2.0f,
@@ -162,7 +162,7 @@ namespace FluidForge.Tests
             Assert.Equal(0.001001f, flow.DynamicViscosity);
             Assert.Contains("FreestreamVelocity", flow.VelocitySource);
 
-            // B) Fallback auf MachNumber
+            // B) Fallback to MachNumber
             var optionsWithoutVel = new Su2SolverOptions
             {
                 FreestreamVelocity = 0.0f,
@@ -188,7 +188,7 @@ namespace FluidForge.Tests
 
             Assert.InRange(re, 1.023e5f, 1.025e5f);
 
-            // Schutz vor ungültigen Eingaben
+            // Guard against invalid inputs
             Assert.Equal(0f, flow.ComputeReynoldsNumber(0f));
             Assert.Equal(0f, flow.ComputeReynoldsNumber(-1f));
             Assert.Equal(0f, new FlowConditions(2f, 1025f, 0f).ComputeReynoldsNumber(0.05f));
@@ -308,7 +308,7 @@ namespace FluidForge.Tests
                 }
                 catch
                 {
-                    // Erwarteter Abbruch beim Start des Prozesses
+                    // Expected failure when starting the process
                 }
 
                 Assert.True(record.PassiveParameters.ContainsKey("ReynoldsNumber"));

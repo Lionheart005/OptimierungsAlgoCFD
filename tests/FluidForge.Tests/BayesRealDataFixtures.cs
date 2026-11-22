@@ -1,5 +1,5 @@
-// Echte Rechnungen des Serververgleichs vom 08.11.2026 (Naca2D, Bayes, Netzfaktor 2.0): jeweils die ersten Runden.
-// Spalten: Iteration;Variant;MaxCamber;CamberPosition;MaxThickness;AngleOfAttackDeg;Drag;Lift;Uncertainty_Drag;Uncertainty_Lift;SimulationFailed;Disqualified
+// Real runs from the server comparison on 2026-11-08 (Naca2D, Bayes, mesh factor 2.0): the first rounds of each.
+// Columns: Iteration;Variant;MaxCamber;CamberPosition;MaxThickness;AngleOfAttackDeg;Drag;Lift;Uncertainty_Drag;Uncertainty_Lift;SimulationFailed;Disqualified
 namespace FluidForge.Tests
 {
     internal static class BayesRealDataFixtures

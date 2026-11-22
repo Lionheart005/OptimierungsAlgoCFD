@@ -7,20 +7,20 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Zentrales Logging- und Formatierungs-Framework für Konsolen- und Logdateiausgaben.
+    /// Centralized logging and formatting framework for console and log file output.
     /// <para>
-    /// Grundprinzipien:
-    /// 1. Reiner, perfekt formatierter UTF-8-Text ohne rohe ANSI-Steuerzeichen in Dateien
-    ///    (wenn <see cref="Console.IsOutputRedirected"/> aktiv ist).
-    /// 2. Lokale Terminalfarben (<see cref="Console.ForegroundColor"/>), wenn interaktiv.
-    /// 3. Prominente Banners, übersichtliche Varianten-Blöcke und kompakte Iterations-Tabellen.
+    /// Core principles:
+    /// 1. Clean, properly formatted UTF-8 text without raw ANSI escape codes in files
+    ///    (when <see cref="Console.IsOutputRedirected"/> is active).
+    /// 2. Local terminal colors (<see cref="Console.ForegroundColor"/>) when interactive.
+    /// 3. Prominent banners, clear variant blocks, and compact iteration tables.
     /// </para>
     /// </summary>
     public static class SimulationLog
     {
         private const int BoxWidth = 80;
 
-        #region Farbausgabe-Hilfsmethoden
+        #region Colored Output Helpers
 
         public static void WriteLineColored(string text, ConsoleColor color)
         {
@@ -45,10 +45,10 @@ namespace FluidForge.Core
 
         #endregion
 
-        #region Banner
+        #region Banners
 
         /// <summary>
-        /// Gibt ein prominentes Banner mit Doppelrahmen (80 Zeichen Breite) aus.
+        /// Prints a prominent double-bordered banner (80 characters wide).
         /// </summary>
         public static void PrintBanner(string title, params string[] subtitleLines)
         {
@@ -78,17 +78,17 @@ namespace FluidForge.Core
 
         public static void PrintIterationBanner(int iteration, int maxIterations)
         {
-            PrintBanner($"ITERATION {iteration} VON {maxIterations}");
+            PrintBanner($"ITERATION {iteration} OF {maxIterations}");
         }
 
         #endregion
 
-        #region Varianten-Kopf und Gene
+        #region Variant Header and Genes
 
         public static void PrintVariantHeader(int iter, int maxIter, int variant, int maxVariants)
         {
             Console.WriteLine();
-            string title = $"┌─ [Iteration {iter}/{maxIter} · Variante {variant}/{maxVariants}] ";
+            string title = $"┌─ [Iteration {iter}/{maxIter} · Variant {variant}/{maxVariants}] ";
             int remaining = Math.Max(2, BoxWidth - title.Length);
             string header = title + new string('─', remaining);
             WriteLineColored(header, ConsoleColor.Cyan);
@@ -98,24 +98,24 @@ namespace FluidForge.Core
         {
             var parts = parameters.Select(kvp => $"{kvp.Key} = {FormatNumber(kvp.Value)}");
             string genes = string.Join(" | ", parts);
-            WriteLineColored($"│  ▸ Gene:      {genes}", ConsoleColor.Cyan);
+            WriteLineColored($"│  ▸ Genes:     {genes}", ConsoleColor.Cyan);
         }
 
         #endregion
 
-        #region Details, Warnungen und Fehler
+        #region Details, Warnings, and Errors
 
         /// <summary>
-        /// Dezent eingerückter technischer Zwischenschritt (z.B. Netz, Solver, Konvergenz).
+        /// Subtly indented technical intermediate step (e.g., mesh, solver, convergence).
         /// </summary>
         public static void Detail(string message)
         {
-            if (message.StartsWith("[WARNUNG]", StringComparison.OrdinalIgnoreCase))
+            if (message.StartsWith(OutputConventions.WarningTag, StringComparison.OrdinalIgnoreCase))
             {
                 WriteLineColored($"│  · {message}", ConsoleColor.Yellow);
             }
-            else if (message.StartsWith("[FEHLER]", StringComparison.OrdinalIgnoreCase) ||
-                     message.StartsWith("[ABGELEHNT]", StringComparison.OrdinalIgnoreCase))
+            else if (message.StartsWith(OutputConventions.ErrorTag, StringComparison.OrdinalIgnoreCase) ||
+                     message.StartsWith("[REJECTED]", StringComparison.OrdinalIgnoreCase))
             {
                 WriteLineColored($"│  ✖ {message}", ConsoleColor.Red);
             }
@@ -130,23 +130,23 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Gibt eine formatierte Warnzeile aus.
+        /// Prints a formatted warning line.
         /// </summary>
         public static void Warning(string message)
         {
-            WriteLineColored($"│  · [WARNUNG] {message}", ConsoleColor.Yellow);
+            WriteLineColored($"│  · {OutputConventions.WarningTag} {message}", ConsoleColor.Yellow);
         }
 
         /// <summary>
-        /// Gibt eine formatierte Fehlerzeile aus.
+        /// Prints a formatted error line.
         /// </summary>
         public static void Error(string message)
         {
-            WriteLineColored($"│  ✖ [FEHLER] {message}", ConsoleColor.Red);
+            WriteLineColored($"│  ✖ {OutputConventions.ErrorTag} {message}", ConsoleColor.Red);
         }
 
         /// <summary>
-        /// Gibt eine formatierte Erfolgszeile aus.
+        /// Prints a formatted success line.
         /// </summary>
         public static void Success(string message)
         {
@@ -154,14 +154,14 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Ausgabe der Geometrie-Erstellung, sauber unterschieden nach 2D und 3D.
+        /// Logs geometry creation, distinguishing between 2D and 3D.
         /// </summary>
         public static void PrintGeometry(string? stlOrJsonPath, IReadOnlyDictionary<string, float> passiveParams)
         {
             bool is2D = !string.IsNullOrEmpty(stlOrJsonPath) &&
                         stlOrJsonPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
 
-            string typeStr = is2D ? "2D-Profilkontur erstellt" : "3D-Voxel-Geometrie erstellt";
+            string typeStr = is2D ? "2D profile contour created" : "3D voxel geometry created";
 
             var relevantMetrics = passiveParams
                 .Where(p => p.Key != "ScaleFactor" && p.Key != "MeshRefinementFactor" && !p.Key.StartsWith("Su2_") && !p.Key.StartsWith("YPlus_"))
@@ -171,26 +171,26 @@ namespace FluidForge.Core
             string metricsStr = string.Join(", ", relevantMetrics);
             if (!string.IsNullOrEmpty(metricsStr))
             {
-                Detail($"Geometrie: {typeStr}. (Metriken: {metricsStr})");
+                Detail($"Geometry: {typeStr}. (Metrics: {metricsStr})");
             }
             else
             {
-                Detail($"Geometrie: {typeStr}.");
+                Detail($"Geometry: {typeStr}.");
             }
         }
 
         #endregion
 
-        #region Varianten-Ergebnis, Diagnose & Abschluss
+        #region Variant Result, Diagnostics & Footer
 
         /// <summary>
-        /// Prominente Ergebniszeile je Variante.
+        /// Prominent result line per variant.
         /// </summary>
         public static void PrintVariantResult(ModelRecord record)
         {
             if (record.SimulationFailed)
             {
-                WriteLineColored("│  ✖ Ergebnis:  SIMULATION FEHLGESCHLAGEN", ConsoleColor.Red);
+                WriteLineColored("│  ✖ Result:    SIMULATION FAILED", ConsoleColor.Red);
                 return;
             }
 
@@ -220,12 +220,12 @@ namespace FluidForge.Core
             }
 
             string metricsPart = foundMetrics.Count > 0 ? $"   ({string.Join(" | ", foundMetrics)})" : "";
-            string resultLine = $"│  ★ Ergebnis:  Fitness = {record.Fitness.ToString("0.###", CultureInfo.InvariantCulture)}{metricsPart}";
+            string resultLine = $"│  ★ Result:    Fitness = {record.Fitness.ToString("0.###", CultureInfo.InvariantCulture)}{metricsPart}";
             WriteLineColored(resultLine, ConsoleColor.Green);
         }
 
         /// <summary>
-        /// Dezente Diagnosezeile (Gitterzellen, y+, Konvergenz, Reynoldszahl).
+        /// Subtle diagnostics line (mesh cells, y+, convergence, Reynolds number).
         /// </summary>
         public static void PrintVariantDiagnostics(ModelRecord record)
         {
@@ -235,7 +235,7 @@ namespace FluidForge.Core
 
             if (record.PassiveParameters.TryGetValue("MeshCells", out float cells) && cells > 0)
             {
-                diagItems.Add($"Zellen = {(long)cells}");
+                diagItems.Add($"Cells = {(long)cells}");
             }
 
             if (record.PassiveParameters.TryGetValue("YPlus_P95", out float p95))
@@ -253,8 +253,8 @@ namespace FluidForge.Core
             if (record.PassiveParameters.TryGetValue("Su2_Iterations", out float su2It))
             {
                 bool conv = record.PassiveParameters.TryGetValue("Su2_Converged", out float cVal) && cVal > 0.5f;
-                string convText = conv ? "konvergiert" : "nicht konvergiert";
-                diagItems.Add($"SU2 = {(int)su2It} It. ({convText})");
+                string convText = conv ? "converged" : "not converged";
+                diagItems.Add($"SU2 = {(int)su2It} it. ({convText})");
             }
 
             if (record.PassiveParameters.TryGetValue("ReynoldsNumber", out float re) && re > 0)
@@ -264,14 +264,14 @@ namespace FluidForge.Core
 
             if (diagItems.Count > 0)
             {
-                string diagLine = $"│  · Diagnose:  {string.Join(" | ", diagItems)}";
+                string diagLine = $"│  · Diagnostics: {string.Join(" | ", diagItems)}";
                 WriteLineColored(diagLine, ConsoleColor.DarkGray);
             }
         }
 
         /// <summary>
-        /// Abschlusszeile einer Variante mit Laufzeit und Prognose (Plan zeitschaetzung.md).
-        /// Die Prognose-Zeilen enthalten das Wort „Prognose:“, danach sucht <c>sim-runner.sh status</c>.
+        /// Closing line of a variant with runtime and forecast.
+        /// Forecast lines contain the word "Forecast:", which <c>sim-runner.sh status</c> searches for.
         /// </summary>
         public static void PrintVariantFooter(double durationSeconds, RunTimeEstimate? estimate, DateTime now)
         {
@@ -279,32 +279,32 @@ namespace FluidForge.Core
                 WriteLineColored(line, ConsoleColor.DarkGray);
         }
 
-        /// <summary>Die Zeilen von <see cref="PrintVariantFooter"/> als Text (prüfbar ohne Konsole).</summary>
+        /// <summary>The lines of <see cref="PrintVariantFooter"/> as text (testable without console).</summary>
         public static IReadOnlyList<string> VariantFooterLines(double durationSeconds, RunTimeEstimate? estimate, DateTime now)
         {
             var lines = new List<string>
             {
-                $"└─ ⏱ Dauer: {FormatDuration(TimeSpan.FromSeconds(durationSeconds))}"
+                $"└─ ⏱ Duration: {FormatDuration(TimeSpan.FromSeconds(durationSeconds))}"
             };
             if (estimate == null) return lines;
 
-            string prefix = estimate.UpperBound ? "Optimierung höchstens bis" : "Optimierung fertig ca.";
-            lines[0] += $" | Prognose: {prefix} {FormatDateTime(now + estimate.Remaining)} (Rest ≈ {FormatDuration(estimate.Remaining)})";
+            string prefix = estimate.UpperBound ? "Optimization at most until" : "Optimization approx.";
+            lines[0] += $" | Forecast: {prefix} {FormatDateTime(now + estimate.Remaining)} (Remaining ≈ {FormatDuration(estimate.Remaining)})";
 
             if (estimate.FineCandidates > 0 && estimate.FineVerification > TimeSpan.Zero)
             {
                 lines.Add(
-                    $"   Prognose: danach Feinprüfung bis zu ≈ {FormatDuration(estimate.FineVerification)} "
-                    + $"({estimate.FineCandidates} {(estimate.FineCandidates == 1 ? "Kandidat" : "Kandidaten")}), "
-                    + $"alles fertig {(estimate.UpperBound ? "höchstens bis" : "ca.")} "
+                    $"   Forecast: followed by fine verification up to ≈ {FormatDuration(estimate.FineVerification)} "
+                    + $"({estimate.FineCandidates} {(estimate.FineCandidates == 1 ? "candidate" : "candidates")}), "
+                    + $"all done {(estimate.UpperBound ? "at most until" : "approx.")} "
                     + FormatDateTime(now + estimate.Remaining + estimate.FineVerification));
             }
             return lines;
         }
 
         /// <summary>
-        /// Eine Zeile nach der Iterations-Tabelle: wann die nächste Iteration fertig ist. Das ist die Angabe,
-        /// die man braucht, um einen Lauf nach Iteration N von Hand zu stoppen.
+        /// One line after the iteration table: when the next iteration will finish.
+        /// Useful when manually stopping a run after iteration N.
         /// </summary>
         public static void PrintTimeForecast(RunTimeEstimate? estimate, DateTime now)
         {
@@ -312,31 +312,30 @@ namespace FluidForge.Core
             if (line != null) WriteLineColored(line, ConsoleColor.Cyan);
         }
 
-        /// <summary>Die Zeile von <see cref="PrintTimeForecast"/>; <c>null</c>, wenn es nichts zu prognostizieren gibt.</summary>
+        /// <summary>The line of <see cref="PrintTimeForecast"/>; <c>null</c> if there is nothing to forecast.</summary>
         public static string? TimeForecastLine(RunTimeEstimate? estimate, DateTime now)
         {
             if (estimate == null) return null;
 
-            string bound = estimate.UpperBound ? "höchstens " : "";
+            string bound = estimate.UpperBound ? "at most " : "";
             string text = estimate.IterationNumber > 0
-                ? $"[PROGNOSE] Iteration {estimate.IterationNumber} fertig {bound}ca. {FormatDateTime(now + estimate.IterationRemaining)}"
-                  + $" | Optimierung fertig {bound}ca. {FormatDateTime(now + estimate.Remaining)}"
-                : $"[PROGNOSE] Optimierung fertig";
+                ? $"[FORECAST] Iteration {estimate.IterationNumber} done {bound}approx. {FormatDateTime(now + estimate.IterationRemaining)}"
+                  + $" | Optimization done {bound}approx. {FormatDateTime(now + estimate.Remaining)}"
+                : $"[FORECAST] Optimization done";
 
             if (estimate.FineCandidates > 0 && estimate.FineVerification > TimeSpan.Zero)
-                text += $" | danach Feinprüfung bis zu ≈ {FormatDuration(estimate.FineVerification)}";
+                text += $" | followed by fine verification up to ≈ {FormatDuration(estimate.FineVerification)}";
             return text;
         }
 
         /// <summary>
-        /// Dauer lesbar, mit Tagen: <c>4 s</c>, <c>34 min</c>, <c>4 h 49 min</c>, <c>12 T 17 h</c>.
-        /// (Das alte <c>hh:mm:ss</c> ließ die Tage weg: 12 T 17 h erschien als „17:34:24“.)
+        /// Human-readable duration with days: <c>4 s</c>, <c>34 min</c>, <c>4 h 49 min</c>, <c>12 d 17 h</c>.
         /// </summary>
         public static string FormatDuration(TimeSpan duration)
         {
             if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
 
-            // Erst runden, dann die Stufe wählen: 59,6 s sind „1 min“, nicht „60 s“.
+            // Round first, then pick the unit: 59.6 s is "1 min", not "60 s".
             int totalSeconds = (int)Math.Round(duration.TotalSeconds);
             if (totalSeconds < 60) return $"{totalSeconds} s";
 
@@ -345,21 +344,21 @@ namespace FluidForge.Core
             if (totalMinutes < 24 * 60) return $"{totalMinutes / 60} h {totalMinutes % 60} min";
 
             int totalHours = (int)Math.Round(duration.TotalHours);
-            return $"{totalHours / 24} T {totalHours % 24} h";
+            return $"{totalHours / 24} d {totalHours % 24} h";
         }
 
-        private static readonly string[] WeekdayShort = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+        private static readonly string[] WeekdayShort = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 
-        /// <summary>Datum mit Wochentag auf Deutsch, z. B. <c>Mo 23.11. 09:00</c> (ohne Kultureinstellung, damit es überall gleich aussieht).</summary>
+        /// <summary>Date with short weekday, e.g., <c>Mon 23.11. 09:00</c> (culture-independent formatting).</summary>
         public static string FormatDateTime(DateTime time)
             => $"{WeekdayShort[(int)time.DayOfWeek]} {time.Day:00}.{time.Month:00}. {time.Hour:00}:{time.Minute:00}";
 
         #endregion
 
-        #region Iterations-Zusammenfassung (Tabelle)
+        #region Iteration Summary (Table)
 
         /// <summary>
-        /// Gibt am Ende einer Iteration eine kompakte, ausgerichtete Tabelle aller Varianten aus.
+        /// Prints a compact, aligned table of all variants at the end of an iteration.
         /// </summary>
         public static void PrintIterationSummary(int iteration, int maxIterations, List<ModelRecord> records, ModelRecord winner)
         {
@@ -380,14 +379,14 @@ namespace FluidForge.Core
                     .ToList();
             }
 
-            // Spaltenbreiten definieren
+            // Define column widths
             int colVar = 5;
             var colWidths = new Dictionary<string, int>();
             foreach (var m in activeMetrics) colWidths[m] = Math.Max(m.Length + 2, 10);
             int colFit = 11;
             int colStatus = 14;
 
-            // Tabellen-Rahmen zeichnen
+            // Draw table borders
             string BuildBorder(char left, char sep, char right, char fill)
             {
                 var parts = new List<string> { new string(fill, colVar) };
@@ -399,7 +398,7 @@ namespace FluidForge.Core
 
             WriteLineColored(BuildBorder('┌', '┬', '┐', '─'), ConsoleColor.DarkGray);
 
-            // Kopfzeile
+            // Header row
             var headers = new List<string> { "Var".PadLeft(colVar - 1) + " " };
             foreach (var m in activeMetrics) headers.Add(m.PadLeft(colWidths[m] - 1) + " ");
             headers.Add("Fitness".PadLeft(colFit - 1) + " ");
@@ -408,7 +407,7 @@ namespace FluidForge.Core
 
             WriteLineColored(BuildBorder('├', '┼', '┤', '─'), ConsoleColor.DarkGray);
 
-            // Datenzeilen
+            // Data rows
             foreach (var r in records)
             {
                 bool isWinner = r == winner || (r.Iteration == winner.Iteration && r.Variant == winner.Variant);
@@ -427,9 +426,9 @@ namespace FluidForge.Core
                 rowCells.Add(fitStr.PadLeft(colFit - 1) + " ");
 
                 string statusStr;
-                if (r.SimulationFailed) statusStr = "✖ FEHLER";
+                if (r.SimulationFailed) statusStr = "✖ ERROR";
                 else if (isWinner) statusStr = "★ CHAMPION";
-                else if (r.Fitness > 0f && r.Fitness <= 0.0002f) statusStr = "⚠ ABGELEHNT";
+                else if (r.Fitness > 0f && r.Fitness <= 0.0002f) statusStr = "⚠ REJECTED";
                 else statusStr = "OK";
                 rowCells.Add(" " + statusStr.PadRight(colStatus - 1));
 
@@ -450,14 +449,14 @@ namespace FluidForge.Core
 
             WriteLineColored(BuildBorder('└', '┴', '┘', '─'), ConsoleColor.DarkGray);
 
-            // Klare Ergebniszeile
-            string champMsg = $"[ERGEBNIS] Iteration {iteration} abgeschlossen — Champion ist Variante {winner.Variant} (Score: {winner.Fitness:F3})";
+            // Clear result line
+            string champMsg = $"[RESULT] Iteration {iteration} completed — Champion is Variant {winner.Variant} (Score: {winner.Fitness:F3})";
             WriteLineColored(champMsg, ConsoleColor.Green);
         }
 
         #endregion
 
-        #region Formatierungs-Helfer
+        #region Formatting Helpers
 
         public static string FormatNumber(float value)
         {

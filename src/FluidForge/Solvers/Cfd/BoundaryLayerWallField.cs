@@ -7,50 +7,50 @@ using System.Text;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Die neu vernetzte Wandoberfläche (Medit-Datei aus Schritt 1 des Wandschicht-Verfahrens) als
-    /// Dreiecksnetz. Reines Rechenobjekt ohne Gmsh-Bezug, damit Faltprüfung und Glättung testbar sind.
+    /// Remeshed wall surface (Medit file from step 1 of the boundary-layer workflow) as a
+    /// triangle mesh. Pure computational object without Gmsh dependencies so fold checks and smoothing are unit-testable.
     /// </summary>
     public sealed class WallSurface
     {
-        /// <summary>Koordinaten, je Knoten x, y, z hintereinander (Länge 3·n).</summary>
+        /// <summary>Vertex coordinates, interleaved x, y, z per vertex (length 3*n).</summary>
         public double[] Points { get; }
 
-        /// <summary>Knotenindizes (nullbasiert), je Dreieck drei hintereinander (Länge 3·m).</summary>
+        /// <summary>Zero-based vertex indices, three per triangle (length 3*m).</summary>
         public int[] Triangles { get; }
 
         public int VertexCount => Points.Length / 3;
         public int TriangleCount => Triangles.Length / 3;
 
-        /// <summary>Einheitsnormalen der Dreiecke (Länge 3·m), aus der Umlaufrichtung.</summary>
+        /// <summary>Unit normals of the triangles (length 3*m), derived from winding order.</summary>
         public double[] TriangleNormals { get; }
 
-        /// <summary>Flächen der Dreiecke (Länge m).</summary>
+        /// <summary>Triangle areas (length m).</summary>
         public double[] TriangleAreas { get; }
 
-        /// <summary>Rohe Knotennormalen: Mittel der Einheitsnormalen der anliegenden Dreiecke (Länge 3·n).</summary>
+        /// <summary>Raw vertex normals: average of unit normals of adjacent triangles (length 3*n).</summary>
         public double[] RawNormals { get; }
 
-        /// <summary>Mittlere Kantenlänge.</summary>
+        /// <summary>Mean edge length.</summary>
         public double MeanEdgeLength { get; }
 
-        /// <summary>Längste Kante.</summary>
+        /// <summary>Maximum edge length.</summary>
         public double MaxEdgeLength { get; }
 
-        /// <summary>Nachbarknoten (CSR): Nachbarn von Knoten i stehen in <c>NeighborList[NeighborStart[i] .. NeighborStart[i+1])</c>.</summary>
+        /// <summary>Neighbor vertices (CSR): neighbors of vertex i are stored in <c>NeighborList[NeighborStart[i] .. NeighborStart[i+1])</c>.</summary>
         public int[] NeighborStart { get; }
         public int[] NeighborList { get; }
 
         public WallSurface(double[] points, int[] triangles)
         {
-            if (points.Length % 3 != 0) throw new ArgumentException("Koordinaten müssen ein Vielfaches von 3 sein.", nameof(points));
-            if (triangles.Length % 3 != 0) throw new ArgumentException("Dreiecke müssen ein Vielfaches von 3 sein.", nameof(triangles));
+            if (points.Length % 3 != 0) throw new ArgumentException("Coordinates must be a multiple of 3.", nameof(points));
+            if (triangles.Length % 3 != 0) throw new ArgumentException("Triangles must be a multiple of 3.", nameof(triangles));
 
             Points = points;
             Triangles = triangles;
             int n = VertexCount, m = TriangleCount;
             foreach (int t in triangles)
             {
-                if (t < 0 || t >= n) throw new ArgumentException("Dreieck verweist auf einen nicht vorhandenen Knoten.", nameof(triangles));
+                if (t < 0 || t >= n) throw new ArgumentException("Triangle references a non-existent vertex.", nameof(triangles));
             }
 
             TriangleNormals = new double[3 * m];
@@ -87,7 +87,7 @@ namespace FluidForge.Solvers.Cfd
             MeanEdgeLength = edgeCount > 0 ? edgeSum / edgeCount : 1.0;
             MaxEdgeLength = edgeMax;
 
-            // Nachbarschaft als CSR (jede Kante in beide Richtungen; innere Kanten zählen doppelt, das ist gleichmäßig).
+            // Adjacency as CSR (each edge in both directions; interior edges count twice, uniformly).
             var degree = new int[n + 1];
             for (int t = 0; t < m; t++)
             {
@@ -125,8 +125,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Liest <c>Vertices</c> und <c>Triangles</c> aus einer Medit-Datei (<c>.mesh</c>, wie sie
-        /// <c>Wall_&lt;Variante&gt;.geo</c> schreibt). Andere Abschnitte werden übersprungen.
+        /// Reads <c>Vertices</c> and <c>Triangles</c> from a Medit file (<c>.mesh</c>, as written by
+        /// <c>Wall_&lt;variant&gt;.geo</c>). Other sections are skipped.
         /// </summary>
         public static WallSurface ReadMedit(string path)
         {
@@ -146,50 +146,50 @@ namespace FluidForge.Solvers.Cfd
                 bool isVertices = key.Equals("Vertices", StringComparison.OrdinalIgnoreCase);
                 bool isTriangles = key.Equals("Triangles", StringComparison.OrdinalIgnoreCase);
 
-                // Jeder weitere Abschnitt: Schlüsselwort, Anzahl, dann Anzahl Zeilen.
+                // Every subsequent section: keyword, count, then count lines.
                 string? countLine = reader.ReadLine();
                 if (countLine == null || !int.TryParse(countLine.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
-                    throw new InvalidDataException($"{Path.GetFileName(path)}: nach '{key}' fehlt die Anzahl.");
+                    throw new InvalidDataException($"{Path.GetFileName(path)}: missing count after '{key}'.");
 
                 for (int i = 0; i < count; i++)
                 {
                     string? row = reader.ReadLine();
-                    if (row == null) throw new InvalidDataException($"{Path.GetFileName(path)}: Abschnitt '{key}' ist unvollständig.");
+                    if (row == null) throw new InvalidDataException($"{Path.GetFileName(path)}: section '{key}' is incomplete.");
                     if (!isVertices && !isTriangles) continue;
 
                     string[] tok = row.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
                     if (isVertices)
                     {
-                        if (tok.Length < 3) throw new InvalidDataException($"{Path.GetFileName(path)}: ungültige Knotenzeile '{row}'.");
+                        if (tok.Length < 3) throw new InvalidDataException($"{Path.GetFileName(path)}: invalid vertex line '{row}'.");
                         for (int k = 0; k < 3; k++) points.Add(double.Parse(tok[k], CultureInfo.InvariantCulture));
                     }
                     else
                     {
-                        if (tok.Length < 3) throw new InvalidDataException($"{Path.GetFileName(path)}: ungültige Dreieckszeile '{row}'.");
-                        for (int k = 0; k < 3; k++) tris.Add(int.Parse(tok[k], CultureInfo.InvariantCulture) - 1); // Medit zählt ab 1
+                        if (tok.Length < 3) throw new InvalidDataException($"{Path.GetFileName(path)}: invalid triangle line '{row}'.");
+                        for (int k = 0; k < 3; k++) tris.Add(int.Parse(tok[k], CultureInfo.InvariantCulture) - 1); // Medit is 1-based
                     }
                 }
             }
 
             if (points.Count == 0 || tris.Count == 0)
-                throw new InvalidDataException($"{Path.GetFileName(path)}: keine Knoten oder Dreiecke gefunden.");
+                throw new InvalidDataException($"{Path.GetFileName(path)}: no vertices or triangles found.");
 
             return new WallSurface(points.ToArray(), tris.ToArray());
         }
     }
 
     /// <summary>
-    /// Eine Stufe der Rückfall-Leiter für das Wandfeld (Plan wandschicht_zellzahl.md, FZ2).
-    /// Schichtzahl und erste Zellhöhe ändern sich auf KEINER Stufe, nur Richtung und Dicke.
+    /// One step of the fallback ladder for the boundary-layer wall field.
+    /// Layer count and first cell height remain unchanged at EVERY step; only direction and local thickness vary.
     /// </summary>
-    /// <param name="Label">Name für das Log.</param>
-    /// <param name="Stage">1 = A (nur geglättete Richtungen), 2 = B (zusätzlich örtliche Dicke), 3 = C (Ersatznetz).</param>
-    /// <param name="SmoothingRadiusFactor">Glättungsradius als Vielfaches der Solldicke.</param>
-    /// <param name="MaxTiltDeg">Größte Abweichung der Richtung von der rohen Knotennormalen.</param>
-    /// <param name="LocalThickness">Dicke örtlich verringern, wo die Schicht sich faltet oder Platz fehlt.</param>
-    /// <param name="Safety">Anteil der kritischen Dicke, der örtlich ausgenutzt wird.</param>
-    /// <param name="MinScale">Untergrenze des örtlichen Dickenfaktors.</param>
-    /// <param name="GlobalScale">Zusätzlicher Faktor überall (nur Ersatznetz).</param>
+    /// <param name="Label">Display label for logs.</param>
+    /// <param name="Stage">1 = A (smoothed directions only), 2 = B (plus local thickness), 3 = C (fallback mesh).</param>
+    /// <param name="SmoothingRadiusFactor">Smoothing radius as a multiple of the target thickness.</param>
+    /// <param name="MaxTiltDeg">Maximum angular deviation from the raw vertex normal.</param>
+    /// <param name="LocalThickness">Reduce thickness locally where the layer folds or clearance is tight.</param>
+    /// <param name="Safety">Fraction of critical thickness used locally.</param>
+    /// <param name="MinScale">Lower bound for the local thickness scale factor.</param>
+    /// <param name="GlobalScale">Additional global scale factor (fallback mesh only).</param>
     public sealed record WallFieldSettings(
         string Label,
         int Stage,
@@ -200,77 +200,75 @@ namespace FluidForge.Solvers.Cfd
         double MinScale,
         double GlobalScale);
 
-    /// <summary>Ergebnis einer Feldberechnung: Richtungen mal Dickenfaktor je Knoten plus Kennzahlen fürs Log und die CSV.</summary>
+    /// <summary>Result of a wall-field computation: directions * thickness scale per vertex plus log/CSV diagnostics.</summary>
     public sealed class WallFieldResult
     {
-        /// <summary>Vektor je Knoten (Länge 3·n): Richtung (Länge 1) mal Dickenfaktor. Gmsh skaliert damit die Schichtdicke.</summary>
+        /// <summary>Vector per vertex (length 3*n): unit direction * thickness scale. Gmsh scales layer thickness accordingly.</summary>
         public double[] Vectors { get; init; } = Array.Empty<double>();
 
-        /// <summary>Dickenfaktor je Knoten (Länge n), inklusive globalem Faktor.</summary>
+        /// <summary>Thickness scale factor per vertex (length n), including global scale.</summary>
         public double[] Scale { get; init; } = Array.Empty<double>();
 
         public double MedianTiltDeg { get; init; }
         public double MaxTiltDeg { get; init; }
 
-        /// <summary>Kleinster Dickenfaktor (1 = nirgends verringert).</summary>
+        /// <summary>Smallest thickness scale factor (1 = unthinned everywhere).</summary>
         public double MinScale { get; init; } = 1.0;
 
-        /// <summary>Anteil der Wandfläche, an dem die Dicke unter 90 % der Solldicke liegt.</summary>
+        /// <summary>Fraction of wall surface area where thickness is below 90% of the target thickness.</summary>
         public double ThinnedShare { get; init; }
 
-        /// <summary>Dreiecke, die trotz geglätteter Richtungen bei voller Dicke noch umklappen würden (Vorhersage).</summary>
+        /// <summary>Triangles predicted to fold at full thickness despite smoothed directions.</summary>
         public int FoldedTriangles { get; init; }
 
-        /// <summary>Knoten mit einer gegenüberliegenden Wand näher als die doppelte Schichtdicke (nur wenn geprüft).</summary>
+        /// <summary>Vertices with an opposing wall closer than twice the layer thickness (when checked).</summary>
         public int PinchedNodes { get; init; }
 
         public WallFieldSettings Settings { get; init; } = BoundaryLayerWallField.Ladder[0];
     }
 
     /// <summary>
-    /// Berechnet für die Wandschicht-Extrusion (Gmsh <c>Extrude … Using View</c>) ein Vektorfeld auf der Wand:
-    /// geglättete Extrusionsrichtungen statt roher Knotennormalen, bei Bedarf mit örtlich verringerter Dicke.
+    /// Computes a vector field on the wall for boundary-layer extrusion (Gmsh <c>Extrude ... Using View</c>):
+    /// smoothed extrusion directions instead of raw vertex normals, with locally reduced thickness if needed.
     ///
     /// <para>
-    /// Hintergrund (Nachstellung am MantaAuv vom 09.11.2026): Gmsh extrudiert entlang der rohen Normalen. In
-    /// Kehlen mit Radius R laufen sie zusammen, und die Schicht faltet sich ab Dicke ≈ R (Sensorkugel am Flügel,
-    /// R ≈ 2,4 mm gegen 2,22 mm Dicke); die Tetraeder-Vernetzung des Kerns bricht dann ab. Geglättete Richtungen
-    /// halten die volle Dicke ein, die örtliche Dicke ist die Reserve für Engstellen. Schichtzahl und erste
-    /// Zellhöhe bleiben in beiden Fällen gleich.
+    /// Background: Gmsh extrudes along raw normals. In concave fillets of radius R they converge and the layer
+    /// folds once thickness ≈ R, causing core tetrahedral meshing to fail. Smoothed directions preserve full
+    /// thickness, while local thickness handles tight clearances. Layer count and first cell height stay constant.
     /// </para>
     /// </summary>
     public static class BoundaryLayerWallField
     {
-        /// <summary>Faktor auf die Dicke, ab dem eine gegenüberliegende Wand als Engstelle gilt (zwei Schichten plus Luft).</summary>
+        /// <summary>Thickness multiplier below which an opposing wall is treated as a pinch (two layers plus clearance).</summary>
         public const double PinchClearance = 2.2;
 
-        /// <summary>Größte Zahl der Glättungsschritte.</summary>
+        /// <summary>Maximum number of smoothing steps.</summary>
         private const int MaxSmoothingSteps = 60;
 
         /// <summary>
-        /// Rückfall-Leiter: A (volle Dicke), B (örtlich gedünnt, schrittweise vorsichtiger), C (Ersatznetz mit
-        /// zusätzlich globaler Verringerung). Gerechnet wird Stufe für Stufe, bis Gmsh das Netz erzeugt.
+        /// Fallback ladder: A (full thickness), B (locally thinned, progressively more conservative),
+        /// C (fallback mesh with additional global scaling). Evaluated step by step until Gmsh succeeds.
         /// </summary>
         public static readonly IReadOnlyList<WallFieldSettings> Ladder = new[]
         {
-            new WallFieldSettings("A: geglättete Richtungen, volle Dicke",     1, 0.8, 30.0, false, 1.00, 1.0, 1.0),
-            new WallFieldSettings("B1: örtlich gedünnt (Sicherheit 0,80)",     2, 0.8, 30.0, true,  0.80, 0.3, 1.0),
-            new WallFieldSettings("B2: stärker geglättet, Sicherheit 0,60",    2, 1.6, 30.0, true,  0.60, 0.3, 1.0),
-            new WallFieldSettings("B3: Sicherheit 0,45",                       2, 1.6, 30.0, true,  0.45, 0.3, 1.0),
-            new WallFieldSettings("C1: Ersatznetz, Dicke halbiert",            3, 1.6, 30.0, true,  0.45, 0.3, 0.5),
-            new WallFieldSettings("C2: Ersatznetz, Dicke geviertelt",          3, 1.6, 30.0, true,  0.45, 0.3, 0.25),
+            new WallFieldSettings("A: smoothed directions, full thickness",    1, 0.8, 30.0, false, 1.00, 1.0, 1.0),
+            new WallFieldSettings("B1: locally thinned (safety 0.80)",         2, 0.8, 30.0, true,  0.80, 0.3, 1.0),
+            new WallFieldSettings("B2: stronger smoothing, safety 0.60",       2, 1.6, 30.0, true,  0.60, 0.3, 1.0),
+            new WallFieldSettings("B3: safety 0.45",                           2, 1.6, 30.0, true,  0.45, 0.3, 1.0),
+            new WallFieldSettings("C1: fallback mesh, half thickness",         3, 1.6, 30.0, true,  0.45, 0.3, 0.5),
+            new WallFieldSettings("C2: fallback mesh, quarter thickness",      3, 1.6, 30.0, true,  0.45, 0.3, 0.25),
         };
 
-        /// <summary>Rechnet das Feld für die Solldicke <paramref name="thickness"/> (Geometrieeinheiten wie die Wand).</summary>
+        /// <summary>Computes the field for target <paramref name="thickness"/> (in geometry units).</summary>
         public static WallFieldResult Build(WallSurface wall, double thickness, WallFieldSettings settings)
         {
-            if (thickness <= 0) throw new ArgumentOutOfRangeException(nameof(thickness), "Die Schichtdicke muss positiv sein.");
+            if (thickness <= 0) throw new ArgumentOutOfRangeException(nameof(thickness), "Layer thickness must be positive.");
 
             int n = wall.VertexCount;
             double[] raw = wall.RawNormals;
             double[] dir = SmoothDirections(wall, thickness, settings.SmoothingRadiusFactor, settings.MaxTiltDeg);
 
-            // Vorhersage: wie viele Dreiecke klappen mit diesen Richtungen bei voller Dicke noch um?
+            // Prediction: how many triangles still fold at full thickness with these directions?
             double[] triCrit = CriticalTriangleThickness(wall, dir);
             int folded = 0;
             for (int t = 0; t < triCrit.Length; t++) if (triCrit[t] < thickness) folded++;
@@ -310,9 +308,9 @@ namespace FluidForge.Solvers.Cfd
 
                 scale = SmoothScale(wall, req, 15);
 
-                // Nachprüfung mit dem gedünnten Feld selbst: die Dicke ist ein Anteil der kritischen Dicke der UNgedünnten
-                // Richtungen; mit Dickenfaktor je Knoten ändert sich die Geometrie der Schicht. Wo es trotzdem noch faltet,
-                // wird der Faktor nachgezogen, bis die Schicht rechnerisch faltfrei ist (oder die Untergrenze erreicht ist).
+                // Re-check with the thinned field itself: thickness was scaled from the critical thickness of the UNTHINNED
+                // directions; varying scale per vertex alters the layer geometry. Wherever it still folds, tighten the
+                // scale factor until the layer is numerically fold-free (or hits MinScale).
                 for (int round = 0; round < 8; round++)
                 {
                     var scaledDir = new double[3 * n];
@@ -348,7 +346,7 @@ namespace FluidForge.Solvers.Cfd
                 for (int v = 0; v < n; v++) scale[v] *= settings.GlobalScale;
             }
 
-            // Kennzahlen
+            // Diagnostics
             var vectors = new double[3 * n];
             var tilt = new double[n];
             double minScale = 1.0;
@@ -388,9 +386,9 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Glättet die Knotennormalen durch wiederholtes Mitteln über die Nachbarn. Die Zahl der Schritte folgt aus dem
-        /// gewünschten Radius (Diffusion: Reichweite ≈ √Schritte · Kantenlänge), damit die Glättung bei jedem
-        /// Netzfaktor gleich weit reicht. Die Richtung weicht höchstens <paramref name="maxTiltDeg"/> von der rohen Normalen ab.
+        /// Smooths vertex normals by repeated neighbor averaging. The step count follows from the target
+        /// radius (diffusion reach ≈ √steps * edgeLength), keeping smoothing reach consistent across mesh
+        /// factors. Directions deviate at most <paramref name="maxTiltDeg"/> from the raw normal.
         /// </summary>
         public static double[] SmoothDirections(WallSurface wall, double thickness, double radiusFactor, double maxTiltDeg)
         {
@@ -418,7 +416,7 @@ namespace FluidForge.Solvers.Cfd
                     next[3 * v] = x; next[3 * v + 1] = y; next[3 * v + 2] = z;
                     WallSurface.Normalize(next, v);
 
-                    // höchstens maxTiltDeg von der rohen Normalen: sonst werden die Prismen zu schief
+                    // At most maxTiltDeg from raw normal to avoid overly skewed prisms
                     double c = next[3 * v] * raw[3 * v] + next[3 * v + 1] * raw[3 * v + 1] + next[3 * v + 2] * raw[3 * v + 2];
                     if (c < cosMax)
                     {
@@ -445,10 +443,10 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Kleinste positive Dicke je Dreieck, bei der das um <c>T·Richtung</c> versetzte Dreieck auf 10 % seiner
-        /// Fläche zusammenfällt oder umklappt. Exakt statt abgetastet: Die Normale des versetzten Dreiecks ist ein
-        /// Polynom zweiten Grades in T, ihre Projektion auf die ursprüngliche Normale hat eine kleinste positive Nullstelle.
-        /// Unendlich, wenn das Dreieck nie umklappt.
+        /// Smallest positive thickness per triangle at which the triangle offset by <c>T * dir</c>
+        /// collapses to 10% of its area or flips. Exact analytic root: the offset triangle normal is
+        /// quadratic in T, and its projection onto the original normal yields the smallest positive root
+        /// (infinity if the triangle never folds).
         /// </summary>
         public static double[] CriticalTriangleThickness(WallSurface wall, double[] dir)
         {
@@ -472,7 +470,7 @@ namespace FluidForge.Solvers.Cfd
 
                 double qa = Dot(n0, n2);        // T²
                 double qb = Dot(n0, n1);        // T
-                double qc = 0.9 * Dot(n0, n0);  // Rest: Fläche fällt auf 10 %
+                double qc = 0.9 * Dot(n0, n0);  // Remaining: area drops to 10%
 
                 result[t] = SmallestPositiveRoot(qa, qb, qc);
             }
@@ -482,7 +480,7 @@ namespace FluidForge.Solvers.Cfd
 
         public static double SmallestPositiveRoot(double a, double b, double c)
         {
-            // a·T² + b·T + c = 0 mit c > 0 (bei T = 0 ist das Dreieck ganz).
+            // a*T² + b*T + c = 0 with c > 0 (at T = 0 the triangle is intact).
             if (c <= 0) return 0.0;
             if (Math.Abs(a) < 1e-14 * Math.Max(Math.Abs(b), c))
             {
@@ -502,10 +500,9 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Abstand je Knoten zur nächsten gegenüberliegenden Wandstelle entlang der Richtung (Engstellen, z. B. Spalte
-        /// zwischen zwei Körperteilen). Gezählt werden nur Treffer auf einer Fläche, die dem Strahl fast gerade
-        /// entgegensieht (Winkel unter etwa 32°); gemessen wird der senkrechte Abstand. Unendlich, wenn bis
-        /// <paramref name="maxDistance"/> nichts im Weg ist.
+        /// Distance per vertex to the nearest opposing wall along the extrusion direction (pinch gaps, e.g.,
+        /// between adjacent body parts). Counts only hits on faces nearly opposing the ray (angle under ~32°);
+        /// measures perpendicular distance. Infinity if nothing is within <paramref name="maxDistance"/>.
         /// </summary>
         public static double[] PinchDistances(WallSurface wall, double[] dir, double maxDistance)
         {
@@ -514,7 +511,7 @@ namespace FluidForge.Solvers.Cfd
             Array.Fill(result, double.PositiveInfinity);
             double[] p = wall.Points;
 
-            // Gitter über die Dreiecksumrisse; Zellgröße = Reichweite des Strahls
+            // Spatial hash grid over triangle bounds; cell size = ray reach
             double cell = Math.Max(maxDistance, wall.MaxEdgeLength * 2.0);
             var grid = new Dictionary<long, List<int>>();
             for (int t = 0; t < m; t++)
@@ -553,7 +550,7 @@ namespace FluidForge.Solvers.Cfd
                             if (a == v || b == v || c == v) continue;
 
                             double cosFacing = dx * wall.TriangleNormals[3 * t] + dy * wall.TriangleNormals[3 * t + 1] + dz * wall.TriangleNormals[3 * t + 2];
-                            if (cosFacing > -0.85) continue; // nur Flächen, die dem Strahl entgegensehen
+                            if (cosFacing > -0.85) continue; // only faces opposing the ray
 
                             double hit = RayTriangle(p, a, b, c, ox, oy, oz, dx, dy, dz);
                             if (hit <= 1e-9 || hit > maxDistance) continue;
@@ -568,7 +565,7 @@ namespace FluidForge.Solvers.Cfd
             return result;
         }
 
-        /// <summary>Möller–Trumbore: Abstand t entlang des Strahls zum Dreieck, sonst -1.</summary>
+        /// <summary>Möller–Trumbore: distance t along the ray to the triangle, or -1.</summary>
         private static double RayTriangle(double[] p, int a, int b, int c, double ox, double oy, double oz, double dx, double dy, double dz)
         {
             double e1x = p[3 * b] - p[3 * a], e1y = p[3 * b + 1] - p[3 * a + 1], e1z = p[3 * b + 2] - p[3 * a + 2];
@@ -579,7 +576,7 @@ namespace FluidForge.Solvers.Cfd
             double inv = 1.0 / det;
             double tx = ox - p[3 * a], ty = oy - p[3 * a + 1], tz = oz - p[3 * a + 2];
             double u = (tx * px + ty * py + tz * pz) * inv;
-            const double eps = 1e-9; // Treffer genau auf Knoten/Kante zählt (Rundung)
+            const double eps = 1e-9; // hits directly on vertex/edge count (rounding tolerance)
             if (u < -eps || u > 1.0 + eps) return -1.0;
             double qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
             double w = (dx * qx + dy * qy + dz * qz) * inv;
@@ -615,8 +612,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Glättet den Dickenfaktor, ohne die Anforderung zu unterschreiten: nach jedem Schritt gilt
-        /// <c>s = min(Soll, ½·s + ½·Nachbarmittel)</c>. So fällt die Dicke weich ab statt an einer Kante zu springen.
+        /// Smooths the thickness scale factor without undercutting the requirement: after each step
+        /// <c>s = min(target, 0.5 * s + 0.5 * neighborAvg)</c>, creating a smooth transition instead of sharp jumps.
         /// </summary>
         private static double[] SmoothScale(WallSurface wall, double[] required, int steps)
         {
@@ -643,8 +640,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Schreibt das Feld als Gmsh-Datei (<c>.pos</c>): je Wanddreieck ein <c>VT</c>-Eintrag mit drei Vektoren.
-        /// Es stehen ALLE Dreiecke drin, damit jeder Startknoten der Extrusion im Feld liegt.
+        /// Writes the field as a Gmsh <c>.pos</c> file: one <c>VT</c> entry with three vectors per wall triangle.
+        /// ALL triangles are included so every extrusion start vertex is covered by the field.
         /// </summary>
         public static void WritePos(string path, WallSurface wall, WallFieldResult field)
         {

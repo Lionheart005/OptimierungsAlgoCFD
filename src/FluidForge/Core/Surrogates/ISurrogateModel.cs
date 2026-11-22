@@ -4,44 +4,42 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Ein lernendes Ersatzmodell, das aus wenigen echten Rechnungen eine Größe vorhersagt
-    /// (TODO-54, F11). Der Bayes-Optimierer kennt nur diese Schnittstelle. Der Gauß-Prozess
-    /// (<see cref="GaussianProcess"/>) ist die erste Umsetzung; ein anderes Modell, auch das eines
-    /// Partners, lässt sich einstecken, ohne den Optimierer anzufassen.
+    /// A trainable surrogate model that predicts a scalar quantity from a few real evaluations.
+    /// The Bayesian optimizer depends only on this interface. <see cref="GaussianProcess"/> is the
+    /// default implementation; custom models can be plugged in without touching the optimizer.
     /// </summary>
     public interface ISurrogateModel
     {
-        /// <summary>Ersetzt alle Daten und lernt neu.</summary>
+        /// <summary>Replaces all training data and refits the model.</summary>
         /// <param name="noiseVariances">
-        /// Optional: bekannte Messunsicherheit je Punkt als Varianz in Ausgabeeinheiten (z. B. aus der
-        /// Schwankung einer instationären Rechnung). Sie kommt zum gelernten, gemeinsamen Rauschen hinzu.
-        /// <c>null</c> = unbekannt.
+        /// Optional known per-point measurement uncertainty as variance in output units (e.g., from
+        /// unsteady solver fluctuations). Added to the learned shared noise. <c>null</c> = unknown.
         /// </param>
-        /// <exception cref="ArgumentException">Ungleich lange oder nicht endliche Daten.</exception>
-        /// <exception cref="SurrogateFitException">Das Lernen ist numerisch gescheitert.</exception>
+        /// <exception cref="ArgumentException">Mismatched lengths or non-finite values.</exception>
+        /// <exception cref="SurrogateFitException">Model fitting failed numerically.</exception>
         void Fit(IReadOnlyList<double[]> inputs, IReadOnlyList<double> outputs, IReadOnlyList<double>? noiseVariances = null);
 
-        /// <summary>Erwartungswert und <b>latente</b> Varianz (ohne Messrauschen, für EI, Kriging Believer, Explorer) am Ort <paramref name="input"/>.</summary>
+        /// <summary>Predicted mean and <b>latent</b> variance (excluding observation noise, for EI, Kriging Believer, and explorer) at <paramref name="input"/>.</summary>
         (double Mean, double Variance) Predict(double[] input);
 
         /// <summary>
-        /// Gelernte Beobachtungsrausch-Varianz σ_n² in Original-Ausgabeeinheiten (0, falls unbekannt).
+        /// Learned observation noise variance σ_n² in original output units (0 if unknown).
         /// </summary>
         double ObservationNoiseVariance => 0.0;
 
         /// <summary>
-        /// Trägt eine Scheinbeobachtung ein, ohne die Hyperparameter neu zu lernen. Gebraucht für
-        /// Vorschlags-Blöcke (Kriging Believer): Nach einem Vorschlag sinkt die Unsicherheit dort.
+        /// Adds a pseudo-observation without re-optimizing hyperparameters. Used for batch proposals
+        /// (Kriging Believer) so predicted uncertainty decreases at already-chosen locations.
         /// </summary>
         void AddPseudoObservation(double[] input, double output);
 
-        /// <summary>Wichtigkeit je Dimension, 0..1 (1 = wichtigste). <c>null</c> = unbekannt.</summary>
+        /// <summary>Relative importance per dimension in [0, 1] (1 = most important). <c>null</c> if unavailable.</summary>
         IReadOnlyList<double>? ParameterRelevance { get; }
     }
 
     /// <summary>
-    /// Das Lernen des Ersatzmodells ist numerisch gescheitert (z. B. nicht zerlegbare Matrix).
-    /// Der Optimierer fängt das ab und füllt die Iteration mit Latin-Hypercube-Punkten (F22).
+    /// Surrogate fitting failed numerically (e.g., non-positive-definite covariance matrix).
+    /// The optimizer catches this and falls back to Latin Hypercube points for that iteration.
     /// </summary>
     public sealed class SurrogateFitException : Exception
     {

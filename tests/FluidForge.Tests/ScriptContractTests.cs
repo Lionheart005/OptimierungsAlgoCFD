@@ -7,16 +7,15 @@ using FluidForge.Core;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-28: die Startskripte sind die einzige Stelle, an der zwischen Projekten
-    /// umgeschaltet wird — und die einzige, die dieses Testprojekt nicht ausführen kann
-    /// (es gibt kein bash auf dem Entwicklungsrechner, und die Windows-Seite redet per SSH
-    /// mit einem Server).
+    /// TODO-28: the launch scripts are the only place where switching between projects
+    /// happens — and the only part this test project cannot execute directly (there is no
+    /// bash on the dev machine, and the Windows side talks to a server over SSH).
     ///
     /// <para>
-    /// Diese Tests prüfen deshalb <b>Text</b>, nicht Verhalten. Das ist wenig, aber es ist
-    /// genau das Wenige, das eine ganze Nacht Rechenzeit retten kann: sie schlagen an, wenn
-    /// jemand den stillen Projekt-Standard wieder einbaut oder die Umschaltkette auftrennt.
-    /// Sie ersetzen <b>keinen</b> Lauf auf dem Server.
+    /// These tests therefore check <b>text</b>, not behavior. That is modest, but it is
+    /// the exact safeguard that can save an entire night of compute: they fail if someone
+    /// reintroduces the silent project default or breaks the switch chain.
+    /// They do <b>not</b> replace a run on the server.
     /// </para>
     /// </summary>
     public class ScriptContractTests
@@ -27,21 +26,21 @@ namespace FluidForge.Tests
             {
                 string? projectsRoot = ProjectPaths.ResolveProjectsRoot();
 
-                Assert.True(projectsRoot != null, "Das Verzeichnis src/projects/ wurde nicht gefunden.");
+                Assert.True(projectsRoot != null, "Directory src/projects/ was not found.");
 
-                // src/projects -> src -> Repo-Wurzel
+                // src/projects -> src -> repo root
                 return Path.GetDirectoryName(Path.GetDirectoryName(projectsRoot)!)!;
             }
         }
 
-        /// <summary>Der Ordner <c>scripts/</c> im Repo-Wurzelverzeichnis.</summary>
+        /// <summary>The <c>scripts/</c> directory in the repository root.</summary>
         private static string ScriptsDirectory
         {
             get
             {
                 string scripts = Path.Combine(RepoRoot, "scripts");
 
-                Assert.True(Directory.Exists(scripts), $"Der Ordner scripts/ fehlt (gesucht: {scripts}).");
+                Assert.True(Directory.Exists(scripts), $"The scripts/ folder is missing (looked at: {scripts}).");
 
                 return scripts;
             }
@@ -51,7 +50,7 @@ namespace FluidForge.Tests
         {
             string file = Path.Combine(ScriptsDirectory, fileName);
 
-            Assert.True(File.Exists(file), $"scripts/{fileName} fehlt.");
+            Assert.True(File.Exists(file), $"scripts/{fileName} is missing.");
 
             return File.ReadAllText(file);
         }
@@ -60,20 +59,19 @@ namespace FluidForge.Tests
         {
             string file = Path.Combine(RepoRoot, relativePath);
 
-            Assert.True(File.Exists(file), $"{relativePath} fehlt.");
+            Assert.True(File.Exists(file), $"{relativePath} is missing.");
 
             return File.ReadAllText(file);
         }
 
         /// <summary>
-        /// Dieselbe Datei ohne ihre Kommentarzeilen.
+        /// The same file without its comment lines.
         ///
         /// <para>
-        /// Gebraucht für die Suche nach Mustern, die in der <b>Erklärung</b> vorkommen dürfen
-        /// und im <b>Code</b> nicht: der Kommentar über <c>PROJECT_NAME</c> zitiert die alte
-        /// Zeile <c>${SIM_PROJECT:-MantaAuv}</c>, damit man später nachlesen kann, was daran
-        /// falsch war. Genau diese Erklärung ist der Grund, warum der Fehler nicht
-        /// zurückkommt — sie darf den Test nicht auslösen.
+        /// Needed when searching for patterns allowed in <b>explanations</b> but forbidden in
+        /// <b>code</b>: the comment above <c>PROJECT_NAME</c> quotes the old line
+        /// <c>${SIM_PROJECT:-MantaAuv}</c> so readers can later see what was wrong with it.
+        /// That explanation is precisely why the bug won't return — it must not trip the test.
         /// </para>
         /// </summary>
         private static string WithoutComments(string text)
@@ -89,11 +87,10 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// <c>SIM_PROJECT</c> darf keinen Ersatzwert haben. Stand dort einmal
-        /// <c>${SIM_PROJECT:-MantaAuv}</c>, rechnete jeder Vertipper klaglos MantaAuv —
-        /// stundenlang, und die Ergebnisse landeten in dessen Ordner über der CSV eines
-        /// echten Laufs. Die leere Form <c>${SIM_PROJECT:-}</c> ist erlaubt und gewollt:
-        /// sie hält <c>set -u</c> zufrieden, und <c>require_project</c> bricht danach ab.
+        /// <c>SIM_PROJECT</c> must not have a fallback value. When <c>${SIM_PROJECT:-MantaAuv}</c>
+        /// was there, every typo silently ran MantaAuv — for hours, overwriting the CSV of a
+        /// real run in its folder. The empty form <c>${SIM_PROJECT:-}</c> is allowed and intended:
+        /// it satisfies <c>set -u</c>, and <c>require_project</c> aborts afterward.
         /// </summary>
         [Fact]
         public void The_Runner_Has_No_Silent_Project_Default()
@@ -103,18 +100,18 @@ namespace FluidForge.Tests
             var silentDefault = Regex.Match(WithoutComments(runner), @"\$\{SIM_PROJECT:-\s*[^}\s]+\s*\}");
 
             Assert.False(silentDefault.Success,
-                "scripts/sim-runner.sh setzt wieder einen Projekt-Standard: "
+                "scripts/sim-runner.sh sets a project default again: "
                 + silentDefault.Value
-                + ". Ein Vertipper in SIM_PROJECT rechnet damit stillschweigend das falsche "
-                + "Projekt. Richtig ist ${SIM_PROJECT:-} plus require_project.");
+                + ". A typo in SIM_PROJECT would silently run the wrong project. "
+                + "Use ${SIM_PROJECT:-} plus require_project.");
 
             Assert.Contains("require_project", runner);
         }
 
         /// <summary>
-        /// Der Projektname muss ausdrücklich in die tmux-Sitzung hinein. Die Kommandozeile
-        /// startet der tmux-<b>Server</b>, und dessen Umgebung stammt von dem Aufruf, der ihn
-        /// irgendwann hochgezogen hat — auf Vererbung ist hier kein Verlass.
+        /// The project name must be passed explicitly into the tmux session. The command line
+        /// is started by the tmux <b>server</b>, whose environment comes from whichever invocation
+        /// started it — inheriting variables is unreliable here.
         /// </summary>
         [Fact]
         public void The_Runner_Passes_The_Project_Into_The_Tmux_Session()
@@ -123,9 +120,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Beide Seiten müssen den Befehl <c>projects</c> kennen — er ist die Antwort auf
-        /// „wie heißt mein Projekt eigentlich", und genau die braucht man, wenn ohne Namen
-        /// nichts mehr läuft.
+        /// Both sides must support the <c>projects</c> command — it answers
+        /// "what is my project called", which is needed when nothing runs without a name.
         /// </summary>
         [Fact]
         public void Both_Scripts_Know_The_Projects_Command()
@@ -135,9 +131,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die Umschaltkette von Windows zum Programm: <c>-Project</c> → <c>SIM_PROJECT</c>
-        /// → <c>dotnet … "$PROJECT_NAME"</c>. Reißt ein Glied, wird still das falsche
-        /// Projekt gerechnet (oder gar keines) — deshalb steht jedes Glied hier.
+        /// The switch chain from Windows to the program: <c>-Project</c> → <c>SIM_PROJECT</c>
+        /// → <c>dotnet … "$PROJECT_NAME"</c>. If any link breaks, the wrong project (or none)
+        /// runs silently — so every link is asserted here.
         /// </summary>
         [Fact]
         public void The_Project_Switch_Reaches_The_Program()
@@ -151,9 +147,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// <c>doctor</c> fragt die wirksame Konfiguration beim Programm ab und fischt sie
-        /// nicht mehr mit <c>sed</c> aus einer einzelnen JSON: seit TODO-22 sind es vier
-        /// Schichten, und die Datei allein ist längst nicht mehr die maßgebliche.
+        /// <c>doctor</c> queries the effective configuration from the program instead of extracting
+        /// it with <c>sed</c> from a single JSON: since TODO-22 there are four layers, and the
+        /// single file is no longer authoritative.
         /// </summary>
         [Fact]
         public void Doctor_Asks_The_Program_For_The_Effective_Configuration()
@@ -165,11 +161,10 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Der Upload-Filter schützt die maschinenspezifischen Dateien — auch die neuen im
-        /// Projektordner, weil er ein Namensmuster ist und kein Pfad. Und er hält die
-        /// Windows-Seite selbst vom Server fern: der Fingerabdruck wird über genau diese
-        /// Liste gebildet, eine Korrektur in einer README würde sonst einen laufenden Lauf
-        /// neu starten.
+        /// The upload filter protects machine-specific files — including new ones inside the
+        /// project folder, because it matches a name pattern rather than a path. It also keeps
+        /// the Windows side itself off the server: the fingerprint is computed over this exact
+        /// list, otherwise fixing a README would restart a running job.
         /// </summary>
         [Fact]
         public void The_Deploy_Filter_Still_Protects_The_Machine_Specific_Files()
@@ -182,9 +177,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-31: Jeder ssh- und scp-Aufruf trägt die Zeitgrenzen. Ein einziger Aufruf ohne
-        /// sie genügt, damit eine tote VPN-Verbindung wieder unbegrenzt und stumm hängt — und
-        /// zwar genau an der Stelle, die man beim Nachrüsten vergessen hat.
+        /// TODO-31: Every ssh and scp invocation carries timeouts. A single call without them
+        /// is enough for a dead VPN connection to hang silently forever — right at the one
+        /// call site someone forgot when retrofitting.
         /// </summary>
         [Fact]
         public void Every_Ssh_And_Scp_Call_Carries_The_Timeouts()
@@ -197,14 +192,14 @@ namespace FluidForge.Tests
             foreach (Match call in calls)
             {
                 Assert.True(call.Value.Contains("@SshOptions"),
-                    $"Dieser Aufruf in scripts/sim.ps1 hat keine Zeitgrenzen: {call.Value.Trim()}");
+                    $"This call in scripts/sim.ps1 has no timeouts: {call.Value.Trim()}");
             }
         }
 
         /// <summary>
-        /// Die Zeitgrenzen sind bewusst großzügig: unter Volllast antwortet der Server träge, und
-        /// zu knappe Werte haben früher gesunde Verbindungen abgebrochen. Wer sie verschärft, soll
-        /// an diesem Test vorbei — und dabei die Begründung im Skript lesen.
+        /// Timeouts are intentionally generous: under full load the server responds sluggishly,
+        /// and overly tight values previously dropped healthy connections. Anyone tightening them
+        /// must pass this test — and read the rationale in the script.
         /// </summary>
         [Fact]
         public void The_Ssh_Timeouts_Stay_Generous()
@@ -214,19 +209,19 @@ namespace FluidForge.Tests
             int Value(string option)
             {
                 Match match = Regex.Match(sim, $@"'{option}=(\d+)'");
-                Assert.True(match.Success, $"{option} fehlt in $SshOptions (scripts/sim.ps1).");
+                Assert.True(match.Success, $"{option} is missing in $SshOptions (scripts/sim.ps1).");
                 return int.Parse(match.Groups[1].Value);
             }
 
-            Assert.True(Value("ConnectTimeout") >= 60, "ConnectTimeout unter 60 s bricht unter Volllast gesunde Verbindungen ab.");
+            Assert.True(Value("ConnectTimeout") >= 60, "ConnectTimeout below 60 s drops healthy connections under load.");
             Assert.True(Value("ServerAliveInterval") * Value("ServerAliveCountMax") >= 180,
-                "Unter 3 Minuten Funkstille sollte keine Verbindung als tot gelten.");
+                "A connection should not be considered dead after less than 3 minutes of silence.");
         }
 
         /// <summary>
-        /// TODO-31: Wird sim.ps1 fetch oder status ohne explizites -Project aufgerufen, fragt
-        /// das Skript per 'lastproject' auf dem Server nach dem zuletzt gerechneten Projekt,
-        /// statt stillschweigend die Standard-Vorgabe zu nutzen.
+        /// TODO-31: When sim.ps1 fetch or status is invoked without an explicit -Project, the
+        /// script queries 'lastproject' on the server for the most recently run project instead
+        /// of silently using a hardcoded default.
         /// </summary>
         [Fact]
         public void Fetch_And_Status_Query_Lastproject_When_No_Project_Is_Given()
@@ -238,8 +233,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-31: .last_project liegt wie .last_exit nur auf dem Server und gehört
-        /// nicht ins Git-Repository.
+        /// TODO-31: .last_project, like .last_exit, lives only on the server and does not
+        /// belong in the Git repository.
         /// </summary>
         [Fact]
         public void Last_Project_File_Is_Ignored_In_Gitignore()
@@ -250,9 +245,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-31: Der lokale Zielordner für Serverergebnisse enthält den Projektnamen,
-        /// damit Ergebnisse verschiedener Projekte sich nicht im selben Zeitstempel-Ordner
-        /// vermischen: Serverergebnisse/<Server>_<Projekt>_<Zeitstempel>/.
+        /// TODO-31: The local target folder for server results includes the project name so
+        /// results from different projects never mix in the same timestamp folder:
+        /// ServerResults/<Server>_<Project>_<Timestamp>/.
         /// </summary>
         [Fact]
         public void The_Fetch_Target_Folder_Contains_The_Project_Name()
@@ -263,9 +258,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-31: Der Befehl 'pack' auf dem Server schnürt das Ergebnis-Archiv und kennt
-        /// die drei Umfänge standard (CSV, Log, Config, Verläufe), champion (+Champion-VTUs)
-        /// und all (gesamter Ergebnisordner).
+        /// TODO-31: The 'pack' command on the server bundles the results archive and supports
+        /// the three scopes: standard (CSV, log, config, histories), champion (+champion VTUs),
+        /// and all (entire results folder).
         /// </summary>
         [Fact]
         public void The_Runner_Pack_Command_Knows_The_Three_Scopes()
@@ -279,8 +274,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-31: sim-runner.sh merkt sich in cmd_foreground das gerechnete Projekt in
-        /// .last_project und gibt es über den Befehl 'lastproject' (ohne require_project) aus.
+        /// TODO-31: sim-runner.sh records the active project in .last_project inside cmd_foreground
+        /// and prints it via the 'lastproject' command (without require_project).
         /// </summary>
         [Fact]
         public void The_Runner_Has_The_Lastproject_Command()
@@ -292,8 +287,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-42: Beide Skripte unterstützen den Befehl 'calibrate'.
-        /// Windows reicht ihn per -ThenCalibrate an den Server weiter, und der Runner führt --calibrate aus.
+        /// TODO-42: Both scripts support the 'calibrate' command.
+        /// Windows forwards it via -ThenCalibrate to the server, and the runner executes --calibrate.
         /// </summary>
         [Fact]
         public void Both_Scripts_Know_The_Calibrate_Command()
@@ -308,8 +303,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-43: Beide Skripte unterstützen den Befehl 'recheck' zur feinen Nachrechnung
-        /// einzelner Varianten mit Parametern -Variant und -Finer.
+        /// TODO-43: Both scripts support the 'recheck' command for fine verification
+        /// of individual variants using parameters -Variant and -Finer.
         /// </summary>
         [Fact]
         public void Both_Scripts_Know_The_Recheck_Command()

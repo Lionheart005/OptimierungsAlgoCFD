@@ -1,7 +1,7 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Parameter für die Netzerzeugung einer Simulationsgeometrie.
+    /// Parameters for generating a simulation mesh from a geometry.
     /// </summary>
     public sealed record MeshRequest(
         string GeometryPath,
@@ -14,7 +14,7 @@ namespace FluidForge.Core
         string Tag = "")
     {
         /// <summary>
-        /// Basis-Suffix für generierte Netzdateien (z. B. "Gen1_Var2" oder "Gen1_Var2_Kal3").
+        /// Base suffix for generated mesh files (e.g., "Gen1_Var2" or "Gen1_Var2_Cal3").
         /// </summary>
         public string BaseSuffix => string.IsNullOrWhiteSpace(Tag)
             ? $"Gen{Iteration}_Var{Variant}"
@@ -22,7 +22,7 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Erzeugt ein Simulationsnetz (CFD, FEM) aus einer STL-Datei.
+    /// Generates a simulation mesh (CFD, FEM) from an STL or contour file.
     /// </summary>
     public interface IMeshGenerator
     {

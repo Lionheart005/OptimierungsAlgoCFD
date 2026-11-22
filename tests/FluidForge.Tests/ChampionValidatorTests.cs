@@ -10,9 +10,9 @@ using Xunit;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-19 zu TODO-3: der Bouncer prüft die Fitness (nicht mehr "Drag") und ist
-    /// Framework-Bestandteil. Geprüft werden Bestätigung, Disqualifikation, der Fallback
-    /// wenn kein Kandidat stabil ist, und dass nie mehr als nötig re-simuliert wird.
+    /// TODO-19 / TODO-3: the bouncer validates fitness (no longer "Drag") and is
+    /// part of the framework. Tested: confirmation, disqualification, fallback
+    /// when no candidate is stable, and that no more re-simulations than necessary run.
     /// </summary>
     public class ChampionValidatorTests
     {
@@ -25,8 +25,8 @@ namespace FluidForge.Tests
         };
 
         /// <summary>
-        /// Fitness-Rechner, der jedem Re-Simulat einen festen Wert gibt. Der Validator
-        /// ruft ihn für das Ergebnis der Re-Simulation auf — nicht für die Kandidaten.
+        /// Fitness calculator that assigns a fixed value to every re-simulation. The validator
+        /// calls it for the re-simulation result — not for the candidates.
         /// </summary>
         private static IFitnessCalculator FitnessReturning(float value)
         {
@@ -45,19 +45,19 @@ namespace FluidForge.Tests
         [Fact]
         public void Stable_Candidate_Is_Confirmed()
         {
-            // Re-Simulation liefert 9.5 gegen Referenz 10.0 -> 5% Abweichung, innerhalb 20%
+            // Re-simulation yields 9.5 vs reference 10.0 -> 5% deviation, within 20%
             var validator = new ChampionValidator(FitnessReturning(9.5f), new Random(1));
             var candidates = new List<ModelRecord> { Candidate(1, 8f), Candidate(2, 10f) };
 
             var winner = validator.ValidateChampion(candidates, Config(), _ => new ModelRecord());
 
             Assert.Equal(2, winner.Variant);
-            Assert.Equal(10f, winner.Fitness);   // unverändert, nicht disqualifiziert
+            Assert.Equal(10f, winner.Fitness);   // unchanged, not disqualified
         }
 
         /// <summary>
-        /// Weicht die Fitness zu stark ab, wird der Kandidat disqualifiziert (Fitness 0.0001)
-        /// und der nächstbeste geprüft.
+        /// If fitness deviates too much, the candidate is disqualified (fitness 0.0001)
+        /// and the next best one is tested.
         /// </summary>
         [Fact]
         public void Unstable_Candidate_Is_Disqualified_And_The_Next_One_Is_Tested()
@@ -65,20 +65,20 @@ namespace FluidForge.Tests
             var best = Candidate(1, 100f);
             var second = Candidate(2, 10f);
 
-            // Re-Simulat ist immer 10.0: fuer den 100er 90% Abweichung (raus),
-            // fuer den 10er 0% (bestaetigt).
+            // Re-simulation is always 10.0: for 100 it is 90% deviation (out),
+            // for 10 it is 0% (confirmed).
             var validator = new ChampionValidator(FitnessReturning(10f), new Random(1));
 
             var winner = validator.ValidateChampion(
                 new List<ModelRecord> { best, second }, Config(), _ => new ModelRecord());
 
             Assert.Equal(2, winner.Variant);
-            Assert.Equal(0.0001f, best.Fitness, 6);   // disqualifiziert
-            Assert.True(best.Disqualified);           // und gekennzeichnet (TODO-53)
+            Assert.Equal(0.0001f, best.Fitness, 6);   // disqualified
+            Assert.True(best.Disqualified);           // and flagged (TODO-53)
             Assert.False(second.Disqualified);
         }
 
-        /// <summary>TODO-53: auch der Zweig "Re-Simulation wirft" kennzeichnet den Kandidaten.</summary>
+        /// <summary>TODO-53: the "re-simulation throws" branch also flags the candidate.</summary>
         [Fact]
         public void A_Failing_Resimulation_Also_Sets_The_Disqualified_Flag()
         {
@@ -87,14 +87,14 @@ namespace FluidForge.Tests
 
             validator.ValidateChampion(
                 new List<ModelRecord> { candidate }, Config(),
-                _ => throw new InvalidOperationException("Netz gescheitert"));
+                _ => throw new InvalidOperationException("Mesh failed"));
 
             Assert.True(candidate.Disqualified);
             Assert.Equal(0.0001f, candidate.Fitness, 6);
         }
 
         /// <summary>
-        /// Ist kein Kandidat stabil, bricht der Lauf nicht ab — es gewinnt der Beste der Reste.
+        /// If no candidate is stable, the run does not abort — the best of the rest wins.
         /// </summary>
         [Fact]
         public void Falls_Back_To_The_Best_Of_The_Rest_When_Nothing_Is_Stable()
@@ -106,13 +106,13 @@ namespace FluidForge.Tests
             var winner = validator.ValidateChampion(
                 new List<ModelRecord> { second, best }, Config(), _ => new ModelRecord());
 
-            // sortiert wird absteigend nach Fitness -> der 100er stand vorne
+            // sorted descending by fitness -> 100 was first
             Assert.Equal(1, winner.Variant);
             Assert.Equal(0.0001f, best.Fitness, 6);
             Assert.Equal(0.0001f, second.Fitness, 6);
         }
 
-        /// <summary>Bricht die Re-Simulation ab, gilt der Kandidat als instabil — keine Exception nach außen.</summary>
+        /// <summary>If re-simulation aborts, the candidate counts as unstable — no exception escapes.</summary>
         [Fact]
         public void Failing_Resimulation_Disqualifies_Instead_Of_Throwing()
         {
@@ -128,7 +128,7 @@ namespace FluidForge.Tests
                 _ =>
                 {
                     calls++;
-                    if (calls == 1) throw new InvalidOperationException("Solver abgestürzt");
+                    if (calls == 1) throw new InvalidOperationException("Solver crashed");
                     return new ModelRecord();
                 });
 
@@ -137,8 +137,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Kandidaten unter der Prüfschwelle (0.1) werden nicht re-simuliert — sonst würde
-        /// das Framework Rechenzeit in offensichtlich unbrauchbare Modelle stecken.
+        /// Candidates below the test threshold (0.1) are not re-simulated — otherwise
+        /// the framework would spend compute time on obviously unusable models.
         /// </summary>
         [Fact]
         public void Candidates_Below_The_Test_Threshold_Are_Not_Resimulated()
@@ -152,10 +152,10 @@ namespace FluidForge.Tests
                 _ => { calls++; return new ModelRecord(); });
 
             Assert.Equal(0, calls);
-            Assert.Equal(1, winner.Variant);   // Bester der Reste
+            Assert.Equal(1, winner.Variant);   // Best of the rest
         }
 
-        /// <summary>Der bestätigte Champion kostet genau eine Re-Simulation.</summary>
+        /// <summary>The confirmed champion costs exactly one re-simulation.</summary>
         [Fact]
         public void Confirmed_Champion_Costs_Exactly_One_Resimulation()
         {
@@ -170,7 +170,7 @@ namespace FluidForge.Tests
             Assert.Equal(1, calls);
         }
 
-        /// <summary>Der Jitter verstellt genau einen Parameter um genau den konfigurierten Betrag.</summary>
+        /// <summary>Jitter perturbs exactly one parameter by the exact configured amount.</summary>
         [Fact]
         public void Jitter_Changes_Exactly_One_Parameter_By_The_Configured_Amount()
         {
@@ -197,7 +197,7 @@ namespace FluidForge.Tests
             Assert.Single(changed);
             Assert.Equal(0.01f, Math.Abs(changed[0].Value - candidate.ActiveParameters[changed[0].Key]), 5);
 
-            // Der Kandidat selbst bleibt unangetastet — der Jitter läuft auf einer Kopie.
+            // The candidate itself remains untouched — jitter runs on a copy.
             Assert.Equal(50f, candidate.ActiveParameters["Length"]);
         }
 
@@ -226,13 +226,13 @@ namespace FluidForge.Tests
             };
 
             Dictionary<string, float>? seen = null;
-            // Random mit festem Seed
+            // Random with fixed seed
             var validator = new ChampionValidator(FitnessReturning(10f), new Random(42), bounds);
 
             var config = new SimulationConfig
             {
                 BouncerTolerance = 0.2f,
-                BouncerJitter = 0.05f // 5% der Spanne 200f = 10.0f
+                BouncerJitter = 0.05f // 5% of span 200f = 10.0f
             };
 
             validator.ValidateChampion(
@@ -263,10 +263,10 @@ namespace FluidForge.Tests
             var config = new SimulationConfig
             {
                 BouncerTolerance = 0.2f,
-                BouncerJitter = 0.5f // Großer Jitter
+                BouncerJitter = 0.5f // Large jitter
             };
 
-            // Über mehrere Durchläufe testen, dass der Wert nie unter Min oder über Max rutscht
+            // Test across multiple runs that the value never falls below Min or exceeds Max
             for (int seed = 0; seed < 20; seed++)
             {
                 Dictionary<string, float>? seen = null;

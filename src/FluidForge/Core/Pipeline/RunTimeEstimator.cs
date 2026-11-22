@@ -5,15 +5,15 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Prognose der Laufzeit (Plan zeitschaetzung.md).
+    /// Run-time forecast (time-estimation plan).
     /// </summary>
-    /// <param name="VariantSeconds">Mittlere Dauer einer Variante (gleitendes Fenster).</param>
-    /// <param name="Remaining">Rest bis zum Ende der Optimierung, ohne die Feinprüfung am Ende.</param>
-    /// <param name="IterationNumber">Die Iteration, auf die sich <paramref name="IterationRemaining"/> bezieht; 0 = keine mehr offen.</param>
-    /// <param name="IterationRemaining">Rest bis zum Ende dieser Iteration (samt Nachprüfung des Champions).</param>
-    /// <param name="FineVerification">Obergrenze für die Feinprüfung am Ende; <see cref="TimeSpan.Zero"/> = keine.</param>
-    /// <param name="FineCandidates">So viele Kandidaten prüft die Feinprüfung am Ende.</param>
-    /// <param name="UpperBound">Das Automatische Ende ist an: der Lauf kann früher enden, die Werte sind Höchstwerte.</param>
+    /// <param name="VariantSeconds">Mean duration of one variant (sliding window).</param>
+    /// <param name="Remaining">Remaining time until the end of optimization, excluding final fine verification.</param>
+    /// <param name="IterationNumber">The iteration to which <paramref name="IterationRemaining"/> applies; 0 = none remaining.</param>
+    /// <param name="IterationRemaining">Remaining time until the end of that iteration (including champion validation).</param>
+    /// <param name="FineVerification">Upper bound for final fine verification; <see cref="TimeSpan.Zero"/> = none.</param>
+    /// <param name="FineCandidates">Number of candidates checked during final fine verification.</param>
+    /// <param name="UpperBound">Automatic stop is enabled: the run may finish earlier, so estimates are upper bounds.</param>
     public sealed record RunTimeEstimate(
         double VariantSeconds,
         TimeSpan Remaining,
@@ -24,29 +24,28 @@ namespace FluidForge.Core
         bool UpperBound);
 
     /// <summary>
-    /// Schätzt die Restzeit eines Laufs. Reine Rechnung ohne Solver, damit sie ohne Server prüfbar ist.
+    /// Estimates remaining run time. Pure math without solver dependencies so it can be unit-tested offline.
     ///
     /// <para>
-    /// Grundlage ist der Mittelwert der letzten <see cref="WindowSize"/> gerechneten Varianten, nicht aller
-    /// bisherigen: Bayes wandert im Lauf zu größeren, teureren Formen, und der Gesamtschnitt hinkt dem hinterher
-    /// (MantaAuv: Schätzung 30 % zu kurz). Eingerechnet werden die Nachprüfung des Champions am Ende jeder
-    /// Iteration (eine Rechnung, so lang wie eine Variante) und die Feinprüfung nach der Optimierung
-    /// (<c>ChampionVerification</c>).
+    /// Based on the mean of the last <see cref="WindowSize"/> evaluated variants rather than all prior variants:
+    /// Bayesian optimization drifts toward larger, more expensive geometries over time, causing a global average
+    /// to underestimate (MantaAuv: underestimated by 30 %). Accounts for champion validation at the end of each
+    /// iteration (one evaluation as long as a variant) and post-optimization fine verification (<c>ChampionVerification</c>).
     /// </para>
     /// </summary>
     public sealed class RunTimeEstimator
     {
-        /// <summary>So viele der jüngsten Varianten bestimmen die mittlere Dauer.</summary>
+        /// <summary>Number of most recent variants used to compute the mean duration.</summary>
         public const int WindowSize = 10;
 
         /// <summary>
-        /// Wie stark die Zellzahl je √2-Verfeinerungsstufe wächst (als Potenz von √2): in 3D gemessen 2,4
-        /// (MantaAuv, Kalibrierung 0,71 → 0,50: Faktor 2,28 statt 2,83, weil Wandschicht und Oberfläche nur
-        /// quadratisch wachsen), in 2D höchstens 2.
+        /// How strongly cell count grows per √2 refinement step (as a power of √2): measured at 2.4 in 3D
+        /// (MantaAuv, calibration 0.71 -> 0.50: factor 2.28 instead of 2.83 because boundary layer and surface
+        /// grow quadratically), and at most 2 in 2D.
         /// </summary>
         public const double CellGrowthExponent3D = 2.4;
 
-        /// <summary>Siehe <see cref="CellGrowthExponent3D"/>.</summary>
+        /// <summary>See <see cref="CellGrowthExponent3D"/>.</summary>
         public const double CellGrowthExponent2D = 2.0;
 
         private readonly int _maxIterations;
@@ -57,9 +56,9 @@ namespace FluidForge.Core
         private readonly bool _autoStopEnabled;
         private readonly List<double> _samples = new();
 
-        /// <param name="config">Liefert Iterations- und Variantenzahl sowie die Einstellungen der Feinprüfung.</param>
-        /// <param name="dimensions">2 oder 3 (bestimmt, wie stark die Zellzahl bei der Feinprüfung wächst).</param>
-        /// <param name="autoStopEnabled">Das Automatische Ende ist an: Prognose gilt als Höchstwert.</param>
+        /// <param name="config">Provides iteration/variant counts and fine-verification settings.</param>
+        /// <param name="dimensions">2 or 3 (determines cell growth during fine verification).</param>
+        /// <param name="autoStopEnabled">Automatic stop is enabled: forecast represents an upper bound.</param>
         public RunTimeEstimator(SimulationConfig config, int dimensions = 3, bool autoStopEnabled = false)
         {
             _maxIterations = Math.Max(1, config.MaxIterations);
@@ -70,19 +69,19 @@ namespace FluidForge.Core
             _fineFactor = FineCostFactor(config, dimensions);
         }
 
-        /// <summary>Anzahl der Messwerte, die bisher im Fenster stehen können (höchstens <see cref="WindowSize"/> zählen).</summary>
+        /// <summary>Total number of duration samples recorded so far (at most <see cref="WindowSize"/> contribute).</summary>
         public int SampleCount => _samples.Count;
 
         /// <summary>
-        /// Merkt sich die Dauer einer gerechneten Variante. Gescheiterte Varianten (Sekunden statt Stunden)
-        /// und Werte ohne Messung gehören nicht hierher, sie würden den Schnitt nach unten ziehen.
+        /// Records the duration of a completed variant. Failed variants (seconds instead of hours)
+        /// and unmeasured values are excluded so they do not skew the average downward.
         /// </summary>
         public void AddVariant(double seconds)
         {
             if (seconds > 0 && !double.IsNaN(seconds) && !double.IsInfinity(seconds)) _samples.Add(seconds);
         }
 
-        /// <summary>Mittlere Dauer der jüngsten Varianten; <c>null</c>, solange nichts gemessen ist.</summary>
+        /// <summary>Mean duration of the most recent variants; <c>null</c> until at least one sample is recorded.</summary>
         public double? RecentMeanSeconds
         {
             get
@@ -93,9 +92,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Wie viel länger als eine normale Variante eine Feinprüfungs-Rechnung dauert: mehr Zellen
-        /// (Verfeinerungsstufen) mal das strenge Iterationslimit der Kontrollrechnungen. Eine Obergrenze,
-        /// denn die strenge Rechnung kann früher konvergieren.
+        /// Cost multiplier of one fine-verification run relative to a normal variant: more cells
+        /// (refinement steps) times the stricter control-run iteration limit. This is an upper bound
+        /// because the stricter run may converge earlier.
         /// </summary>
         public static double FineCostFactor(SimulationConfig config, int dimensions)
         {
@@ -109,11 +108,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prognose für den aktuellen Stand; <c>null</c>, solange keine Variante gemessen wurde.
+        /// Estimates remaining time for the current progress; <c>null</c> until at least one variant has been measured.
         /// </summary>
-        /// <param name="iteration">Laufende Iteration (ab 1).</param>
-        /// <param name="variantsDoneInIteration">Fertige Varianten dieser Iteration (bei <paramref name="iterationFinished"/> egal).</param>
-        /// <param name="iterationFinished">Die Iteration ist komplett, also auch Nachprüfung und Feinprüfung dieser Runde.</param>
+        /// <param name="iteration">Current iteration (1-based).</param>
+        /// <param name="variantsDoneInIteration">Completed variants in this iteration (ignored when <paramref name="iterationFinished"/> is true).</param>
+        /// <param name="iterationFinished">True when the entire iteration (including validation and per-iteration verification) has finished.</param>
         public RunTimeEstimate? Estimate(int iteration, int variantsDoneInIteration, bool iterationFinished)
         {
             double? mean = RecentMeanSeconds;

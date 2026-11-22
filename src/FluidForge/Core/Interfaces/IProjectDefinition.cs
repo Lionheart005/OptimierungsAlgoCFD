@@ -1,60 +1,48 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Ein Projekt verdrahtet sich selbst (TODO-23).
+    /// Self-wiring definition for a project.
     ///
     /// <para>
-    /// Vorher stand in <c>Program.cs</c> ein <c>switch</c> über den Projektnamen, der Geometrie,
-    /// Kernel und Fitness fest verband. Solange der existierte, war ein neues Projekt eben
-    /// <b>nicht</b> nur ein Ordner — man musste den Kern anfassen. Jetzt bringt jedes Projekt
-    /// eine Implementierung dieser Schnittstelle in seinem eigenen Ordner mit, und die
-    /// <see cref="ProjectRegistry"/> findet sie beim Start von selbst.
+    /// Each project provides an implementation of this interface in its own folder under
+    /// <c>src/projects/</c>, and <see cref="ProjectRegistry"/> discovers it via reflection at startup.
     /// </para>
     ///
     /// <para>
-    /// Gefunden wird per Reflection und nicht über einen Typnamen in einer JSON-Datei
-    /// (Entscheidung 5): ein <c>Type.GetType("…MantaGeometryGenerator")</c> in einer JSON ist
-    /// ein Tippfehler, der erst im Lauf auffällt — eine Klasse ist compilergeprüft.
-    /// </para>
-    ///
-    /// <para>
-    /// Der Normalfall — PicoGK, Gmsh, SU2 — steht fertig in <c>CfdProjectDefinition</c>;
-    /// ein Projekt muss dann nur noch <see cref="Name"/>, <see cref="CreateDefaults"/>,
-    /// <see cref="CreateGeometry"/> und <see cref="CreateFitness"/> ausfüllen.
+    /// Standard CFD projects (PicoGK, Gmsh, SU2) can inherit from <c>CfdProjectDefinition</c>
+    /// and only implement <see cref="Name"/>, <see cref="CreateDefaults"/>,
+    /// <see cref="CreateGeometry"/>, and <see cref="CreateFitness"/>.
     /// </para>
     /// </summary>
     public interface IProjectDefinition
     {
         /// <summary>
-        /// Muss exakt dem Ordnernamen unter <c>src/projects/</c> entsprechen — der Ordnername ist
-        /// der Projektname (Entscheidung 1). Die <see cref="ProjectRegistry"/> prüft beide
-        /// Richtungen beim Start, damit Ordner und Klasse nicht auseinanderlaufen.
+        /// Must match the folder name under <c>src/projects/</c> exactly.
+        /// <see cref="ProjectRegistry"/> validates both directions at startup.
         /// </summary>
         string Name { get; }
 
         /// <summary>
-        /// Die Code-Vorgaben des Projekts: Startwerte, Grenzen, Optimierungsziele.
-        /// Die <c>project.json</c> im Projektordner überlagert davon, was sie selbst nennt.
+        /// Code-level project defaults: initial parameters, bounds, and optimization targets.
+        /// <c>project.json</c> in the project folder overrides any keys it specifies.
         /// </summary>
         ProjectConfig CreateDefaults();
 
         /// <summary>
-        /// Die Laufzeitumgebung, in der die Geometrie entsteht. Vorgabe im Normalfall
-        /// <c>PicoGkKernel</c>; ein Projekt ohne Voxel-Modell nimmt
-        /// <see cref="DirectGeometryKernel"/>.
+        /// Runtime environment for geometry creation. Typically <c>PicoGkKernel</c>;
+        /// non-voxel projects use <see cref="DirectGeometryKernel"/>.
         /// </summary>
         IGeometryKernel CreateKernel();
 
-        /// <summary>Der Geometrie-Erzeuger des Projekts.</summary>
+        /// <summary>Creates the project's geometry generator.</summary>
         IGeometryGenerator CreateGeometry(ProjectContext context);
 
-        /// <summary>Die Zielfunktion des Projekts.</summary>
+        /// <summary>Creates the project's fitness calculator.</summary>
         IFitnessCalculator CreateFitness(ProjectContext context);
 
         /// <summary>
-        /// Die Kette aus Vernetzer und Solver. Stufen, die sich eine Mesher-<b>Instanz</b>
-        /// teilen, vernetzen nur einmal (TODO-4) — wer das will, gibt hier bewusst dieselbe
-        /// Instanz in mehrere Stufen.
+        /// Pipeline of mesher and solver stages. Stages sharing a single mesher <b>instance</b>
+        /// mesh only once.
         /// </summary>
         SolverStage[] CreateStages(ProjectContext context);
     }

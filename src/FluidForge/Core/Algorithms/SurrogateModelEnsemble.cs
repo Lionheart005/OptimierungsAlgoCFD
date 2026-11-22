@@ -22,21 +22,21 @@ namespace FluidForge.Core
         public double BestTransformed;
 
         /// <summary>
-        /// Wie weit unter dem bisher Besten (in transformierten Einheiten) ein Punkt noch als „möglicherweise gut"
-        /// gilt: halbe Fitness bei logarithmischer Fitness, sonst die halbe Streuung der bisherigen Werte.
+        /// How far below the current best (in transformed units) a point is still considered "plausibly good":
+        /// half the fitness when log-transformed, otherwise half the spread of observed values.
         /// </summary>
         public double PlausibleGap;
 
-        /// <summary>Kleinere erwartete Verbesserung (transformierte Einheiten) zählt als „keine": 0,2 % bei logarithmischer Fitness.</summary>
+        /// <summary>Smaller expected improvement (transformed units) counts as "none": 0.2% when log-transformed.</summary>
         public double MeaningfulImprovement;
         public double Offset;
         public double[][] Z = Array.Empty<double[]>();
         public IReadOnlyList<double[]> Excluded = Array.Empty<double[]>();
 
-        /// <summary>Vorschläge der laufenden Runde: untereinander abgestoßen, damit ein Block nicht aus Beinahe-Dubletten besteht.</summary>
+        /// <summary>Proposals already chosen in the current round: repelled from one another to avoid near-duplicates.</summary>
         public List<double[]> Chosen = new();
 
-        /// <summary>Lernt „Rechnung gelingt" (1) gegen „stürzt ab" (0); <c>null</c> ohne Abstürze.</summary>
+        /// <summary>Learns "evaluation succeeds" (1) vs. "crashes" (0); <c>null</c> when there are no failures.</summary>
         public ISurrogateModel? SuccessModel;
         public double RepulsionRadius;
         public double[] Relevance = Array.Empty<double>();
@@ -45,7 +45,7 @@ namespace FluidForge.Core
     }
 
     /// <summary>
-    /// Verwaltet die Ersatzmodelle (Fitness oder Kennwerte inkl. Erfolgsmodell) und ihre Lernmengen-Auswahl.
+    /// Manages surrogate models (fitness or per-metric, plus success model) and training set selection.
     /// </summary>
     internal sealed class SurrogateModelEnsemble
     {
@@ -72,7 +72,7 @@ namespace FluidForge.Core
             _modelFactory = modelFactory;
         }
 
-        /// <summary>Wirksamer Modus nach Auflösung von "Auto" und eventuellem Rückfall (TODO-56).</summary>
+        /// <summary>Effective mode after resolving "Auto" and any fallback.</summary>
         public SurrogateTargetMode ActiveMode { get; private set; } = SurrogateTargetMode.Fitness;
 
         public void Initialize(SurrogateTargetMode mode, SimulationConfig simulationConfig)
@@ -82,8 +82,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Gibt es mehr nutzbare Rechnungen als <c>MaxTrainingPoints</c>, bleiben die besten 10 % des
-        /// Deckels und die dem Zentrum nächsten (mit den Längenskalen gewichtet).
+        /// When more usable evaluations exist than <c>MaxTrainingPoints</c>, keeps the top 10%
+        /// by fitness and those closest to the center (weighted by relevance).
         /// </summary>
         public List<int> SelectTrainingIndices(SurrogateTrainingSet training, double[] center)
         {
@@ -153,7 +153,7 @@ namespace FluidForge.Core
                 slot.Model = ModelFor(slot.Name);
                 slot.OutputVariance = Variance(outputs);
 
-                // Bekannte Unsicherheit je Rechnung (z. B. Wirbelablösung) als Rauschen je Punkt.
+                // Known per-evaluation uncertainty (e.g., vortex shedding) as per-point observation noise.
                 var noise = selected.Select(i =>
                 {
                     ModelRecord r = training.Records[i];
@@ -177,7 +177,7 @@ namespace FluidForge.Core
                     if (rows.Count < 3)
                     {
                         throw new SurrogateFitException(
-                            $"Für den Kennwert '{metric}' gibt es nur {rows.Count} gültige Werte (mindestens 3 nötig).");
+                            $"Metric '{metric}' has only {rows.Count} valid value(s) (at least 3 required).");
                     }
 
                     var values = rows.Select(i => (double)training.Records[i].PassiveParameters[metric]).ToList();
@@ -212,7 +212,7 @@ namespace FluidForge.Core
 
             var inputs = training.Inputs.Concat(training.FailedPoints).ToList();
             var labels = training.Inputs.Select(_ => 1.0).Concat(training.FailedPoints.Select(_ => 0.0)).ToList();
-            fit.SuccessModel = ModelFor("__Erfolg");
+            fit.SuccessModel = ModelFor("__Success");
             fit.SuccessModel.Fit(inputs, labels);
         }
 
@@ -241,9 +241,9 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Prüft für jede neue Rechnung, ob die Fitness allein aus den deklarierten Kennwerten und den
-        /// Parametern folgt. Wenn nicht, liest die Formel offenbar weitere Kennwerte: dann fällt der Rest
-        /// des Laufs auf den Modus "Fitness" zurück. Robustheit geht vor Strenge.
+        /// Checks for each new evaluation whether fitness depends solely on declared metrics and
+        /// active parameters. If not, the formula reads additional metrics and the run falls back
+        /// to "Fitness" mode for robustness.
         /// </summary>
         public void VerifyMetricsMode(SurrogateTrainingSet training)
         {
@@ -267,9 +267,9 @@ namespace FluidForge.Core
                 if (!(Math.Abs(probe - reference) <= 1e-5 * Math.Max(1.0, Math.Abs(reference))))
                 {
                     SimulationLog.Warning(
-                        $"[BAYES] Die Fitness liest mehr als die deklarierten Kennwerte ({string.Join(", ", _fitness.RequiredMetrics)}): "
-                        + $"Gegenprobe {probe:G6} statt {reference:G6} bei Iteration {record.Iteration}, Variante {record.Variant}. "
-                        + "Modus 'Metrics' ist damit nicht möglich; der Lauf geht mit 'Fitness' weiter.");
+                        $"{OutputConventions.BayesTag} Fitness formula reads more than the declared metrics ({string.Join(", ", _fitness.RequiredMetrics)}): "
+                        + $"cross-check {probe:G6} vs. {reference:G6} at iteration {record.Iteration}, variant {record.Variant}. "
+                        + "Mode 'Metrics' is not possible; continuing with 'Fitness'.");
                     ActiveMode = SurrogateTargetMode.Fitness;
                     _models.Clear();
                     return;
@@ -277,7 +277,7 @@ namespace FluidForge.Core
             }
         }
 
-        /// <summary>Fitness für einen Wegwerf-Datensatz mit der Formel des Projekts. Kommt nie in die History.</summary>
+        /// <summary>Computes fitness on a scratch record using the project's formula. Never enters History.</summary>
         public double FitnessOf(Dictionary<string, float> active, Dictionary<string, float> passive)
         {
             _scratch.ActiveParameters = active;

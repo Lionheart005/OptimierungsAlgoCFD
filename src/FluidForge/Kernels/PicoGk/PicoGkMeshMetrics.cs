@@ -8,13 +8,13 @@ using FluidForge.Core;
 namespace FluidForge.Kernels.PicoGk
 {
     /// <summary>
-    /// Die Brücke zwischen einem PicoGK-Netz und <see cref="MeshMetrics"/> (TODO-29).
+    /// Bridge between a PicoGK <see cref="Mesh"/> and <see cref="MeshMetrics"/>.
     ///
     /// <para>
-    /// <b>Warum diese Klasse getrennt von <see cref="MeshMetrics"/> liegt:</b> sie braucht
-    /// <c>using PicoGK</c>, und <c>Core/</c> hat keines — TODO-20 hat das nachgewiesen und
-    /// lässt es vom Compiler erzwingen. Die Rechnung selbst steht deshalb im Kern, die
-    /// Umwandlung hier in der Kernel-Schicht. Für ein Projekt ist das eine Zeile:
+    /// <b>Why this class is separated from <see cref="MeshMetrics"/>:</b> it requires
+    /// <c>using PicoGK</c>, whereas <c>Core/</c> must remain PicoGK-free. The geometric
+    /// calculation therefore lives in Core while the mesh conversion stays in the kernel layer.
+    /// For a project, usage is a single line:
     /// </para>
     ///
     /// <code>
@@ -22,28 +22,28 @@ namespace FluidForge.Kernels.PicoGk
     /// </code>
     ///
     /// <para>
-    /// <b>Nicht getestet</b> — jeder Aufruf braucht eine laufende PicoGK-Umgebung
-    /// (<c>Library.Go</c>) und die native <c>libpicogk</c>. Was sich ohne beides prüfen lässt,
-    /// ist die Rechnung, und die steht in <see cref="MeshMetrics"/> und ist dort geprüft.
-    /// Hier bleibt nur die Schleife über <c>nTriangleCount</c>/<c>GetTriangle</c>.
+    /// <b>Not unit-tested directly</b> — every call requires a running PicoGK runtime
+    /// (<c>Library.Go</c>) and the native <c>libpicogk</c> library. The underlying
+    /// math is tested in <see cref="MeshMetrics"/>; this class only loops over
+    /// <c>nTriangleCount</c>/<c>GetTriangle</c>.
     /// </para>
     /// </summary>
     public static class PicoGkMeshMetrics
     {
-        /// <summary>Volumen, Oberfläche, Hüllquader und projizierte Stirnfläche eines PicoGK-Netzes.</summary>
-        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> ist <c>null</c>.</exception>
+        /// <summary>Volume, surface area, bounding box, and projected frontal area of a PicoGK mesh.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> is <c>null</c>.</exception>
         public static MeshMeasurement Measure(Mesh mesh) => MeshMetrics.Measure(ToTriangles(mesh));
 
-        /// <summary>Wahre projizierte Stirnfläche (mm²) eines PicoGK-Netzes in der YZ-Ebene quer zur X-Achse.</summary>
-        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> ist <c>null</c>.</exception>
+        /// <summary>True projected frontal area (mm²) of a PicoGK mesh onto the YZ plane perpendicular to the X axis.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> is <c>null</c>.</exception>
         public static float FrontalProjectedArea(Mesh mesh) => MeshMetrics.FrontalProjectedArea(ToTriangles(mesh));
 
         /// <summary>
-        /// Ein PicoGK-Netz als framework-eigene Dreiecksliste. Damit lässt sich ein Netz auch
-        /// über <see cref="StlWriter"/> schreiben oder in einem Test festhalten, ohne dass der
-        /// aufrufende Code PicoGK-Typen weiterreichen muss.
+        /// Converts a PicoGK mesh into a framework-native list of triangles so that a mesh
+        /// can also be written via <see cref="StlWriter"/> or inspected in tests without
+        /// propagating PicoGK types to callers.
         /// </summary>
-        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> ist <c>null</c>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="mesh"/> is <c>null</c>.</exception>
         public static IReadOnlyList<StlTriangle> ToTriangles(Mesh mesh)
         {
             if (mesh == null) throw new ArgumentNullException(nameof(mesh));

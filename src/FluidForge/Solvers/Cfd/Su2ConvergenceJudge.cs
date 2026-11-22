@@ -5,15 +5,15 @@ using FluidForge.Core;
 
 namespace FluidForge.Solvers.Cfd
 {
-    /// <summary>Urteil über den iterativen Fehler einer SU2-Rechnung (TODO-W3).</summary>
+    /// <summary>Verdict on the iterative error of an SU2 simulation.</summary>
     /// <param name="Assessed">
-    /// Falsch, wenn das Endfenster für eine Beurteilung zu kurz war (weniger als
-    /// <see cref="Su2ConvergenceJudge.MinTailRows"/> Zeilen). Dann gilt weiter die alte Regel
-    /// „SU2 hat vor ITER aufgehört“.
+    /// False if the tail window was too short to assess (fewer than
+    /// <see cref="Su2ConvergenceJudge.MinTailRows"/> rows). In that case the fallback rule
+    /// "SU2 stopped before ITER" applies.
     /// </param>
-    /// <param name="Converged">Alle Kennwerte haben einen normierten iterativen Fehler von höchstens 1.</param>
-    /// <param name="Normalized">Normierter iterativer Fehler je Kennwertname (≤ 1 = in Ordnung).</param>
-    /// <param name="WorstMetric">Der Kennwert mit dem größten normierten Fehler.</param>
+    /// <param name="Converged">All metrics have a normalized iterative error of at most 1.</param>
+    /// <param name="Normalized">Normalized iterative error per metric name (&lt;= 1 = acceptable).</param>
+    /// <param name="WorstMetric">The metric with the largest normalized error.</param>
     public sealed record Su2ConvergenceVerdict(
         bool Assessed,
         bool Converged,
@@ -22,33 +22,26 @@ namespace FluidForge.Solvers.Cfd
         float WorstNormalized);
 
     /// <summary>
-    /// Beurteilt anhand des Endfensters der <c>history.csv</c>, ob ein Ergebnis auskonvergiert ist (TODO-W3).
+    /// Judges whether an SU2 run has converged based on the tail window of <c>history.csv</c>.
     ///
     /// <para>
-    /// Maß ist die <b>Drift</b> des Kennwerts im Endfenster (Unterschied der Mittelwerte von erster und
-    /// zweiter Fensterhälfte), normiert mit der kombinierten Toleranz aus
-    /// <see cref="MetricTolerance"/>: <c>drift / (rtol · |Mittelwert| + atol)</c>, ≤ 1 = in Ordnung.
-    /// <c>rtol</c> und <c>atol</c> sind hier ein <i>Bruchteil</i> der Netz-Toleranz (Vorgabe
-    /// ein Zehntel für Kontrollrechnungen): der iterative Fehler soll deutlich kleiner sein als der
-    /// Diskretisierungsfehler, den die Kalibrierung misst (Celik et al. 2008: höchstens 1/10).
-    /// </para>
-    ///
-    /// <para>
-    /// Warum nicht das Residuum? SU2 (INC, Limiter) lässt die Residuen bei ~1e-7 stagnieren, obwohl
-    /// die Beiwerte längst stehen; und das eingebaute Cauchy-Kriterium auf Iterationsdifferenzen
-    /// übersieht ein langsames Weiterwandern (gemessen: Abbruch bei Iteration ~250 mit 3 % Drift).
+    /// Measures the <b>drift</b> of each metric in the tail window (difference between first-half and
+    /// second-half means), normalized by the combined tolerance from <see cref="MetricTolerance"/>:
+    /// <c>drift / (rtol * |mean| + atol)</c>, &lt;= 1 = acceptable.
+    /// <c>rtol</c> and <c>atol</c> are a fraction of the mesh calibration tolerance so that iterative
+    /// error remains well below discretization error.
     /// </para>
     /// </summary>
     public static class Su2ConvergenceJudge
     {
-        /// <summary>Kürzestes Endfenster, das noch beurteilt wird (Zeilen).</summary>
+        /// <summary>Shortest tail window that can still be assessed (rows).</summary>
         public const int MinTailRows = 20;
 
-        /// <param name="history">Ausgewertete history.csv.</param>
-        /// <param name="metricColumns">Kennwertname (z. B. "Drag") → history-Spalte (z. B. "CD").</param>
-        /// <param name="relativeTolerance">Erlaubte relative Drift (Bruchteil der Netz-Toleranz).</param>
-        /// <param name="absoluteScale">Bruchteil, mit dem die <c>atol</c>-Vorgaben des Kennwerts skaliert werden.</param>
-        /// <param name="absoluteOverrides"><c>MeshCalibration.AbsoluteTolerances</c> (kann leer sein).</param>
+        /// <param name="history">Evaluated history.csv.</param>
+        /// <param name="metricColumns">Metric name (e.g. "Drag") -> history column (e.g. "CD").</param>
+        /// <param name="relativeTolerance">Allowed relative drift (fraction of mesh tolerance).</param>
+        /// <param name="absoluteScale">Fraction scaling the metric's <c>atol</c> defaults.</param>
+        /// <param name="absoluteOverrides"><c>MeshCalibration.AbsoluteTolerances</c> (may be empty).</param>
         public static Su2ConvergenceVerdict Judge(
             Su2HistoryResult history,
             IReadOnlyDictionary<string, string> metricColumns,
@@ -77,7 +70,7 @@ namespace FluidForge.Solvers.Cfd
                 float rtol = Math.Max(relativeTolerance, 0f);
                 float atol = MetricTolerance.AbsoluteFor(metric, absoluteOverrides) * Math.Max(absoluteScale, 0f);
 
-                // Mittelwert als Referenz: die Drift wird an der Größe des Kennwerts gemessen.
+                // Mean as reference: drift is measured relative to the magnitude of the metric.
                 float value = MetricTolerance.Normalized(mean + drift, mean, rtol, atol);
                 normalized[metric] = value;
 

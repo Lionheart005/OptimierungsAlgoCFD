@@ -4,18 +4,17 @@ using System.Collections.Generic;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Was ein Projekt zum Verdrahten braucht (TODO-23): sein Name, sein Ordner, die fertig
-    /// geladene Konfiguration — und ein Weg, die Optionen seiner Solver zu laden, ohne dass es
-    /// wissen muss, wo die Dateien liegen.
+    /// Everything a project needs to wire itself up: its name, directory, loaded configuration,
+    /// and a helper to load solver options without knowing where config files reside.
     /// </summary>
     public sealed class ProjectContext
     {
-        /// <param name="name">Der Projektname = der Ordnername.</param>
+        /// <param name="name">Project name (= folder name).</param>
         /// <param name="projectDirectory">
-        /// Der Ordner des Projekts unter <c>src/projects/</c>, oder <c>null</c>, solange es
-        /// keinen gibt (siehe <see cref="LoadSolverOptions{T}"/>).
+        /// Project folder under <c>src/projects/</c>, or <c>null</c> in standalone unit tests
+        /// (see <see cref="LoadSolverOptions{T}"/>).
         /// </param>
-        /// <param name="configDirectory">Das <c>config/</c>-Verzeichnis für die Notausgang-Schicht.</param>
+        /// <param name="configDirectory">The <c>config/</c> directory for machine-specific overrides.</param>
         public ProjectContext(
             string name,
             string? projectDirectory,
@@ -30,50 +29,42 @@ namespace FluidForge.Core
             Project = project;
         }
 
-        /// <summary>Der Projektname, wie er beim Start angegeben wurde.</summary>
+        /// <summary>Project name as passed at startup.</summary>
         public string Name { get; }
 
-        /// <summary>Der Projektordner, oder <c>null</c>, wenn es (noch) keinen gibt.</summary>
+        /// <summary>Project directory, or <c>null</c> if none exists.</summary>
         public string? ProjectDirectory { get; }
 
-        /// <summary>Das Konfigurationsverzeichnis für die maschinenspezifische Schicht 3.</summary>
+        /// <summary>Config directory for machine-specific layer 3 overrides.</summary>
         public string? ConfigDirectory { get; }
 
-        /// <summary>Die Framework-Konfiguration, fertig über alle Schichten geladen.</summary>
+        /// <summary>Framework configuration, loaded across all layers.</summary>
         public SimulationConfig Simulation { get; }
 
-        /// <summary>Die Projekt-Konfiguration, fertig über alle Schichten geladen.</summary>
+        /// <summary>Project configuration, loaded across all layers.</summary>
         public ProjectConfig Project { get; }
 
         /// <summary>
-        /// Alles, was für diesen Lauf geladen wurde: je Datei der fertige Wert und der Bericht,
-        /// welcher Schlüssel woher kam. <see cref="EffectiveConfigWriter"/> schreibt das als
-        /// <c>effective-config.json</c> neben die Ergebnisse (TODO-25) — damit ein alter Lauf
-        /// rekonstruierbar bleibt, egal was danach an den Dateien passiert.
+        /// All configuration files loaded for this run, with their effective values and key origins.
+        /// Written to <c>effective-config.json</c> by <see cref="EffectiveConfigWriter"/>.
         /// </summary>
         public List<LoadedConfiguration> Loaded { get; } = new();
 
-        /// <summary>Nimmt eine geladene Datei in die Sammlung auf.</summary>
+        /// <summary>Records a loaded configuration file.</summary>
         public void Record<T>(string name, ConfigLoadResult<T> result) where T : class
             => Loaded.Add(new LoadedConfiguration(name, result.Value, result.Report));
 
         /// <summary>
-        /// Lädt die Optionen eines Solvers oder Vernetzers aus
-        /// <c>&lt;Projektordner&gt;/solvers/&lt;name&gt;.json</c>, z.B. <c>"su2"</c> oder
-        /// <c>"gmsh"</c> — über alle vier Schichten aus TODO-22.
-        ///
-        /// <para>
-        /// Ohne Projektordner gelten die Code-Standards. Im regulären Lauf kommt das nicht vor
-        /// (<c>Program.cs</c> bricht vorher ab); es ist der Fall für Tests, die eine
-        /// Solver-Kette bauen, ohne ein Repo auf der Platte zu haben.
-        /// </para>
+        /// Loads solver or mesher options from <c>&lt;ProjectDirectory&gt;/solvers/&lt;name&gt;.json</c>
+        /// (e.g., <c>"su2"</c> or <c>"gmsh"</c>) across all four configuration layers.
+        /// Falls back to code defaults if <see cref="ProjectDirectory"/> is null.
         /// </summary>
         public T LoadSolverOptions<T>(string name) where T : class, new()
         {
             if (string.IsNullOrWhiteSpace(ProjectDirectory))
             {
                 Console.WriteLine(
-                    $"[CONFIG] Kein Projektordner — '{name}' nutzt die Code-Standards.");
+                    $"{OutputConventions.ConfigTag} No project directory — '{name}' uses code defaults.");
                 return new T();
             }
 

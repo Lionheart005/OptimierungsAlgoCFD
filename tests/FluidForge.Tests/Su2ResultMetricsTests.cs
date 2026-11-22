@@ -8,17 +8,17 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-26: SU2 liefert nicht mehr nur Drag. Welche Spalte der history.csv unter welchem
-    /// Namen in den Record wandert, steht in <see cref="Su2SolverOptions.ResultMetrics"/>.
+    /// TODO-26: SU2 no longer returns only Drag. Which column of history.csv maps to which
+    /// name in the record is configured in <see cref="Su2SolverOptions.ResultMetrics"/>.
     ///
-    /// Die Tests arbeiten auf einer geschriebenen Beispiel-history.csv statt auf einem echten
-    /// Lauf — MPI und SU2 gibt es auf dem Entwicklungsrechner nicht.
+    /// Tests run against a synthetic sample history.csv instead of a live run — MPI and SU2
+    /// are not installed on the development machine.
     /// </summary>
     public class Su2ResultMetricsTests
     {
         /// <summary>
-        /// So sieht eine history.csv von SU2 aus: Spaltennamen in Anführungszeichen und mit
-        /// Leerzeichen ausgerichtet, die interessante Zeile ist die letzte.
+        /// What a history.csv from SU2 looks like: column names in quotes and padded with
+        /// spaces; the row of interest is the last one.
         /// </summary>
         private const string HistoryWithAeroCoefficients =
             "\"Inner_Iter\",   \"rms[Rho]\",       \"CD\",       \"CL\",      \"CSF\",      \"CMx\",      \"CMy\",      \"CMz\"\n" +
@@ -26,7 +26,7 @@ namespace FluidForge.Tests
             "1,              -3.456,           0.500,      0.200,     0.020,     0.004,     0.005,     0.006\n" +
             "2,              -6.789,           0.345,      0.678,     0.031,     0.007,     0.123,     0.009\n";
 
-        /// <summary>Schreibt eine history.csv in den Temp-Ordner und räumt sie hinterher weg.</summary>
+        /// <summary>Writes a history.csv into the temp folder and cleans it up afterward.</summary>
         private static void WithHistoryFile(string content, Action<string> body)
         {
             string path = Path.Combine(Path.GetTempPath(), "history_" + Guid.NewGuid().ToString("N") + ".csv");
@@ -37,7 +37,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Standardverhalten — ein bestehendes Projekt darf vom Umbau nichts merken
+        // Default behavior — an existing project must not notice the change
         // -------------------------------------------------------------------
 
         [Fact]
@@ -48,7 +48,7 @@ namespace FluidForge.Tests
 
             WithHistoryFile(HistoryWithAeroCoefficients, path => solver.ReadMetricsFromHistory(path, record));
 
-            // Genau eine Größe, aus der letzten Zeile — und kein "Lift", das keiner bestellt hat.
+            // Exactly one metric, from the last row — and no "Lift" that nobody requested.
             Assert.Equal(new[] { "Drag" }, record.PassiveParameters.Keys);
             Assert.Equal(0.345f, record.PassiveParameters["Drag"], 5);
             Assert.False(record.SimulationFailed);
@@ -63,7 +63,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Mehrere Größen gleichzeitig
+        // Multiple metrics simultaneously
         // -------------------------------------------------------------------
 
         [Fact]
@@ -75,7 +75,7 @@ namespace FluidForge.Tests
                 {
                     ["Drag"] = "CD",
                     ["Lift"] = "CL",
-                    ["Nickmoment"] = "CMy"
+                    ["PitchMoment"] = "CMy"
                 }
             });
             var record = new ModelRecord();
@@ -84,17 +84,17 @@ namespace FluidForge.Tests
 
             Assert.Equal(0.345f, record.PassiveParameters["Drag"], 5);
             Assert.Equal(0.678f, record.PassiveParameters["Lift"], 5);
-            Assert.Equal(0.123f, record.PassiveParameters["Nickmoment"], 5);
+            Assert.Equal(0.123f, record.PassiveParameters["PitchMoment"], 5);
             Assert.False(record.SimulationFailed);
         }
 
         // -------------------------------------------------------------------
-        // Der eigentliche Grund für den exakten Vergleich (TODO-26)
+        // The actual reason for exact matching (TODO-26)
         // -------------------------------------------------------------------
 
         /// <summary>
-        /// Vor TODO-26 suchte der Solver per StartsWith. "CM" hätte damit CMx, CMy oder CMz
-        /// getroffen — welche, hing allein an der Spaltenreihenfolge.
+        /// Before TODO-26 the solver searched via StartsWith. "CM" would have matched CMx, CMy,
+        /// or CMz — depending solely on column order.
         /// </summary>
         [Fact]
         public void Ambiguous_Prefix_Cm_Does_Not_Silently_Hit_Cmx()
@@ -136,8 +136,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Der Präfix-Weg bleibt erhalten — SU2 schreibt je nach Version und MARKER_MONITORING
-        /// auch Namen wie CD(Wall). Er greift aber nur bei Eindeutigkeit und meldet sich.
+        /// The prefix path stays supported — depending on version and MARKER_MONITORING, SU2 also
+        /// writes names like CD(Wall). However, it only applies when unambiguous and reports it.
         /// </summary>
         [Fact]
         public void Unique_Prefix_Is_Used_But_Reported()
@@ -159,7 +159,7 @@ namespace FluidForge.Tests
         }
 
         // -------------------------------------------------------------------
-        // Fehlerfälle: lieber ausgemustert als halb gerechnet
+        // Error cases: better disqualified than half-computed
         // -------------------------------------------------------------------
 
         [Fact]
@@ -170,7 +170,7 @@ namespace FluidForge.Tests
                 ResultMetrics = new Dictionary<string, string>
                 {
                     ["Drag"] = "CD",
-                    ["Auftrieb"] = "CL_gibt_es_nicht"
+                    ["Lift"] = "CL_does_not_exist"
                 }
             });
             var record = new ModelRecord();
@@ -178,22 +178,22 @@ namespace FluidForge.Tests
             WithHistoryFile(HistoryWithAeroCoefficients, path => solver.ReadMetricsFromHistory(path, record));
 
             Assert.True(record.SimulationFailed);
-            Assert.False(record.PassiveParameters.ContainsKey("Auftrieb"));
-            // Die lesbaren Größen werden trotzdem übernommen — sie stehen später in der CSV
-            // und helfen bei der Fehlersuche.
+            Assert.False(record.PassiveParameters.ContainsKey("Lift"));
+            // Readable metrics are still captured — they appear in the CSV later
+            // and help with debugging.
             Assert.Equal(0.345f, record.PassiveParameters["Drag"], 5);
         }
 
         /// <summary>
-        /// "nan" und "inf" parst .NET seit Core 3.0 klaglos zu NaN bzw. Infinity — eine
-        /// divergierte Simulation schreibt genau das. Ohne die IsFinite-Prüfung stünde der
-        /// Wert als Metrik im Record und vergiftete jede Formel, die damit rechnet.
+        /// Since .NET Core 3.0, "nan" and "inf" parse cleanly to NaN and Infinity — a diverged
+        /// simulation writes exactly those. Without the IsFinite check, the value would enter
+        /// the record as a metric and poison every formula that uses it.
         /// </summary>
         [Theory]
         [InlineData("nan")]
         [InlineData("inf")]
         [InlineData("-inf")]
-        [InlineData("kaputt")]
+        [InlineData("broken")]
         [InlineData("")]
         public void An_Unusable_Value_Marks_The_Record_As_Failed(string value)
         {
@@ -229,7 +229,7 @@ namespace FluidForge.Tests
             var record = new ModelRecord();
 
             solver.ReadMetricsFromHistory(
-                Path.Combine(Path.GetTempPath(), "gibt_es_nicht_" + Guid.NewGuid().ToString("N") + ".csv"),
+                Path.Combine(Path.GetTempPath(), "does_not_exist_" + Guid.NewGuid().ToString("N") + ".csv"),
                 record);
 
             Assert.True(record.SimulationFailed);
@@ -246,13 +246,13 @@ namespace FluidForge.Tests
 
             WithHistoryFile(HistoryWithAeroCoefficients, path => solver.ReadMetricsFromHistory(path, record));
 
-            // Rechnen und nichts auslesen ist immer ein Konfigurationsfehler.
+            // Computing without reading anything is always a configuration error.
             Assert.True(record.SimulationFailed);
             Assert.Empty(record.PassiveParameters);
         }
 
         // -------------------------------------------------------------------
-        // CONV_FIELD und HISTORY_OUTPUT
+        // CONV_FIELD and HISTORY_OUTPUT
         // -------------------------------------------------------------------
 
         [Fact]
@@ -282,8 +282,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Nicht konfiguriert heißt Code-Standard — eine leere Zeile würde SU2 beim Einlesen
-        /// zerlegen. Gleiches Muster wie bei TunnelShape (TODO-11).
+        /// Unconfigured means code default — an empty line would break SU2 on read.
+        /// Same pattern as TunnelShape (TODO-11).
         /// </summary>
         [Fact]
         public void Empty_Convergence_Field_And_History_Output_Fall_Back_To_The_Defaults()
@@ -312,8 +312,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Der Standardfall muss Zeichen für Zeichen die Datei erzeugen, die vor TODO-26
-        /// hartcodiert dort stand — sonst rechnet SU2 anders als bisher.
+        /// The default case must produce character-for-character the file that was hardcoded
+        /// before TODO-26 — otherwise SU2 computes differently than before.
         /// </summary>
         [Fact]
         public void Default_Options_Keep_The_Previously_Hardcoded_Lines()
@@ -338,8 +338,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Die Standard-Liste darf nicht geteilt werden: sonst verstellt ein Projekt, das
-        /// sein eigenes Array bearbeitet, die Vorgabe aller anderen.
+        /// The default list must not be shared: otherwise a project editing its own array
+        /// mutates the default for all others.
         /// </summary>
         [Fact]
         public void Each_Options_Instance_Gets_Its_Own_History_Output_Array()
@@ -347,7 +347,7 @@ namespace FluidForge.Tests
             var first = new Su2SolverOptions();
             var second = new Su2SolverOptions();
 
-            first.HistoryOutput[0] = "VERSTELLT";
+            first.HistoryOutput[0] = "MUTATED";
 
             Assert.Equal("ITER", second.HistoryOutput[0]);
             Assert.Equal("ITER", Su2SolverOptions.DefaultHistoryOutput[0]);

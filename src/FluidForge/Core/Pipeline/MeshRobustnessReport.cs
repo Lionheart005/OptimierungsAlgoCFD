@@ -5,14 +5,14 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Zusammenfassung am Laufende: Wie robust war die Vernetzung? Zählt die Varianten nach Stufe der Wandschicht-Rückfall-Leiter
-    /// (A geglättete Richtungen, B örtlich gedünnt, C Ersatznetz) und nennt die Formen, die nur mit Ersatznetz oder gar nicht
-    /// vernetzbar waren, damit besondere Formen nicht unbemerkt verloren gehen (Plan wandschicht_zellzahl.md, Abschnitt 4).
-    /// Reine Funktion, damit testbar.
+    /// End-of-run summary: how robust was meshing? Counts variants by boundary-layer fallback stage
+    /// (A smoothed directions, B locally thinned, C fallback mesh) and lists shapes that could only be
+    /// meshed with the fallback mesh or failed meshing altogether, so edge cases are not lost silently
+    /// (boundary-layer cell count plan, section 4). Pure function for unit testability.
     /// </summary>
     public static class MeshRobustnessReport
     {
-        /// <summary>Zeilen für das Log; leer, wenn keine Variante Wandschicht-Kennwerte oder Vernetzungsfehler hat.</summary>
+        /// <summary>Lines for the log; empty if no variant recorded boundary-layer metrics or meshing failures.</summary>
         public static IReadOnlyList<string> Lines(IEnumerable<ModelRecord> history)
         {
             var records = history.ToList();
@@ -39,21 +39,21 @@ namespace FluidForge.Core
             var lines = new List<string>();
             if (stageA + stageB + stageC + meshFailed == 0) return lines;
 
-            lines.Add($"Netz-Robustheit ({records.Count} Varianten): {stageA} mit Standard-Wandschicht (Stufe A), {stageB} örtlich gedünnt (Stufe B), "
-                      + $"{stageC} mit Ersatznetz (Stufe C), {meshFailed} nicht vernetzbar.");
+            lines.Add($"Mesh robustness ({records.Count} variants): {stageA} with standard boundary layer (Stage A), {stageB} locally thinned (Stage B), "
+                      + $"{stageC} with fallback mesh (Stage C), {meshFailed} failed to mesh.");
 
             if (fallback.Count > 0)
             {
-                lines.Add("Formen mit Ersatznetz (Wandschicht überall verdünnt, nur eingeschränkt vergleichbar; von Hand ansehen und gezielt nachrechnen):");
+                lines.Add("Shapes using fallback mesh (globally thinned boundary layer, limited comparability; inspect manually and recheck):");
                 foreach (ModelRecord r in fallback)
-                    lines.Add($"  Iteration {r.Iteration} | Variante {r.Variant} | Fitness {r.Fitness.ToString("0.##", CultureInfo.InvariantCulture)} | {r.StlPath}");
+                    lines.Add($"  Iteration {r.Iteration} | Variant {r.Variant} | Fitness {r.Fitness.ToString("0.##", CultureInfo.InvariantCulture)} | {r.StlPath}");
             }
 
             if (failed.Count > 0)
             {
-                lines.Add("Nicht vernetzbare Formen (zählen nicht als Strömungsabsturz, siehe Fehlerprotokolle unter FehlerLogs/):");
+                lines.Add($"Unmeshable shapes (do not count as solver divergence; see error logs under {OutputConventions.ErrorLogsDirectory}/):");
                 foreach (ModelRecord r in failed)
-                    lines.Add($"  Iteration {r.Iteration} | Variante {r.Variant} | {r.StlPath}");
+                    lines.Add($"  Iteration {r.Iteration} | Variant {r.Variant} | {r.StlPath}");
             }
 
             return lines;

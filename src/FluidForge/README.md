@@ -1,29 +1,29 @@
-# Architektur- & Entwicklerhandbuch (`src/FluidForge/`)
+# Architecture & Developer Guide (`src/FluidForge/`)
 
-> **Weiterführende Dokumente (ohne Doppelung):**
-> - **Bedienung & Alle JSON-Einstellungen (ohne Programmierkenntnisse):** [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md)
-> - **Neues Bauteil / Projekt anlegen (3D & 2D):** [`src/projects/README.md`](../projects/README.md)
-> - **3D-Geometrie-Handbuch (PicoGK):** [`src/FluidForge/Kernels/PicoGk/README.md`](Kernels/PicoGk/README.md)
-> - **2D-Geometrie-Handbuch (`Planar2D`-Kernel):** [`src/FluidForge/Kernels/Planar2D/README.md`](Kernels/Planar2D/README.md)
-> - **Linux-Server-Steuerung, Deployment & Einrichtung:** [`scripts/README.md`](../../scripts/README.md)
-> - **Lokale Ausnahmekonfiguration (`*.local.json`):** [`config/README.md`](../../config/README.md)
+> **Related Documentation:**
+> - **Legacy User Manual & JSON Reference:** [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md) *(currently in German; will be replaced by modular English `docs/` in Phase 2)*
+> - **Creating a New Component / Project (3D & 2D):** [`src/projects/README.md`](../projects/README.md)
+> - **3D Geometry Manual (PicoGK):** [`src/FluidForge/Kernels/PicoGk/README.md`](Kernels/PicoGk/README.md)
+> - **2D Geometry Manual (`Planar2D` Kernel):** [`src/FluidForge/Kernels/Planar2D/README.md`](Kernels/Planar2D/README.md)
+> - **Linux Server Control, Deployment & Setup:** [`scripts/README.md`](../../scripts/README.md)
+> - **Local Override Configuration (`*.local.json`):** [`config/README.md`](../../config/README.md)
 
-Dieses Dokument richtet sich an Entwickler und beschreibt die Software-Architektur des C#-Frameworks, die Schnittstellenverträge, das Datenmodell, die interne Kopplung von PicoGK, Gmsh und SU2 sowie das Testsystem.
+This document is aimed at developers and describes the software architecture of the C# framework, interface contracts, data model, PicoGK/Gmsh/SU2 coupling, and the test suite.
 
 ---
 
-## 1. Repository-Struktur & Schichtentrennung
+## 1. Repository Structure & Layer Separation
 
-Das Repository trennt das wiederverwendbare Framework strikt von den einzelnen Bauteilprojekten. Der Kern (`Core`) kennt weder ein konkretes Projekt noch einen konkreten Solver oder Geometrie-Kernel — diese Trennung wird vom Compiler über die Namespaces erzwungen (`Core/` besitzt kein einziges `using` auf `Projects`, `Solvers` oder `Kernels`).
+The repository strictly separates the reusable framework from individual component projects. The core (`Core`) has no knowledge of any concrete project, solver, or geometry kernel — this separation is enforced at compile time via namespaces (`Core/` has zero `using` directives referencing `Projects`, `Solvers`, or `Kernels`).
 
 ```text
 FluidForge/
 ├── src/
-│   ├── FluidForge/            Das Framework — wird für ein neues Projekt NIE angefasst
+│   ├── FluidForge/                    The framework — NEVER modified for a new project
 │   │   ├── Program.cs                 FluidForge                  Composition Root & CLI
 │   │   ├── Composition/               FluidForge.Composition      CfdProjectDefinition (3D) & Cfd2DProjectDefinition (2D)
-│   │   ├── Core/                      FluidForge.Core             Reiner Domänenkern
-│   │   │   ├── Interfaces/            Die neun zentralen Schnittstellenverträge
+│   │   ├── Core/                      FluidForge.Core             Pure domain core
+│   │   │   ├── Interfaces/            The nine central interface contracts
 │   │   │   ├── Models/                ModelRecord, GeometryResult, SimulationContext, SolverStage
 │   │   │   ├── Configuration/         JsonConfigLoader, ConfigSchema, ProjectRegistry, ProjectPaths
 │   │   │   ├── Pipeline/              WorkflowController, ChampionValidator, MeshCalibrationService,
@@ -35,236 +35,236 @@ FluidForge/
 │   │   └── Solvers/Cfd/               FluidForge.Solvers.Cfd      GmshCfdMesher, Gmsh2DMesher,
 │   │                                                                   Su2Solver, Su2HistoryAnalyzer,
 │   │                                                                   BoundaryLayerCalculator, YPlusAnalyzer
-│   └── projects/                      Alle Bauteilprojekte (je ein Ordner = ein Projektname)
-│       ├── _Template3D/                  FluidForge.Projects.MyProject    (3D-Kopiervorlage)
-│       ├── _Template2D/                FluidForge.Projects.MyProject2D  (2D-Kopiervorlage)
-│       ├── MantaAuv/                  FluidForge.Projects.MantaAuv       (3D-AUV-Rumpf)
-│       └── Naca2D/                    FluidForge.Projects.Naca2D         (2D-NACA-Profil)
-├── scripts/                           PowerShell-, Bash- & Python-Skripte (Deploy, Server, Plots)
-├── tests/                             780+ Unit- und Architekturtests (laufen ohne externe Solver)
-├── config/                            Notausgang für maschinenspezifische *.local.json
-└── Ergebnisse/                        Projektbezogene Simulationsergebnisse (Ergebnisse/<Projekt>/)
+│   └── projects/                      All component projects (one folder = one project name)
+│       ├── _Template3D/               FluidForge.Projects.MyProject    (3D project template)
+│       ├── _Template2D/               FluidForge.Projects.MyProject2D  (2D project template)
+│       ├── MantaAuv/                  FluidForge.Projects.MantaAuv       (3D AUV hull)
+│       └── Naca2D/                    FluidForge.Projects.Naca2D         (2D NACA airfoil)
+├── scripts/                           PowerShell, Bash & Python scripts (deploy, server, plots)
+├── tests/FluidForge.Tests/            780+ unit and architecture tests (run without external solvers)
+├── config/                            Escape hatch for machine-specific *.local.json
+└── results/                           Per-project simulation results (results/<Project>/)
 ```
 
-### Warum `src/projects/` neben dem Framework liegt
-„Hier das Gerüst, dort meine Projekte" ist im Dateibaum sofort sichtbar. Technisch bindet `src/FluidForge/FluidForge.csproj` die Projekte über `..\projects\**\*.cs` ein, schließt dabei aber **`_Template3D/` und `_Template2D/`** aus dem Programm-Build aus: Sonst gäbe es Projektdefinitionen mit den Platzhalternamen `MyProject` bzw. `MyProject2D`, zu denen kein gleichnamiger Ordner existiert. Compiliert werden beide Vorlagen stattdessen vom Testprojekt (`tests/FluidForge.Tests/`) — ändert sich ein Interface im Framework, bricht sofort `dotnet test`.
+### Why `src/projects/` Lives Alongside the Framework
+"Framework here, projects there" is immediately visible in the directory tree. Technically, `src/FluidForge/FluidForge.csproj` includes projects via `..\projects\**\*.cs`, while excluding **`_Template3D/` and `_Template2D/`** from the application build so that no placeholder definitions (`MyProject`, `MyProject2D`) exist without a matching project folder. Instead, both templates are compiled and verified by `tests/FluidForge.Tests/` — if a framework interface changes, `dotnet test` catches it immediately.
 
-### Kapselung von PicoGK
-`using PicoGK;` existiert im gesamten Framework nur an zwei Stellen (`Kernels/PicoGk/PicoGkKernel.cs` und `Kernels/PicoGk/PicoGkMeshMetrics.cs`) sowie in den 3D-Geometriegeneratoren unter `src/projects/`. Reine 2D-Projekte (wie `Naca2D`) oder analytische 3D-Projekte kommen komplett ohne PicoGK und ohne Xvfb/OpenGL aus: Sie verwenden `DirectGeometryKernel`.
+### PicoGK Encapsulation
+`using PicoGK;` appears in only two places in the entire framework (`Kernels/PicoGk/PicoGkKernel.cs` and `Kernels/PicoGk/PicoGkMeshMetrics.cs`) plus the 3D geometry generators under `src/projects/`. Pure 2D projects (such as `Naca2D`) or analytical 3D projects require neither PicoGK nor Xvfb/OpenGL: they use `DirectGeometryKernel`.
 
 ---
 
-## 2. Lokale Entwicklungsumgebung (PC-Grundausstattung)
+## 2. Local Development Setup
 
-Für die Entwicklung am Framework oder an Bauteilgeometrien unter Windows genügt eine schlanke Grundausstattung:
+For developing the framework or component geometries on Windows, a minimal setup is sufficient:
 
-1. **.NET SDK 9.0** (oder neuer) installieren.
-2. **Visual Studio Code** mit der Erweiterung **„C# Dev Kit"** installieren.
-3. **Bauen & Testen (ohne installierte CFD-Solver):**
+1. Install **.NET SDK 9.0** (or newer).
+2. Install **Visual Studio Code** with the **C# Dev Kit** extension.
+3. **Build & test (no CFD solvers required):**
    ```powershell
    dotnet build FluidForge.sln
    dotnet test FluidForge.sln
    ```
-4. **Standalone-Geometrie mit PicoGK exportieren (Grundprinzip):**
-   Innerhalb eines 3D-Geometriegenerators erzeugt PicoGK aus einem `Voxels`-Volumen ein Oberflächennetz (`Mesh`) und speichert es als STL:
+4. **Exporting standalone geometry with PicoGK (basic pattern):**
+   Inside a 3D geometry generator, PicoGK converts a `Voxels` volume into a surface `Mesh` and writes it as an STL file:
    ```csharp
    Mesh exportMesh = new Mesh(finalVoxels);
    exportMesh.SaveToStlFile(stlFilePath);
    ```
-   Neue `.cs`-Dateien im Projekt müssen nirgends manuell registriert werden — solange der Namespace stimmt, nimmt das SDK sie automatisch in den Build auf.
+   New `.cs` files in a project do not need manual registration anywhere — as long as the namespace is valid, the SDK compiles them automatically.
 
 ---
 
-## 3. Die Schnittstellen (`Core/Interfaces/`)
+## 3. Interfaces (`Core/Interfaces/`)
 
-| Interface | Aufgabe | Implementierungen |
+| Interface | Responsibility | Implementations |
 | --- | --- | --- |
-| `IProjectDefinition` | Projekt verdrahten: Name, Code-Defaults, Kernel, Geometrie, Fitness, Solver-Stufen | `MantaProject` (über `CfdProjectDefinition`), `Naca2DProject` (über `Cfd2DProjectDefinition`) |
-| `IGeometryGenerator` | Aktive Parameter → STL-Export (3D) bzw. `Shape2D`-Kontur (2D) + benannte Metriken | `MantaGeometryGenerator`, `Naca2DGeometryGenerator` |
-| `IGeometryKernel` | Laufzeitumgebung für die Geometrieerzeugung bereitstellen | `PicoGkKernel` (startet `Library.Go(...)`), `DirectGeometryKernel` (direkter Aufruf ohne OpenGL/PicoGK) |
-| `IMeshGenerator` | Geometrie → Rechennetz (`.su2`) + Netzmetriken (`MeshCells`, `BoundaryLayerHexShare`). Optional zusätzlich `IMeshMetricsSource`: Wandschicht-Kennwerte (`BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerStage` …), die der `WorkflowController` in die `PassiveParameters` übernimmt. Scheitert die Vernetzung, wirft der Mesher `MeshGenerationException`. | `GmshCfdMesher` (3D), `Gmsh2DMesher` (2D) |
-| `ISimulationSolver` | Rechennetz → Strömungslösung & Messwerte in `record.PassiveParameters` | `Su2Solver` |
-| `IFitnessCalculator` | Messwerte in `ModelRecord` → skalare `Fitness` (größer = besser) | `MantaFitnessCalculator`, `Naca2DFitnessCalculator` |
-| `IOptimizationAlgorithm` | Aus bisheriger Historie die nächste Parametergeneration vorschlagen | `BayesOptimizationAlgorithm` (Standard), `IdwBaselineAlgorithm` (IDW-Baseline) |
-| `IModelValidator` | Generationssieger mit Parameter-Jitter gegenprüfen („Türsteher" / Bouncer) | `ChampionValidator` |
-| `IHasRepresentativeSection` | Optional für 3D-Projekte: liefert repräsentativen 2D-Profilschnitt (`Shape2D`) für schnelle 2D-Netz-Vorkalibrierung | (derzeit kein Projekt; im Test mit Stub abgedeckt) |
+| `IProjectDefinition` | Wire a project: name, code defaults, kernel, geometry, fitness, solver stages | `MantaProject` (via `CfdProjectDefinition`), `Naca2DProject` (via `Cfd2DProjectDefinition`) |
+| `IGeometryGenerator` | Active parameters → STL export (3D) or `Shape2D` contour (2D) + named metrics | `MantaGeometryGenerator`, `Naca2DGeometryGenerator` |
+| `IGeometryKernel` | Provide runtime environment for geometry generation | `PicoGkKernel` (starts `Library.Go(...)`), `DirectGeometryKernel` (direct invocation without OpenGL/PicoGK) |
+| `IMeshGenerator` | Geometry → computational mesh (`.su2`) + mesh metrics (`MeshCells`, `BoundaryLayerHexShare`). Optionally also `IMeshMetricsSource`: boundary-layer diagnostics (`BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerStage`, etc.) copied into `PassiveParameters` by `WorkflowController`. Throws `MeshGenerationException` on meshing failure. | `GmshCfdMesher` (3D), `Gmsh2DMesher` (2D) |
+| `ISimulationSolver` | Computational mesh → flow solution & metrics in `record.PassiveParameters` | `Su2Solver` |
+| `IFitnessCalculator` | Metrics in `ModelRecord` → scalar `Fitness` (higher = better) | `MantaFitnessCalculator`, `Naca2DFitnessCalculator` |
+| `IOptimizationAlgorithm` | Propose the next parameter generation from evaluation history | `BayesOptimizationAlgorithm` (default), `IdwBaselineAlgorithm` (IDW baseline) |
+| `IModelValidator` | Re-evaluate iteration champion with parameter jitter ("bouncer") | `ChampionValidator` |
+| `IHasRepresentativeSection` | Optional for 3D projects: supplies a representative 2D cross-section (`Shape2D`) for fast 2D mesh precalibration | (no active project yet; covered by stub in tests) |
 
-### `IProjectDefinition` und `Composition/`
-`IProjectDefinition` hält `Program.cs` komplett frei von Projektwissen:
+### `IProjectDefinition` and `Composition/`
+`IProjectDefinition` keeps `Program.cs` completely free of project-specific knowledge:
 
 ```csharp
-string Name { get; }                                  // = Ordnername unter src/projects/
-ProjectConfig      CreateDefaults();                  // Code-Basiswerte; project.json überlagert sie
+string Name { get; }                                  // = folder name under src/projects/
+ProjectConfig      CreateDefaults();                  // code baseline; project.json overrides it
 IGeometryKernel    CreateKernel();
 IGeometryGenerator CreateGeometry(ProjectContext c);
 IFitnessCalculator CreateFitness(ProjectContext c);
 SolverStage[]      CreateStages(ProjectContext c);
 ```
 
-`ProjectContext` bündelt alles, was ein Projekt beim Verdrahten braucht: Projektname, Projektordner, die geladene `SimulationConfig` und `ProjectConfig` sowie die generische Methode `LoadSolverOptions<T>("su2")`, die bereits auf den richtigen Projektordner zeigt.
+`ProjectContext` bundles everything a project needs during wiring: project name, project directory, loaded `SimulationConfig` and `ProjectConfig`, and the generic `LoadSolverOptions<T>("su2")` helper pointing at the project directory.
 
-In `Composition/` liegen zwei vorgefertigte Basisklassen, von denen Projekte erben können:
-- **`CfdProjectDefinition`**: Verdrahtet die 3D-Kette `PicoGkKernel` → `GmshCfdMesher` → `Su2Solver`.
-- **`Cfd2DProjectDefinition`**: Verdrahtet die 2D-Kette `DirectGeometryKernel` → `Gmsh2DMesher` → `Su2Solver` (`Dimensions = 2`).
+`Composition/` provides two base classes:
+- **`CfdProjectDefinition`**: Wires the 3D pipeline `PicoGkKernel` → `GmshCfdMesher` → `Su2Solver`.
+- **`Cfd2DProjectDefinition`**: Wires the 2D pipeline `DirectGeometryKernel` → `Gmsh2DMesher` → `Su2Solver` (`Dimensions = 2`).
 
 ---
 
-## 4. Ablaufsteuerung & Pipeline (`Core/Pipeline/`)
+## 4. Pipeline & Workflow Control (`Core/Pipeline/`)
 
-[`WorkflowController.RunOptimization()`](Core/Pipeline/WorkflowController.cs) steuert den Gesamtlauf. Jede einzelne Variante durchläuft `RunPipeline(parameters, iteration, variant)`:
+[`WorkflowController.RunOptimization()`](Core/Pipeline/WorkflowController.cs) orchestrates the run. Each candidate passes through `RunPipeline(parameters, iteration, variant)`:
 
 ```text
-RubberBandScaler.Create(...)          Aktive Längenparameter auf TargetPicoGkSize skalieren
-  -> _geometry.GenerateAndExport(...) Erzeugt STL / Shape2D und meldet GeometryResult mit Metriken
-  -> ApplyGeometryMetrics(...)        Skaliert Metriken gemäß MetricScaling (Linear/Area/Volume) zurück
-  -> für jede SolverStage:
-       Mesher.GenerateMesh(...)       Erzeugt Netz (Mesh-Cache: gleiche Mesher-Instanz = 1 Netz)
-       Solver.Solve(...)              Schreibt Beiwerte & Diagnosegrößen in record.PassiveParameters
+RubberBandScaler.Create(...)          Scale active length parameters to TargetPicoGkSize
+  -> _geometry.GenerateAndExport(...) Generate STL / Shape2D and report GeometryResult metrics
+  -> ApplyGeometryMetrics(...)        Scale metrics back according to MetricScaling (Linear/Area/Volume)
+  -> for each SolverStage:
+       Mesher.GenerateMesh(...)       Generate mesh (mesh cache: same mesher instance = 1 mesh)
+       Solver.Solve(...)              Write coefficients & diagnostics to record.PassiveParameters
 ```
 
-### Fehlerbehandlung und Pflicht-Metriken
-Bricht die Vernetzung oder der Solver ab, wird lediglich `record.SimulationFailed = true` gesetzt — der Gesamtlauf läuft weiter. Der Kern kennt dabei **keine Metriknamen**; wie ein fehlgeschlagenes Modell bewertet wird (z. B. `Fitness = 0.0001f`), entscheidet allein der `IFitnessCalculator` des Projekts.
+### Error Handling and Required Metrics
+If meshing or the solver fails, only `record.SimulationFailed = true` is set — the overall optimization continues. The core has **no knowledge of metric names**; how a failed model is scored (e.g. `Fitness = 0.0001f`) is decided solely by the project's `IFitnessCalculator`.
 
-Nach der **allerersten gelungenen Variante** prüft der Controller einmalig, ob alle vom Fitness-Rechner in `RequiredMetrics` angeforderten Größen tatsächlich in `record.PassiveParameters` vorhanden sind. Fehlt eine Größe (z. B. weil `Lift` in der Fitnessformel genutzt, aber in `solvers/su2.json` unter `ResultMetrics` vergessen wurde), bricht der Lauf sofort mit einer klaren Fehlermeldung ab, statt stundenlang mit einer Ersatz-Fitness weiterzurechnen.
+After the **very first successful variant**, the controller checks once whether every metric requested in `RequiredMetrics` is present in `record.PassiveParameters`. If any metric is missing (e.g. `Lift` is used in the fitness formula but omitted from `ResultMetrics` in `solvers/su2.json`), the run aborts immediately with a clear error instead of wasting hours computing fallback fitness values.
 
-### Türsteher (`ChampionValidator`)
-_Schwankende Rechnungen:_ Türsteher, Feinverifikation und Netzkalibrierung vergleichen mit der eingestellten Toleranz, mindestens aber mit der doppelten kombinierten Unsicherheit beider Werte (`MetricTolerance.WithUncertainty`, Schlüssel `Uncertainty_<Kennwert>`). Ruhig auskonvergierte Rechnungen (Unsicherheit nahe 0) ändert das nicht; bei Wirbelablösung zählt reines Rauschen nicht als Instabilität oder Netzabhängigkeit. Eine Stufe der Kalibrierung mit „instationär, aber stabil" (`Su2_Unsteady`) gilt als konvergiert.
+### Champion Validator (`ChampionValidator`)
+_Oscillating solutions:_ The champion validator, fine verification, and mesh calibration compare values against the configured tolerance, or at least twice the combined uncertainty of both values (`MetricTolerance.WithUncertainty`, keys `Uncertainty_<Metric>`). Smoothly converged runs (uncertainty near 0) are unaffected; for vortex-shedding cases, pure oscillation noise is not mistaken for instability or mesh dependence. A calibration level marked as "unsteady but stable" (`Su2_Unsteady`) counts as converged.
 
-Am Ende jeder Iteration wird der beste Kandidat mit einem leicht verjitterten Parameter (`BouncerJitter`, relativ zur Spannweite `ParameterBounds` und hart auf `[Min, Max]` geklemmt) unter der Variantennummer `99` nachgerechnet. Weicht die **Fitness** um mehr als `BouncerTolerance` ab, gilt der Kandidat als instabiler Zufallstreffer und der Nächstbeste der Runde wird geprüft.
+At the end of each iteration, the top candidate is re-evaluated with slightly jittered parameters (`BouncerJitter`, relative to `ParameterBounds` span and clamped to `[Min, Max]`) as variant `99`. If **Fitness** deviates by more than `BouncerTolerance`, the candidate is disqualified as an unstable outlier and the next-best candidate of the iteration is checked.
 
-### Netzkalibrierung (`MeshCalibrationService`) & Feinverifikation (`ChampionVerification`)
-- **Netzkalibrierung (`--calibrate` oder `MeshCalibration.Mode = "Auto"`):** Rechnet die Startgeometrie auf sukzessive feineren Netzen (Faktor $\div \sqrt{2}$ je Stufe) mit dem strengen `ControlRuns`-Profil durch, berechnet den **Grid Convergence Index (GCI)** nach Celik et al. (2008) und bestimmt die gröbste Netzstufe, auf der alle `ResultMetrics` innerhalb der kombinierten relativen und absoluten Toleranz (`Tolerance` + `AbsoluteTolerances`) zur feinsten Referenzstufe liegen. Unterstützt optional eine schnelle 2D-Vorkalibrierung (`IHasRepresentativeSection`), bevor 3D bestätigt wird.
-- **Champion-Verifikation & Recheck (`--recheck`):** Rechnet den Gesamtsieger (`"Final"`), die Top-N (`"FinalTopN"`) oder jeden Rundensieger (`"EachIteration"`) auf einem um `RefinementSteps` Stufen feineren Netz nach (`Verifikation.csv`). Beim Recheck mit `--unsteady` wird zuerst stationär auf dem feinen Netz gerechnet und anschließend aus den erzeugten Restart-Dateien (`restart_00000.dat` / `restart_00001.dat`) eine zeitgenaue URANS-Simulation (Dual-Time-Stepping 2. Ordnung über 20 Perioden) gestartet.
+### Mesh Calibration (`MeshCalibrationService`) & Fine Verification (`ChampionVerification`)
+- **Mesh calibration (`--calibrate` or `MeshCalibration.Mode = "Auto"`):** Evaluates the baseline geometry on successively finer meshes (factor $\div \sqrt{2}$ per step) using the strict `ControlRuns` profile, computes the **Grid Convergence Index (GCI)** per Celik et al. (2008), and selects the coarsest mesh level where all `ResultMetrics` stay within the combined relative and absolute tolerance (`Tolerance` + `AbsoluteTolerances`) relative to the finest reference level. Optionally supports fast 2D precalibration (`IHasRepresentativeSection`) before 3D confirmation.
+- **Champion verification & recheck (`--recheck`):** Re-evaluates the overall champion (`"Final"`), the top-N (`"FinalTopN"`), or each iteration's winner (`"EachIteration"`) on a mesh refined by `RefinementSteps` (`verification.csv`). With `--unsteady`, a steady solution is first computed on the fine mesh, and then a time-accurate URANS simulation (2nd-order dual time stepping over 20 periods) is started from the generated restart files (`restart_00000.dat` / `restart_00001.dat`).
 
-### Bayes-Optimierer und Ersatzmodelle (`Core/Algorithms/BayesOptimizationAlgorithm.cs`, `Core/Surrogates/`)
-`"OptimizationAlgorithm": "Bayes"` lernt in jedem Lauf neu (kein Vortraining, keine Python- oder ML-Bibliothek, nur CPU) einen **Gauß-Prozess** aus den bisherigen Rechnungen und wählt die nächsten Varianten per **Expected Improvement**: Die Auswahl fragt, wo die Chance am größten ist, den bisher Besten zu schlagen, und wägt Verfeinern (nahe am Besten) und Erkunden (im „Nebel", wo die Unsicherheit groß ist) rechnerisch gegeneinander ab. Jeder Vorschlag wird echt gerechnet; das Modell ersetzt keine Rechnung.
+### Bayesian Optimizer & Surrogates (`Core/Algorithms/BayesOptimizationAlgorithm.cs`, `Core/Surrogates/`)
+`"OptimizationAlgorithm": "Bayes"` learns a **Gaussian Process** surrogate online in every run (no pretraining, no Python or ML libraries, CPU-only) from previous evaluations and selects the next candidates via **Expected Improvement**: balancing local exploitation near the current best against exploration in high-uncertainty regions. Every proposed candidate is evaluated with the real CFD solver; the surrogate never replaces a simulation.
 
-- **Bausteine in `Core/Surrogates/`:** `ISurrogateModel` (Schnittstelle: `Fit`, `Predict`, `AddPseudoObservation`, `ParameterRelevance`; der Optimierer kennt nur sie, ein anderes Modell lässt sich einstecken), `GaussianProcess` (Matérn-5/2-Kern mit eigener Längenskala je Parameter, gelerntes Rauschen, Hyperparameter über die Log-Marginal-Likelihood mit analytischem Gradienten und Adam), `DenseCholesky` (Zerlegung mit Jitter-Leiter, kein NuGet-Paket), `LatinHypercube`, `NormalDistribution`, `ParameterSpace` (Normierung auf [0, 1], feste Parameter), `SurrogateTrainingSet` (**die eine Regel für Trainingsdaten**) und `TrustRegionState`.
-- **Trainingsdaten-Regel:** nicht fehlgeschlagen (`SimulationFailed`), nicht vom Türsteher verworfen (`ModelRecord.Disqualified`), endliche Fitness, keine Kontrollrechnung (Variante 99) und dieselbe Netzstufe (`MeshRefinementFactor`) wie der Lauf. Fehlgeschlagene und verworfene Orte stoßen die Suche in ihrer Umgebung ab. **Vernetzungsfehler** (`MeshFailed` = 1, `MeshGenerationException`) und **Ersatznetze** (`MeshFallback` = 1) zählen nicht als Strömungsabsturz: sie stoßen nur lokal ab und speisen das Erfolgsmodell nicht, damit eine Form, an der nur der Vernetzer scheiterte, nicht die ganze Zone sperrt.
-- **Modi (`Bayes.SurrogateTarget`):** `"Fitness"` lernt die Note als Ganzes. `"Metrics"` lernt **je Kennwert aus `IFitnessCalculator.RequiredMetrics`** ein Modell und lässt die Fitness-Formel des Projekts mit Wegwerf-Datensätzen darüber rechnen (Monte-Carlo-EI). Der Kern kennt weder Formel noch Metriknamen. Eine Gegenprobe vergleicht die Formel mit der echten Fitness; liest sie mehr als deklariert, fällt der Lauf mit Warnung auf `"Fitness"` zurück. `"Auto"` wählt `"Metrics"`, wenn `RequiredMetrics` nicht leer ist.
-- **Viele Parameter, lange Läufe:** Ab 10 freien Parametern sucht das Modell in einem Vertrauensbereich (TuRBO-Stil) um den besten Punkt; der Würfel wächst nach 3 Erfolgen und halbiert sich nach `⌈max(4, d) / V⌉` Misserfolgen, bei Kollaps beginnt ein Neustart. Ein Deckel (400 Punkte) begrenzt die Lernmenge, weil die Rechenzeit mit n³ wächst. Diese inneren Stellschrauben stehen in `BayesTuning` und sind bewusst nicht in `simulation.json`; einstellbar sind nur `Bayes.SurrogateTarget` und `Bayes.InitialSamples`. Der **Erkunder** (letzte Variante einer Runde ab 4 Varianten) sucht weiter im ganzen Raum.
-- **Auswahl, wenn nichts mehr zu verbessern ist (08.11.2026):** Gilt die erwartete Verbesserung überall als vernachlässigbar (`< 0,2 %` bei logarithmischer Fitness; typisch, wenn der bisher Beste ein Ausreißer nach oben ist oder das Optimum erreicht wurde), **verfeinert** `PickByExpectedImprovement` bei der höchsten *vorhergesagten* Fitness (Abstoßung gegen Dubletten bleibt). Vorher wich die Regel bei „exakt null" auf die größte Unsicherheit im ganzen Raum aus und verbrauchte im Serverlauf (10 × 10, Naca2D) ganze Runden an den Rändern des Suchraums; auch winzige Restwerte der erwarteten Verbesserung, die der Quotient Lift/Drag mit unabhängigen Einzelmodellen im Strömungsabriss hat, lenkten dorthin. Der Erkunder wählt jetzt die größte Unsicherheit nur unter Punkten, deren optimistische Schätzung (bester von 8 Stichproben bzw. `μ + 2,4σ`) mindestens die halbe beste Fitness erreicht. Regressionstests: `BayesRealDataReplayTests` (echte Serverdaten, `BayesRealDataFixtures`) und `BayesConvergedPhaseTests`.
-- **Abstürze und unsichere Ergebnisse (Paket B, 08.11.2026):** Echte Abstürze (`SimulationFailed`) lernt ein eigener Gauß-Prozess auf 1 = gelungen / 0 = abgestürzt; seine Vorhersage (Erfolgswahrscheinlichkeit) dämpft die Auswahlregel, so dass ganze Absturzzonen gemieden werden. Vom Türsteher verworfene Varianten stoßen nur lokal ab. Schreibt der Solver `Uncertainty_<Kennwert>` (relative 1σ-Unsicherheit, Konvention in `Core/Models/MetricUncertainty.cs`), geht sie als Rauschen je Punkt in den Gauß-Prozess ein. `Su2Solver` unterscheidet dafür drei Zustände: konvergiert, instationär-stabil (Blockmittel ohne gesicherten Trend, `Su2_Unsteady = 1`, Fenstermittel zählt) und echte Drift (nur diese kann mit `TreatUnconvergedAsFailed` als Fehlschlag gelten).
-- **Transparenz:** Spalten `Bayes_PredictedFitness/Low/High/Explorer` in `Simulation_Results.csv`, `[BAYES]`-Logzeilen (Treffsicherheit der letzten Runde, Parameter-Wichtigkeit) und `Analyseergebnisse/Bayes_Verlauf.csv`.
-- **Eigenschaften, auf die man sich verlassen kann:** Das Modell bricht nie den Lauf ab (bei numerischem Scheitern wird die Runde mit Latin-Hypercube-Punkten gefüllt). Mit gleichem Seed und gleichen Ergebnissen macht der Optimierer bitgleich dieselben Vorschläge, damit die Wiederaufnahme (`RunJournal`) greift; getestet in `ReproducibilityAndResumeTests`. `EvaluateAndSelectBest` setzt nur Fitness und Vorhersagespalten, der Zustand ändert sich allein in `PrepareNextIteration`. Voraussetzungen (Parametergrenzen) prüft `IOptimizationPreflight.Preflight` **vor** der Netzkalibrierung.
-- **Grenzen:** Ganzzahlige Parameter werden stetig behandelt (der Generator rundet). `MaxDeviations` wirkt nicht. Das Verfahren ist für etwa 5 bis 20 Parameter gedacht. Bei einer Formel mit Sprüngen und ohne deklarierte `RequiredMetrics` hat der Modus `"Fitness"` keinen Vorteil gegenüber `"IdwBaseline"`; im synthetischen Manta-Test (`BayesMetricsModeTests`) war `"Metrics"` dagegen rund 35 % besser als beide.
-- **Andockstelle für fremde Modelle (z. B. ein PINN eines Partners):** entweder als weiterer, schneller Solver (`ISimulationSolver` in `Solvers/Ml/`, Austausch über Dateien) oder als `ISurrogateModel`, das als Vorwissen für den Gauß-Prozess dient.
+- **Building blocks in `Core/Surrogates/`:** `ISurrogateModel` (`Fit`, `Predict`, `AddPseudoObservation`, `ParameterRelevance`), `GaussianProcess` (Matérn-5/2 ARD kernel with per-parameter length scales, learned noise, hyperparameter optimization via log-marginal likelihood with analytical gradients and Adam), `DenseCholesky` (decomposition with jitter ladder, no NuGet dependency), `LatinHypercube`, `NormalDistribution`, `ParameterSpace` (normalization to `[0, 1]`, fixed parameters), `SurrogateTrainingSet` (single source of truth for training data filtering), and `TrustRegionState`.
+- **Training data rule:** not failed (`SimulationFailed`), not disqualified by the validator (`ModelRecord.Disqualified`), finite fitness, not a validation re-run (variant 99), and matching the run's `MeshRefinementFactor`. Failed and disqualified points locally repel nearby proposals. **Meshing failures** (`MeshFailed = 1`, `MeshGenerationException`) and **fallback meshes** (`MeshFallback = 1`) do not count as flow solver crashes: they only repel locally and do not feed the failure-probability model, preventing a single meshing issue from blocking an entire region.
+- **Modes (`Bayes.SurrogateTarget`):** `"Fitness"` models the scalar fitness directly. `"Metrics"` fits a separate GP for **each metric in `IFitnessCalculator.RequiredMetrics`** and evaluates the project's actual fitness formula via Monte Carlo Expected Improvement. The core knows neither the formula nor the metric names. A cross-check compares the formula output against the true fitness; if it reads undeclared metrics, the run safely falls back to `"Fitness"` with a warning. `"Auto"` selects `"Metrics"` when `RequiredMetrics` is non-empty.
+- **High dimensions & long runs:** From 10 free parameters onward, the optimizer searches inside a TuRBO-style trust region around the best point; the box expands after 3 consecutive improvements and halves after `⌈max(4, d) / V⌉` failures, restarting on collapse. A 400-point cap bounds GP training cost ($O(n^3)$). Internal tuning parameters live in `BayesTuning` and are intentionally kept out of `simulation.json`; only `Bayes.SurrogateTarget` and `Bayes.InitialSamples` are user-configurable. The **explorer** (last variant of an iteration when `VariantsPerIteration >= 4`) continues to sample globally.
+- **Converged-phase selection:** When Expected Improvement becomes negligible everywhere (`< 0.2%` in log-fitness space; typical when the incumbent is a high outlier or the optimum is reached), `PickByExpectedImprovement` refines near the highest *predicted* fitness (with duplicate repulsion). The explorer selects maximum uncertainty only among points whose optimistic estimate (`μ + 2.4σ` or best of 8 samples) reaches at least half of the current best fitness. Regression tests: `BayesRealDataReplayTests` and `BayesConvergedPhaseTests`.
+- **Failure & uncertainty modeling:** True solver failures (`SimulationFailed`) are modeled by a dedicated GP (1 = success / 0 = failed) whose predicted success probability damps the acquisition function to steer clear of crash regions. Solver-reported `Uncertainty_<Metric>` (relative 1σ uncertainty, `Core/Models/MetricUncertainty.cs`) enters the GP as per-point observation noise. `Su2Solver` distinguishes three states: converged, unsteady-stable (block mean without significant trend, `Su2_Unsteady = 1`, window mean is valid), and true drift (which can be treated as failed via `TreatUnconvergedAsFailed`).
+- **Transparency:** Columns `Bayes_PredictedFitness/Low/High/Explorer` in `results.csv`, `[BAYES]` log lines (prediction accuracy, parameter relevance), and `analysis/Bayes_History.csv`.
+- **Reliability guarantees:** The surrogate never aborts a run (on numerical failure, the iteration falls back to Latin Hypercube samples). Given the same seed and results, proposals are bit-identical so `--resume` (`RunJournal`) stays deterministic; covered by `ReproducibilityAndResumeTests`. `EvaluateAndSelectBest` only updates fitness and prediction columns; state mutates only in `PrepareNextIteration`. `IOptimizationPreflight.Preflight` validates parameter bounds **before** mesh calibration begins.
+- **Limitations:** Integer parameters are treated continuously (the generator rounds them). `MaxDeviations` has no effect in `Bayes` mode. Designed for roughly 5 to 20 parameters.
+- **Extension points for external models (e.g. a partner's PINN):** either as a fast `ISimulationSolver` under `Solvers/Ml/` (file-based exchange) or as an `ISurrogateModel` serving as a prior for the Gaussian Process.
 
-### Reproduzierbarkeit, Wiederaufnahme & Voxel-Prüfung (`RunJournal`, `RunInfoWriter`, `VoxelResolutionAdvisor`)
-Jeder Lauf protokolliert seinen Zufalls-Seed (`RandomSeed`), Git-Commit/Deploy-Hash, Werkzeugversionen und den Quellcode-Snapshot (`Quellstand/`) im Ergebnisordner. Beim Start prüft `VoxelResolutionAdvisor`, ob `BaseVoxelResolution` im Realraum fein genug für die Oberflächen-Zielzellgröße ist, warnt bei groben Voxeln oder passt die effektive Start-Voxelgröße bei `AutoVoxelResolution = true` automatisch nach unten an (ohne den `--resume`-Fingerprint zu verändern). Nach jeder abgeschlossenen Variante wird ein Eintrag in `Wiederaufnahme/journal.jsonl` geflusht; bei `--resume` startet der Lauf mit demselben Seed von vorn, spielt bereits berechnete Varianten samt ihrer `DurationSeconds` in Sekunden aus dem Journal ab und rechnet nahtlos ab der Abbruchstelle weiter (sofern sich keine Konfigurationsdatei geändert hat).
+### Reproducibility, Resume & Voxel Advisor (`RunJournal`, `RunInfoWriter`, `VoxelResolutionAdvisor`)
+Every run records its `RandomSeed`, Git/deploy hash, tool versions, and a source snapshot (`source-snapshot/`) in the results directory. At startup, `VoxelResolutionAdvisor` checks whether `BaseVoxelResolution` in real-world coordinates is fine enough for the target surface cell size, warns on coarse voxels, or refines the effective start voxel size automatically when `AutoVoxelResolution = true` (without altering the `--resume` fingerprint). After each completed variant, an entry is flushed to `resume/journal.jsonl`; with `--resume`, the run replays completed variants including their `DurationSeconds` in seconds and seamlessly continues from where it stopped (provided no configuration files changed).
 
 ---
 
-## 5. Datenmodell & Geometrie-Utilities (`Core/Models/`, `Core/Utilities/`)
+## 5. Data Model & Geometry Utilities (`Core/Models/`, `Core/Utilities/`)
 
-- **`ModelRecord`**: Repräsentiert eine Variante und trennt strikt:
-  - `ActiveParameters`: Vom Optimierer gesetzte Entwurfsparameter (z. B. `Length`, `Width`, optional auch `AngleOfAttackDeg`).
-  - `PassiveParameters`: Gemessene Größen aus Geometrie (`Volume`, `FrontalArea`, …), Vernetzer (`MeshCells`, `MeshCells_Tri`, `MeshCells_Quad`, `MeshCells_Prism`, `MeshCells_Hexa`, `MeshCells_Tet`, `MeshCells_Pyramid`, `BoundaryLayerHexShare`, `BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerFirstCellMm`, `BoundaryLayerStage`, `BoundaryLayerMaxTiltDeg`, `BoundaryLayerMinScale`, `BoundaryLayerThinnedShare`, `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL`, `MeshFallback`, `MeshFailed`, `CellLimitExceeded`) und Solver (`Drag`, `Lift`, `YPlus_P95`, `Su2_CD_p`, `Su2_CD_v`, `Su2_Iterations`, `Su2_Converged`, `Su2_Osc_*`, `Su2_IterErr_*`).
+- **`ModelRecord`**: Represents one candidate and strictly separates:
+  - `ActiveParameters`: Design variables set by the optimizer (e.g. `Length`, `Width`, optionally `AngleOfAttackDeg`).
+  - `PassiveParameters`: Measured outputs from geometry (`Volume`, `FrontalArea`, …), mesher (`MeshCells`, `MeshCells_Tri`, `MeshCells_Quad`, `MeshCells_Prism`, `MeshCells_Hexa`, `MeshCells_Tet`, `MeshCells_Pyramid`, `BoundaryLayerHexShare`, `BoundaryLayerLayers`, `BoundaryLayerThicknessMm`, `BoundaryLayerFirstCellMm`, `BoundaryLayerStage`, `BoundaryLayerMaxTiltDeg`, `BoundaryLayerMinScale`, `BoundaryLayerThinnedShare`, `TunnelBlockagePercent`, `TunnelLengthMm`, `TunnelWidthMm`, `TunnelHeightMm`, `TunnelUpstreamL`, `TunnelDownstreamL`, `MeshFallback`, `MeshFailed`, `CellLimitExceeded`), and solver (`Drag`, `Lift`, `YPlus_P95`, `Su2_CD_p`, `Su2_CD_v`, `Su2_Iterations`, `Su2_Converged`, `Su2_Osc_*`, `Su2_IterErr_*`).
   - `Fitness`, `SimulationFailed`, `StlPath`, `MeshPath`, `FineVerified`, `FineDeviation`.
-- **`GeometryResult` & `MetricScaling`**: Der Geometriegenerator meldet jede Metrik zusammen mit ihrer physikalischen Dimension:
+- **`GeometryResult` & `MetricScaling`**: The geometry generator reports each metric with its physical dimension:
   ```csharp
-  result.AddMetric("Volume", volume, MetricScaling.Volume);       // skaliert kubisch zurück (s³)
-  result.AddMetric("FrontalArea", area, MetricScaling.Area);      // skaliert quadratisch zurück (s²)
-  result.AddMetric("Span", span, MetricScaling.Linear);           // skaliert linear zurück (s¹)
-  result.AddMetric("Ratio", ratio, MetricScaling.None);           // dimensionslos (unverändert)
+  result.AddMetric("Volume", volume, MetricScaling.Volume);       // scales back cubically (s³)
+  result.AddMetric("FrontalArea", area, MetricScaling.Area);      // scales back quadratically (s²)
+  result.AddMetric("Span", span, MetricScaling.Linear);           // scales back linearly (s¹)
+  result.AddMetric("Ratio", ratio, MetricScaling.None);           // dimensionless (unchanged)
   ```
-  Welche Dimension jede Metrik erhalten hat, wird in `effective-config.json` dokumentiert.
-- **`MeshMetrics` & `PicoGkMeshMetrics`**: Berechnet Volumen, Oberfläche und Bounding-Box einer Dreiecksliste in einem einzigen Durchgang (PicoGKs eigenes `CalculateProperties` liefert keine Oberfläche). Das Volumen ist vorzeichenbehaftet abfragbar: Ein negatives Volumen zeigt sofort an, dass Dreiecksnormalen nach innen zeigen.
-- **`SimulationContext`**: Trennt unveränderliche Vorgaben (`Config`, `Project`) strikt vom veränderlichen Laufzeitzustand (`CurrentBaseParameters`, `CurrentDeviations`, `History`). Algorithmen überschreiben niemals `ProjectConfig` direkt; `ResetRuntimeState()` stellt den Ausgangszustand jederzeit wieder her.
-- **`SolverStage`**: Ein Paar aus `IMeshGenerator` und `ISimulationSolver`. Der Controller arbeitet ein `SolverStage[]` sequenziell ab. Teilen sich zwei Stufen **dieselbe Mesher-Instanz** (Referenzgleichheit), wird nur einmal vernetzt. So lässt sich z. B. eine FEM-Stufe mit eigenem Netz neben die CFD-Stufe hängen.
-- **`ExecutableResolver`**: Löst Programmpfade (`mpirun`, `SU2_CFD`, `gmsh`) plattformunabhängig auf — fällt ein absoluter Serverpfad (z. B. `/home/.../gmsh`) auf einem anderen Rechner weg, sucht der Resolver automatisch über den Dateinamen im lokalen `PATH` und in Conda-/Standardverzeichnissen.
+  The scaling dimension assigned to each metric is recorded in `effective-config.json`.
+- **`MeshMetrics` & `PicoGkMeshMetrics`**: Computes volume, surface area, and bounding box of a triangle list in a single pass (PicoGK's built-in `CalculateProperties` does not provide surface area). Signed volume is available to immediately detect inverted triangle normals.
+- **`SimulationContext`**: Strictly separates immutable configuration (`Config`, `Project`) from mutable runtime state (`CurrentBaseParameters`, `CurrentDeviations`, `History`). Algorithms never mutate `ProjectConfig` directly; `ResetRuntimeState()` restores the initial state at any time.
+- **`SolverStage`**: A pair of `IMeshGenerator` and `ISimulationSolver`. The controller executes `SolverStage[]` sequentially. If two stages share the **same mesher instance** (reference equality), meshing runs only once.
+- **`ExecutableResolver`**: Resolves tool paths (`mpirun`, `SU2_CFD`, `gmsh`) across platforms — if an absolute server path is unavailable on another machine, it automatically falls back to searching by executable name in `PATH` and standard/Conda directories.
 
 ---
 
-## 6. Solver- & Vernetzer-Anbindung im Detail (`Solvers/Cfd/`)
+## 6. Solver & Mesher Integration (`Solvers/Cfd/`)
 
-### 6.1 Vernetzung mit Gmsh (`GmshCfdMesher` für 3D, `Gmsh2DMesher` für 2D)
-- **Einheitliche `scaleFactor`-Konsistenz & garantierter realer Windkanal (`TunnelGeometry` + `StlWriter`):** `GmshCfdMesher` skaliert alle konfigurierten mm-Zellgrößen und Kanalabstände einheitlich mit `scaleFactor` (sodass alle Maße in realen mm wirken) und erzeugt den 3D-Windkanal direkt im C#-Code als STL ohne PicoGK-Abhängigkeit. Unterschreitet die Tunnelbox die physikalischen Mindestabstände (`TunnelMinUpstreamFactor = 5.0`, `TunnelMinDownstreamFactor = 15.0`, `TunnelMinLateralFactor = 5.0`) oder überschreitet sie `TunnelMaxBlockagePercent = 0.3`, weitet der Mesher sie automatisch nach außen auf.
-- **Zwei-Schritt-Vernetzung für 3D-Grenzschichten (`BoundaryLayerMode = "Prism"` oder `"Hexa"`):**
-  1. `Wall_<Variante>.geo` parametrisiert die STL-Oberfläche über `ClassifySurfaces` neu und vernetzt sie sauber — inkl. krümmungsabhängiger Verfeinerung (`MeshSizeFromCurvature = true`, `CurvatureElements = 20`) mit Untergrenze (`CurvatureMinSizeFactor = 0.5`) gegen Zell-Explosionen an Voxel-Splittern.
-  2. `Meshing_<Variante>.geo` extrudiert darauf die Grenzschicht (Standard in 3D: `TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`, erste Zellhöhe $y_1$ über `BoundaryLayerCalculator`), ergänzt die Nachlauf-Detailbox (mit Z-Mindestpuffer `DetailBoxMinHeightLengthFactor = 0.15` und `DetailBoxLengthFactor = 1.5`) und füllt das restliche Kanalvolumen mit Tetraedern. Für scharfe Voxel-Kanten ist `"Prism"` (Dreiecksprismen ohne Pyramiden-Übergangsschicht) die robuste Wahl. Schlägt die Schichtextrusion an engen Radien fehl, reduziert der Mesher automatisch stufenweise Richtung und Dicke der äußeren Schichten, wobei $y_1$ und Schichtzahl erhalten bleiben.
-- **2D-Profilvernetzung (`Gmsh2DMesher`):** Erzeugt aus einer `Shape2D`-Kontur ein ebenes Netz mit großem kreisförmigem Fernfeld (`FarfieldRadiusFactor = 500`), strukturierter Quad-Grenzschicht (`BoundaryLayer`-Feld), Vorder-/Hinterkantenverfeinerung (`EdgeRefinementFactor`), `DetailBox` und Nachlauf-Box (`WakeRefinement`). An scharfen Hinterkanten verhindert ein Knickpunkt-Schutz (`FanPoints`), dass sich Grenzschichtzellen am Profilende selbst durchdringen.
+### 6.1 Meshing with Gmsh (`GmshCfdMesher` for 3D, `Gmsh2DMesher` for 2D)
+- **Consistent `scaleFactor` & guaranteed wind tunnel (`TunnelGeometry` + `StlWriter`):** `GmshCfdMesher` scales all configured mm cell sizes and tunnel clearances consistently with `scaleFactor` (so all dimensions act in real-world mm) and writes the 3D wind tunnel STL directly in C# without PicoGK. If the tunnel box violates physical minimum clearances (`TunnelMinUpstreamFactor = 5.0`, `TunnelMinDownstreamFactor = 15.0`, `TunnelMinLateralFactor = 5.0`) or exceeds `TunnelMaxBlockagePercent = 0.3`, the mesher automatically expands it outward.
+- **Two-step 3D boundary-layer meshing (`BoundaryLayerMode = "Prism"` or `"Hexa"`):**
+  1. `Wall_<Variant>.geo` re-parametrizes the STL surface via `ClassifySurfaces` and meshes it cleanly — including curvature-based refinement (`MeshSizeFromCurvature = true`, `CurvatureElements = 20`) with a lower bound (`CurvatureMinSizeFactor = 0.5`) to prevent cell explosions on voxel facets.
+  2. `Meshing_<Variant>.geo` extrudes the boundary layer (3D defaults: `TargetYPlus = 1.5`, `BoundaryLayerGrowthRate = 1.28`, first cell height $y_1$ via `BoundaryLayerCalculator`), adds the wake detail box (`DetailBoxMinHeightLengthFactor = 0.15`, `DetailBoxLengthFactor = 1.5`), and fills the remaining domain with tetrahedra. `"Prism"` (triangular prisms without pyramid transition layers) is the robust choice for sharp voxel edges. If extrusion fails in tight fillets, the mesher progressively smooths growth directions and outer-layer thickness while preserving $y_1$ and layer count.
+- **2D airfoil meshing (`Gmsh2DMesher`):** Generates a planar mesh from a `Shape2D` contour with a large circular farfield (`FarfieldRadiusFactor = 500`), structured quad boundary layer (`BoundaryLayer` field), leading/trailing-edge refinement (`EdgeRefinementFactor`), `DetailBox`, and `WakeRefinement`. At sharp trailing edges, `FanPoints` prevent boundary-layer self-intersection.
 
-### 6.2 Strömungssimulation mit SU2 (`Su2Solver`, `Su2HistoryAnalyzer` & `Su2SurfaceAnalyzer`)
-- **Physikalisches Modell:** SU2 löst die inkompressiblen Reynolds-gemittelten Navier-Stokes-Gleichungen (`SOLVER= INC_RANS`) mit konstanter Dichte und Viskosität ohne Energiegleichung (`SA` oder `SST`), stationär (Euler implizit mit adaptiver CFL-Zahl) oder zeitgenau (`TIME_DOMAIN= YES`, `DUAL_TIME_STEPPING-2ND_ORDER`). Bei frühem Cauchy-Stopp (`CauchyTolerance = "1e-5"`) mit Rest-Drift setzt `AutoRestartOnDrift` (bis `MaxConvergenceRestarts = 3`) automatisch per `RESTART_SOL= YES` fort.
-- **Randbedingungen (Kopplung an Gmsh über `Physical Surface` / `Physical Curve`):**
-  - `MARKER_FAR = ( Farfield )`: Fernfeld-Randbedingung an der Kanal-Außenhülle (Anströmung in $+x$-Richtung bzw. gedreht um `AngleOfAttackDeg`).
-  - `MARKER_HEATFLUX = ( Wall, 0.0 )`: Adiabate Haftbedingung ($\vec{v} = 0$) auf der Bauteiloberfläche.
-  - `MARKER_MONITORING = ( Wall )` / `MARKER_PLOTTING = ( Wall )`: Integrationsfläche für alle Beiwerte ($C_D, C_L, C_{SF}, C_{Mx}, C_{My}, C_{Mz}$) und Ausgabefläche für `surface.vtu`.
-- **Einheiten:** Das gesamte Framework rechnet in **Millimetern**; die Umrechnung der Referenzfläche (`ReferenceAreaMetric`, $\text{mm}^2 \to \text{m}^2$) und Koordinaten (`MESH_SCALE_CHANGE = 0.001`) für SU2 erfolgt automatisch im Solver.
-- **Spaltenauswertung (`ResultMetrics`), Konvergenz & Oberflächenanalyse:**
-  - `ResultMetrics` ordnet internen Metriknamen (z. B. `"Lift"`) die Spalten aus SU2s `history.csv` (z. B. `"CL"`) zu. Verglichen wird exakt nach Spaltenname (nur notfalls per Präfix mit deutlicher Warnung, damit `"CM"` nicht mehrdeutig auf `CMx`/`CMy`/`CMz` trifft).
-  - Nach jedem Lauf archiviert der Solver `history.csv` und `current_config.cfg` unter `Analyseergebnisse/Verlaeufe/`. `Su2HistoryAnalyzer` prüft über das Endfenster die **Drift zwischen erster und zweiter Fensterhälfte** (`IterativeToleranceFraction`), berechnet die trendbereinigte Schwingungsamplitude (`Su2_Osc_<Metrik>`) und bildet je nach Einstellung (`Last`, `CauchyWindowMean`, `TailMean`) den Ergebniswert.
-  - `YPlusAnalyzer` und `Su2SurfaceAnalyzer` werten die erzeugte `surface.vtu` aus und protokollieren neben `YPlus_Median`, `YPlus_P95` und `YPlus_Max` auch die Druck- und Reibungswiderstandsanteile `Su2_CD_p` und `Su2_CD_v` in `record.PassiveParameters`.
-
----
-
-## 7. Konfigurationssystem unter der Haube (`Core/Configuration/`)
-
-- **Vier-Schichten-Merge (`JsonConfigLoader`):** Führt Konfigurationen auf `JsonNode`-Ebene zusammen:
-  1. Code-Defaults (`SimulationConfig.CreateDefault()`, `CreateDefaults()`, Solver-Options-Klassen)
-  2. `src/projects/<Projekt>/….json` (eingecheckte Projektkonfiguration)
-  3. `config/….local.json` (gitignorierter Notausgang für den Rechner)
-  4. `src/projects/<Projekt>/….local.json` (gitignorierter Notausgang für Projekt + Rechner)
-  Verschachtelte Objekte und Dictionaries (wie `ResultMetrics` oder `AbsoluteTolerances`) werden **additiv** gemerged; skalare Werte und Arrays werden überschrieben.
-- **Tippfehler-Schutz (`ConfigSchema`):** Gleicht vor der Deserialisierung jeden JSON-Schlüssel gegen die C#-Properties des Zieltyps ab (ausgenommen freie Dictionary-Schlüssel wie Parameternamen unter `BaseParameters`). Ein unbekannter Schlüssel bricht sofort ab und schlägt per Levenshtein-Distanz den nächstähnlichen gültigen Namen vor.
-- **`ProjectConfigDto`:** Da `System.Text.Json` keine ValueTuples `(float Min, float Max)` in `ProjectConfig.ParameterBounds` direkt aus `{ "Min": ..., "Max": ... }` deserialisiert, dient `ProjectConfigDto` als sauberes Transfer-Objekt.
-- **Herkunftsnachweis (`EffectiveConfigWriter`):** Protokolliert für jeden einzelnen Schlüssel, aus welcher Schicht/Datei der wirksame Wert stammt, gibt beim Start den Warnblock für aktive `*.local.json`-Dateien aus und schreibt `Ergebnisse/<Projekt>/effective-config.json`.
-- **Projekt-Auflösung (`ProjectPaths` & `ProjectRegistry`):**
-  - `ProjectPaths` sucht `src/projects/` in der Reihenfolge: 2. CLI-Argument → Umgebungsvariable `SIM_PROJECTS_DIR` → vom Arbeitsverzeichnis bis zu 6 Ebenen aufwärts. Die JSON-Dateien nutzen bewusst **kein** `CopyToOutputDirectory` in der `.csproj`, damit Änderungen an einer JSON sofort ohne Rebuild wirken.
-  - `ProjectRegistry` sucht beim Programmstart per Reflection alle `IProjectDefinition`-Klassen und gleicht sie **in beide Richtungen** gegen die Unterordner in `src/projects/` ab (Definition ohne Ordner oder Ordner ohne Definition führt sofort zu einer klaren Fehlermeldung).
+### 6.2 Flow Simulation with SU2 (`Su2Solver`, `Su2HistoryAnalyzer` & `Su2SurfaceAnalyzer`)
+- **Physics model:** SU2 solves the incompressible Reynolds-averaged Navier-Stokes equations (`SOLVER= INC_RANS`) with constant density and viscosity and no energy equation (`SA` or `SST`), steady (implicit Euler with adaptive CFL) or time-accurate (`TIME_DOMAIN= YES`, `DUAL_TIME_STEPPING-2ND_ORDER`). On early Cauchy termination (`CauchyTolerance = "1e-5"`) with remaining drift, `AutoRestartOnDrift` (up to `MaxConvergenceRestarts = 3`) automatically continues via `RESTART_SOL= YES`.
+- **Boundary conditions (coupled to Gmsh via `Physical Surface` / `Physical Curve`):**
+  - `MARKER_FAR = ( Farfield )`: Farfield boundary on the outer domain (freestream in $+x$ direction, rotated by `AngleOfAttackDeg`).
+  - `MARKER_HEATFLUX = ( Wall, 0.0 )`: Adiabatic no-slip wall ($\vec{v} = 0$) on the component surface.
+  - `MARKER_MONITORING = ( Wall )` / `MARKER_PLOTTING = ( Wall )`: Integration surface for force/moment coefficients ($C_D, C_L, C_{SF}, C_{Mx}, C_{My}, C_{Mz}$) and output surface for `surface.vtu`.
+- **Units:** The entire framework operates in **millimeters**; conversion of reference area (`ReferenceAreaMetric`, $\text{mm}^2 \to \text{m}^2$) and coordinates (`MESH_SCALE_CHANGE = 0.001`) for SU2 is handled automatically inside the solver.
+- **Result extraction (`ResultMetrics`), convergence & surface analysis:**
+  - `ResultMetrics` maps internal metric names (e.g. `"Lift"`) to columns in SU2's `history.csv` (e.g. `"CL"`). Matching is exact by column name (prefix matching only as a last resort with a clear warning, so `"CM"` never ambiguously matches `CMx`/`CMy`/`CMz`).
+  - After each run, the solver archives `history.csv` and `current_config.cfg` under `analysis/histories/`. `Su2HistoryAnalyzer` checks **drift between the first and second half of the tail window** (`IterativeToleranceFraction`), computes detrended oscillation amplitude (`Su2_Osc_<Metric>`), and aggregates the result according to `ResultAveraging` (`Last`, `CauchyWindowMean`, `TailMean`).
+  - `YPlusAnalyzer` and `Su2SurfaceAnalyzer` evaluate `surface.vtu` and record `YPlus_Median`, `YPlus_P95`, `YPlus_Max`, and pressure/viscous drag components `Su2_CD_p` and `Su2_CD_v` in `record.PassiveParameters`.
 
 ---
 
-## 8. Framework erweitern (How-To für Entwickler)
+## 7. Configuration System Under the Hood (`Core/Configuration/`)
 
-> **Neues Bauteil / Projekt anlegen (Geometrie, Zielfunktion, Parameter):**  
-> Die vollständige Schritt-für-Schritt-Anleitung steht in **[`src/projects/README.md`](../projects/README.md)**. Dafür muss am Code unter `src/FluidForge/` keine einzige Zeile geändert werden.
+- **Four-layer merge (`JsonConfigLoader`):** Merges configuration at the `JsonNode` level:
+  1. Code defaults (`SimulationConfig.CreateDefault()`, `CreateDefaults()`, solver option classes)
+  2. `src/projects/<Project>/….json` (checked-in project configuration)
+  3. `config/….local.json` (gitignored machine-wide escape hatch)
+  4. `src/projects/<Project>/….local.json` (gitignored per-project machine escape hatch)
+  Nested objects and dictionaries (such as `ResultMetrics` or `AbsoluteTolerances`) merge **additively**; scalar values and arrays are overwritten.
+- **Typo protection (`ConfigSchema`):** Validates every JSON key against the target C# type's properties before deserialization (excluding free-form dictionaries such as parameter names under `BaseParameters`). Any unknown key aborts immediately and suggests the closest valid name by Levenshtein distance.
+- **`ProjectConfigDto`:** Because `System.Text.Json` does not deserialize `ValueTuple<float, float>` in `ProjectConfig.ParameterBounds` directly from `{ "Min": ..., "Max": ... }`, `ProjectConfigDto` serves as the transfer object.
+- **Provenance tracking (`EffectiveConfigWriter`):** Records which layer/file supplied every effective key, prints the startup warning block for active `*.local.json` files, and writes `results/<Project>/effective-config.json`.
+- **Project discovery (`ProjectPaths` & `ProjectRegistry`):**
+  - `ProjectPaths` searches for `src/projects/` in order: CLI argument → `SIM_PROJECTS_DIR` environment variable → walking up to 6 levels from the working directory. JSON files intentionally do **not** use `CopyToOutputDirectory` in `.csproj` so edits take effect immediately without rebuilding.
+  - `ProjectRegistry` discovers all `IProjectDefinition` classes via reflection at startup and cross-checks them **bidirectionally** against subfolders in `src/projects/` (a definition without a folder or a folder without a definition fails immediately with a clear error).
 
-### Neuen Solver oder Vernetzer anbinden
-1. `IMeshGenerator` bzw. `ISimulationSolver` implementieren (z. B. unter `Solvers/Fem/`).
-2. Eine eigene Options-Klasse anlegen (wird über `c.LoadSolverOptions<T>("calculix")` automatisch aus `solvers/calculix.json` über alle vier Konfigurationsschichten geladen).
-3. Im Projekt `CreateStages(ProjectContext c)` überschreiben und die zusätzliche `SolverStage` anhängen:
+---
+
+## 8. Extending the Framework (Developer How-To)
+
+> **Creating a new component / project (geometry, fitness, parameters):**  
+> See **[`src/projects/README.md`](../projects/README.md)**. Zero lines under `src/FluidForge/` need to be changed.
+
+### Adding a New Solver or Mesher
+1. Implement `IMeshGenerator` or `ISimulationSolver` (e.g. under `Solvers/Fem/`).
+2. Create an options class (automatically loaded from `solvers/<name>.json` across all four configuration layers via `c.LoadSolverOptions<T>("<name>")`).
+3. Override `CreateStages(ProjectContext c)` in your project and append the additional `SolverStage`:
    ```csharp
    public override SolverStage[] CreateStages(ProjectContext c) => new[]
    {
        new SolverStage(
            new GmshCfdMesher(c.LoadSolverOptions<GmshMesherOptions>("gmsh")),
            new Su2Solver(c.LoadSolverOptions<Su2SolverOptions>("su2"))),
-       new SolverStage(femMesher, femSolver) // zweites Netz + zweiter Solver
+       new SolverStage(femMesher, femSolver) // second mesh + second solver
    };
    ```
 
-### Neues Optimierungsverfahren hinzufügen
-1. `IOptimizationAlgorithm` unter `Core/Algorithms/` implementieren (Zufallsquelle `Random` für deterministische Tests über den Konstruktor injizierbar halten).
-2. In [`OptimizationAlgorithmFactory.Create(...)`](Core/Algorithms/OptimizationAlgorithmFactory.cs) den neuen Namen registrieren.
-3. Optional `IOptimizationPreflight` implementieren, wenn das Verfahren Voraussetzungen hat (z. B. vollständige `ParameterBounds`): `Preflight` läuft in `Program` vor der Netzkalibrierung und bricht mit einer klaren Meldung ab, bevor die erste teure Rechnung startet. Muss das Verfahren wiederaufnehmbar sein, muss es bei gleichem Seed und gleichen Ergebnissen dieselben Vorschläge machen (siehe `BayesOptimizationAlgorithm`).
+### Adding a New Optimization Algorithm
+1. Implement `IOptimizationAlgorithm` under `Core/Algorithms/` (keep `Random` injectable via constructor for deterministic tests).
+2. Register the new algorithm name in [`OptimizationAlgorithmFactory.Create(...)`](Core/Algorithms/OptimizationAlgorithmFactory.cs).
+3. Optionally implement `IOptimizationPreflight` if the algorithm has preconditions (e.g. complete `ParameterBounds`): `Preflight` runs in `Program` before mesh calibration and fails fast before the first expensive CFD run. If the algorithm must support `--resume`, ensure proposals are deterministic given the same seed and history (see `BayesOptimizationAlgorithm`).
 
 ---
 
-## 9. Automatisierte Tests & Architektur-Sicherheitsnetze (`tests/`)
+## 9. Automated Tests & Architecture Guardrails (`tests/FluidForge.Tests/`)
 
 ```powershell
 dotnet test FluidForge.sln
 ```
 
-Alle über 780 Unit-Tests laufen in wenigen Sekunden auf Windows und Linux komplett ohne installierte externe Solver (PicoGK, Gmsh, SU2 werden für Pipeline-Tests über schlanke Mock-/Stub-Implementierungen ersetzt). Neben den Unit-Tests für Algorithmen, Skalierung, GCI-Kalibrierung, Konvergenzanalyse und Journaling sichern fünf spezielle Testklassen die Konsistenz des gesamten Repositories ab:
+All 780+ unit tests run in seconds on Windows and Linux without external solvers installed (PicoGK, Gmsh, and SU2 are replaced by lightweight mocks/stubs for pipeline tests). Alongside unit tests for algorithms, scaling, GCI calibration, convergence analysis, and journaling, five dedicated test classes enforce repository-wide consistency:
 
-- **`ProjectLayoutTests`**: Prüft, dass alle Konfigurationsdateien im jeweiligen Projektordner liegen, `config/` keine eingecheckten JSONs enthält und die Code-Default-Programmpfade PATH-relativ bleiben.
-- **`TemplateProjectTests`**: Prüft, dass `_Template3D` (3D) und `_Template2D` (2D) vollständig sind, kommentierte JSONs besitzen und ihre Code-Defaults exakt mit den Vorlagen-JSONs übereinstimmen.
-- **`HandbookCoverageTests`**: Prüft per Reflection über alle Options-Klassen und über `scripts/sim.ps1`, dass jede einzelne JSON-Einstellung und jeder Skript-Befehl in [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md) dokumentiert ist.
-- **`ScriptContractTests`**: Prüft `scripts/sim.ps1` und `scripts/sim-runner.sh` statisch auf SSH-Timeouts, Parameterweitergabe (`-Project` → `SIM_PROJECT`) und Schutz vor stillen Fallbacks.
-- **`RepositoryHygieneTests`**: Scant alle Textdateien in `src/`, `scripts/` und `config/` auf versehentlich eingecheckte Geheimnisse (Private Keys, API-Tokens, Passwörter).
+- **`ProjectLayoutTests`**: Verifies that all config files live in their project folders, `config/` contains no checked-in JSONs, and default executable paths remain `PATH`-relative.
+- **`TemplateProjectTests`**: Verifies that `_Template3D` (3D) and `_Template2D` (2D) are complete, have commented JSONs, and their code defaults match their template JSONs.
+- **`HandbookCoverageTests`**: Uses reflection across all option classes and `scripts/sim.ps1` to verify that every JSON setting and script command is documented in [`src/projects/BEDIENHANDBUCH.md`](../projects/BEDIENHANDBUCH.md).
+- **`ScriptContractTests`**: Statically checks `scripts/sim.ps1` and `scripts/sim-runner.sh` for SSH timeouts, parameter forwarding (`-Project` → `SIM_PROJECT`), and protection against silent fallbacks.
+- **`RepositoryHygieneTests`**: Scans all text files in `src/`, `scripts/`, and `config/` for accidentally committed secrets (private keys, API tokens, passwords).
 
 ---
 
-## 10. Bewusste Architekturentscheidungen & Roadmap
+## 10. Intentional Architectural Decisions & Roadmap
 
-1. **Der Türsteher (`ChampionValidator`) prüft die Fitness, nicht eine einzelne Metrik** — dadurch bleibt der Kern frei von Domänenbegriffen wie `"Drag"`.
-2. **Fehlgeschlagene Simulationen werden nicht als IDW-Stützstellen verwendet** — sie würden die Interpolation verzerren und zählen auch nicht für die Mindestanzahl. Für den Bayes-Optimierer gilt dieselbe Regel zentral in `SurrogateTrainingSet`; zusätzlich fallen vom Türsteher verworfene Varianten (`Disqualified`) heraus.
-3. **Der Kern kennt keine Metriknamen** — auch `RequiredMetrics` wird dem `WorkflowController` nur als `IReadOnlyCollection<string>` übergeben.
-4. **Kein stiller Projekt-Fallback in `Program.cs` oder `sim-runner.sh`** — ein Tippfehler beim Projektnamen bricht sofort ab, statt stundenlang das falsche Bauteil zu rechnen.
-5. **Der Ordnername ist die einzige Quelle für den Projektnamen** — es gibt kein Feld `"ProjectName"` in `project.json`.
+1. **The validator (`ChampionValidator`) checks fitness, not a single metric** — keeping the core free of domain terms like `"Drag"`.
+2. **Failed simulations are excluded from IDW support points** — they would distort interpolation and do not count toward the minimum sample threshold. The same rule applies centrally in `SurrogateTrainingSet` for `Bayes`, which also excludes disqualified candidates (`Disqualified`).
+3. **The core knows no metric names** — even `RequiredMetrics` is passed to `WorkflowController` purely as `IReadOnlyCollection<string>`.
+4. **No silent project fallback in `Program.cs` or `sim-runner.sh`** — a typo in the project name aborts immediately rather than running the wrong component for hours.
+5. **The folder name is the sole source of the project name** — there is no `"ProjectName"` field in `project.json`.
 
-### Ausblick & Nächste Meilensteine
-Die historische Refactoring-Dokumentation sowie die aktuellen Ausbaupläne (2D/3D-Auswerteskripte, Bayes-Optimierung mit Gauß-Prozessen, LaTeX-Gesamtdokumentation und FEM-Strukturkopplung mit CalculiX) sind in **[`.plans/README.md`](../../.plans/README.md)** und **[`.plans/ROADMAP.md`](../../.plans/ROADMAP.md)** dokumentiert.
+### Outlook & Next Milestones
+Historical refactoring notes and current development plans are documented in **[`.plans/README.md`](../../.plans/README.md)** and **[`.plans/ROADMAP.md`](../../.plans/ROADMAP.md)**.

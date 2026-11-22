@@ -5,12 +5,12 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Einfache Inverse-Distance-Weighting-Interpolations-Baseline (IDW).
+    /// Simple Inverse-Distance-Weighting (IDW) interpolation baseline.
     /// <para>
-    /// Hinweis zur Einordnung: Dies ist bewusst <b>kein</b> polynomiales Response Surface Model (RSM),
-    /// sondern eine einfache abstandsgewichtete Interpolation über bisherige Messpunkte. Das Verfahren
-    /// kann nicht über beobachtete Fitnesswerte hinaus extrapolieren und besitzt keine
-    /// Unsicherheitsquantifizierung. Es dient als einfache, robuste Vergleichs-Baseline zu <c>Bayes</c>.
+    /// Note: this is intentionally <b>not</b> a polynomial Response Surface Model (RSM),
+    /// but a simple distance-weighted interpolation over previous evaluations. It cannot
+    /// extrapolate beyond observed fitness values and provides no uncertainty quantification.
+    /// It serves as a simple, robust comparison baseline for <c>Bayes</c>.
     /// </para>
     /// </summary>
     public class IdwBaselineAlgorithm : IOptimizationAlgorithm
@@ -19,10 +19,10 @@ namespace FluidForge.Core
         private readonly IFitnessCalculator _fitnessCalculator;
         private readonly Queue<Dictionary<string, float>> _nextVirtualCandidates = new Queue<Dictionary<string, float>>();
 
-        /// <param name="fitnessCalculator">Bewertet die Modelle einer Iteration.</param>
+        /// <param name="fitnessCalculator">Evaluates the models of an iteration.</param>
         /// <param name="random">
-        /// Optional: feste Zufallsquelle. Im Lauf ungesetzt (echter Zufall), in Tests
-        /// ein <c>new Random(seed)</c>, damit die Start-Sampling-Phase reproduzierbar ist.
+        /// Optional fixed random source. Unset at runtime, or <c>new Random(seed)</c> in tests
+        /// for reproducible initial sampling.
         /// </param>
         public IdwBaselineAlgorithm(IFitnessCalculator fitnessCalculator, Random? random = null)
         {
@@ -30,7 +30,7 @@ namespace FluidForge.Core
             _random = random ?? new Random();
         }
 
-        public string Name => "IDW-Baseline (Inverse Distance Weighting)";
+        public string Name => "IDW Baseline (Inverse Distance Weighting)";
 
         public Dictionary<string, float> GenerateParameters(SimulationContext context, int iteration, int variant, int maxVariants)
         {
@@ -39,7 +39,7 @@ namespace FluidForge.Core
                 return _nextVirtualCandidates.Dequeue();
             }
 
-            // Arbeitspunkt = Laufzeitzustand im Context (TODO-17), nicht die Projekt-Vorgabe.
+            // Operating point = runtime state in context, not the project template.
             if (iteration == 1 && variant == 1)
             {
                 return new Dictionary<string, float>(context.CurrentBaseParameters);
@@ -73,16 +73,16 @@ namespace FluidForge.Core
             int k = context.CurrentBaseParameters.Count;
             int minRequiredSamples = ((k + 1) * (k + 2)) / 2 + 2;
 
-            // Nur gelungene Simulationen taugen als Stützstellen. Fehlgeschlagene Modelle
-            // tragen keine echte Fitness und würden die IDW-Interpolation verzerren.
+            // Only successful simulations serve as support points. Failed models carry no
+            // valid fitness and would distort IDW interpolation.
             var usableSamples = context.History.Where(r => !r.SimulationFailed).ToList();
 
             if (usableSamples.Count < minRequiredSamples)
             {
                 int missing = minRequiredSamples - usableSamples.Count;
                 int failed = context.History.Count - usableSamples.Count;
-                string failedNote = failed > 0 ? $" ({failed} fehlgeschlagene Simulation(en) zählen nicht mit)" : "";
-                Console.WriteLine($"\n[INFO] {Name}: Aufbau der Stützstellen. Benötige noch {missing} Basis-Simulationen.{failedNote}");
+                string failedNote = failed > 0 ? $" ({failed} failed simulation(s) excluded)" : "";
+                Console.WriteLine($"\n[INFO] {Name}: Building support points. Need {missing} more baseline simulation(s).{failedNote}");
                 return;
             }
 
@@ -93,8 +93,8 @@ namespace FluidForge.Core
                 return;
             }
 
-            Console.WriteLine($"\n[INFO] {Name}: IDW-Interpolation ist aktiv!");
-            Console.WriteLine($"       -> Bewerte {virtualSimulations:N0} virtuelle Varianten per IDW...");
+            Console.WriteLine($"\n[INFO] {Name}: IDW interpolation active!");
+            Console.WriteLine($"       -> Evaluating {virtualSimulations:N0} virtual candidates via IDW...");
 
             var virtualResults = new List<(Dictionary<string, float> Params, float PredictedFitness)>(virtualSimulations);
 
@@ -118,8 +118,8 @@ namespace FluidForge.Core
                 return;
             }
 
-            Console.WriteLine($"       -> Virtuelle Bewertung beendet. Erwartete Top-Fitness: {topCandidates[0].PredictedFitness:F3}");
-            Console.WriteLine($"       -> Übergebe die {topCandidates.Count} besten Kandidaten an die Simulation.");
+            Console.WriteLine($"       -> Virtual evaluation complete. Expected top fitness: {topCandidates[0].PredictedFitness:F3}");
+            Console.WriteLine($"       -> Queuing top {topCandidates.Count} candidate(s) for simulation.");
 
             foreach (var candidate in topCandidates)
             {
@@ -128,11 +128,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// IDW-Schätzung der Fitness. <paramref name="samples"/> enthält nur gelungene
-        /// Simulationen — abgebrochene Läufe sind keine gültigen Stützstellen.
+        /// IDW fitness estimate. <paramref name="samples"/> contains only successful simulations —
+        /// aborted runs are not valid support points.
         ///
-        /// Öffentlich und statisch, damit die Interpolation mit bekannten Stützstellen
-        /// geprüft werden kann, ohne einen kompletten Lauf zu fahren.
+        /// Public and static so interpolation can be unit-tested with known support points
+        /// without running a full optimization loop.
         /// </summary>
         public static float PredictFitnessSurrogate(Dictionary<string, float> candidate, List<ModelRecord> samples, Dictionary<string, (float Min, float Max)> bounds, float idwPower)
         {

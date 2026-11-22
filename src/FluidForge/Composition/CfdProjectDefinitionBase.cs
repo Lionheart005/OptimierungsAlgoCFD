@@ -4,9 +4,9 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Composition
 {
     /// <summary>
-    /// Gemeinsame Basisklasse für CFD-Projektdefinitionen (3D und 2D).
-    /// Bündelt die identische Vertrags- und Stage-Erzeugungslogik, während Unterklassen
-    /// Kernel, Mesher und optionale SU2-Anpassungen beisteuern.
+    /// Shared base class for CFD project definitions (3D and 2D).
+    /// Consolidates the identical contract and stage-creation logic, while subclasses
+    /// provide the kernel, mesher, and optional SU2 adjustments.
     /// </summary>
     public abstract class CfdProjectDefinitionBase : IProjectDefinition
     {
@@ -25,15 +25,15 @@ namespace FluidForge.Composition
         /// <inheritdoc/>
         public virtual IGeometryKernel CreateKernel() => new DirectGeometryKernel();
 
-        /// <summary>Ermöglicht Unterklassen, die geladenen SU2-Optionen vor dem Bau von FlowConditions/Solver anzupassen.</summary>
+        /// <summary>Allows subclasses to adjust loaded SU2 options before building FlowConditions and the solver.</summary>
         protected virtual void ConfigureSu2Options(Su2SolverOptions options) { }
 
-        /// <summary>Erzeugt den projektspezifischen Mesher für den jeweiligen Anwendungsfall (z. B. 3D- oder 2D-Gmsh).</summary>
+        /// <summary>Creates the project-specific mesher for the use case (e.g., 3D or 2D Gmsh).</summary>
         protected abstract IMeshGenerator CreateMesher(ProjectContext context, FlowConditions flow);
 
         /// <summary>
-        /// Baut die Standard-CFD-Stufe: lädt <c>su2.json</c>, wendet <see cref="ConfigureSu2Options"/> an,
-        /// erstellt gemeinsame <see cref="FlowConditions"/> und verdrahtet <see cref="CreateMesher"/> mit <see cref="Su2Solver"/>.
+        /// Builds the standard CFD stage: loads <c>su2.json</c>, applies <see cref="ConfigureSu2Options"/>,
+        /// creates shared <see cref="FlowConditions"/>, and wires <see cref="CreateMesher"/> to <see cref="Su2Solver"/>.
         /// </summary>
         public virtual SolverStage[] CreateStages(ProjectContext context)
         {

@@ -5,14 +5,13 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Der Parameterraum eines Laufs, normiert auf den Einheitswürfel [0, 1]^d (TODO-53, F14).
+    /// Parameter space of a run, normalized to the unit hypercube [0, 1]^d.
     ///
     /// <para>
-    /// Die Reihenfolge der Schlüssel in <see cref="SimulationContext.CurrentBaseParameters"/> ist die
-    /// Reihenfolge der Dimensionen. Parameter mit <c>Min &lt; Max</c> sind <b>frei</b> und werden
-    /// modelliert, Parameter mit <c>Min == Max</c> sind <b>fest</b> und werden nur wieder eingesetzt.
-    /// Fehlt eine Grenze, ist der Raum nicht definiert: <see cref="Create"/> bricht dann mit einer
-    /// klaren Meldung ab, bevor die erste teure Rechnung startet (Fail-fast wie TODO-16 und TODO-26).
+    /// Key order in <see cref="SimulationContext.CurrentBaseParameters"/> defines dimension order.
+    /// Parameters with <c>Min &lt; Max</c> are <b>free</b> and modeled; parameters with <c>Min == Max</c>
+    /// are <b>fixed</b> and reinserted unchanged. Missing or invalid bounds fail fast in <see cref="Create"/>
+    /// before any expensive evaluation starts.
     /// </para>
     /// </summary>
     public sealed class ParameterSpace
@@ -40,35 +39,34 @@ namespace FluidForge.Core
             _bounds = bounds;
         }
 
-        /// <summary>Namen der frei veränderlichen Parameter in Dimensionsreihenfolge.</summary>
+        /// <summary>Names of free parameters in dimension order.</summary>
         public IReadOnlyList<string> FreeNames => _freeNames;
 
-        /// <summary>Anzahl der frei veränderlichen Parameter (Dimension des Modells).</summary>
+        /// <summary>Number of free parameters (model dimension).</summary>
         public int Dimension => _freeNames.Length;
 
-        /// <summary>Feste Parameter (Min == Max) mit ihrem Wert.</summary>
+        /// <summary>Fixed parameters (Min == Max) with their constant values.</summary>
         public IReadOnlyDictionary<string, float> FixedValues => _fixed;
 
         /// <summary>
-        /// Baut und prüft den Parameterraum.
+        /// Builds and validates the parameter space.
         /// </summary>
         /// <exception cref="InvalidOperationException">
-        /// Für einen Parameter fehlt die Grenze, oder es gilt Min &gt; Max oder sie ist nicht endlich.
-        /// Die Meldung nennt den Parameter und die Datei, in der er einzutragen ist.
+        /// A parameter is missing bounds, has Min &gt; Max, or has non-finite bounds.
         /// </exception>
         public static ParameterSpace Create(SimulationContext context)
         {
             var names = context.CurrentBaseParameters.Keys.ToArray();
-            string projectName = string.IsNullOrWhiteSpace(context.Project.ProjectName) ? "<Projekt>" : context.Project.ProjectName;
+            string projectName = string.IsNullOrWhiteSpace(context.Project.ProjectName) ? "<Project>" : context.Project.ProjectName;
             string where = $"src/projects/{projectName}/project.json → \"ParameterBounds\"";
 
             var missing = names.Where(n => !context.Project.ParameterBounds.ContainsKey(n)).ToList();
             if (missing.Count > 0)
             {
                 throw new InvalidOperationException(
-                    $"[KONFIGURATION] Der Bayes-Optimierer braucht für jeden Parameter eine Grenze (Min/Max), "
-                    + $"damit er den Suchraum kennt. Es fehlt für: {string.Join(", ", missing)}. "
-                    + $"Nachtragen in {where}.");
+                    $"{OutputConventions.ConfigTag} Bayesian optimization requires bounds (Min/Max) for every parameter "
+                    + $"to define the search space. Missing for: {string.Join(", ", missing)}. "
+                    + $"Add them in {where}.");
             }
 
             var bounds = new Dictionary<string, (float Min, float Max)>();
@@ -83,8 +81,8 @@ namespace FluidForge.Core
                 if (!float.IsFinite(min) || !float.IsFinite(max) || min > max)
                 {
                     throw new InvalidOperationException(
-                        $"[KONFIGURATION] Parameter '{name}': ungültige Grenzen (Min = {min}, Max = {max}). "
-                        + $"Min muss ≤ Max sein, beide endlich. Korrigieren in {where}.");
+                        $"{OutputConventions.ConfigTag} Parameter '{name}': invalid bounds (Min = {min}, Max = {max}). "
+                        + $"Min must be ≤ Max and both must be finite. Fix in {where}.");
                 }
 
                 bounds[name] = (min, max);
@@ -107,7 +105,7 @@ namespace FluidForge.Core
                 if (start < min || start > max)
                 {
                     SimulationLog.Warning(
-                        $"[BAYES] Startwert von '{name}' ({start}) liegt außerhalb der Grenzen [{min}, {max}] und wird begrenzt.");
+                        $"{OutputConventions.BayesTag} Initial value of '{name}' ({start}) is outside bounds [{min}, {max}] and will be clamped.");
                 }
             }
 
@@ -115,8 +113,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Normiert die freien Parameter auf [0, 1]. Fehlende Namen und Werte außerhalb der Grenzen
-        /// werden auf den erlaubten Bereich begrenzt (fehlend → Mitte).
+        /// Normalizes free parameters to [0, 1]. Missing or out-of-bounds values are clamped
+        /// (missing → 0.5).
         /// </summary>
         public double[] ToUnit(IReadOnlyDictionary<string, float> parameters)
         {
@@ -133,8 +131,8 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Gegenstück zu <see cref="ToUnit"/>: füllt die festen Parameter auf und begrenzt alle
-        /// Werte auf den erlaubten Bereich. Die Schlüsselreihenfolge ist die des Projekts.
+        /// Inverse of <see cref="ToUnit"/>: reinserts fixed parameters and clamps all values
+        /// to their bounds, preserving project key order.
         /// </summary>
         public Dictionary<string, float> FromUnit(double[] unit)
         {
@@ -148,13 +146,13 @@ namespace FluidForge.Core
                 result[_freeNames[i]] = Math.Clamp((float)(_min[i] + clamped * (_max[i] - _min[i])), min, max);
             }
 
-            // Reihenfolge wie im Projekt herstellen.
+            // Preserve project parameter order.
             var ordered = new Dictionary<string, float>();
             foreach (string name in _allNames) ordered[name] = result[name];
             return ordered;
         }
 
-        /// <summary>Begrenzt einen Parametersatz auf die Grenzen (z. B. den Startpunkt).</summary>
+        /// <summary>Clamps a parameter dictionary to its configured bounds.</summary>
         public Dictionary<string, float> Clamp(IReadOnlyDictionary<string, float> parameters)
         {
             var result = new Dictionary<string, float>();

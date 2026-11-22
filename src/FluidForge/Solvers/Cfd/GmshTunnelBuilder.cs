@@ -10,8 +10,8 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Effektive physikalische Windkanal-Abmessungen in realen Millimetern (AP-3),
-    /// entkoppelt vom PicoGK-Skalierungsfaktor.
+    /// Effective physical wind-tunnel dimensions in real-world millimeters,
+    /// decoupled from the PicoGK scale factor.
     /// </summary>
     public readonly record struct TunnelSpec(
         bool IsCylinder,
@@ -41,7 +41,7 @@ namespace FluidForge.Solvers.Cfd
     }
 
     /// <summary>
-    /// Dimensionierung, Generierung, Caching, Hashing und Logging der 3D-Windkanal-STL.
+    /// Sizing, generation, caching, hashing, and logging of the 3D wind-tunnel STL.
     /// </summary>
     internal sealed class GmshTunnelBuilder
     {
@@ -56,22 +56,22 @@ namespace FluidForge.Solvers.Cfd
         public static float SanitizeScaleFactor(float scaleFactor)
             => scaleFactor > 0f && float.IsFinite(scaleFactor) ? scaleFactor : 1.0f;
 
-        /// <summary>Erzeugt den statischen Referenz-Windkanal ohne automatische Aufweitung.</summary>
+        /// <summary>Generates the static reference wind tunnel without automatic expansion.</summary>
         public string EnsureTunnel(string workingDirectory)
         {
             if (_cachedTunnelPath != null && File.Exists(_cachedTunnelPath))
                 return _cachedTunnelPath;
 
             IReadOnlyList<StlTriangle> tunnel = BuildTunnel();
-            Console.WriteLine($"[SYSTEM] Generiere statischen Referenz-Windkanal ({tunnel.Count} Dreiecke)...");
+            Console.WriteLine($"{OutputConventions.SystemTag} Generating static reference wind tunnel ({tunnel.Count} triangles)...");
             _cachedTunnelPath = Path.Combine(workingDirectory, "Static_Windtunnel.stl");
             StlWriter.WriteBinary(_cachedTunnelPath, tunnel);
             return _cachedTunnelPath;
         }
 
         /// <summary>
-        /// Erzeugt den physikalischen Windkanal im PicoGK-Arbeitsraum (skaliert mit <paramref name="scaleFactor"/>),
-        /// garantiert Mindestabstände und den maximalen Versperrungsgrad.
+        /// Generates the physical wind tunnel in the PicoGK workspace (scaled by <paramref name="scaleFactor"/>),
+        /// guaranteeing minimum clearances and maximum blockage ratio.
         /// </summary>
         public string EnsureTunnel(
             string workingDirectory,
@@ -95,7 +95,7 @@ namespace FluidForge.Solvers.Cfd
             {
                 string hash = ComputeTunnelHash(spec, safeScale);
                 tunnelPath = Path.Combine(workingDirectory, $"Static_Windtunnel_{hash}.stl");
-                header = $"Automatisierung STL mm {hash}";
+                header = $"FluidForge STL mm {hash}";
             }
 
             int expectedTriCount = spec.IsCylinder ? 4 * spec.Segments : 12;
@@ -119,8 +119,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Berechnet die effektiven physikalischen Tunnelabmessungen in realen Millimetern.
-        /// Der konfigurierte Windkanal wird bei Bedarf nach außen aufgeweitet, niemals verkleinert.
+        /// Computes effective physical tunnel dimensions in real-world millimeters.
+        /// The configured wind tunnel is expanded outward if needed, never shrunk.
         /// </summary>
         public TunnelSpec ResolveEffectiveTunnel(
             MeshBounds? modelBoundsPicoGk,
@@ -133,7 +133,7 @@ namespace FluidForge.Solvers.Cfd
 
             if (!isCylinder && shape.Length > 0 && !shape.Equals("Box", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine($"[WARNUNG] Unbekannte Windkanal-Form '{_options.TunnelShape}' — nutze 'Box'.");
+                Console.WriteLine($"{OutputConventions.WarningTag} Unknown wind-tunnel shape '{_options.TunnelShape}' — using 'Box'.");
             }
 
             float cfgCenterX = _options.TunnelCenterX;
@@ -324,7 +324,7 @@ namespace FluidForge.Solvers.Cfd
 
             if (shape.Length > 0 && !shape.Equals("Box", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine($"[WARNUNG] Unbekannte Windkanal-Form '{_options.TunnelShape}' — nutze 'Box'.");
+                Console.WriteLine($"{OutputConventions.WarningTag} Unknown wind-tunnel shape '{_options.TunnelShape}' — using 'Box'.");
             }
 
             return TunnelGeometry.CreateBox(new Vector3(_options.TunnelSizeX, _options.TunnelSizeY, _options.TunnelSizeZ), center);
@@ -398,7 +398,7 @@ namespace FluidForge.Solvers.Cfd
         private static void LogTunnelSummary(TunnelSpec spec, float safeScale)
         {
             string FormatMm(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
-            string shapeLabel = spec.IsCylinder ? "Zylinder" : "Box";
+            string shapeLabel = spec.IsCylinder ? "Cylinder" : "Box";
             string cfgDims = spec.IsCylinder
                 ? $"D={FormatMm(spec.ConfiguredWidthMm)} x L={FormatMm(spec.ConfiguredLengthMm)} mm"
                 : $"{FormatMm(spec.ConfiguredLengthMm)} x {FormatMm(spec.ConfiguredWidthMm)} x {FormatMm(spec.ConfiguredHeightMm)} mm";
@@ -410,15 +410,15 @@ namespace FluidForge.Solvers.Cfd
             if (spec.WasExpanded)
             {
                 string reasons = spec.WasExpandedForClearance && spec.WasExpandedForBlockage
-                    ? "Mindestabstand + Blockage"
-                    : (spec.WasExpandedForClearance ? "Mindestabstand" : "Blockage");
-                expandNote = $" [AUTO-ERWEITERT: {reasons}]";
+                    ? "clearance + blockage"
+                    : (spec.WasExpandedForClearance ? "clearance" : "blockage");
+                expandNote = $" [AUTO-EXPANDED: {reasons}]";
             }
 
             SimulationLog.Detail(
-                $"Windkanal ({shapeLabel}, scale={WakeAndDetailBoxBuilder.Format(safeScale)}): Konfig {cfgDims} -> Effektiv {effDims}{expandNote} | " +
-                $"Abstand {spec.UpstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L vor / {spec.DownstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L nach | " +
-                $"A_frontal={spec.FrontalAreaMm2.ToString("0.0", CultureInfo.InvariantCulture)} mm², Blockage={spec.BlockagePercent.ToString("0.000", CultureInfo.InvariantCulture)} %");
+                $"Wind tunnel ({shapeLabel}, scale={WakeAndDetailBoxBuilder.Format(safeScale)}): config {cfgDims} -> effective {effDims}{expandNote} | " +
+                $"clearance {spec.UpstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L upstream / {spec.DownstreamL.ToString("0.0", CultureInfo.InvariantCulture)}L downstream | " +
+                $"A_frontal={spec.FrontalAreaMm2.ToString("0.0", CultureInfo.InvariantCulture)} mm², blockage={spec.BlockagePercent.ToString("0.000", CultureInfo.InvariantCulture)} %");
         }
     }
 }

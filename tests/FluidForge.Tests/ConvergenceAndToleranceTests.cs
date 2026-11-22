@@ -12,7 +12,7 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// TODO-W1 (kombinierte Toleranz), TODO-W3 (Drift statt Cauchy) und TODO-W4 (Profil der Kontrollrechnungen).
+    /// TODO-W1 (combined tolerance), TODO-W3 (drift instead of Cauchy) and TODO-W4 (control run profile).
     /// </summary>
     [Collection(ProcessWideStateCollection.Name)]
     public class ConvergenceAndToleranceTests
@@ -24,7 +24,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Near_Zero_Values_Use_The_Absolute_Part()
         {
-            // Servertest 06.11.2026: CL 0,00005 gegen -0,00052 galt als "1 727 %" und scheiterte.
+            // Server test 2026-11-06: CL 0.00005 vs -0.00052 was flagged as "1,727%" and failed.
             float atol = MetricTolerance.AbsoluteFor("Lift");
             Assert.Equal(0.005f, atol);
             Assert.True(MetricTolerance.Within(-0.00052f, 0.00005f, 0.02f, atol));
@@ -34,7 +34,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Large_Values_Use_The_Relative_Part()
         {
-            // CL 1,0 gegen 1,05: 5 % bei 2 % Toleranz und 0,005 Mindestbetrag -> nicht in Ordnung.
+            // CL 1.0 vs 1.05: 5% at 2% tolerance and 0.005 minimum floor -> not ok.
             float n = MetricTolerance.Normalized(1.05f, 1.0f, 0.02f, 0.005f);
             Assert.InRange(n, 1.99f, 2.01f);
             Assert.False(MetricTolerance.Within(1.05f, 1.0f, 0.02f, 0.005f));
@@ -60,7 +60,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Calibration_Accepts_A_Zero_Lift_Sequence_That_Is_Relatively_Huge()
         {
-            // alpha = 0: CL schwankt um 0, CD konvergiert sauber.
+            // alpha = 0: CL oscillates around 0, CD converges cleanly.
             var stages = new List<CalibrationStageData>
             {
                 Stage(1, 2.0f, 0.01336f, -0.00074f),
@@ -73,7 +73,7 @@ namespace FluidForge.Tests
             var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Drag", "Lift" }, 0.02f);
 
             Assert.True(decision.Success, decision.SummaryMessage);
-            // Stufe 3 weicht bei CD um 3,9 % ab (> 2 % + 0,0001), Stufe 4 um 0,75 % -> Stufe 4.
+            // Stage 3 deviates in CD by 3.9% (> 2% + 0.0001), stage 4 by 0.75% -> stage 4.
             Assert.Equal(4, decision.SelectedStage!.LevelIndex);
         }
 
@@ -84,12 +84,12 @@ namespace FluidForge.Tests
         [Fact]
         public void Richardson_Extrapolation_Estimates_The_Mesh_Independent_Value()
         {
-            // 2. Ordnung, r = sqrt(2): f3 = 0.05, f2 = 0.04, f1 = 0.035 -> p = 2, f_inf = 0.035 - 0.005 = 0.030
+            // 2nd order, r = sqrt(2): f3 = 0.05, f2 = 0.04, f1 = 0.035 -> p = 2, f_inf = 0.035 - 0.005 = 0.030
             var gci = CalibrationEvaluator.ComputeGci(0.05f, 0.04f, 0.035f);
 
             Assert.Equal(2.0f, gci.ObservedOrderP, 1);
             Assert.Equal(0.030f, gci.ExtrapolatedValue, 3);
-            Assert.InRange(gci.ExtrapolatedDeviationPercent, 16f, 17f);   // 0,035 liegt ~16,7 % über 0,030
+            Assert.InRange(gci.ExtrapolatedDeviationPercent, 16f, 17f);   // 0.035 is ~16.7% above 0.030
         }
 
         [Fact]
@@ -101,7 +101,7 @@ namespace FluidForge.Tests
         }
 
         // ------------------------------------------------------------------
-        // W3: Drift im Endfenster
+        // W3: Drift in the tail window
         // ------------------------------------------------------------------
 
         private static string[] History(int rows, Func<int, double> cd, Func<int, double> cl)
@@ -123,7 +123,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Steady_Oscillation_Has_No_Drift_And_Counts_As_Converged()
         {
-            // Wirbelablösung: CD pendelt um 0,03 mit ±5 % und fester Periode.
+            // Vortex shedding: CD oscillates around 0.03 by ±5% with fixed period.
             var h = Eval(History(600, i => 0.03 * (1 + 0.05 * Math.Sin(i * 0.3)), i => 1.0));
 
             Assert.Equal(100, h.TailRows);
@@ -132,14 +132,14 @@ namespace FluidForge.Tests
 
             var verdict = Su2ConvergenceJudge.Judge(h, Columns, 0.005f, 0.25f, null);
             Assert.True(verdict.Assessed);
-            Assert.True(verdict.Converged, $"schlechtester Kennwert {verdict.WorstMetric}: {verdict.WorstNormalized}");
+            Assert.True(verdict.Converged, $"worst metric {verdict.WorstMetric}: {verdict.WorstNormalized}");
         }
 
         [Fact]
         public void Slow_Drift_Is_Detected_Even_Though_Single_Steps_Are_Tiny()
         {
-            // Servertest: CD wanderte im Fenster um 3 % weiter, SU2 hatte "konvergiert" gemeldet.
-            // 0,36 → 0,324 über 400 Zeilen = ~2,5 % je 100-Zeilen-Fenster.
+            // Server test: CD kept drifting by 3% in the window, SU2 had reported "converged".
+            // 0.36 -> 0.324 over 400 rows = ~2.5% per 100-row window.
             var h = Eval(History(400, i => 0.0360 - 0.0036 * i / 400.0, i => 1.0));
 
             var verdict = Su2ConvergenceJudge.Judge(h, Columns, 0.005f, 0.25f, null);
@@ -152,7 +152,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Drift_Is_Not_Confused_With_Oscillation_Amplitude()
         {
-            // Reine Drift ohne Pendeln: Amplitude nach Trendabzug ~0.
+            // Pure drift without oscillation: amplitude after detrending ~0.
             var h = Eval(History(400, i => 0.03 + 0.00001 * i, i => 1.0));
 
             Assert.True(h.OscillationAmplitude["CD"] < 0.001f);
@@ -171,7 +171,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Near_Zero_Lift_Drift_Uses_The_Absolute_Floor()
         {
-            // CL ~ 0 und wandert um 0,0003: relativ riesig, absolut unter 0,005 * 0,25.
+            // CL ~ 0 and drifts by 0.0003: huge relatively, below 0.005 * 0.25 absolutely.
             var h = Eval(History(400, i => 0.03, i => 0.0003 * i / 400.0));
 
             var verdict = Su2ConvergenceJudge.Judge(h, Columns, 0.005f, 0.25f, null);
@@ -182,7 +182,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Solver_Takes_The_Tail_Mean_And_Reports_Converged_At_Iter_Limit()
         {
-            // 500 Iterationen = ITER erreicht, Kennwerte aber stabil: früher "nicht konvergiert".
+            // 500 iterations = ITER reached, but metrics are stable: previously "not converged".
             string path = Path.Combine(Path.GetTempPath(), "hist_" + Guid.NewGuid().ToString("N") + ".csv");
             File.WriteAllLines(path, History(500, i => 0.03 * (1 + 0.02 * Math.Sin(i * 0.4)), i => 1.0 + 0.01 * Math.Sin(i * 0.4)));
             try
@@ -215,7 +215,7 @@ namespace FluidForge.Tests
 
                 solver.ReadMetricsFromHistory(path, record, config);
 
-                // SU2 hätte bei Iteration 250 "vor ITER" aufgehört, die Drift-Prüfung sieht es anders.
+                // SU2 would have stopped at iteration 250 "before ITER", the drift check sees it differently.
                 Assert.Equal(0.0f, record.PassiveParameters["Su2_Converged"]);
                 Assert.True(record.SimulationFailed);
             }
@@ -223,7 +223,7 @@ namespace FluidForge.Tests
         }
 
         // ------------------------------------------------------------------
-        // W2: SU2-Version aus dem Banner, Bezug im 2D-Schnitt
+        // W2: SU2 version from banner, reference in 2D section
         // ------------------------------------------------------------------
 
         [Theory]
@@ -231,13 +231,13 @@ namespace FluidForge.Tests
         [InlineData("SU2 v8.0.0 \"Harrier\"", "8.0.0")]
         [InlineData("Release 7.5 \"x\"", "7.5")]
         public void Su2_Version_Is_Read_From_The_Banner(string line, string expected)
-            => Assert.Equal(expected, Su2Solver.TryParseVersion("irgendwas" + Environment.NewLine + line + Environment.NewLine + "mehr"));
+            => Assert.Equal(expected, Su2Solver.TryParseVersion("something" + Environment.NewLine + line + Environment.NewLine + "more"));
 
         [Fact]
         public void Su2_Version_Is_Null_Without_Banner()
         {
             Assert.Null(Su2Solver.TryParseVersion(null));
-            Assert.Null(Su2Solver.TryParseVersion("Kein Banner hier"));
+            Assert.Null(Su2Solver.TryParseVersion("No banner here"));
         }
 
         [Fact]
@@ -247,30 +247,30 @@ namespace FluidForge.Tests
             Directory.CreateDirectory(dir);
             try
             {
-                var info = new RunInfo { Projekt = "T", Programme = new() { ["SU2"] = "unbekannt", ["Gmsh"] = "4.11.1" } };
+                var info = new RunInfo { Project = "T", Tools = new() { ["SU2"] = "unknown", ["Gmsh"] = "4.11.1" } };
                 RunInfoWriter.Write(dir, info);
 
                 RunInfoWriter.SetProgramVersion(dir, "SU2", "7.5.1");
-                RunInfoWriter.SetProgramVersion(dir, "Gmsh", "9.9.9");   // bekannt: bleibt
-                RunInfoWriter.SetProgramVersion(Path.Combine(dir, "gibtsnicht"), "SU2", "1.0"); // wirft nie
+                RunInfoWriter.SetProgramVersion(dir, "Gmsh", "9.9.9");   // known: stays unchanged
+                RunInfoWriter.SetProgramVersion(Path.Combine(dir, "doesnotexist"), "SU2", "1.0"); // never throws
 
                 var read = RunInfoWriter.Read(dir)!;
-                Assert.Equal("7.5.1", read.Programme["SU2"]);
-                Assert.Equal("4.11.1", read.Programme["Gmsh"]);
+                Assert.Equal("7.5.1", read.Tools["SU2"]);
+                Assert.Equal("4.11.1", read.Tools["Gmsh"]);
             }
             finally { Directory.Delete(dir, true); }
         }
 
         // ------------------------------------------------------------------
-        // W4: Profil der Kontrollrechnungen
+        // W4: Control run profile
         // ------------------------------------------------------------------
 
         [Theory]
-        [InlineData("Kal1", true)]
-        [InlineData("Kal2D_3", true)]
-        [InlineData("Kal3D_4", true)]
-        [InlineData("Fein1", true)]
-        [InlineData("Fein_Gen3", true)]
+        [InlineData("Cal1", true)]
+        [InlineData("Cal2D_3", true)]
+        [InlineData("Cal3D_4", true)]
+        [InlineData("Fine1", true)]
+        [InlineData("Fine_Gen3", true)]
         [InlineData("Recheck", true)]
         [InlineData("", false)]
         [InlineData(null, false)]
@@ -280,10 +280,10 @@ namespace FluidForge.Tests
         [Fact]
         public void The_Doorman_Control_Run_Is_Not_A_Control_Run()
         {
-            // Variante 99 (Türsteher) trägt keinen Tag und rechnet mit dem normalen Profil.
+            // Variant 99 (bouncer) carries no tag and runs with the normal profile.
             var record = new ModelRecord { Iteration = 3, Variant = 99 };
             Assert.Equal(string.Empty, Su2Solver.ExtractTag("/x/Model_Gen3_Var99.su2", record));
-            Assert.Equal("Kal5", Su2Solver.ExtractTag("/x/Model_Gen3_Var99_Kal5.su2", record));
+            Assert.Equal("Cal5", Su2Solver.ExtractTag("/x/Model_Gen3_Var99_Cal5.su2", record));
         }
 
         [Fact]
@@ -296,7 +296,7 @@ namespace FluidForge.Tests
             Assert.Equal(500, control.CauchyElements);
             Assert.Equal("1e-5", control.CauchyTolerance);
             Assert.Equal(0.1f, control.IterativeToleranceFraction);
-            // Das Original bleibt unverändert.
+            // The original remains unchanged.
             Assert.Equal(3000, normal.Su2MaxIterations);
             Assert.Equal(0.25f, normal.IterativeToleranceFraction);
 
@@ -305,7 +305,7 @@ namespace FluidForge.Tests
             Assert.Equal(900, big.CauchyElements);
         }
 
-        // ------------------------------------------------------------------ Paket B: drei Zustände
+        // ------------------------------------------------------------------ Package B: three states
 
         [Fact]
         public void Batch_Statistics_Tell_An_Oscillation_From_A_Drift()
@@ -325,7 +325,7 @@ namespace FluidForge.Tests
             Assert.False(sigConst);
             Assert.Equal(0.0, seConst, 9);
 
-            Assert.False(Su2HistoryAnalyzer.BatchStatistics(new List<float> { 1, 2, 3 }, out _, out _));   // zu kurz
+            Assert.False(Su2HistoryAnalyzer.BatchStatistics(new List<float> { 1, 2, 3 }, out _, out _));   // too short
         }
 
         private static ModelRecord ReadWithFailOnUnconverged(string[] history, out string path)
@@ -342,14 +342,14 @@ namespace FluidForge.Tests
         [Fact]
         public void Vortex_Shedding_Is_Unsteady_But_Stable_Not_A_Failure()
         {
-            // CD pendelt langsam und kräftig (±20 %, Periode etwa 70 Zeilen) um 0,03: die Halbfenster-Mittel
-            // unterscheiden sich, die einfache Drift-Prüfung schlägt an, aber es gibt keinen Trend.
+            // CD oscillates slowly and strongly (±20%, period about 70 rows) around 0.03: half-window means
+            // differ, the simple drift check triggers, but there is no trend.
             var record = ReadWithFailOnUnconverged(History(800, i => 0.03 * (1 + 0.2 * Math.Sin(i * 0.09)), i => 1.0), out string path);
             try
             {
                 Assert.False(record.SimulationFailed);
                 Assert.Equal(1f, record.PassiveParameters["Su2_Unsteady"]);
-                Assert.InRange(record.PassiveParameters["Drag"], 0.029f, 0.031f);   // Fenstermittel, nicht der letzte Wert
+                Assert.InRange(record.PassiveParameters["Drag"], 0.029f, 0.031f);   // window mean, not the last value
                 Assert.True(MetricUncertainty.TryGet(record, "Drag", out double u));
                 Assert.InRange(u, 1e-5, 0.1);
             }
@@ -359,7 +359,7 @@ namespace FluidForge.Tests
         [Fact]
         public void A_Real_Drift_Still_Counts_As_Failed_When_Configured()
         {
-            // CD wandert stetig weiter: echter iterativer Fehler.
+            // CD drifts steadily further: genuine iterative error.
             var record = ReadWithFailOnUnconverged(History(800, i => 0.03 * (1 + 0.0005 * i), i => 1.0), out string path);
             try
             {
@@ -387,8 +387,8 @@ namespace FluidForge.Tests
         public void Control_Runs_Always_Use_The_Tail_Mean()
         {
             string path = Path.Combine(Path.GetTempPath(), "hist_" + Guid.NewGuid().ToString("N") + ".csv");
-            // Auskonvergiert, nur der letzte Wert weicht minimal ab: normale Rechnung nimmt ihn ("Last"),
-            // die Kontrollrechnung das Mittel des Endfensters.
+            // Fully converged, only the last value deviates slightly: normal run takes it ("Last"),
+            // control run takes the tail window mean.
             File.WriteAllLines(path, History(400, i => i == 399 ? 0.0302 : 0.03, i => 1.0));
             try
             {

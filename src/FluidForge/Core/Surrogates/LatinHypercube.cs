@@ -3,18 +3,17 @@ using System;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Latin-Hypercube-Stichprobe im Einheitswürfel: In jeder Dimension liegt in jedem der n gleich
-    /// breiten Intervalle genau ein Punkt (TODO-54). Das ist der Versuchsplan (DoE) für den Anfang.
+    /// Latin Hypercube sampling in the unit hypercube: in each dimension, every one of the n
+    /// equal-width strata contains exactly one sample. Used for the initial Design of Experiments (DoE).
     /// </summary>
     public static class LatinHypercube
     {
-        /// <summary>Anzahl der Zufallspläne, aus denen der mit dem größten Mindestabstand bleibt.</summary>
+        /// <summary>Number of random plans evaluated to select the one with the largest minimum distance.</summary>
         public const int MaximinCandidates = 20;
 
         /// <summary>
-        /// <paramref name="n"/> Punkte in <paramref name="d"/> Dimensionen. Aus
-        /// <see cref="MaximinCandidates"/> Zufallsplänen wird der mit dem größten Mindestabstand
-        /// zwischen zwei Punkten behalten (Maximin).
+        /// Generates <paramref name="n"/> points in <paramref name="d"/> dimensions.
+        /// Selects the maximin design out of <see cref="MaximinCandidates"/> random candidates.
         /// </summary>
         public static double[][] Sample(int n, int d, Random random)
         {

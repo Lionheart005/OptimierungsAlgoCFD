@@ -3,28 +3,28 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Vorgabedaten für den 2D-Gmsh-CFD-Vernetzer (TODO-45): Fernfeldradius, Grenzschicht-Auflösung
-    /// (y+, Wachstumsrate, Mindestschichten), Kontur- und Feldzellgrößen sowie Nachlaufbox.
-    /// Werden aus <c>solvers/gmsh.json</c> geladen und per Konstruktor injiziert.
+    /// Configuration options for the 2D Gmsh CFD mesher: farfield radius, boundary-layer resolution
+    /// (y+, growth rate, minimum layers), contour and field cell sizes, and wake box.
+    /// Loaded from <c>solvers/gmsh.json</c> and injected via constructor.
     /// </summary>
     public class Gmsh2DMesherOptions : ICalibrationMesherOptions
     {
-        // --- Fernfeld (Simulationsdomäne) ---
+        // --- Farfield (simulation domain) ---
 
         /// <summary>
-        /// Kreisförmiges Fernfeld als Vielfaches der Sehnenlänge c (Vorgabe 500 wie die NASA-TMR-Gitter;
-        /// in 2D klingt die Zirkulation nur mit 1/r ab, ein zu kleines Fernfeld verfälscht den Auftrieb).
-        /// Die Zellen wachsen nach außen (<see cref="NearfieldGrowthDistanceFactor"/>), das große Fernfeld
-        /// kostet deshalb nur wenige tausend Zellen. Bis TODO-W6 war die Vorgabe 50.
+        /// Circular farfield radius as a multiple of chord length c (default 500, matching NASA TMR grids;
+        /// in 2D circulation decays only as 1/r, so too small a farfield distorts lift).
+        /// Cells grow outward (<see cref="NearfieldGrowthDistanceFactor"/>), so the large farfield
+        /// adds only a few thousand cells.
         /// </summary>
         public float FarfieldRadiusFactor { get; set; } = 500.0f;
 
-        /// <summary>Anzahl der Segmente für die Fernfeld-Kreisbögen.</summary>
+        /// <summary>Number of segments for the farfield circular arcs.</summary>
         public int FarfieldCircleSegments { get; set; } = 64;
 
-        // --- Grenzschicht-Auflösung (BoundaryLayer Field) ---
+        // --- Boundary-layer resolution (BoundaryLayer Field) ---
 
-        /// <summary>Ziel-y+ für die erste Zellhöhe an der Wand (Standard 1.0).</summary>
+        /// <summary>Target y+ for the first wall-normal cell height (default 1.0).</summary>
         public float TargetYPlus { get; set; } = 1.0f;
 
         /// <inheritdoc />
@@ -33,86 +33,85 @@ namespace FluidForge.Solvers.Cfd
         /// <inheritdoc />
         bool ICalibrationMesherOptions.Is3D => false;
 
-        /// <summary>Wachstumsfaktor von Schicht zu Schicht in der Grenzschicht (Standard 1.2).</summary>
+        /// <summary>Layer-to-layer growth rate in the boundary layer (default 1.2).</summary>
         public float BoundaryLayerGrowthRate { get; set; } = 1.2f;
 
-        /// <summary>Mindestanzahl an Randschichten (Standard 4).</summary>
+        /// <summary>Minimum number of boundary layers (default 4).</summary>
         public int BoundaryLayerMinLayers { get; set; } = 4;
 
-        /// <summary>Feste Schichtanzahl; 0 = automatisch aus Grenzschichtdicke delta berechnen.</summary>
+        /// <summary>Fixed layer count; 0 = compute automatically from boundary-layer thickness delta.</summary>
         public int BoundaryLayerLayers { get; set; } = 0;
 
-        // --- Zellgrößen relativ zur Sehnenlänge L auf Stufe 1.0 ---
+        // --- Cell sizes relative to chord length L at mesh factor 1.0 ---
 
         /// <summary>
-        /// Kontur-Zellgröße als Bruchteil der Bezugslänge/Sehne L auf Stufe 1.0 (z. B. 0.01 = L/100).
+        /// Contour cell size as a fraction of reference length/chord L at mesh factor 1.0 (e.g. 0.01 = L/100).
         /// </summary>
         public float SurfaceCellSizeFactor { get; set; } = 0.01f;
 
         /// <summary>
-        /// Kontur-Zellgröße in mm auf Stufe 1.0; > 0 überschreibt SurfaceCellSizeFactor * L.
+        /// Contour cell size in mm at mesh factor 1.0; &gt; 0 overrides SurfaceCellSizeFactor * L.
         /// </summary>
         public float SurfaceCellSizeMm { get; set; } = 0.0f;
 
-        /// <summary>Nahfeld-Zellgröße als Bruchteil von L auf Stufe 1.0 (z. B. 0.04 = L/25).</summary>
+        /// <summary>Nearfield cell size as a fraction of L at mesh factor 1.0 (e.g. 0.04 = L/25).</summary>
         public float NearfieldCellSizeFactor { get; set; } = 0.04f;
 
         /// <summary>
-        /// Fernfeld-Zellgröße als Vielfaches von L auf Stufe 1.0 (Vorgabe 25; bei Radius 500 c sind das
-        /// ~1,3 Tausend Zellen im Fernfeld). Faustregel: Radius / 20.
+        /// Farfield cell size as a multiple of L at mesh factor 1.0 (default 25; at radius 500 c this yields
+        /// ~1.3k farfield cells). Rule of thumb: radius / 20.
         /// </summary>
         public float FarfieldCellSizeFactor { get; set; } = 25.0f;
 
         /// <summary>
-        /// Abstand vom Körper (als Vielfaches von L), über den die Zellgröße vom Nahfeld auf die
-        /// Fernfeldgröße wächst. 0 = automatisch 0,4 · <see cref="FarfieldRadiusFactor"/>. Ein langer,
-        /// gleichmäßiger Übergang vermeidet verzerrte Zellen und spart Zellen (TODO-W6).
+        /// Distance from the body (as a multiple of L) over which cell size grows from nearfield to
+        /// farfield size. 0 = automatic 0.4 * <see cref="FarfieldRadiusFactor"/>. A long, smooth
+        /// transition avoids skewed cells and saves cell count.
         /// </summary>
         public float NearfieldGrowthDistanceFactor { get; set; } = 0.0f;
 
-        // --- Nachlauf-Verfeinerung (Wake Box) ---
+        // --- Wake refinement (Wake Box) ---
 
-        /// <summary>Nachlauf-Verfeinerungsbox an/aus (Standard true in 2D).</summary>
+        /// <summary>Enable/disable wake refinement box (default true in 2D).</summary>
         public bool WakeRefinement { get; set; } = true;
 
-        /// <summary>Länge der Nachlauf-Box stromabwärts als Vielfaches der Sehne L (Standard 3.0).</summary>
+        /// <summary>Downstream wake-box length as a multiple of chord L (default 3.0).</summary>
         public float WakeLengthFactor { get; set; } = 3.0f;
 
-        /// <summary>Halbe Überbreite der Nachlauf-Box in Y als Vielfaches der Sehne L (Standard 0.6).</summary>
+        /// <summary>Half-width padding of the wake box in Y as a multiple of chord L (default 0.6).</summary>
         public float WakeWidthFactor { get; set; } = 0.6f;
 
-        /// <summary>Zellgröße in der Nachlauf-Box als Bruchteil von L auf Stufe 1.0 (Standard 0.04).</summary>
+        /// <summary>Cell size inside the wake box as a fraction of L at mesh factor 1.0 (default 0.04).</summary>
         public float WakeCellSizeFactor { get; set; } = 0.04f;
 
-        // --- Detailbox um und hinter dem Modell (TODO-W6) ---
+        // --- Detail box around and behind the model ---
 
         /// <summary>
-        /// Sehr feine Box um und hinter dem Profil, damit Nachlauf und Wirbel in Modellnähe stimmen.
-        /// Gilt für jede Rechnung (keine Sonderbehandlung des Anstellwinkels). Skaliert mit dem
-        /// Netzfaktor, die Kalibrierung prüft sie also mit. Standard an.
+        /// Very fine box around and behind the profile to resolve near-wake and vortices.
+        /// Applies to all runs (no special-casing of angle of attack). Scales with the mesh
+        /// refinement factor during calibration. Default true.
         /// </summary>
         public bool DetailBox { get; set; } = true;
 
-        /// <summary>Länge der Detailbox hinter der Hinterkante als Vielfaches von L (Standard 1.0).</summary>
+        /// <summary>Detail-box length behind the trailing edge as a multiple of L (default 1.0).</summary>
         public float DetailBoxLengthFactor { get; set; } = 1.0f;
 
-        /// <summary>Überstand der Detailbox ober- und unterhalb des Profils als Vielfaches von L (Standard 0.25).</summary>
+        /// <summary>Detail-box padding above and below the profile as a multiple of L (default 0.25).</summary>
         public float DetailBoxWidthFactor { get; set; } = 0.25f;
 
-        /// <summary>Zellgröße in der Detailbox als Bruchteil von L auf Stufe 1.0 (Standard 0.01 = L/100).</summary>
+        /// <summary>Cell size inside the detail box as a fraction of L at mesh factor 1.0 (default 0.01 = L/100).</summary>
         public float DetailBoxCellSizeFactor { get; set; } = 0.01f;
 
-        // --- Vorder- und Hinterkante ---
+        // --- Leading and trailing edges ---
 
         /// <summary>
-        /// Faktor für die Wandzellgröße an Vorder- und Hinterkante (Standard 0.25 = ein Viertel der
-        /// Konturzellgröße). Die Saugspitze an der Vorderkante und die Hinterkante bestimmen Auftrieb
-        /// und Widerstand am stärksten (NASA-TMR: Auflösung an der Hinterkante ist der wichtigste
-        /// Einfluss auf die Genauigkeit). 1 = keine Sonderverfeinerung.
+        /// Factor on wall cell size at leading and trailing edges (default 0.25 = one quarter of
+        /// contour cell size). Leading-edge suction peak and trailing-edge resolution dominate lift
+        /// and drag accuracy (per NASA TMR). 1 = no extra edge refinement.
         /// </summary>
         public float EdgeRefinementFactor { get; set; } = 0.25f;
 
-        /// <summary>Abstand um Vorder- und Hinterkante (als Vielfaches von L), über den die Verfeinerung ausläuft (Standard 0.1).</summary>
+        /// <summary>Distance around leading and trailing edges (as a multiple of L) over which refinement fades out (default 0.1).</summary>
         public float EdgeRefinementDistanceFactor { get; set; } = 0.1f;
     }
 }

@@ -1,15 +1,12 @@
 {
-  // MyProject -- Gmsh-Vernetzer. Was jeder Schluessel bewirkt: src/projects/BEDIENHANDBUCH.md
+  // MyProject -- Gmsh Mesher. Plain-text reference: src/projects/BEDIENHANDBUCH.md
   //
-  // Diese Datei nennt jeden Schluessel mit seinem Code-Standard (Solvers/Cfd/GmshMesherOptions.cs).
-  // In einem echten Projekt bleibt nur stehen, was abweicht. Ein unbekannter Schluessel bricht den
-  // Start ab. Nicht hier, sondern in ../simulation.json: GmshCores, GmshPath.
-  // Rechnerspezifisches gehoert in gmsh.local.json.
+  // Lists every key with its code default (Solvers/Cfd/GmshMesherOptions.cs).
+  // In a real project, keep only overrides. GmshCores and GmshPath live in ../simulation.json.
+  // Machine-specific overrides belong in gmsh.local.json.
 
-  // --- Windkanal in mm ("Box" aus TunnelSize*, "Cylinder" aus TunnelDiameter/-Length/-Segments) ---
-  // Der Kanal muss deutlich groesser sein als das Modell, sonst wird der Widerstand zu hoch. Die Vorgabe
-  // passt zu etwa 50 mm Modelllaenge: 6 L davor, 14 L dahinter (Faustregel >= 10 L Nachlauf).
-  // Bei groesseren Modellen proportional mitwachsen lassen (MantaAuv, ~100 mm: 1200 lang, Mitte 300).
+  // --- Wind tunnel in mm ("Box" via TunnelSize*, "Cylinder" via TunnelDiameter/-Length/-Segments) ---
+  // Keep the tunnel much larger than the model (rule of thumb: >= 10 L wake downstream).
   "TunnelShape": "Box",
   "TunnelSizeX": 1000.0,
   "TunnelSizeY": 300.0,
@@ -21,22 +18,21 @@
   "TunnelLength": 1000.0,
   "TunnelSegments": 64,
 
-  // --- Physikalische Domaenengarantien (automatische Aufweitung nach aussen, entkoppelt von scaleFactor) ---
-  // Mindestens 5 L stromaufwaerts, 15 L stromabwaerts, 5 B/H seitlich und max. 0.3 % Versperrungsgrad (<= 0 deaktiviert Blockage-Aufweitung).
+  // --- Physical domain guarantees (automatic outward expansion, decoupled from scaleFactor) ---
+  // At least 5 L upstream, 15 L downstream, 5 W/H lateral, and max 0.3% blockage (<= 0 disables blockage expansion).
   "TunnelMinUpstreamFactor": 5.0,
   "TunnelMinDownstreamFactor": 15.0,
   "TunnelMinLateralFactor": 5.0,
   "TunnelMaxBlockagePercent": 0.3,
 
-  // --- Zellgroessen im Abstandsfeld (mm): SizeMin bis DistMin Abstand von der Wand, SizeMax ab DistMax ---
+  // --- Distance field cell sizes (mm): SizeMin up to DistMin from wall, SizeMax beyond DistMax ---
   "BoundaryLayerSizeMin": 1.2,
   "BoundaryLayerSizeMax": 120.0,
   "BoundaryLayerDistMin": 3.0,
   "BoundaryLayerDistMax": 40.0,
 
-  // --- Feine Boxen hinter dem Modell (Nachlauf bestimmt den Druckwiderstand mit) ---
-  // WakeCellSize / DetailBoxCellSize in mm auf Stufe 1.0; 0 = automatisch. Die Detailbox kostet in 3D
-  // viele Zellen; die Netzkalibrierung prueft sie mit, MaxCells3D deckelt die Zellzahl.
+  // --- Wake refinement boxes ---
+  // WakeCellSize / DetailBoxCellSize in mm at level 1.0; 0 = automatic.
   "WakeRefinement": true,
   "WakeLengthFactor": 2.0,
   "WakeWidthFactor": 0.5,
@@ -47,18 +43,12 @@
   "DetailBoxMinHeightLengthFactor": 0.15,
   "DetailBoxCellSize": 0.0,
 
-  // --- Wandschicht ---
-  // "Prism": Prismenschichten, y+ ~ 1.5 (Standard; Empfehlung fuer Voxel-Koerper, Handbuch 4.4).
-  // "Threshold": y+ ~ 30-70, fuer SA zu grob, nur fuer Vorablaeufe -> bricht bei MeshCalibration.Mode = "Auto"
-  // sofort ab, solange TargetYPlus x YPlusWarnFactor in solvers/su2.json < 30 liegt (fuer Vorablaeufe Mode: "Manual" setzen).
-  // "Hexa": nur glatte Koerper ohne scharfe Kanten.
-  // WICHTIG (Synchronpflicht): TargetYPlus legt hier die erste Zellhoehe y1 fest und MUSS gleich wie in solvers/su2.json
-  // sein; dort bildet TargetYPlus x YPlusWarnFactor das harte Akzeptanzlimit fuer Solver und Auto-Kalibrierung.
-  // Schichtanzahl 0 = automatisch; SurfaceCellSize 0 = BoundaryLayerSizeMin.
-  // Die Schichtzahl und die erste Zellhoehe stehen fuer alle Varianten und Kalibrierstufen fest (ein kleinerer
-  // MeshRefinementFactor verkleinert y1 NICHT!). Scheitert Gmsh an einer Kehle, aendert das Programm nur Richtung
-  // und Dicke der Schicht (nie die Schichtzahl, Handbuch 4.4).
-  // BoundaryLayerCoverage: Wandschicht = Faktor x Grenzschichtdicke (1.0 genau; Literatur oft 1.2-1.5, kostet Zellen).
+  // --- Boundary layer ---
+  // "Prism": prism layers, y+ ~ 1.5 (recommended default for voxel bodies).
+  // "Threshold": y+ ~ 30-70, coarse; fails MeshCalibration.Mode = "Auto" if TargetYPlus x YPlusWarnFactor < 30.
+  // "Hexa": smooth bodies without sharp edges only.
+  // IMPORTANT: TargetYPlus sets the real first cell height y1 and MUST match solvers/su2.json.
+  // BoundaryLayerLayers = 0 -> automatic; SurfaceCellSize = 0 -> BoundaryLayerSizeMin.
   "BoundaryLayerMode": "Prism",
   "TargetYPlus": 1.5,
   "BoundaryLayerMinLayers": 4,
@@ -67,7 +57,7 @@
   "BoundaryLayerCoverage": 1.0,
   "SurfaceCellSize": 0.0,
 
-  // --- Neuvernetzung der Oberflaeche ---
+  // --- Surface remeshing ---
   "MeshSizeFromCurvature": true,
   "CurvatureElements": 20,
   "CurvatureMinSizeFactor": 0.5,

@@ -1,18 +1,17 @@
 {
-  // Was jeder Schluessel bewirkt, in Klartext: src/projects/BEDIENHANDBUCH.md
+  // Plain-text reference for every key: src/projects/BEDIENHANDBUCH.md
   // ===================================================================
-  //  Naca2D -- Projektvorgaben
+  //  Naca2D -- Project Settings
   // ===================================================================
   //
-  // Zweidimensionales NACA-Tragflügelprofil (TODO-47).
-  // Die Manifestdatei heisst in JEDEM Projekt "project.json".
-  // DER PROJEKTNAME STEHT NIRGENDS IN DIESER DATEI. Er ist der Ordnername.
+  // Two-dimensional NACA airfoil.
+  // The manifest file is named "project.json" in EVERY project.
+  // THE PROJECT NAME IS NEVER WRITTEN IN THIS FILE. It comes from the folder name.
   //
-  // Was hier fehlt, kommt aus Naca2DProject.CreateDefaults() nebenan. Diese
-  // Datei und der Code-Standard dort sind deckungsgleich.
+  // Anything omitted here falls back to Naca2DProject.CreateDefaults().
 
-  // --- Startwerte der aktiven Parameter (% der Sehnenlänge c) ---
-  // NACA 0012: 0% Wölbung, 40% Wölbungsrücklage, 12% maximale Dicke.
+  // --- Initial active parameter values (% of chord length c) ---
+  // NACA 0012: 0% camber, 40% camber position, 12% maximum thickness.
   "BaseParameters": {
     "MaxCamber": 0.0,
     "CamberPosition": 40.0,
@@ -20,7 +19,7 @@
     "AngleOfAttackDeg": 0.0
   },
 
-  // --- Anfaengliche Mutationsstaerke (Sigma-Streuung) ---
+  // --- Initial mutation step sizes (sigma) ---
   "MaxDeviations": {
     "MaxCamber": 0.8,
     "CamberPosition": 6.0,
@@ -28,7 +27,7 @@
     "AngleOfAttackDeg": 2.0
   },
 
-  // --- Harte Grenzen fuer physikalische Plausibilitaet ---
+  // --- Hard bounds for physical plausibility ---
   "ParameterBounds": {
     "MaxCamber": { "Min": 0.0, "Max": 8.0 },
     "CamberPosition": { "Min": 15.0, "Max": 75.0 },
@@ -36,11 +35,11 @@
     "AngleOfAttackDeg": { "Min": -10.0, "Max": 30.0 }
   },
 
-  // --- Optimierungsziele (gehen in die Fitness-Formel ein) ---
-  // Leer, da die Fitness als Gleitzahl CL / CD formuliert ist.
+  // --- Optimization targets (used by the fitness formula) ---
+  // Empty because fitness is formulated as glide ratio CL / CD.
   "OptimizationTargets": {},
 
-  // --- Dimensionsbehaftete Parameter (werden mitskaliert) ---
-  // Leer: Alle drei Parameter sind dimensionslose Prozentwerte relativ zur Sehnenlänge.
+  // --- Dimensional parameters (scaled by RubberBandScaler) ---
+  // Empty: all parameters are dimensionless percentages of chord length (or degrees).
   "DimensionalParameters": []
 }

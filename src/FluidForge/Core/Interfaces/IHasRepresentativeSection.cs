@@ -1,9 +1,8 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Optionale Schnittstelle für 3D-Projekte, die einen repräsentativen 2D-Querschnitt
-    /// besitzen (z.B. Tragflügel, Profile, Leitbleche) und damit die 2D-Vorkalibrierung
-    /// vor der 3D-Bestätigung nutzen können (TODO-48, Entscheidung E7).
+    /// Optional interface for 3D projects that have a representative 2D cross-section
+    /// (e.g., wings, airfoils, fins) and can therefore use 2D pre-calibration before 3D confirmation.
     /// </summary>
     public interface IHasRepresentativeSection
     {

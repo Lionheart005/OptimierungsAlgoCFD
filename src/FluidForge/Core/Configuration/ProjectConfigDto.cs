@@ -4,12 +4,11 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// JSON-Abbild der <see cref="ProjectConfig"/>.
+    /// JSON representation of <see cref="ProjectConfig"/>.
     ///
-    /// Eigene Klasse, weil <c>System.Text.Json</c> das ValueTuple
-    /// <c>(float Min, float Max)</c> in <see cref="ProjectConfig.ParameterBounds"/> nicht
-    /// serialisieren kann (Item1/Item2 sind Felder, keine Properties). In der JSON-Datei
-    /// steht deshalb <c>"Length": { "Min": 30, "Max": 100 }</c>.
+    /// Separate DTO class because <c>System.Text.Json</c> cannot serialize the ValueTuple
+    /// <c>(float Min, float Max)</c> in <see cref="ProjectConfig.ParameterBounds"/> (Item1/Item2
+    /// are fields, not properties). In JSON this is written as <c>"Length": { "Min": 30, "Max": 100 }</c>.
     /// </summary>
     public class ProjectConfigDto
     {
@@ -45,7 +44,7 @@ namespace FluidForge.Core
         };
     }
 
-    /// <summary>Unter- und Obergrenze eines Parameters, JSON-tauglich.</summary>
+    /// <summary>Lower and upper bound of a parameter, JSON-serializable.</summary>
     public class ParameterBoundsDto
     {
         public float Min { get; set; }

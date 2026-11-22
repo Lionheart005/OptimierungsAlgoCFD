@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Auswertung und Visualisierung von SU2-Konvergenzverläufen (history.csv, TODO-36).
+Analysis and visualization of SU2 convergence histories (history.csv).
 
-Unterstützt drei Modi:
-  Mode A: Übersichtstabelle über alle Varianten in einem Ordner (Standard ohne --var und ohne --compare).
-  Mode B: Detaillierter 3-teiliger Konvergenzplot einer einzelnen Variante (als PNG neben der CSV).
-  Mode C: Vergleich mehrerer Varianten in einem Überlagerungs-Plot (--compare).
+Supports three modes:
+  Mode A: Summary table across all variants in a directory (default without --var and --compare).
+  Mode B: Detailed 3-panel convergence plot for a single variant (saved next to the CSV).
+  Mode C: Overlay comparison plot of multiple variants (--compare).
 """
 
 import sys
@@ -16,8 +16,7 @@ import argparse
 import json
 from pathlib import Path
 
-# Falls --show nicht übergeben wurde, Headless-Backend 'Agg' aktivieren,
-# damit automatisierte Skripte/Tests nicht durch blockierende GUI-Fenster hängen bleiben.
+# Activate headless backend 'Agg' unless --show is passed
 if "--show" not in sys.argv:
     import matplotlib
     matplotlib.use("Agg")
@@ -27,12 +26,12 @@ import pandas as pd
 import numpy as np
 
 
-# Standard-Präfixe für aerodynamische Beiwerte in SU2
+# Standard prefixes for aerodynamic coefficients in SU2
 KNOWN_AERO_PREFIXES = ["CD", "CL", "CSF", "CMX", "CMY", "CMZ", "CEFF"]
 
 
 def parse_export_formats(args):
-    """Ermittelt die Liste der Exportformate aus --formats und --vector."""
+    """Determine export image formats from --formats and --vector."""
     if getattr(args, "vector", False):
         return ["png", "pdf", "svg"]
     if getattr(args, "formats", None):
@@ -42,7 +41,7 @@ def parse_export_formats(args):
 
 
 def save_figure_multi_formats(fig, base_path, formats, dpi=150):
-    """Speichert eine Matplotlib-Figure in mehreren Formaten."""
+    """Save a Matplotlib figure in multiple formats."""
     base = Path(base_path)
     if base.suffix.lower() in [".png", ".pdf", ".svg", ".jpg", ".jpeg"]:
         base = base.with_suffix("")
@@ -51,14 +50,12 @@ def save_figure_multi_formats(fig, base_path, formats, dpi=150):
         out_file = base.with_suffix(f".{fmt}")
         fig.savefig(out_file, dpi=dpi, bbox_inches="tight")
         saved.append(out_file)
-        print(f"Plot gespeichert: {out_file}")
+        print(f"Saved plot: {out_file}")
     return saved
 
 
 def parse_su2_cfg(cfg_path):
-    """
-    Liest ITER, CONV_CAUCHY_ELEMS und CONV_CAUCHY_EPS aus einer SU2-Konfigurationsdatei (.cfg).
-    """
+    """Read ITER, CONV_CAUCHY_ELEMS, and CONV_CAUCHY_EPS from an SU2 .cfg file."""
     params = {}
     if not os.path.isfile(cfg_path):
         return params
@@ -66,7 +63,6 @@ def parse_su2_cfg(cfg_path):
     try:
         with open(cfg_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
-                # Kommentare entfernen
                 clean_line = line.split("%")[0].strip()
                 if not clean_line or "=" not in clean_line:
                     continue
@@ -94,10 +90,7 @@ def parse_su2_cfg(cfg_path):
 
 
 def parse_effective_config_json(json_path):
-    """
-    Sucht rekursiv nach Su2MaxIterations, CauchyElements und CauchyTolerance
-    in einer effective-config.json.
-    """
+    """Recursively search for Su2MaxIterations, CauchyElements, and CauchyTolerance in effective-config.json."""
     params = {}
     if not os.path.isfile(json_path):
         return params
@@ -137,14 +130,11 @@ def parse_effective_config_json(json_path):
 
 
 def resolve_run_config(csv_path_or_dir):
-    """
-    Findet die für die gegebene Datei oder den Ordner geltenden Konfigurationswerte
-    (ITER, CONV_CAUCHY_ELEMS, CONV_CAUCHY_EPS).
-    """
+    """Resolve ITER, CONV_CAUCHY_ELEMS, and CONV_CAUCHY_EPS for the given file or folder."""
     target = Path(csv_path_or_dir)
     folder = target if target.is_dir() else target.parent
 
-    # 1. Spezifische Config neben der CSV-Datei suchen (z. B. Config_Gen1_Var2.cfg für History_Gen1_Var2.csv)
+    # 1. Specific config next to CSV (e.g., Config_Gen1_Var2.cfg for History_Gen1_Var2.csv)
     if target.is_file():
         stem = target.stem
         cfg_name = stem.replace("History_", "Config_") + ".cfg"
@@ -154,13 +144,13 @@ def resolve_run_config(csv_path_or_dir):
             if params:
                 return params
 
-    # 2. Beliebige Config_*.cfg im selben Ordner
+    # 2. Any Config_*.cfg in the same folder
     for cfg in sorted(folder.glob("Config_*.cfg")):
         params = parse_su2_cfg(cfg)
         if params:
             return params
 
-    # 3. effective-config.json im Verzeichnis oder in Elternordnern
+    # 3. effective-config.json in the folder or parent directories
     curr = folder.resolve()
     for _ in range(4):
         eff = curr / "effective-config.json"
@@ -176,13 +166,9 @@ def resolve_run_config(csv_path_or_dir):
 
 
 def read_history_csv(csv_path):
-    """
-    Liest eine SU2-History-CSV ein, bereinigt Spaltennamen (Quotes, Leerzeichen)
-    und wandelt numerische Werte um.
-    """
+    """Read an SU2 history CSV, clean column names, and coerce values to numeric."""
     df = pd.read_csv(csv_path, skipinitialspace=True)
     df.columns = [str(c).strip().strip("\"'").strip() for c in df.columns]
-    # Unbenannte oder leere Spalten entfernen
     df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
     df = df.dropna(how="all")
     for col in df.columns:
@@ -191,7 +177,7 @@ def read_history_csv(csv_path):
 
 
 def find_iter_column(df):
-    """Ermittelt die Spalte der Iteration (Inner_Iter, ITER, Iter, Iteration)."""
+    """Return the iteration column name (Inner_Iter, ITER, Iter, Iteration)."""
     for candidate in ["Inner_Iter", "ITER", "Iter", "Iteration"]:
         for col in df.columns:
             if col.lower() == candidate.lower():
@@ -201,22 +187,21 @@ def find_iter_column(df):
 
 def resolve_x_axis(df):
     """
-    Ermittelt x-Achsen-Werte und Beschriftung (TODO-37):
-    Falls URANS gerechnet wurde (Cur_Time oder Time_Iter vorhanden),
-    wird physikalische Zeit oder Time_Iter verwendet und entsprechend beschriftet.
-    Sonst reguläre Iteration.
+    Determine x-axis values and label:
+    If URANS was run (varying Cur_Time or Time_Iter), use physical time or time step;
+    otherwise use iteration index.
     """
-    # SU2 7.5.1 schreibt "Time_Iter" auch bei stationaeren Rechnungen, dann konstant 0.
-    # Eine Zeitspalte zaehlt deshalb nur, wenn sie sich aendert (Servertest 06.11.2026).
+    # SU2 7.5.1 also writes a constant Time_Iter=0 for steady runs, so only treat it as
+    # unsteady when the column actually varies.
     def varies(col):
         return df[col].dropna().nunique() > 1
 
     for col in df.columns:
         if col.lower() in ("cur_time", "curtime", "time", "physical_time") and varies(col):
-            return df[col], "Physikalische Zeit [s]"
+            return df[col], "Physical Time [s]"
     for col in df.columns:
         if col.lower() in ("time_iter", "timeiter", "time_iteration") and varies(col):
-            return df[col], "Zeitschritt (Time_Iter)"
+            return df[col], "Time Step (Time_Iter)"
     iter_col = find_iter_column(df)
     if iter_col and iter_col in df.columns:
         return df[iter_col], "Iteration"
@@ -224,11 +209,7 @@ def resolve_x_axis(df):
 
 
 def get_iterations_count(df, iter_col):
-    """
-    Bestimmt die Anzahl gerechneter Iterationen:
-    Wenn iter_col vorhanden ist und der letzte Wert n >= 0 ist -> n + 1 (da SU2 0-basiert zählt).
-    Sonst Anzahl Zeilen.
-    """
+    """Determine number of iterations executed (SU2 uses 0-based indexing)."""
     if iter_col and iter_col in df.columns:
         series = df[iter_col].dropna()
         if len(series) > 0:
@@ -243,15 +224,12 @@ def get_iterations_count(df, iter_col):
 
 
 def find_rms_columns(df):
-    """Gibt alle Spalten zurück, die mit 'rms[' beginnen."""
+    """Return all columns starting with 'rms['."""
     return [c for c in df.columns if c.lower().startswith("rms[")]
 
 
 def compute_residual_drop(df, rms_cols):
-    """
-    Berechnet den Residuenabfall in Dekaden (erste Zeile minus letzte Zeile),
-    da SU2-rms-Werte bereits dekadische Logarithmen sind.
-    """
+    """Compute residual drop in decades (first row minus last row; SU2 RMS is log10)."""
     if not rms_cols:
         return float("nan")
     first_col = rms_cols[0]
@@ -263,23 +241,20 @@ def compute_residual_drop(df, rms_cols):
 
 def detect_metrics(df, requested_metrics=None):
     """
-    Ermittelt die relevanten Metriken:
-    Falls requested_metrics angegeben ist, werden diese gesucht.
-    Andernfalls automatische Erkennung bekannter aero-Koeffizienten (CD, CL, CSF, CMx, CMy, CMz, CEff).
+    Identify relevant metrics. Uses requested_metrics if provided; otherwise
+    auto-detects known aerodynamic coefficients (CD, CL, CSF, CMx, CMy, CMz, CEff).
     """
     cols = list(df.columns)
     if requested_metrics:
         matched = []
         for req in requested_metrics:
             req_clean = req.strip()
-            # Exakte Übereinstimmung (case-insensitive)
             found = None
             for c in cols:
                 if c.lower() == req_clean.lower():
                     found = c
                     break
             if not found:
-                # Präfix-Übereinstimmung (z.B. CD für CD_Wall)
                 for c in cols:
                     if c.lower().startswith(req_clean.lower()):
                         found = c
@@ -289,7 +264,6 @@ def detect_metrics(df, requested_metrics=None):
         if matched:
             return matched
 
-    # Automatische Erkennung
     found = []
     for prefix in KNOWN_AERO_PREFIXES:
         for c in cols:
@@ -301,7 +275,6 @@ def detect_metrics(df, requested_metrics=None):
     if found:
         return found
 
-    # Fallback: alle numerischen Spalten außer Iteration und rms[...]
     iter_col = find_iter_column(df)
     fallback = []
     for c in cols:
@@ -314,8 +287,8 @@ def detect_metrics(df, requested_metrics=None):
 
 def compute_metric_stats(series, cauchy_elems):
     """
-    Berechnet Endwert, Min, Max, Mittelwert und Schwingungsamplitude (max - min) / |mean| in %
-    über das Cauchy-Fenster (die letzten cauchy_elems Zeilen).
+    Compute final value, min, max, mean, and relative oscillation (max - min) / |mean| in %
+    over the Cauchy window (the last cauchy_elems rows).
     """
     series = series.dropna()
     if len(series) == 0:
@@ -342,7 +315,7 @@ def compute_metric_stats(series, cauchy_elems):
 
 
 def extract_variant_name(file_path):
-    """Extrahiert den Variantennamen aus dem Dateinamen (z.B. History_Gen2_Var3.csv -> Gen2_Var3)."""
+    """Extract variant name from filename (e.g., History_Gen2_Var3.csv -> Gen2_Var3)."""
     stem = Path(file_path).stem
     if stem.lower().startswith("history_"):
         return stem[8:]
@@ -351,9 +324,10 @@ def extract_variant_name(file_path):
 
 def find_history_files(target_path):
     """
-    Findet alle History-Dateien:
-    - direkt eine Datei
-    - im Verzeichnis (inklusive Unterordner Analyseergebnisse/Verlaeufe/ und Verlaeufe/)
+    Find all history CSV files:
+    - direct file path
+    - inside directory (checking analysis/histories/ and histories/, with fallback to
+      legacy Analyseergebnisse/Verlaeufe/ and Verlaeufe/)
     """
     p = Path(target_path)
     if p.is_file():
@@ -362,15 +336,15 @@ def find_history_files(target_path):
         return []
 
     candidates = []
-    sub1 = p / "Analyseergebnisse" / "Verlaeufe"
-    if sub1.is_dir():
-        candidates.extend(sorted(sub1.glob("History_*.csv")))
-        candidates.extend(sorted(sub1.glob("history*.csv")))
-
-    sub2 = p / "Verlaeufe"
-    if sub2.is_dir():
-        candidates.extend(sorted(sub2.glob("History_*.csv")))
-        candidates.extend(sorted(sub2.glob("history*.csv")))
+    for sub in [
+        p / "analysis" / "histories",
+        p / "histories",
+        p / "Analyseergebnisse" / "Verlaeufe",
+        p / "Verlaeufe",
+    ]:
+        if sub.is_dir():
+            candidates.extend(sorted(sub.glob("History_*.csv")))
+            candidates.extend(sorted(sub.glob("history*.csv")))
 
     candidates.extend(sorted(p.glob("History_*.csv")))
     candidates.extend(sorted(p.glob("history*.csv")))
@@ -387,21 +361,19 @@ def find_history_files(target_path):
 
 def plot_single_variant(csv_path, args, cfg_defaults):
     """
-    Mode B: Erzeugt einen 3-teiligen Konvergenzplot für eine Variante.
-    Subplot 1: Kennwerte über Iteration
-    Subplot 2: Residuen (logarithmisch)
-    Subplot 3: Konvergenz-Fenster (Cauchy) mit Toleranzband und Schraffur
+    Mode B: Generate a 3-panel convergence plot for a single variant.
+    Subplot 1: Coefficients over iterations / time
+    Subplot 2: Residuals (logarithmic)
+    Subplot 3: Cauchy convergence window with tolerance band and shading
     """
     csv_file = Path(csv_path)
     variant_name = extract_variant_name(csv_file)
     df = read_history_csv(csv_file)
 
     if df.empty:
-        print(f"[WARNUNG] Datei {csv_file.name} ist leer. Überspringe Plot.")
+        print(f"[WARNING] File {csv_file.name} is empty. Skipping plot.")
         return None
 
-    # Parameter auflösen (CLI überschreibt Config, sonst Code-Standard)
-    max_iter = args.max_iter if args.max_iter is not None else cfg_defaults.get("max_iter", 500)
     cauchy_elems = args.cauchy_elems if args.cauchy_elems is not None else cfg_defaults.get("cauchy_elems", 150)
     cauchy_eps = args.cauchy_eps if args.cauchy_eps is not None else cfg_defaults.get("cauchy_eps", 1e-4)
 
@@ -411,12 +383,12 @@ def plot_single_variant(csv_path, args, cfg_defaults):
     rms_cols = find_rms_columns(df)
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(11, 9), sharex=True)
-    fig.suptitle(f"Konvergenzverlauf: {variant_name}", fontsize=13, fontweight="bold")
+    fig.suptitle(f"Convergence History: {variant_name}", fontsize=13, fontweight="bold")
 
     # -------------------------------------------------------------
-    # 1. Kennwerte über Iteration / Zeit
+    # 1. Coefficients over iteration / time
     # -------------------------------------------------------------
-    ax1.set_title(f"Kennwerte über {x_label}", fontsize=10, fontweight="bold")
+    ax1.set_title(f"Metrics vs. {x_label}", fontsize=10, fontweight="bold")
     if len(metrics) == 1:
         m = metrics[0]
         ax1.plot(x, df[m], label=m, color="#1f77b4", linewidth=1.5)
@@ -436,24 +408,22 @@ def plot_single_variant(csv_path, args, cfg_defaults):
         colors = plt.cm.tab10(np.linspace(0, 1, max(len(metrics), 3)))
         for idx, m in enumerate(metrics):
             ax1.plot(x, df[m], label=m, color=colors[idx % len(colors)], linewidth=1.5)
-        ax1.set_ylabel("Beiwert", fontsize=10)
+        ax1.set_ylabel("Coefficient", fontsize=10)
 
-    # Cauchy-Fenster & Toleranzband dezent auch in Subplot 1 visualisieren
     if len(x) >= 2 and cauchy_elems is not None and cauchy_elems > 0:
         w_len = min(cauchy_elems, len(x))
-        ax1.axvspan(x.iloc[-w_len], x.iloc[-1], color="#2ca02c", alpha=0.08, label=f"Cauchy-Fenster ({w_len} Iter.)")
+        ax1.axvspan(x.iloc[-w_len], x.iloc[-1], color="#2ca02c", alpha=0.08, label=f"Cauchy window ({w_len} iter.)")
 
     primary_m = metrics[0] if metrics else None
     if primary_m and primary_m in df.columns and cauchy_eps is not None and cauchy_eps > 0:
         ser = df[primary_m].dropna()
         if len(ser) > 0:
             f_val = float(ser.iloc[-1])
-            ax1.axhspan(f_val - cauchy_eps, f_val + cauchy_eps, color="#2ca02c", alpha=0.10, linestyle=":", label=f"±ε-Band ({primary_m})")
+            ax1.axhspan(f_val - cauchy_eps, f_val + cauchy_eps, color="#2ca02c", alpha=0.10, linestyle=":", label=f"±ε band ({primary_m})")
 
     if len(metrics) == 2:
         lines = line1 + line2
         labels = [l.get_label() for l in lines]
-        # Zusätzliche Handles von ax1 (z.B. vspan/hspan)
         h, l = ax1.get_legend_handles_labels()
         for handle, label in zip(h, l):
             if label not in labels:
@@ -466,48 +436,43 @@ def plot_single_variant(csv_path, args, cfg_defaults):
     ax1.grid(True, linestyle="--", alpha=0.5)
 
     # -------------------------------------------------------------
-    # 2. Residuen (logarithmisch)
+    # 2. Residuals (logarithmic)
     # -------------------------------------------------------------
-    ax2.set_title("Residuen (logarithmisch)", fontsize=10, fontweight="bold")
+    ax2.set_title("Residuals (logarithmic)", fontsize=10, fontweight="bold")
     if rms_cols:
         colors = plt.cm.tab10(np.linspace(0, 1, max(len(rms_cols), 3)))
         for idx, col in enumerate(rms_cols):
             ax2.plot(x, df[col], label=col, color=colors[idx % len(colors)], linewidth=1.2)
         ax2.legend(loc="best")
     else:
-        ax2.text(0.5, 0.5, "Keine RMS-Residuenspalten vorhanden", transform=ax2.transAxes, ha="center", va="center", color="gray")
+        ax2.text(0.5, 0.5, "No RMS residual columns available", transform=ax2.transAxes, ha="center", va="center", color="gray")
 
-    ax2.set_ylabel("log10(RMS-Residuum)", fontsize=10)
+    ax2.set_ylabel("log10(RMS Residual)", fontsize=10)
     ax2.grid(True, linestyle="--", alpha=0.5)
 
     # -------------------------------------------------------------
-    # 3. Konvergenz-Fenster (Cauchy)
+    # 3. Cauchy convergence window
     # -------------------------------------------------------------
-    primary_metric = metrics[0] if metrics else "Wert"
-    ax3.set_title(f"Konvergenz-Fenster (Cauchy) – {primary_metric}", fontsize=10, fontweight="bold")
+    primary_metric = metrics[0] if metrics else "Value"
+    ax3.set_title(f"Cauchy Convergence Window – {primary_metric}", fontsize=10, fontweight="bold")
 
     if primary_metric in df.columns:
         series = df[primary_metric]
         stats = compute_metric_stats(series, cauchy_elems)
-        ax3.plot(x, series, label=f"{primary_metric} Verlauf", color="#1f77b4", linewidth=1.5)
+        ax3.plot(x, series, label=f"{primary_metric} history", color="#1f77b4", linewidth=1.5)
 
         if stats:
             final_val = stats["final_val"]
             window_len = stats["window_len"]
 
-            # Horizontale Linie für Endwert
-            ax3.axhline(final_val, color="#2ca02c", linestyle="--", linewidth=1.3, label=f"Endwert ({final_val:.4f})")
+            ax3.axhline(final_val, color="#2ca02c", linestyle="--", linewidth=1.3, label=f"Final value ({final_val:.4f})")
+            ax3.axhspan(final_val - cauchy_eps, final_val + cauchy_eps, color="#2ca02c", alpha=0.2, label=f"Tolerance band (±{cauchy_eps:.1e})")
 
-            # Toleranzband final_val ± cauchy_eps schattieren
-            ax3.axhspan(final_val - cauchy_eps, final_val + cauchy_eps, color="#2ca02c", alpha=0.2, label=f"Toleranzband (±{cauchy_eps:.1e})")
-
-            # Cauchy-Fenster schattieren / schraffieren
             if len(x) >= window_len:
                 x_start = x.iloc[-window_len]
                 x_end = x.iloc[-1]
-                ax3.axvspan(x_start, x_end, color="#7f7f7f", alpha=0.18, hatch="//", label=f"Cauchy-Fenster ({window_len} Iter.)")
+                ax3.axvspan(x_start, x_end, color="#7f7f7f", alpha=0.18, hatch="//", label=f"Cauchy window ({window_len} iter.)")
 
-            # Y-Achse zoomen, um das Verhalten im Cauchy-Fenster vergrößert darzustellen
             span = max(stats["max"] - stats["min"], 2.0 * cauchy_eps, 1e-4)
             margin = 0.6 * span
             y_lower = min(stats["min"], final_val - cauchy_eps) - margin
@@ -535,20 +500,19 @@ def plot_single_variant(csv_path, args, cfg_defaults):
 
 def plot_comparison(history_files, target_dir, args, cfg_defaults):
     """
-    Mode C: Überlagert die Kennwert- und Residuenverläufe mehrerer Varianten in einem Plot.
-    Speichert History_Compare.png im Zielordner.
+    Mode C: Overlay metric and residual histories of multiple variants in one plot.
+    Saves History_Compare.png in target_dir.
     """
     if not history_files:
-        print("[FEHLER] Keine Verlaufsdateien für den Vergleich gefunden.")
+        print("[ERROR] No history files found for comparison.")
         return None
 
-    # Erste Datei für Metrikerkennung und Config analysieren
     first_df = read_history_csv(history_files[0])
     metrics = detect_metrics(first_df, args.metrics)
     primary_metric = metrics[0] if metrics else "CD"
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
-    fig.suptitle(f"Vergleich der Varianten ({len(history_files)} gerechnet)", fontsize=13, fontweight="bold")
+    fig.suptitle(f"Variant Comparison ({len(history_files)} evaluated)", fontsize=13, fontweight="bold")
 
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(history_files), 3)))
     x_label = "Iteration"
@@ -562,19 +526,15 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
         x, x_label = resolve_x_axis(df)
         color = colors[idx % len(colors)]
 
-        # 1. Kennwert-Verlauf
         if primary_metric in df.columns:
             ax1.plot(x, df[primary_metric], label=var_name, color=color, linewidth=1.5)
 
-        # 2. Residuen-Verlauf (erste gefundene rms[...]-Spalte)
         rms_cols = find_rms_columns(df)
         if rms_cols and rms_cols[0] in df.columns:
             ax2.plot(x, df[rms_cols[0]], label=var_name, color=color, linewidth=1.2)
 
-    # Cauchy-Fenster visualisieren, falls konfiguriert
     cauchy_elems = args.cauchy_elems if args.cauchy_elems is not None else cfg_defaults.get("cauchy_elems", None)
     if cauchy_elems and cauchy_elems > 0:
-        # Ermittle die maximale X-Koordinate über alle Kurven
         all_x_max = 0
         for f in history_files:
             try:
@@ -585,16 +545,16 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
             except Exception:
                 pass
         if all_x_max > cauchy_elems:
-            ax1.axvspan(all_x_max - cauchy_elems, all_x_max, color="#2ca02c", alpha=0.10, hatch="//", label=f"Cauchy-Fenster ({cauchy_elems} Iter.)")
+            ax1.axvspan(all_x_max - cauchy_elems, all_x_max, color="#2ca02c", alpha=0.10, hatch="//", label=f"Cauchy window ({cauchy_elems} iter.)")
 
-    ax1.set_title(f"Kennwert: {primary_metric}", fontsize=10, fontweight="bold")
+    ax1.set_title(f"Metric: {primary_metric}", fontsize=10, fontweight="bold")
     ax1.set_ylabel(primary_metric, fontsize=10)
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(loc="best")
 
-    ax2.set_title("Residuen (logarithmisch)", fontsize=10, fontweight="bold")
+    ax2.set_title("Residuals (logarithmic)", fontsize=10, fontweight="bold")
     ax2.set_xlabel(x_label, fontsize=10)
-    ax2.set_ylabel("log10(RMS-Residuum)", fontsize=10)
+    ax2.set_ylabel("log10(RMS Residual)", fontsize=10)
     ax2.grid(True, linestyle="--", alpha=0.5)
     ax2.legend(loc="best")
 
@@ -615,8 +575,8 @@ def plot_comparison(history_files, target_dir, args, cfg_defaults):
 
 def print_overview_table(history_files, args, folder_cfg):
     """
-    Mode A: Druckt eine sauber formatierte Übersichtstabelle aller gefundenen Varianten.
-    Spalten: Variante | Iterationen | Konvergiert | Residuenabfall | Metriken (Endwert / Oscillation)
+    Mode A: Print a formatted summary table of all discovered variants.
+    Columns: Variant | Iterations | Converged | Residual Drop | Metrics (Final / Osc)
     """
     rows = []
     detected_metric_names = []
@@ -657,21 +617,20 @@ def print_overview_table(history_files, args, folder_cfg):
         rows.append({
             "variant": var_name,
             "iterations": f"{iterations} / {max_iter}",
-            "converged": "ja" if converged else "nein",
+            "converged": "yes" if converged else "no",
             "is_conv": converged,
-            "res_drop": f"{res_drop:.2f} Dek." if not np.isnan(res_drop) else "-",
+            "res_drop": f"{res_drop:.2f} dec." if not np.isnan(res_drop) else "-",
             "metrics": metric_data,
         })
 
     if not rows:
-        print("[HINWEIS] Keine auswertbaren Daten in den Verlaufsdateien gefunden.")
+        print("[INFO] No evaluable data found in the history files.")
         return
 
-    # Tabellenköpfe und -breiten berechnen
-    header_var = "Variante"
-    header_iter = "Iterationen"
-    header_conv = "Konvergiert"
-    header_res = "Residuenabfall"
+    header_var = "Variant"
+    header_iter = "Iterations"
+    header_conv = "Converged"
+    header_res = "Residual Drop"
 
     col_widths = {
         "variant": max(len(header_var), max(len(r["variant"]) for r in rows)),
@@ -681,11 +640,10 @@ def print_overview_table(history_files, args, folder_cfg):
     }
 
     for m in detected_metric_names:
-        m_title = f"{m} (Endwert / Osc)"
+        m_title = f"{m} (Final / Osc)"
         max_val_len = max(len(r["metrics"].get(m, "-")) for r in rows)
         col_widths[m] = max(len(m_title), max_val_len)
 
-    # Trennlinie und Formatstrings aufbauen
     col_order = ["variant", "iterations", "converged", "res_drop"] + detected_metric_names
     headers_map = {
         "variant": header_var,
@@ -694,7 +652,7 @@ def print_overview_table(history_files, args, folder_cfg):
         "res_drop": header_res,
     }
     for m in detected_metric_names:
-        headers_map[m] = f"{m} (Endwert / Osc)"
+        headers_map[m] = f"{m} (Final / Osc)"
 
     def format_row(data_map):
         parts = [f" {str(data_map.get(c, '-')).ljust(col_widths[c])} " for c in col_order]
@@ -707,7 +665,7 @@ def print_overview_table(history_files, args, folder_cfg):
     divider = make_divider("-")
     header_line = format_row(headers_map)
 
-    print("\nSU2-Konvergenzverläufe Übersicht:")
+    print("\nSU2 Convergence Histories Summary:")
     print(divider)
     print(header_line)
     print(make_divider("="))
@@ -725,16 +683,15 @@ def print_overview_table(history_files, args, folder_cfg):
 
     n_conv = sum(1 for r in rows if r["is_conv"])
     n_total = len(rows)
-    print(f"Gefunden: {n_total} Varianten ({n_conv} konvergiert, {n_total - n_conv} nicht konvergiert / bei ITER beendet).\n")
+    print(f"Found: {n_total} variant(s) ({n_conv} converged, {n_total - n_conv} not converged / stopped at ITER).\n")
 
 
 def filter_by_variants(history_files, var_filter):
-    """Filtert eine Liste von Dateipfaden nach den in var_filter genannten Variantennamen."""
+    """Filter a list of file paths by variant names in var_filter."""
     if not var_filter:
         return history_files
 
     filtered = []
-    # Alle Varianten-Suchmuster normalisieren
     patterns = [v.strip().lower() for v in var_filter if v.strip()]
     for f in history_files:
         v_name = extract_variant_name(f).lower()
@@ -750,83 +707,81 @@ def filter_by_variants(history_files, var_filter):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Auswertung und Plotten von SU2-Konvergenzverläufen (history.csv).",
+        description="Analyze and plot SU2 convergence histories (history.csv).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Beispiele:
-  # Übersichtstabelle aller Varianten in einem Ergebnisordner anzeigen:
-  python scripts/plot_history.py Serverergebnisse/MantaAuv
+        epilog="""Examples:
+  # Show summary table of all variants in a results folder:
+  python scripts/plot_history.py server-results/MantaAuv
 
-  # Einzelne Variante plotten (PNG wird neben der CSV gespeichert):
-  python scripts/plot_history.py Serverergebnisse/MantaAuv --var Gen2_Var3
-  python scripts/plot_history.py Serverergebnisse/MantaAuv/Analyseergebnisse/Verlaeufe/History_Gen2_Var3.csv
+  # Plot a single variant (PNG saved next to the CSV):
+  python scripts/plot_history.py server-results/MantaAuv --var Gen2_Var3
+  python scripts/plot_history.py server-results/MantaAuv/analysis/histories/History_Gen2_Var3.csv
 
-  # Mehrere Varianten vergleichen:
-  python scripts/plot_history.py Serverergebnisse/MantaAuv --compare
-  python scripts/plot_history.py Serverergebnisse/MantaAuv --compare --var Gen1_Var1 Gen2_Var3
+  # Compare multiple variants:
+  python scripts/plot_history.py server-results/MantaAuv --compare
+  python scripts/plot_history.py server-results/MantaAuv --compare --var Gen1_Var1 Gen2_Var3
 
-  # Interaktiv anzeigen:
-  python scripts/plot_history.py Serverergebnisse/MantaAuv --var Gen2_Var3 --show
+  # Display interactively:
+  python scripts/plot_history.py server-results/MantaAuv --var Gen2_Var3 --show
 """,
     )
 
-    parser.add_argument("path", help="Pfad zu einer History-CSV-Datei oder einem Verzeichnis mit Verläufen")
-    parser.add_argument("--var", nargs="*", default=None, help="Name der auszuwertenden Variante(n), z.B. Gen2_Var3")
-    parser.add_argument("--metrics", nargs="*", default=None, help="Zu plottende Metriken (z.B. CD CL; Standard: automatische Erkennung)")
-    parser.add_argument("--compare", action="store_true", help="Erzeugt einen Vergleichs-Plot über mehrere Varianten (History_Compare.png)")
-    parser.add_argument("--cauchy-elems", type=int, default=None, dest="cauchy_elems", help="Fenstergröße der Cauchy-Konvergenz (Vorgabe: aus Config oder 150)")
-    parser.add_argument("--cauchy-eps", type=float, default=None, dest="cauchy_eps", help="Toleranzband der Cauchy-Konvergenz (Vorgabe: aus Config oder 1e-4)")
-    parser.add_argument("--max-iter", type=int, default=None, dest="max_iter", help="Maximale Iterationsanzahl ITER (Vorgabe: aus Config oder 500)")
-    parser.add_argument("--formats", default=None, help="Kommagetrennte Liste der Bildformate (z.B. png,pdf,svg; Standard: png)")
-    parser.add_argument("--vector", action="store_true", help="Erzeugt zusätzlich Publikations-Vektorgrafiken (.pdf und .svg)")
-    parser.add_argument("--show", action="store_true", help="Öffnet das interaktive Matplotlib-Fenster")
+    parser.add_argument("path", help="Path to a history CSV file or a directory containing histories")
+    parser.add_argument("--var", nargs="*", default=None, help="Variant name(s) to evaluate, e.g. Gen2_Var3")
+    parser.add_argument("--metrics", nargs="*", default=None, help="Metrics to plot (e.g. CD CL; default: auto-detect)")
+    parser.add_argument("--compare", action="store_true", help="Generate a comparison plot across multiple variants (History_Compare.png)")
+    parser.add_argument("--cauchy-elems", type=int, default=None, dest="cauchy_elems", help="Cauchy convergence window size (default: from config or 150)")
+    parser.add_argument("--cauchy-eps", type=float, default=None, dest="cauchy_eps", help="Cauchy convergence tolerance (default: from config or 1e-4)")
+    parser.add_argument("--max-iter", type=int, default=None, dest="max_iter", help="Maximum iteration count ITER (default: from config or 500)")
+    parser.add_argument("--formats", default=None, help="Comma-separated list of image formats (e.g. png,pdf,svg; default: png)")
+    parser.add_argument("--vector", action="store_true", help="Also generate publication vector graphics (.pdf and .svg)")
+    parser.add_argument("--show", action="store_true", help="Open interactive Matplotlib windows")
 
     args = parser.parse_args()
 
     target = Path(args.path)
     if not target.exists():
-        print(f"[FEHLER] Pfad existiert nicht: {target}")
+        print(f"[ERROR] Path does not exist: {target}")
         sys.exit(1)
 
     cfg_defaults = resolve_run_config(target)
 
-    # 1. Fall: Pfad ist eine einzelne Datei
     if target.is_file():
         plot_single_variant(target, args, cfg_defaults)
         sys.exit(0)
 
-    # 2. Fall: Pfad ist ein Ordner
     history_files = find_history_files(target)
     if not history_files:
-        print(f"[FEHLER] Keine History_*.csv oder history.csv im Ordner gefunden: {target}")
+        print(f"[ERROR] No History_*.csv or history.csv found in directory: {target}")
         sys.exit(1)
 
-    # Wenn --var angegeben ist: filtern
     if args.var:
         matching_files = filter_by_variants(history_files, args.var)
         if not matching_files:
-            print(f"[FEHLER] Keine Datei gefunden, die zu den Varianten {args.var} passt.")
+            print(f"[ERROR] No file found matching variants {args.var}.")
             sys.exit(1)
     else:
         matching_files = history_files
 
-    # Mode C: --compare
     if args.compare:
         out_dir = target if target.is_dir() else target.parent
-        # Wenn Verlaeufe-Ordner vorhanden, dort speichern, sonst im Zielordner
-        if (target / "Analyseergebnisse" / "Verlaeufe").is_dir():
-            out_dir = target / "Analyseergebnisse" / "Verlaeufe"
-        elif (target / "Verlaeufe").is_dir():
-            out_dir = target / "Verlaeufe"
+        for sub in [
+            target / "analysis" / "histories",
+            target / "histories",
+            target / "Analyseergebnisse" / "Verlaeufe",
+            target / "Verlaeufe",
+        ]:
+            if sub.is_dir():
+                out_dir = sub
+                break
         plot_comparison(matching_files, out_dir, args, cfg_defaults)
         sys.exit(0)
 
-    # Mode B: wenn --var explizit angegeben wurde
     if args.var:
         for f in matching_files:
             plot_single_variant(f, args, cfg_defaults)
         sys.exit(0)
 
-    # Mode A: Standard-Übersichtstabelle
     print_overview_table(matching_files, args, cfg_defaults)
 
 

@@ -1,8 +1,8 @@
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Führt eine Simulation (CFD, FEM, etc.) auf einem Mesh aus.
-    /// Ergebnisse werden direkt in record.PassiveParameters geschrieben.
+    /// Runs a simulation (CFD, FEM, etc.) on a mesh.
+    /// Results are written directly into <c>record.PassiveParameters</c>.
     /// </summary>
     public interface ISimulationSolver
     {

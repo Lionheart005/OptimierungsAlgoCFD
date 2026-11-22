@@ -7,23 +7,23 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge
 {
     /// <summary>
-    /// Composition Root. Bestimmt den Projektnamen, lässt die <see cref="ProjectRegistry"/> die
-    /// passende Definition heraussuchen, lädt die Konfiguration und delegiert an den passenden
-    /// CLI-Handler in <see cref="FluidForge.Cli"/>.
+    /// Composition root. Resolves the project name, asks <see cref="ProjectRegistry"/> to locate
+    /// the matching definition, loads the configuration, and delegates to the appropriate CLI
+    /// handler in <see cref="FluidForge.Cli"/>.
     ///
     /// <para>
-    /// Seit TODO-23 steht hier <b>kein</b> <c>switch</c> über Projektnamen mehr — ein neues
-    /// Projekt ist ein Ordner mit einer <see cref="IProjectDefinition"/>, und diese Datei wird
-    /// dafür nie wieder angefasst.
+    /// Since TODO-23 there is <b>no</b> <c>switch</c> over project names here — a new project is
+    /// simply a folder with an <see cref="IProjectDefinition"/>, and this file never needs to be
+    /// touched for it again.
     /// </para>
     /// </summary>
     class Program
     {
         /// <summary>
-        /// Aufruf: <c>&lt;Projektname&gt; [Projektverzeichnis] [--list-projects] [--print-config]
-        /// [--calibrate] [--recheck[=Variante]] [--resume]</c>
+        /// Usage: <c>&lt;ProjectName&gt; [ProjectDirectory] [--list-projects] [--print-config]
+        /// [--calibrate] [--recheck[=Variant]] [--resume]</c>
         /// </summary>
-        /// <returns>0 bei Erfolg, 1 bei Abbruch.</returns>
+        /// <returns>0 on success, 1 on failure.</returns>
         static int Main(string[] args)
         {
             try
@@ -31,7 +31,7 @@ namespace FluidForge
                 CliArguments cli = CliArguments.Parse(args);
                 var registry = ProjectRegistry.Discover();
 
-                // --list-projects braucht kein Projekt und keinen Kernel.
+                // --list-projects requires neither a project nor a kernel.
                 if (cli.ListProjects)
                 {
                     InfoCommands.PrintProjects(registry, cli.ProjectDirectoryArgument);
@@ -41,13 +41,13 @@ namespace FluidForge
                 string projectName = cli.ResolveProjectName(registry);
                 IProjectDefinition definition = registry.Resolve(projectName);
 
-                // Ordner gegen Definitionen abgleichen — beide Richtungen, beide Fehler wären
-                // sonst still. Ohne vorhandenes src/projects/ entfällt die Prüfung (TODO-24).
+                // Cross-check folders against definitions in both directions so mismatches never
+                // fail silently. Skipped when src/projects/ is absent (TODO-24).
                 registry.AssertFoldersMatchDefinitions(cli.ProjectDirectoryArgument);
 
                 ProjectContext context = OptimizeCommand.LoadConfiguration(definition, cli.ProjectDirectoryArgument);
 
-                // --print-config gibt die wirksame Konfiguration aus und startet nichts.
+                // --print-config prints the effective configuration and exits without starting a run.
                 if (cli.PrintConfig)
                 {
                     InfoCommands.PrintConfiguration(context);

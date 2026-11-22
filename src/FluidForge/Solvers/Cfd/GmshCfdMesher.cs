@@ -7,8 +7,8 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// CFD-Mesher basierend auf Gmsh. Erzeugt ein Volumen-Mesh für CFD-Simulationen.
-    /// Der Windkanal (Tunnel) wird hier erzeugt, da er zur Simulationsdomäne gehört.
+    /// CFD mesher based on Gmsh. Generates a volume mesh for CFD simulations.
+    /// The wind tunnel is generated here because it belongs to the simulation domain.
     /// </summary>
     public class GmshCfdMesher : IMeshGenerator, IMeshMetricsSource, IMeshResolutionTarget
     {
@@ -18,14 +18,14 @@ namespace FluidForge.Solvers.Cfd
         private Dictionary<string, float> _lastMetrics = new();
 
         /// <summary>
-        /// Kennwerte des letzten Netzes: Schichtzahl, Dicke, erste Zellhöhe, Stufe der Rückfall-Leiter
-        /// (1 = A, 2 = B, 3 = Ersatznetz), Kippung, kleinster Dickenfaktor, gedünnter Flächenanteil, Ersatznetz-Kennzeichen.
-        /// Leer im Modus "Threshold" (keine Wandschicht).
+        /// Diagnostics of the last generated mesh: layer count, thickness, first cell height,
+        /// fallback ladder stage (1 = A, 2 = B, 3 = fallback mesh), tilt, minimum thickness scale,
+        /// thinned surface share, and fallback flag. Empty in "Threshold" mode (no structured wall layer).
         /// </summary>
         public IReadOnlyDictionary<string, float> LastMeshMetrics => _lastMetrics;
 
-        /// <param name="options">Vorgabedaten aus solvers/gmsh.json des Projekts; ohne Angabe gelten die Standardwerte.</param>
-        /// <param name="flow">Physikalische Strömungsbedingungen (TODO-38); bereitgestellt für Grenzschichtnetz-Berechnungen (TODO-40).</param>
+        /// <param name="options">Configuration from the project's solvers/gmsh.json; defaults apply if omitted.</param>
+        /// <param name="flow">Physical flow conditions provided for boundary-layer calculations.</param>
         public GmshCfdMesher(GmshMesherOptions? options = null, FlowConditions? flow = null)
         {
             _options = options ?? new GmshMesherOptions();
@@ -36,15 +36,15 @@ namespace FluidForge.Solvers.Cfd
         public GmshMesherOptions Options => _options;
         public FlowConditions? Flow => _flow;
 
-        /// <summary>Ziel-Oberflächenzellgröße (mm) bei Netzfaktor 1.0 für <see cref="VoxelResolutionAdvisor"/>.</summary>
+        /// <summary>Target surface cell size (mm) at mesh factor 1.0 for <see cref="VoxelResolutionAdvisor"/>.</summary>
         public float TargetSurfaceCellSizeMm => _options.SurfaceCellSize > 0f ? _options.SurfaceCellSize : _options.BoundaryLayerSizeMin;
 
-        /// <summary>Erzeugt den statischen Referenz-Windkanal (ohne Kernel-Abhängigkeit, TODO-11).</summary>
+        /// <summary>Generates the static reference wind tunnel (without geometry-kernel dependency).</summary>
         public string EnsureTunnel(string workingDirectory) => _tunnelBuilder.EnsureTunnel(workingDirectory);
 
         /// <summary>
-        /// Erzeugt den physikalischen Windkanal im PicoGK-Arbeitsraum (skaliert mit <paramref name="scaleFactor"/>),
-        /// garantiert Mindestabstände und den maximalen Versperrungsgrad.
+        /// Generates the physical wind tunnel in the PicoGK workspace (scaled by <paramref name="scaleFactor"/>),
+        /// guaranteeing minimum clearances and maximum blockage ratio.
         /// </summary>
         public string EnsureTunnel(
             string workingDirectory,
@@ -53,7 +53,7 @@ namespace FluidForge.Solvers.Cfd
             float? realFrontalAreaMm2 = null)
             => _tunnelBuilder.EnsureTunnel(workingDirectory, modelBoundsPicoGk, scaleFactor, realFrontalAreaMm2, _lastMetrics);
 
-        /// <summary>Berechnet die effektiven physikalischen Tunnelabmessungen in realen Millimetern.</summary>
+        /// <summary>Computes effective physical tunnel dimensions in real-world millimeters.</summary>
         public TunnelSpec ResolveEffectiveTunnel(
             MeshBounds? modelBoundsPicoGk,
             float scaleFactor,
@@ -94,12 +94,12 @@ namespace FluidForge.Solvers.Cfd
                     geoScriptPath);
                 if (thresholdRun.ExitCode != 0 || !File.Exists(outputMeshPath))
                 {
-                    GmshProcessRunner.CopyGeoToFehlerLogs(geoScriptPath, request.WorkingDirectory, "3D-Threshold");
-                    throw new MeshGenerationException($"Gmsh konnte {Path.GetFileName(outputMeshPath)} nicht erstellen (ExitCode {thresholdRun.ExitCode}{thresholdRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
+                    GmshProcessRunner.CopyGeoToErrorLogs(geoScriptPath, request.WorkingDirectory, "3D-Threshold");
+                    throw new MeshGenerationException($"Gmsh failed to create {Path.GetFileName(outputMeshPath)} (ExitCode {thresholdRun.ExitCode}{thresholdRun.ErrorSuffix}). .geo script copied to {OutputConventions.ErrorLogsDirectory}.");
                 }
 
                 MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
-                Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
+                Console.WriteLine($"       -> [OK] 3D volume mesh generated");
                 return outputMeshPath;
             }
 
@@ -112,7 +112,7 @@ namespace FluidForge.Solvers.Cfd
             string F(float v) => WakeAndDetailBoxBuilder.Format(v);
             string FormatMm(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
-            // Schritt 1: Körperoberfläche neu vernetzen und als EINE Fläche speichern (mit Retry über ClassifyAngleDeg-Leiter).
+            // Step 1: Remesh body surface and save as ONE surface (with retry across ClassifyAngleDeg ladder).
             string wallScript = WallScriptPath(geoScriptPath);
             string wallMesh = WallMeshPath(geoScriptPath);
             IReadOnlyList<float> angleLadder = BuildClassifyAngleLadder(_options.ClassifyAngleDeg);
@@ -141,7 +141,7 @@ namespace FluidForge.Solvers.Cfd
                     wallSucceeded = true;
                     if (idx > 0)
                     {
-                        Console.WriteLine($"       -> [WARNUNG] Schritt-1-Wandoberfläche mit Fallback ClassifyAngleDeg = {F(usedAngle)}° erzeugt (statt {F(_options.ClassifyAngleDeg)}°).");
+                        Console.WriteLine($"       -> {OutputConventions.WarningTag} Step-1 wall surface generated with fallback ClassifyAngleDeg = {F(usedAngle)}° (instead of {F(_options.ClassifyAngleDeg)}°).");
                     }
                     break;
                 }
@@ -149,19 +149,19 @@ namespace FluidForge.Solvers.Cfd
                 lastWallRun = wallRun;
                 if (idx + 1 < angleLadder.Count)
                 {
-                    Console.WriteLine($"       -> [WARNUNG] Wandoberfläche ließ sich mit ClassifyAngleDeg = {F(angleDeg)}° nicht erzeugen (ExitCode {wallRun.ExitCode}{wallRun.ErrorSuffix}) – nächster Versuch: {F(angleLadder[idx + 1])}°.");
+                    Console.WriteLine($"       -> {OutputConventions.WarningTag} Wall surface failed with ClassifyAngleDeg = {F(angleDeg)}° (ExitCode {wallRun.ExitCode}{wallRun.ErrorSuffix}) — next attempt: {F(angleLadder[idx + 1])}°.");
                 }
             }
 
             if (!wallSucceeded)
             {
-                GmshProcessRunner.CopyGeoToFehlerLogs(wallScript, request.WorkingDirectory, "3D-Wand");
-                throw new MeshGenerationException($"Gmsh konnte die Wandoberfläche {Path.GetFileName(wallMesh)} nicht erstellen (ExitCode {lastWallRun!.ExitCode}{lastWallRun.ErrorSuffix}). .geo-Skript nach FehlerLogs kopiert.");
+                GmshProcessRunner.CopyGeoToErrorLogs(wallScript, request.WorkingDirectory, "3D-Wall");
+                throw new MeshGenerationException($"Gmsh failed to create wall surface {Path.GetFileName(wallMesh)} (ExitCode {lastWallRun!.ExitCode}{lastWallRun.ErrorSuffix}). .geo script copied to {OutputConventions.ErrorLogsDirectory}.");
             }
 
             _lastMetrics["BoundaryLayerClassifyAngleDeg"] = usedAngle;
 
-            // Schritt 2: Wandschicht extrudieren, Kern mit Tetraedern füllen.
+            // Step 2: Extrude boundary layer, fill core with tetrahedra.
             BoundaryLayerSpec spec = Gmsh3DGeoScriptBuilder.ComputeBoundaryLayerSpec(_options, _flow, request.Config, request.GeometryPath, safeScale);
             int layers = spec.LayerCount;
             float thicknessMm = Gmsh3DGeoScriptBuilder.LayerThicknessMm(spec, layers);
@@ -174,8 +174,8 @@ namespace FluidForge.Solvers.Cfd
             }
             catch (Exception ex) when (ex is InvalidDataException || ex is IOException || ex is FormatException)
             {
-                GmshProcessRunner.CopyGeoToFehlerLogs(wallScript, request.WorkingDirectory, "3D-Wand-Medit");
-                throw new MeshGenerationException($"Die Wandoberfläche {Path.GetFileName(wallMesh)} ist nicht lesbar: {ex.Message}", ex);
+                GmshProcessRunner.CopyGeoToErrorLogs(wallScript, request.WorkingDirectory, "3D-Wall-Medit");
+                throw new MeshGenerationException($"Wall surface {Path.GetFileName(wallMesh)} is unreadable: {ex.Message}", ex);
             }
 
             string fieldPath = WallFieldPath(geoScriptPath);
@@ -203,20 +203,20 @@ namespace FluidForge.Solvers.Cfd
                 lastError = run.ErrorSuffix;
                 if (attempt + 1 < ladder.Count)
                 {
-                    Console.WriteLine($"       -> [WARNUNG] Wandschicht ({ladder[attempt].Label}) ließ sich nicht vernetzen{run.ErrorSuffix} – nächster Versuch: {ladder[attempt + 1].Label}.");
+                    Console.WriteLine($"       -> {OutputConventions.WarningTag} Boundary layer ({ladder[attempt].Label}) failed to mesh{run.ErrorSuffix} — next attempt: {ladder[attempt + 1].Label}.");
                 }
             }
 
             if (field == null)
             {
-                GmshProcessRunner.CopyGeoToFehlerLogs(wallScript, request.WorkingDirectory, "3D-Wand");
-                GmshProcessRunner.CopyGeoToFehlerLogs(geoScriptPath, request.WorkingDirectory, "3D-Volumen");
-                GmshProcessRunner.CopyGeoToFehlerLogs(fieldPath, request.WorkingDirectory, "3D-Wandfeld");
+                GmshProcessRunner.CopyGeoToErrorLogs(wallScript, request.WorkingDirectory, "3D-Wall");
+                GmshProcessRunner.CopyGeoToErrorLogs(geoScriptPath, request.WorkingDirectory, "3D-Volume");
+                GmshProcessRunner.CopyGeoToErrorLogs(fieldPath, request.WorkingDirectory, "3D-WallField");
                 throw new MeshGenerationException(
-                    $"Gmsh konnte {Path.GetFileName(outputMeshPath)} auch mit dem Ersatznetz nicht erstellen{lastError}. Wand-, Meshing-Skript und Wandfeld nach FehlerLogs kopiert.");
+                    $"Gmsh failed to create {Path.GetFileName(outputMeshPath)} even with fallback mesh{lastError}. Wall script, meshing script, and wall field copied to {OutputConventions.ErrorLogsDirectory}.");
             }
 
-            try { File.Delete(fieldPath); } catch { /* aufräumen ist nur Kosmetik */ }
+            try { File.Delete(fieldPath); } catch { /* cleanup is best-effort */ }
 
             Gmsh2DMesher.RemoveMarker(outputMeshPath, Gmsh2DMesher.FluidMarkerName);
 
@@ -232,55 +232,55 @@ namespace FluidForge.Solvers.Cfd
             MeshMetrics.PopulateSu2CellMetrics(_lastMetrics, outputMeshPath);
 
             float hexShare = ReadSu2BoundaryLayerHexShare(outputMeshPath);
-            string hexPart = float.IsFinite(hexShare) ? $", {hexShare * 100f:0} % Quader" : string.Empty;
+            string hexPart = float.IsFinite(hexShare) ? $", {hexShare * 100f:0}% hexa" : string.Empty;
             string stagePart = used.Stage switch
             {
-                1 => $", Richtungen geglättet (max. {field.MaxTiltDeg:0}°)",
-                2 => $", örtlich gedünnt auf {field.ThinnedShare * 100:0.0} % der Fläche (kleinster Faktor {field.MinScale:0.00})",
-                _ => $", [ERSATZNETZ] Dicke überall verringert (kleinster Faktor {field.MinScale:0.00}), Variante nur eingeschränkt vergleichbar",
+                1 => $", directions smoothed (max {field.MaxTiltDeg:0}°)",
+                2 => $", locally thinned on {field.ThinnedShare * 100:0.0}% of surface (min scale {field.MinScale:0.00})",
+                _ => $", [FALLBACK MESH] thickness globally reduced (min scale {field.MinScale:0.00}), variant only partially comparable",
             };
-            Console.WriteLine($"       -> Grenzschicht: {mode}, y1 = {spec.FirstLayerHeightMm.ToString("0.0000", CultureInfo.InvariantCulture)} mm (y+ {spec.TargetYPlus.ToString("0.#", CultureInfo.InvariantCulture)} bei Re {spec.ReynoldsNumber.ToString("0.0e0", CultureInfo.InvariantCulture)}), {layers} Schichten, Dicke {FormatMm(thicknessMm)} mm{hexPart}{stagePart}");
-            Console.WriteLine($"       -> [OK] 3D-Volumennetz generiert ");
+            Console.WriteLine($"       -> Boundary layer: {mode}, y1 = {spec.FirstLayerHeightMm.ToString("0.0000", CultureInfo.InvariantCulture)} mm (y+ {spec.TargetYPlus.ToString("0.#", CultureInfo.InvariantCulture)} at Re {spec.ReynoldsNumber.ToString("0.0e0", CultureInfo.InvariantCulture)}), {layers} layers, thickness {FormatMm(thicknessMm)} mm{hexPart}{stagePart}");
+            Console.WriteLine($"       -> [OK] 3D volume mesh generated");
             return outputMeshPath;
         }
 
-        /// <summary>Wandfeld (Schritt 2) zu einem Meshing-Skript: <c>Meshing_X.geo</c> → <c>Wall_X.pos</c>.</summary>
+        /// <summary>Wall field (step 2) for a meshing script: <c>Meshing_X.geo</c> -> <c>Wall_X.pos</c>.</summary>
         public static string WallFieldPath(string geoScriptPath) => Gmsh3DGeoScriptBuilder.WallFieldPath(geoScriptPath);
 
-        /// <summary>Schritt-1-Skript (Wandoberfläche) zu einem Meshing-Skript: <c>Meshing_X.geo</c> → <c>Wall_X.geo</c>.</summary>
+        /// <summary>Step-1 script (wall surface) for a meshing script: <c>Meshing_X.geo</c> -> <c>Wall_X.geo</c>.</summary>
         public static string WallScriptPath(string geoScriptPath) => Gmsh3DGeoScriptBuilder.WallScriptPath(geoScriptPath);
 
-        /// <summary>Ergebnis von Schritt 1: die neu vernetzte Wand als eine Fläche (Medit-Format).</summary>
+        /// <summary>Result of step 1: remeshed wall as a single surface (Medit format).</summary>
         public static string WallMeshPath(string geoScriptPath) => Gmsh3DGeoScriptBuilder.WallMeshPath(geoScriptPath);
 
-        /// <summary>Entfernt ANSI-Farbcodes (<c>ESC[1m</c>, <c>ESC[31m</c> …).</summary>
+        /// <summary>Strips ANSI color codes (<c>ESC[1m</c>, <c>ESC[31m</c>, ...).</summary>
         internal static string StripAnsi(string text) => GmshErrorParser.StripAnsi(text);
 
-        /// <summary>Extrahiert bis zu zwei aussagekräftige Fehlerzeilen aus der Gmsh-Ausgabe.</summary>
+        /// <summary>Extracts up to two meaningful error lines from Gmsh output.</summary>
         public static string? ExtractGmshError(IEnumerable<string> lines) => GmshErrorParser.ExtractGmshError(lines);
 
-        /// <summary>Schreibt das .geo-Skript für Gmsh auf die Festplatte (TODO-34, TODO-39).</summary>
+        /// <summary>Writes the .geo script for Gmsh to disk.</summary>
         public void WriteGeoScript(string geoScriptPath, string modelStlPath, string tunnelStlPath, SimulationConfig config, float scaleFactor)
             => WriteGeoScript(geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor, 1.0f);
 
-        /// <summary>Schreibt das .geo-Skript für Gmsh auf die Festplatte mit konfigurierbarem Netzfaktor (TODO-39).</summary>
+        /// <summary>Writes the .geo script for Gmsh to disk with a configurable mesh refinement factor.</summary>
         public void WriteGeoScript(string geoScriptPath, string modelStlPath, string tunnelStlPath, SimulationConfig config, float scaleFactor, float refinementFactor)
             => WriteGeoScript(geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor, refinementFactor, null);
 
-        /// <summary>Schreibt die 3D-<c>.geo</c>-Skripte (Threshold oder zweistufiges Hexa/Prism).</summary>
+        /// <summary>Writes the 3D <c>.geo</c> scripts (Threshold or two-step Hexa/Prism).</summary>
         public void WriteGeoScript(
             string geoScriptPath, string modelStlPath, string tunnelStlPath, SimulationConfig config,
             float scaleFactor, float refinementFactor, string? wallFieldPath, float? classifyAngleDeg = null)
             => Gmsh3DGeoScriptBuilder.WriteGeoScript(_options, _flow, geoScriptPath, modelStlPath, tunnelStlPath, config, scaleFactor, refinementFactor, wallFieldPath, classifyAngleDeg);
 
-        /// <summary>Bildet die Winkel-Leiter für Schritt 1 (<c>ClassifySurfaces</c>).</summary>
+        /// <summary>Builds the angle ladder for step 1 (<c>ClassifySurfaces</c>).</summary>
         internal static IReadOnlyList<float> BuildClassifyAngleLadder(float configuredAngleDeg)
             => Gmsh3DGeoScriptBuilder.BuildClassifyAngleLadder(configuredAngleDeg);
 
         /// <summary>
-        /// Liest den Anteil der Hexaeder-Zellen an den Grenzschicht-Elementen (Hexaeder + Prismen)
-        /// aus einer SU2-Netzdatei (.su2) über <see cref="MeshMetrics.ReadSu2CellBreakdown"/> (TODO-40).
-        /// Gibt <c>float.NaN</c> zurück, wenn keine Hexaeder/Prismen vorhanden sind oder die Datei fehlt.
+        /// Reads the hexahedral share of boundary-layer elements (hexahedra + prisms)
+        /// from an SU2 mesh file (.su2) via <see cref="MeshMetrics.ReadSu2CellBreakdown"/>.
+        /// Returns <c>float.NaN</c> if no hexahedra/prisms are present or the file is missing.
         /// </summary>
         public static float ReadSu2BoundaryLayerHexShare(string su2MeshPath)
         {

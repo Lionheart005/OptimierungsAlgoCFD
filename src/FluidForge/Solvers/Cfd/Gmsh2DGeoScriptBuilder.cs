@@ -10,8 +10,8 @@ using FluidForge.Kernels.Planar2D;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Generiert 2D-<c>.geo</c>-Skripte für Gmsh (Kontur-Splines, Fernfeldkreis, Quad-BoundaryLayer,
-    /// Nahfeld-, Wake- und Detail-Box) und bereinigt den 2D-Fluid-Marker aus <c>.su2</c>-Dateien.
+    /// Generates 2D <c>.geo</c> scripts for Gmsh (contour splines, farfield circle, quad boundary layer,
+    /// nearfield, wake, and detail boxes) and strips the 2D fluid marker from <c>.su2</c> files.
     /// </summary>
     internal static class Gmsh2DGeoScriptBuilder
     {
@@ -28,7 +28,7 @@ namespace FluidForge.Solvers.Cfd
             float thicknessScale = 1.0f)
         {
             if (!File.Exists(contourJsonPath))
-                throw new FileNotFoundException($"2D-Konturdatei nicht gefunden: {contourJsonPath}", contourJsonPath);
+                throw new FileNotFoundException($"2D contour file not found: {contourJsonPath}", contourJsonPath);
 
             string F(float v) => WakeAndDetailBoxBuilder.Format(v);
             ContourFile2D contourFile = Shape2D.LoadContour(contourJsonPath);
@@ -44,7 +44,7 @@ namespace FluidForge.Solvers.Cfd
                 options.TargetYPlus, options.BoundaryLayerGrowthRate,
                 options.BoundaryLayerMinLayers, options.BoundaryLayerLayers);
 
-            // Regel F4: Erste Zellhöhe y1 hängt NUR an der Physik (Ziel-y+), NICHT am RefinementFactor!
+            // Rule F4: First cell height y1 depends ONLY on physics (target y+), NOT on RefinementFactor!
             float y1Geo = spec.FirstLayerHeightMm * scaleFactor;
 
             float factor = refinementFactor > 0f ? refinementFactor : 1.0f;
@@ -65,7 +65,7 @@ namespace FluidForge.Solvers.Cfd
             var geoLines = new List<string>
             {
                 "// =============================================================================",
-                "// Gmsh 2D CFD Netz-Skript (generiert fuer SU2 2D Incompressible RANS)",
+                "// Gmsh 2D CFD Mesh Script (generated for SU2 2D Incompressible RANS)",
                 "// =============================================================================",
                 "Mesh.Optimize = 1;",
                 "Mesh.OptimizeNetgen = 0;",
@@ -77,13 +77,13 @@ namespace FluidForge.Solvers.Cfd
             var allFanPointIds = new List<int>();
             var bodyLoopIds = new List<int>();
 
-            geoLines.Add("// --- A) BAUTEIL-KONTURPUNKTE (xy-Ebene, z=0) ---");
+            geoLines.Add("// --- A) PART CONTOUR POINTS (xy-plane, z=0) ---");
             AppendContours(geoLines, contourFile, options, chordGeo, surfaceSize,
                 ref nextPointId, ref nextCurveId, ref nextLoopId,
                 allBodyCurves, allFanPointIds, bodyLoopIds);
 
             geoLines.Add(string.Empty);
-            geoLines.Add("// --- B) FERNFELD-KREIS (Zirkulationsradius = FarfieldRadiusFactor * c) ---");
+            geoLines.Add("// --- B) FARFIELD CIRCLE (circulation radius = FarfieldRadiusFactor * c) ---");
 
             Vector2 center = bounds.Center;
             float radius = options.FarfieldRadiusFactor * chordGeo;
@@ -106,12 +106,12 @@ namespace FluidForge.Solvers.Cfd
             var farfieldCurves = new[] { arc1, arc2, arc3, arc4 };
 
             geoLines.Add(string.Empty);
-            geoLines.Add("// --- C) 2D-FLUIDDOMAENE (Fernfeld minus Koerper) ---");
+            geoLines.Add("// --- C) 2D FLUID DOMAIN (Farfield minus body) ---");
             var surfaceLoops = new List<int> { farfieldLoopId };
             surfaceLoops.AddRange(bodyLoopIds);
             geoLines.Add($"Plane Surface(1) = {{ {string.Join(", ", surfaceLoops)} }};");
 
-            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// D) STRUKTURIERTE GRENZSCHICHT (BOUNDARY LAYER QUAD-EXTRUSION)", wideBanner: true, leadingBlankLine: true);
+            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// D) STRUCTURED BOUNDARY LAYER (QUAD EXTRUSION)", wideBanner: true, leadingBlankLine: true);
             geoLines.Add("Field[1] = BoundaryLayer;");
             geoLines.Add($"Field[1].CurvesList = {{ {string.Join(", ", allBodyCurves)} }};");
             geoLines.Add($"Field[1].Size = {F(y1Geo)};");
@@ -128,7 +128,7 @@ namespace FluidForge.Solvers.Cfd
                 geoLines.Add($"Field[1].FanNodesList = {{ {fansStr} }};");
             }
 
-            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// E) DISTANZ- UND SCHWELLENWERTFELD FUER NAHFELD", wideBanner: true, leadingBlankLine: true);
+            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// E) DISTANCE AND THRESHOLD FIELD FOR NEARFIELD", wideBanner: true, leadingBlankLine: true);
             geoLines.Add("Field[2] = Distance;");
             geoLines.Add($"Field[2].CurvesList = {{ {string.Join(", ", allBodyCurves)} }};");
             geoLines.Add("Field[3] = Threshold;");
@@ -153,7 +153,7 @@ namespace FluidForge.Solvers.Cfd
 
             if (combined.Count > 1)
             {
-                WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// G) HINTERGRUND-FELDER INTELLIGENT KOMBINIEREN", wideBanner: true, leadingBlankLine: true);
+                WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// G) COMBINE BACKGROUND FIELDS", wideBanner: true, leadingBlankLine: true);
                 geoLines.Add("Field[5] = Min;");
                 geoLines.Add($"Field[5].FieldsList = {{ {string.Join(", ", combined)} }};");
                 activeBackgroundField = 5;
@@ -162,12 +162,12 @@ namespace FluidForge.Solvers.Cfd
             geoLines.Add($"Background Field = {activeBackgroundField};");
             geoLines.Add("BoundaryLayer Field = 1;");
 
-            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// H) PHYSIKALISCHE MARKER FUER SU2", wideBanner: true, leadingBlankLine: true);
-            geoLines.Add("// Dieser Name ist der SU2-Marker: Farfield -> MARKER_FAR");
+            WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// H) PHYSICAL MARKERS FOR SU2", wideBanner: true, leadingBlankLine: true);
+            geoLines.Add("// SU2 marker name: Farfield -> MARKER_FAR");
             geoLines.Add($"Physical Curve(\"Farfield\") = {{ {string.Join(", ", farfieldCurves)} }};");
-            geoLines.Add("// Dieser Name ist der SU2-Marker: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING");
+            geoLines.Add("// SU2 marker name: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING");
             geoLines.Add($"Physical Curve(\"Wall\") = {{ {string.Join(", ", allBodyCurves)} }};");
-            geoLines.Add("// Physical Surface Fluid -> 2D-Fluiddomaene");
+            geoLines.Add("// Physical Surface Fluid -> 2D fluid domain");
             geoLines.Add($"Physical Surface(\"{FluidMarkerName}\") = {{ 1 }};");
             geoLines.Add(string.Empty);
             geoLines.Add($"Mesh.ScalingFactor = (1.0 / {F(scaleFactor)}) * 0.001;");
@@ -180,8 +180,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Läuft ab <paramref name="start"/> in Richtung <paramref name="dir"/> (±1) um die geschlossene Kontur,
-        /// bis <paramref name="stop"/> erfüllt ist; liefert diesen Index, sonst -1.
+        /// Walks along the closed contour starting at <paramref name="start"/> in direction <paramref name="dir"/> (±1)
+        /// until <paramref name="stop"/> is satisfied; returns that index, or -1 if not found.
         /// </summary>
         public static int WalkTo(List<float[]> points, int start, int dir, Func<float[], bool> stop)
         {
@@ -196,8 +196,8 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Entfernt einen Marker-Block (MARKER_TAG + MARKER_ELEMS + Elementzeilen) aus einer
-        /// <c>.su2</c>-Datei und zählt NMARK herunter.
+        /// Removes a marker block (MARKER_TAG + MARKER_ELEMS + element lines) from an
+        /// <c>.su2</c> file and decrements NMARK.
         /// </summary>
         public static bool RemoveMarker(string su2Path, string markerTag)
         {
@@ -207,12 +207,12 @@ namespace FluidForge.Solvers.Cfd
 
             int elemsIdx = tagIdx + 1;
             if (elemsIdx >= lines.Length || !lines[elemsIdx].TrimStart().StartsWith("MARKER_ELEMS="))
-                throw new InvalidDataException($"{Path.GetFileName(su2Path)}: auf MARKER_TAG= {markerTag} folgt kein MARKER_ELEMS.");
+                throw new InvalidDataException($"{Path.GetFileName(su2Path)}: MARKER_TAG= {markerTag} is not followed by MARKER_ELEMS.");
 
             int count = int.Parse(lines[elemsIdx].Split('=')[1].Trim(), CultureInfo.InvariantCulture);
             int endIdx = elemsIdx + 1 + count;
             if (endIdx > lines.Length)
-                throw new InvalidDataException($"{Path.GetFileName(su2Path)}: Marker {markerTag} ist unvollständig.");
+                throw new InvalidDataException($"{Path.GetFileName(su2Path)}: marker {markerTag} is incomplete.");
 
             var result = new List<string>(lines.Length - (endIdx - tagIdx));
             for (int i = 0; i < lines.Length; i++)

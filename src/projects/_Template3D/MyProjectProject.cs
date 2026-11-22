@@ -6,57 +6,36 @@ using FluidForge.Core;
 namespace FluidForge.Projects.MyProject
 {
     /// <summary>
-    /// Die Verdrahtung eines Projekts (TODO-27). <b>Diese Klasse ist alles, was das Framework
-    /// von einem Projekt wissen muss</b> — es gibt keinen <c>switch</c> in <c>Program.cs</c>,
-    /// keine Liste und keinen Eintrag in einer JSON: die
-    /// <see cref="ProjectRegistry"/> findet sie per Reflection (Entscheidung 5).
+    /// Project wiring. <b>This class is all the framework needs to know about a project</b> —
+    /// <see cref="ProjectRegistry"/> discovers it via reflection (no switch statement or manual list).
     ///
     /// <para>
-    /// <b>Der Name <c>MyProject</c> ist ein Platzhalter.</b>
-    /// <c>scripts\new-project.ps1 &lt;Name&gt;</c> kopiert diesen Ordner und ersetzt das Wort
-    /// überall — in Dateinamen, Klassennamen, Namensraum und in den Kommentarköpfen der JSONs.
-    /// Von Hand kopieren geht genauso, dann ist das Ersetzen dein Job.
+    /// <b><c>MyProject</c> is a placeholder name.</b>
+    /// <c>scripts\new-project.ps1 &lt;Name&gt;</c> copies this folder and replaces the placeholder
+    /// in filenames, class names, namespaces, and JSON comment headers.
     /// </para>
     ///
     /// <para>
-    /// <b>Warum die Vorlage selbst nicht startbar ist:</b> <c>src/projects/_Template3D/</c> ist aus
-    /// dem Build des Programms ausgeschlossen (siehe <c>FluidForge.csproj</c>), damit hier
-    /// keine zweite Projektdefinition mit einem Namen auftaucht, zu dem es keinen Ordner gibt.
-    /// Compiliert wird der Ordner trotzdem — vom Testprojekt. Änderte sich eine Schnittstelle des
-    /// Frameworks, wäre die Vorlage sonst irgendwann unbrauchbar, und gemerkt hätte man es erst
-    /// beim Anlegen des nächsten Projekts.
+    /// <b>Why the template itself is not runnable:</b> <c>src/projects/_Template3D/</c> is excluded
+    /// from the main application build (<c>FluidForge.csproj</c>) so no placeholder definition
+    /// exists without a matching folder, while still being compiled and verified by the test suite.
     /// </para>
     /// </summary>
     public sealed class MyProjectProject : CfdProjectDefinition
     {
         /// <summary>
-        /// Muss <b>exakt</b> dem Ordnernamen unter <c>src/projects/</c> entsprechen — der
-        /// Ordnername ist der Projektname (Entscheidung 1). Die
-        /// <see cref="ProjectRegistry"/> prüft beide Richtungen beim Start, ein Auseinanderlaufen
-        /// fällt also sofort auf und nicht erst im Lauf.
+        /// Must match the folder name under <c>src/projects/</c> <b>exactly</b>.
+        /// <see cref="ProjectRegistry"/> validates both directions at startup.
         /// </summary>
         public override string Name => "MyProject";
 
         /// <summary>
-        /// Schicht 1 der Konfiguration: die Code-Standards dieses Projekts.
-        /// <c>project.json</c> nebenan überlagert sie — was dort fehlt, gilt von hier.
-        ///
-        /// <para>
-        /// Beide Stellen führen dieselben Zahlen, und das ist Absicht: die JSON ist der Ort, an
-        /// dem du sie änderst, der Code der Ort, der sie auch ohne Datei kennt. Ein Test hält die
-        /// beiden zusammen. MantaAuv legt dieselbe Methode in eine eigene Datei
-        /// (<c>MantaProjectConfig.cs</c>) — beides ist in Ordnung.
-        /// </para>
-        ///
-        /// <para>
-        /// <c>ProjectName</c> wird hier <b>nicht</b> gesetzt: <c>Program.cs</c> trägt den
-        /// Ordnernamen ein. Eine zweite Stelle mit dem Namen wäre eine Stelle zu viel.
-        /// </para>
+        /// Layer 1 configuration: code defaults for this project.
+        /// <c>project.json</c> overrides these values.
         /// </summary>
         public override ProjectConfig CreateDefaults() => new ProjectConfig
         {
-            // Startwerte der aktiven Parameter (mm). Diese Namen liest der Geometrie-Generator
-            // wieder heraus — sie sind der Vertrag zwischen Konfiguration und Geometrie.
+            // Initial active parameter values (mm). These names are the contract with the geometry generator.
             BaseParameters = new Dictionary<string, float>
             {
                 { "Length", 50.0f },
@@ -64,7 +43,7 @@ namespace FluidForge.Projects.MyProject
                 { "Height", 20.0f }
             },
 
-            // Anfängliche Mutationsstärke je Parameter.
+            // Initial mutation step sizes per parameter.
             MaxDeviations = new Dictionary<string, float>
             {
                 { "Length", 5.0f },
@@ -72,8 +51,7 @@ namespace FluidForge.Projects.MyProject
                 { "Height", 2.0f }
             },
 
-            // Harte Grenzen. Der Algorithmus verlässt sie nie — das ist die einzige Stelle, die
-            // eine Variante mit 0 mm Höhe verhindert.
+            // Hard bounds. The optimizer never leaves this box.
             ParameterBounds = new Dictionary<string, (float Min, float Max)>
             {
                 { "Length", (20.0f, 100.0f) },
@@ -81,14 +59,12 @@ namespace FluidForge.Projects.MyProject
                 { "Height", (5.0f, 50.0f) }
             },
 
-            // Leer, weil die Fitness dieser Vorlage nur den Widerstand minimiert. Kommt ein Ziel
-            // dazu, gehört sein Name zusätzlich in MyProjectFitnessCalculator.RequiredTargets —
-            // dann prüft der Konstruktor es beim Verdrahten und nicht der Lauf nach Stunden.
+            // Empty because this template minimizes drag only. If you add targets here,
+            // also list them in MyProjectFitnessCalculator.RequiredTargets.
             OptimizationTargets = new Dictionary<string, float>(),
 
-            // Nur Längen gehören hier hinein: der RubberBandScaler rechnet sie auf die
-            // PicoGK-Arbeitsgröße herunter und zurück. Ein dimensionsloser Parameter (Verhältnis,
-            // Winkel, Zählwert) würde dabei verfälscht — MantaAuv lässt "TailTaper" deshalb weg.
+            // Only lengths belong here: RubberBandScaler scales them to PicoGK's working size
+            // and scales reported metrics back. Dimensionless ratios/angles/counts must be omitted.
             DimensionalParameters = new HashSet<string> { "Length", "Width", "Height" }
         };
 
@@ -97,34 +73,28 @@ namespace FluidForge.Projects.MyProject
             => new MyProjectGeometryGenerator();
 
         /// <summary>
-        /// Der Rechner prüft im Konstruktor, ob seine Pflicht-Ziele vorliegen (TODO-16) — der
-        /// Lauf bricht dadurch hier ab, vor der ersten Simulation.
+        /// Validates required optimization targets in the constructor so missing keys fail fast.
         /// </summary>
         public override IFitnessCalculator CreateFitness(ProjectContext context)
             => new MyProjectFitnessCalculator(context.Project);
 
         // ------------------------------------------------------------------
-        // Was NICHT hier steht, kommt aus CfdProjectDefinition: PicoGK als
-        // Geometrie-Kernel und eine Stufe Gmsh -> SU2, deren Zahlen aus
-        // solvers/gmsh.json und solvers/su2.json in diesem Ordner kommen.
+        // Everything not overridden here is inherited from CfdProjectDefinition:
+        // PicoGK as geometry kernel and one Gmsh -> SU2 stage configured via
+        // solvers/gmsh.json and solvers/su2.json.
         //
-        // Braucht dein Projekt etwas anderes, überschreibe es HIER — nicht im
-        // Framework:
+        // Override here if your project needs something different:
         //
-        //   // Geometrie ohne Voxel-Modell: kein PicoGK, kein Xvfb auf dem Server.
+        //   // Analytical geometry without voxels (no PicoGK, no Xvfb on server):
         //   public override IGeometryKernel CreateKernel() => new DirectGeometryKernel();
         //
-        //   // Eigene Solver-Kette, z.B. zwei Stufen oder ein anderer Vernetzer.
+        //   // Custom solver pipeline (e.g. multiple stages or a different mesher):
         //   public override SolverStage[] CreateStages(ProjectContext c) => new[]
         //   {
         //       new SolverStage(
         //           new GmshCfdMesher(c.LoadSolverOptions<GmshMesherOptions>("gmsh")),
         //           new Su2Solver(c.LoadSolverOptions<Su2SolverOptions>("su2")))
         //   };
-        //
-        // LoadSolverOptions<T>("name") liest src/projects/<Name>/solvers/name.json über alle
-        // Konfigurationsschichten — ein neuer Solver bringt also seine eigene JSON mit, ohne
-        // dass der Kern davon wissen muss.
         // ------------------------------------------------------------------
     }
 }

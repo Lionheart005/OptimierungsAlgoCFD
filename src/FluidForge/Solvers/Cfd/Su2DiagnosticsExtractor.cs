@@ -8,8 +8,8 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Extrahiert Konvergenz-, History- und Oberflächendiagnostik (Aerodynamik, y+, Referenzgröße)
-    /// aus SU2-Ausgabedateien in <see cref="ModelRecord"/>.
+    /// Extracts convergence, history, and surface diagnostics (aerodynamics, y+, reference area)
+    /// from SU2 output files into <see cref="ModelRecord"/>.
     /// </summary>
     internal sealed class Su2DiagnosticsExtractor
     {
@@ -72,7 +72,7 @@ namespace FluidForge.Solvers.Cfd
                 if (stats.P95 > warnLimit)
                 {
                     SimulationLog.Detail(
-                        $"[WARNUNG] y+ (95 %-Quantil = {stats.P95.ToString("0.00", CultureInfo.InvariantCulture)}, Max = {stats.Max.ToString("0.00", CultureInfo.InvariantCulture)}) überschreitet das Limit {warnLimit.ToString("0.00", CultureInfo.InvariantCulture)} (YPlusWarnFactor × TargetYPlus) – Grenzschichtauflösung prüfen.");
+                        $"{OutputConventions.WarningTag} y+ (P95 = {stats.P95.ToString("0.00", CultureInfo.InvariantCulture)}, Max = {stats.Max.ToString("0.00", CultureInfo.InvariantCulture)}) exceeds limit {warnLimit.ToString("0.00", CultureInfo.InvariantCulture)} (YPlusWarnFactor * TargetYPlus) — check boundary-layer resolution.");
                 }
             }
 
@@ -89,7 +89,7 @@ namespace FluidForge.Solvers.Cfd
 
             if (metric.Length == 0)
             {
-                WarnAboutMissingReferenceArea("Es ist keine Referenzflächen-Metrik konfiguriert", record, conversionFactor);
+                WarnAboutMissingReferenceArea("No reference-area metric configured", record, conversionFactor);
                 return FallbackReferenceAreaMm2 * conversionFactor;
             }
 
@@ -99,21 +99,21 @@ namespace FluidForge.Solvers.Cfd
             if (is2D && record.PassiveParameters.TryGetValue("Chord", out float chordVal))
                 return chordVal * conversionFactor;
 
-            WarnAboutMissingReferenceArea($"Die Metrik '{metric}' fehlt in den Ergebnissen dieses Modells", record, conversionFactor);
+            WarnAboutMissingReferenceArea($"Metric '{metric}' is missing from this model's results", record, conversionFactor);
             return FallbackReferenceAreaMm2 * conversionFactor;
         }
 
         private static void WarnAboutMissingReferenceArea(string reason, ModelRecord record, float conversionFactor = SquareMmToSquareM)
         {
             string known = record.PassiveParameters.Count == 0
-                ? "(keine)"
+                ? "(none)"
                 : string.Join(", ", record.PassiveParameters.Keys);
 
-            Console.WriteLine($"[WARNUNG] {reason} — SU2 rechnet ersatzweise mit REF_AREA = "
+            Console.WriteLine($"{OutputConventions.WarningTag} {reason} — SU2 falling back to REF_AREA = "
                               + (FallbackReferenceAreaMm2 * conversionFactor).ToString(CultureInfo.InvariantCulture)
-                              + " m². Der CD-Wert ist damit um Größenordnungen falsch.");
-            Console.WriteLine($"          Vorhandene Metriken: {known}.");
-            Console.WriteLine("          Der Name gehört in die solvers/su2.json des Projekts unter 'ReferenceAreaMetric'.");
+                              + " m². CD will be off by orders of magnitude.");
+            Console.WriteLine($"          Available metrics: {known}.");
+            Console.WriteLine("          Set the metric name under 'ReferenceAreaMetric' in the project's solvers/su2.json.");
         }
 
         public void ReadMetricsFromHistory(string historyPath, ModelRecord record, SimulationConfig? config = null, bool controlRun = false)
@@ -122,9 +122,8 @@ namespace FluidForge.Solvers.Cfd
 
             if (wanted == null || wanted.Count == 0)
             {
-                Console.WriteLine("[WARNUNG] Es ist keine Ergebnisgröße konfiguriert — SU2 hat gerechnet,");
-                Console.WriteLine("          aber es wird nichts ausgelesen. Die Zuordnung gehört unter");
-                Console.WriteLine("          'ResultMetrics' in die su2.json (z.B. \"Drag\": \"CD\").");
+                Console.WriteLine($"{OutputConventions.WarningTag} No result metrics configured — SU2 finished,");
+                Console.WriteLine("          but nothing is extracted. Configure 'ResultMetrics' in su2.json (e.g. \"Drag\": \"CD\").");
                 record.SimulationFailed = true;
                 return;
             }
@@ -136,14 +135,14 @@ namespace FluidForge.Solvers.Cfd
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"    -> Fehler beim Lesen der Ergebnisse: {ex.Message}");
+                Console.WriteLine($"    -> Error reading results: {ex.Message}");
                 record.SimulationFailed = true;
                 return;
             }
 
             if (lines.Length < 2)
             {
-                Console.WriteLine($"    -> Fehler: {Path.GetFileName(historyPath)} enthält keine Datenzeile.");
+                Console.WriteLine($"    -> Error: {Path.GetFileName(historyPath)} contains no data rows.");
                 record.SimulationFailed = true;
                 return;
             }
@@ -170,8 +169,8 @@ namespace FluidForge.Solvers.Cfd
                 RecordConvergenceDiagnostics(record, wanted, historyResult, verdict, converged);
             }
 
-            // Instationär, aber stabil: die einfache Drift-Prüfung schlägt an, aber keiner der
-            // Kennwerte zeigt einen statistisch gesicherten Trend -> Endfenstermittel zählt.
+            // Unsteady but stationary: simple drift check triggers, yet no metric shows
+            // a statistically significant trend -> tail-window mean is valid.
             bool unsteadyStationary = verdict.Assessed && !converged && IsStationary(historyResult, wanted);
             if (config != null && verdict.Assessed)
             {
@@ -214,9 +213,9 @@ namespace FluidForge.Solvers.Cfd
             {
                 string uncertaintyText = string.Join(", ", wanted
                     .Where(e => historyResult.TailUncertainty.ContainsKey((e.Value ?? string.Empty).Trim()))
-                    .Select(e => $"{e.Key} ±{(historyResult.TailUncertainty[(e.Value ?? string.Empty).Trim()] * 100f).ToString("0.0", CultureInfo.InvariantCulture)} %"));
-                SimulationLog.Detail($"[HINWEIS] Instationär, aber statistisch stabil (kein gesicherter Trend im Endfenster): "
-                    + $"es zählt der Mittelwert des Endfensters ({uncertaintyText}).");
+                    .Select(e => $"{e.Key} ±{(historyResult.TailUncertainty[(e.Value ?? string.Empty).Trim()] * 100f).ToString("0.0", CultureInfo.InvariantCulture)}%"));
+                SimulationLog.Detail($"[INFO] Unsteady but statistically stationary (no significant trend in tail window): "
+                    + $"using tail-window mean ({uncertaintyText}).");
             }
             else if (verdict.Assessed)
             {
@@ -227,22 +226,22 @@ namespace FluidForge.Solvers.Cfd
                     float driftPercent = historyResult.WindowDrift.TryGetValue(worstColumn, out float dr)
                         && historyResult.TailMeans.TryGetValue(worstColumn, out float tm)
                         ? dr / Math.Max(Math.Abs(tm), 1e-7f) * 100f : float.NaN;
-                    SimulationLog.Detail($"[WARNUNG] SU2 nicht auskonvergiert nach {historyResult.Iterations} Iterationen: {worst} driftet im Endfenster "
-                        + $"({historyResult.TailRows} Zeilen) um {driftPercent.ToString("0.00", CultureInfo.InvariantCulture)} % "
-                        + $"({verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der erlaubten Drift).");
+                    SimulationLog.Detail($"{OutputConventions.WarningTag} SU2 did not converge after {historyResult.Iterations} iterations: {worst} drifts in tail window "
+                        + $"({historyResult.TailRows} rows) by {driftPercent.ToString("0.00", CultureInfo.InvariantCulture)}% "
+                        + $"({verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}x allowed drift).");
 
                     if (_options.TreatUnconvergedAsFailed) record.SimulationFailed = true;
                 }
                 else if (historyResult.Iterations >= effectiveConfig.Su2MaxIterations)
                 {
-                    SimulationLog.Detail($"SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, die Kennwerte stehen aber (iterativer Fehler "
-                        + $"{verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}-fach der Grenze, Ergebnis = Mittel des Endfensters).");
+                    SimulationLog.Detail($"SU2 reached ITER={effectiveConfig.Su2MaxIterations}, but metrics are stationary (iterative error "
+                        + $"{verdict.WorstNormalized.ToString("0.000", CultureInfo.InvariantCulture)}x limit, result = tail-window mean).");
                 }
             }
             else if (!historyResult.Converged)
             {
                 string convCol = Su2RestartController.ResolveConvergenceColumn(_options, wanted);
-                SimulationLog.Detail($"[WARNUNG] SU2 hat ITER={effectiveConfig.Su2MaxIterations} erreicht, ohne dass das Kriterium erfüllt war – {convCol} ist der Stand bei Iteration {historyResult.Iterations}, kein konvergierter Wert.");
+                SimulationLog.Detail($"{OutputConventions.WarningTag} SU2 reached ITER={effectiveConfig.Su2MaxIterations} without meeting criterion — {convCol} is the value at iteration {historyResult.Iterations}, not a converged value.");
 
                 if (_options.TreatUnconvergedAsFailed) record.SimulationFailed = true;
             }
@@ -255,7 +254,7 @@ namespace FluidForge.Solvers.Cfd
                 {
                     float percent = osc * 100f;
                     string shownName = metricName.Length > 0 ? metricName : columnName;
-                    SimulationLog.Detail($"[WARNUNG] {shownName} schwingt um ±{percent.ToString("0.#", CultureInfo.InvariantCulture)} % – Hinweis auf instationäre Strömung (Wirbelablösung).");
+                    SimulationLog.Detail($"{OutputConventions.WarningTag} {shownName} oscillates by ±{percent.ToString("0.#", CultureInfo.InvariantCulture)}% — indicates unsteady flow (vortex shedding).");
                 }
             }
         }
@@ -273,18 +272,18 @@ namespace FluidForge.Solvers.Cfd
 
                 if (metricName.Length == 0 || columnName.Length == 0)
                 {
-                    WarnAboutMetric(metricName, columnName, "Metrikname oder Spaltenname ist leer.", headers);
+                    WarnAboutMetric(metricName, columnName, "Metric name or column name is empty.", headers);
                     complete = false;
                     continue;
                 }
 
-                // Zeitgenauer Modus: das Zeitmittel (tavg[CD]) statt des Momentanwerts nehmen.
+                // Time-accurate mode: use time-averaged value (tavg[CD]) instead of instantaneous value.
                 string problem = string.Empty;
                 int index = (_options.TimeDomain != null && _options.TimeDomain.Enabled)
                     ? Array.FindIndex(headers, h => h.Equals($"tavg[{columnName}]", StringComparison.OrdinalIgnoreCase))
                     : -1;
                 if (index >= 0)
-                    Console.WriteLine($"    -> {metricName}: zeitgemittelter Wert (tavg[{columnName}]) aus dem URANS-Lauf.");
+                    Console.WriteLine($"    -> {metricName}: time-averaged value (tavg[{columnName}]) from URANS run.");
                 else
                     index = FindColumn(headers, columnName, out problem);
 
@@ -296,30 +295,30 @@ namespace FluidForge.Solvers.Cfd
                 }
 
                 if (problem.Length > 0)
-                    Console.WriteLine($"[WARNUNG] Ergebnisgröße '{metricName}': {problem}");
+                    Console.WriteLine($"{OutputConventions.WarningTag} Result metric '{metricName}': {problem}");
 
                 if (index >= finalValues.Length)
                 {
                     WarnAboutMetric(metricName, columnName,
-                        $"Die letzte Zeile hat nur {finalValues.Length} Felder, die Spalte steht an Position {index + 1}.",
+                        $"Final row has only {finalValues.Length} fields, column is at position {index + 1}.",
                         headers);
                     complete = false;
                     continue;
                 }
 
-                // float.IsFinite fängt zusätzlich "nan" und "inf" ab, damit NaN keine Formel vergiftet.
+                // float.IsFinite also catches "nan" and "inf" so NaN cannot poison downstream formulas.
                 if (!float.TryParse(finalValues[index], NumberStyles.Float, CultureInfo.InvariantCulture, out float value)
                     || !float.IsFinite(value))
                 {
                     WarnAboutMetric(metricName, columnName,
-                        $"SU2 hat keinen gültigen Zahlenwert geschrieben: '{finalValues[index]}'.", headers);
+                        $"SU2 wrote an invalid numeric value: '{finalValues[index]}'.", headers);
                     complete = false;
                     continue;
                 }
 
                 float finalMetricValue = ResolveAveragedMetricValue(historyResult, columnName, value, controlRun, unsteadyStationary);
                 record.PassiveParameters[metricName] = finalMetricValue;
-                SimulationLog.Detail($"Analyse erfolgreich. {metricName} ({columnName}): {finalMetricValue:F5}");
+                SimulationLog.Detail($"Analysis succeeded. {metricName} ({columnName}): {finalMetricValue:F5}");
             }
 
             return complete;
@@ -329,7 +328,7 @@ namespace FluidForge.Solvers.Cfd
             Su2HistoryResult historyResult, string columnName, float lastValue, bool controlRun, bool unsteadyStationary)
         {
             string averaging = (_options.ResultAveraging ?? string.Empty).Trim();
-            // Kontrollrechnungen und instationär-stabile Rechnungen liefern immer das Endfenstermittel.
+            // Control runs and unsteady-stationary runs always use the tail-window mean.
             if (controlRun || unsteadyStationary) averaging = "TailMean";
 
             if (averaging.Equals("TailMean", StringComparison.OrdinalIgnoreCase))
@@ -344,7 +343,7 @@ namespace FluidForge.Solvers.Cfd
             }
             else if (!averaging.Equals("Last", StringComparison.OrdinalIgnoreCase) && averaging.Length > 0 && !_unknownResultAveragingReported)
             {
-                Console.WriteLine($"[WARNUNG] Unbekanntes ResultAveraging '{_options.ResultAveraging}' — nutze 'Last'.");
+                Console.WriteLine($"{OutputConventions.WarningTag} Unknown ResultAveraging '{_options.ResultAveraging}' — using 'Last'.");
                 _unknownResultAveragingReported = true;
             }
 
@@ -381,19 +380,19 @@ namespace FluidForge.Solvers.Cfd
 
             if (prefixHits.Count == 1)
             {
-                problem = $"Keine Spalte heißt genau '{columnName}' — ersatzweise '{headers[prefixHits[0]]}' verwendet.";
+                problem = $"No column named '{columnName}' — using '{headers[prefixHits[0]]}' instead.";
                 return prefixHits[0];
             }
 
             if (prefixHits.Count > 1)
             {
-                problem = $"'{columnName}' ist mehrdeutig und passt auf mehrere Spalten: "
+                problem = $"'{columnName}' is ambiguous and matches multiple columns: "
                           + string.Join(", ", prefixHits.Select(i => headers[i]))
-                          + ". Bitte den vollen Spaltennamen eintragen.";
+                          + ". Please specify the full column name.";
                 return -1;
             }
 
-            problem = $"Die Spalte '{columnName}' steht nicht in der history.csv.";
+            problem = $"Column '{columnName}' is not present in history.csv.";
             return -1;
         }
 
@@ -407,14 +406,14 @@ namespace FluidForge.Solvers.Cfd
 
         private static void WarnAboutMetric(string metricName, string columnName, string problem, string[] headers)
         {
-            string shownName = metricName.Length == 0 ? "(ohne Namen)" : metricName;
-            string shownColumn = columnName.Length == 0 ? "(ohne Spalte)" : columnName;
+            string shownName = metricName.Length == 0 ? "(unnamed)" : metricName;
+            string shownColumn = columnName.Length == 0 ? "(no column)" : columnName;
 
-            Console.WriteLine($"[WARNUNG] Ergebnisgröße '{shownName}' <- Spalte '{shownColumn}': {problem}");
-            Console.WriteLine($"          Vorhandene Spalten: {(headers.Length == 0 ? "(keine)" : string.Join(", ", headers))}.");
-            Console.WriteLine("          Die Zuordnung steht unter 'ResultMetrics' in der su2.json; welche Spalten");
-            Console.WriteLine("          SU2 überhaupt schreibt, steuert 'HistoryOutput' (AERO_COEFF liefert die Beiwerte).");
-            Console.WriteLine("          Dieses Modell wird als fehlgeschlagen gewertet.");
+            Console.WriteLine($"{OutputConventions.WarningTag} Result metric '{shownName}' <- column '{shownColumn}': {problem}");
+            Console.WriteLine($"          Available columns: {(headers.Length == 0 ? "(none)" : string.Join(", ", headers))}.");
+            Console.WriteLine("          Mappings are configured under 'ResultMetrics' in su2.json; exported columns");
+            Console.WriteLine("          are controlled by 'HistoryOutput' (AERO_COEFF provides aerodynamic coefficients).");
+            Console.WriteLine("          This model will be marked as failed.");
         }
 
         private static bool OscillationFor(Su2HistoryResult history, string column, out float value)

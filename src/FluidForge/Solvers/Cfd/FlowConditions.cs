@@ -4,13 +4,13 @@ using FluidForge.Core;
 namespace FluidForge.Solvers.Cfd
 {
     /// <summary>
-    /// Physikalische Strömungsbedingungen (Geschwindigkeit, Dichte, Viskosität), die für
-    /// Vernetzer (Grenzschichtberechnung, TODO-40) und Solver (SU2) identisch sein müssen (TODO-38).
+    /// Physical flow conditions (velocity, density, viscosity) that must match between
+    /// the mesher (boundary-layer calculation) and solver (SU2).
     /// </summary>
-    /// <param name="Velocity">Anströmgeschwindigkeit in m/s.</param>
-    /// <param name="Density">Fluiddichte in kg/m³.</param>
-    /// <param name="DynamicViscosity">Dynamische Viskosität in Pa·s (kg/(m·s)).</param>
-    /// <param name="VelocitySource">Klartext für das Log: woher die Geschwindigkeit stammt.</param>
+    /// <param name="Velocity">Freestream velocity in m/s.</param>
+    /// <param name="Density">Fluid density in kg/m³.</param>
+    /// <param name="DynamicViscosity">Dynamic viscosity in Pa·s (kg/(m·s)).</param>
+    /// <param name="VelocitySource">Human-readable log label indicating where the velocity originated.</param>
     public sealed record FlowConditions(
         float Velocity,
         float Density,
@@ -18,8 +18,8 @@ namespace FluidForge.Solvers.Cfd
         string VelocitySource = "")
     {
         /// <summary>
-        /// Erzeugt die Strömungsbedingungen aus der Simulationskonfiguration und den SU2-Optionen.
-        /// Löst die Geschwindigkeit über <see cref="Su2ConfigGenerator.ResolveVelocity"/> auf.
+        /// Creates flow conditions from the simulation configuration and SU2 options.
+        /// Resolves velocity via <see cref="Su2ConfigGenerator.ResolveVelocity"/>.
         /// </summary>
         public static FlowConditions From(SimulationConfig config, Su2SolverOptions options)
         {
@@ -31,10 +31,10 @@ namespace FluidForge.Solvers.Cfd
         }
 
         /// <summary>
-        /// Berechnet die Reynoldszahl Re_L = (Dichte × Geschwindigkeit × L) / Viskosität.
-        /// Gibt 0 zurück, falls Viskosität &lt;= 0 oder die Länge &lt;= 0 ist.
+        /// Computes the Reynolds number Re_L = (density * velocity * L) / viscosity.
+        /// Returns 0 if viscosity &lt;= 0 or length &lt;= 0.
         /// </summary>
-        /// <param name="characteristicLengthMeters">Charakteristische Länge L in Metern.</param>
+        /// <param name="characteristicLengthMeters">Characteristic length L in meters.</param>
         public float ComputeReynoldsNumber(float characteristicLengthMeters)
         {
             if (DynamicViscosity <= 0f || characteristicLengthMeters <= 0f || Velocity <= 0f || Density <= 0f)

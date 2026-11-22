@@ -11,7 +11,7 @@ using Xunit;
 
 namespace FluidForge.Tests
 {
-    /// <summary>Gemeinsamer Temp-Ordner je Testklasse.</summary>
+    /// <summary>Shared temp directory per test class.</summary>
     public abstract class TempDirectoryTest : IDisposable
     {
         protected TempDirectoryTest()
@@ -36,7 +36,7 @@ namespace FluidForge.Tests
     }
 
     // =========================================================================
-    // TODO-50: Seed, Fahrtenschreiber, Quellstand
+    // TODO-50: Seed, flight recorder, source snapshot
     // =========================================================================
 
     public class RandomSeedTests
@@ -59,7 +59,7 @@ namespace FluidForge.Tests
         public void The_Log_Line_Tells_How_To_Repeat_The_Run()
         {
             Assert.Contains("\"RandomSeed\": 123456", RunSeed.Describe(123456, 0));
-            Assert.Contains("aus simulation.json", RunSeed.Describe(5, 5));
+            Assert.Contains("from simulation.json", RunSeed.Describe(5, 5));
         }
 
         private static SimulationContext Context()
@@ -139,7 +139,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Writes_All_Fields_And_Sets_Status_And_End_When_Finished()
         {
-            string dir = Sub("Ergebnisse");
+            string dir = Sub(OutputConventions.ResultsRootDirectory);
             var source = new RunInfoSource { Commit = "abc", Branch = "main", DeployHash = "1234", UncommittedChanges = "false" };
             var tools = new Dictionary<string, string> { ["SU2"] = "7.5.1", ["Gmsh"] = ToolVersionProbe.Unknown };
 
@@ -149,35 +149,35 @@ namespace FluidForge.Tests
             Assert.Equal(Path.Combine(dir, RunInfoWriter.FileName), path);
 
             JsonObject json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-            foreach (string key in new[] { "Format", "Projekt", "Start", "Ende", "Status", "Aufruf", "ZufallsSeed",
-                                           "Rechner", "Quellstand", "Programme", "KonfigurationsHash", "Wiederaufnahmen" })
-                Assert.True(json.ContainsKey(key), $"run-info.json fehlt '{key}'.");
+            foreach (string key in new[] { "Format", "Project", "StartedAt", "FinishedAt", "Status", "CommandLine", "RandomSeed",
+                                           "Host", "Source", "Tools", "ConfigHash", "Resumes" })
+                Assert.True(json.ContainsKey(key), $"run-info.json is missing '{key}'.");
 
-            Assert.Equal("laeuft", json["Status"]!.GetValue<string>());
-            Assert.Null(json["Ende"]);
-            Assert.Equal(4711, json["ZufallsSeed"]!.GetValue<int>());
-            Assert.Equal("7.5.1", json["Programme"]!["SU2"]!.GetValue<string>());
-            Assert.Equal("main", json["Quellstand"]!["Branch"]!.GetValue<string>());
-            Assert.True(json["Rechner"]!["Prozessorkerne"]!.GetValue<int>() > 0);
+            Assert.Equal(RunInfo.StatusRunning, json["Status"]!.GetValue<string>());
+            Assert.Null(json["FinishedAt"]);
+            Assert.Equal(4711, json["RandomSeed"]!.GetValue<int>());
+            Assert.Equal("7.5.1", json["Tools"]!["SU2"]!.GetValue<string>());
+            Assert.Equal("main", json["Source"]!["Branch"]!.GetValue<string>());
+            Assert.True(json["Host"]!["ProcessorCount"]!.GetValue<int>() > 0);
 
             RunInfoWriter.Finish(dir, RunInfo.StatusCompleted);
 
             RunInfo? finished = RunInfoWriter.Read(dir);
             Assert.NotNull(finished);
-            Assert.Equal("abgeschlossen", finished!.Status);
-            Assert.False(string.IsNullOrEmpty(finished.Ende));
+            Assert.Equal(RunInfo.StatusCompleted, finished!.Status);
+            Assert.False(string.IsNullOrEmpty(finished.FinishedAt));
 
             RunInfoWriter.AddResume(dir, 37);
             RunInfo? resumed = RunInfoWriter.Read(dir);
-            Assert.Equal("laeuft", resumed!.Status);
-            Assert.Null(resumed.Ende);
-            Assert.Equal(37, resumed.Wiederaufnahmen.Single().UebernommeneRechnungen);
+            Assert.Equal(RunInfo.StatusRunning, resumed!.Status);
+            Assert.Null(resumed.FinishedAt);
+            Assert.Equal(37, resumed.Resumes.Single().AdoptedEvaluations);
         }
 
         [Fact]
         public void Finish_Without_File_Does_Not_Throw()
         {
-            RunInfoWriter.Finish(Sub("leer"), RunInfo.StatusAborted);
+            RunInfoWriter.Finish(Sub("empty"), RunInfo.StatusAborted);
         }
 
         [Fact]
@@ -185,16 +185,16 @@ namespace FluidForge.Tests
         {
             string repo = Sub("repo");
             GitInfoTests.WriteGit(repo, "ref: refs/heads/local", ("refs/heads/local", new string('a', 40)));
-            File.WriteAllText(Path.Combine(repo, RunInfoWriter.DeployHashFileName), "hash-aus-datei");
+            File.WriteAllText(Path.Combine(repo, RunInfoWriter.DeployHashFileName), "hash-from-file");
 
             RunInfoSource fromGit = RunInfoWriter.ReadSourceState(repo);
             Assert.Equal(new string('a', 40), fromGit.Commit);
             Assert.Equal("local", fromGit.Branch);
-            Assert.Equal("hash-aus-datei", fromGit.DeployHash);
-            Assert.Equal("unbekannt", fromGit.UncommittedChanges);
+            Assert.Equal("hash-from-file", fromGit.DeployHash);
+            Assert.Equal("unknown", fromGit.UncommittedChanges);
 
             File.WriteAllText(Path.Combine(repo, RunInfoWriter.DeployInfoFileName),
-                "{\"Commit\":\"bbbb\",\"Branch\":\"server\",\"DeployHash\":\"0123\",\"DeployZeit\":\"jetzt\",\"UncommittedChanges\":\"true\"}");
+                "{\"Commit\":\"bbbb\",\"Branch\":\"server\",\"DeployHash\":\"0123\",\"DeployedAt\":\"now\",\"UncommittedChanges\":\"true\"}");
 
             RunInfoSource fromDeploy = RunInfoWriter.ReadSourceState(repo);
             Assert.Equal("bbbb", fromDeploy.Commit);
@@ -206,7 +206,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Source_Copy_Takes_Cs_And_Json_But_Not_Bin_And_Obj()
         {
-            string project = Sub("projekt");
+            string project = Sub("project");
             void Put(string relative)
             {
                 string file = Path.Combine(project, relative);
@@ -214,17 +214,17 @@ namespace FluidForge.Tests
                 File.WriteAllText(file, relative);
             }
 
-            Put("Geometrie.cs");
+            Put("Geometry.cs");
             Put("simulation.json");
             Put(Path.Combine("solvers", "su2.json"));
-            Put("Notizen.md");
-            Put(Path.Combine("bin", "Alt.cs"));
+            Put("Notes.md");
+            Put(Path.Combine("bin", "Old.cs"));
             Put(Path.Combine("obj", "x.json"));
 
-            string results = Sub("ergebnisse");
-            string stale = Path.Combine(results, RunInfoWriter.SourceSnapshotDirectoryName, "Weg.cs");
+            string results = Sub("results");
+            string stale = Path.Combine(results, RunInfoWriter.SourceSnapshotDirectoryName, "Stale.cs");
             Directory.CreateDirectory(Path.GetDirectoryName(stale)!);
-            File.WriteAllText(stale, "vom letzten Lauf");
+            File.WriteAllText(stale, "from last run");
 
             int copied = RunInfoWriter.CopyProjectSources(project, results);
 
@@ -235,7 +235,7 @@ namespace FluidForge.Tests
                 .ToList();
 
             Assert.Equal(3, copied);
-            Assert.Equal(new[] { "Geometrie.cs", "simulation.json", "solvers/su2.json" }, files);
+            Assert.Equal(new[] { "Geometry.cs", "simulation.json", "solvers/su2.json" }, files);
         }
     }
 
@@ -245,7 +245,7 @@ namespace FluidForge.Tests
         public void A_Missing_Program_Yields_Unknown_Without_Exception()
         {
             string version = ToolVersionProbe.Query(
-                "dieses_programm_gibt_es_nicht_" + Guid.NewGuid().ToString("N"), "--version",
+                "this_program_does_not_exist_" + Guid.NewGuid().ToString("N"), "--version",
                 new Regex(@"(\d+\.\d+)"), TimeSpan.FromSeconds(5));
 
             Assert.Equal(ToolVersionProbe.Unknown, version);
@@ -263,9 +263,9 @@ namespace FluidForge.Tests
         {
             var config = new SimulationConfig
             {
-                Su2Path = "kein_su2_" + Guid.NewGuid().ToString("N"),
-                GmshPath = "kein_gmsh_" + Guid.NewGuid().ToString("N"),
-                MpiRunPath = "kein_mpirun_" + Guid.NewGuid().ToString("N")
+                Su2Path = "no_su2_" + Guid.NewGuid().ToString("N"),
+                GmshPath = "no_gmsh_" + Guid.NewGuid().ToString("N"),
+                MpiRunPath = "no_mpirun_" + Guid.NewGuid().ToString("N")
             };
 
             var versions = ToolVersionProbe.Probe(config);
@@ -298,20 +298,20 @@ namespace FluidForge.Tests
         [Fact]
         public void Reads_A_Loose_Branch_Reference()
         {
-            string repo = Sub("lose");
-            WriteGit(repo, "ref: refs/heads/MajorPhysikFixes", ("refs/heads/MajorPhysikFixes", Sha1));
+            string repo = Sub("loose");
+            WriteGit(repo, "ref: refs/heads/MajorPhysicsFixes", ("refs/heads/MajorPhysicsFixes", Sha1));
 
             GitInfo? info = GitInfo.Read(repo);
 
             Assert.NotNull(info);
             Assert.Equal(Sha1, info!.Commit);
-            Assert.Equal("MajorPhysikFixes", info.Branch);
+            Assert.Equal("MajorPhysicsFixes", info.Branch);
         }
 
         [Fact]
         public void Reads_A_Packed_Reference()
         {
-            string repo = Sub("gepackt");
+            string repo = Sub("packed");
             WriteGit(repo, "ref: refs/heads/feature/x",
                 ("packed-refs", $"# pack-refs with: peeled fully-peeled sorted\n{Sha2} refs/heads/main\n{Sha1} refs/heads/feature/x\n^{Sha2}"));
 
@@ -324,7 +324,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Reads_A_Detached_Head()
         {
-            string repo = Sub("abgekoppelt");
+            string repo = Sub("detached");
             WriteGit(repo, Sha2);
 
             GitInfo? info = GitInfo.Read(repo);
@@ -336,7 +336,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Without_Git_Folder_It_Is_Null()
         {
-            Assert.Null(GitInfo.Read(Sub("ohne")));
+            Assert.Null(GitInfo.Read(Sub("none")));
             Assert.Null(GitInfo.Read(null));
         }
     }
@@ -371,13 +371,13 @@ namespace FluidForge.Tests
     }
 
     // =========================================================================
-    // TODO-51: Journal und Wiedergabe
+    // TODO-51: Journal and replay
     // =========================================================================
 
     /// <summary>
-    /// Echte Optimierer und echter Türsteher mit festem Seed, gemockte Geometrie und ein
-    /// gemockter Solver, der seine Aufrufe zählt. So lässt sich prüfen, dass ein fortgesetzter
-    /// Lauf genau die fehlenden Rechnungen macht und dasselbe Ergebnis liefert.
+    /// Real optimizer and real bouncer with fixed seed, mocked geometry, and a
+    /// mocked solver that counts its calls. This verifies that a resumed run
+    /// executes only the missing evaluations and produces the exact same result.
     /// </summary>
     public class RunJournalReplayTests : TempDirectoryTest
     {
@@ -425,7 +425,7 @@ namespace FluidForge.Tests
                 VariantsPerIteration = 4,
                 UseRubberBandScaler = false,
                 IdwVirtualSimulations = 300,
-                BouncerTolerance = 0.002f,     // streng: der Türsteher lehnt auch einmal ab
+                BouncerTolerance = 0.002f,     // strict: the bouncer rejects occasionally
                 BouncerJitter = 3f,
                 ChampionVerification = new ChampionVerificationConfig { Mode = verification }
             };
@@ -446,7 +446,7 @@ namespace FluidForge.Tests
                   .Returns((MeshRequest r) => $"mesh_{r.Iteration}_{r.Variant}.su2");
 
             var solver = new Mock<ISimulationSolver>();
-            solver.SetupGet(s => s.Name).Returns("Zähl-Solver");
+            solver.SetupGet(s => s.Name).Returns("Counting-Solver");
             solver.Setup(s => s.Solve(It.IsAny<string>(), It.IsAny<ModelRecord>(), It.IsAny<SimulationConfig>(), It.IsAny<string>()))
                   .Callback((string mesh, ModelRecord record, SimulationConfig c, string d) =>
                   {
@@ -474,12 +474,12 @@ namespace FluidForge.Tests
             new SortedDictionary<string, string>(StringComparer.Ordinal) { ["simulation.json"] = "sha256:test" },
             new RunInfoSource());
 
-        private static string Csv(string directory) => File.ReadAllText(Path.Combine(directory, "Simulation_Results.csv"));
+        private static string Csv(string directory) => File.ReadAllText(Path.Combine(directory, OutputConventions.ResultsCsvFileName));
 
-        /// <summary>Ein vollständiger Lauf mit Journal. Liefert Ordner, Solver-Aufrufe und Journalzeilen.</summary>
+        /// <summary>A complete run with journal. Returns directory, solver calls, and journal lines.</summary>
         private (string Directory, int SolverCalls, string[] Lines) FullRun(string algorithm)
         {
-            string directory = Sub("voll_" + algorithm);
+            string directory = Sub("full_" + algorithm);
             RunJournal journal = RunJournal.StartNew(directory, Header());
             Run run = Build(directory, algorithm, journal);
 
@@ -489,7 +489,7 @@ namespace FluidForge.Tests
             return (directory, run.SolverCalls, File.ReadAllLines(RunJournal.PathFor(directory)));
         }
 
-        /// <summary>Legt in einem neuen Ordner ein Journal mit Kopf und den ersten k Einträgen an.</summary>
+        /// <summary>Creates a journal in a new directory with header and the first k entries.</summary>
         private string Truncated(string name, string[] lines, int k, bool halfLine)
         {
             string directory = Sub(name);
@@ -512,15 +512,15 @@ namespace FluidForge.Tests
 
             Assert.True(content.Completed);
             Assert.Equal(solverCalls, content.Entries.Count);
-            Assert.True(solverCalls > 12, "Zu den 12 Varianten kommen Türsteher und Feinprüfung.");
-            Assert.Equal(solverCalls + 2, lines.Length);   // Kopf + Einträge + Schluss
-            Assert.StartsWith("{\"Ende\"", lines[^1]);
-            Assert.Contains(content.Entries, e => e.Variant == 99);              // Türsteher
-            Assert.Contains(content.Entries, e => e.Tag.Length > 0);             // Feinprüfung
+            Assert.True(solverCalls > 12, "In addition to the 12 variants, bouncer and fine verification run.");
+            Assert.Equal(solverCalls + 2, lines.Length);   // header + entries + end
+            Assert.StartsWith("{\"End\"", lines[^1]);
+            Assert.Contains(content.Entries, e => e.Variant == 99);              // bouncer
+            Assert.Contains(content.Entries, e => e.Tag.Length > 0);             // fine verification
             Assert.Equal(Seed, content.Header.ZufallsSeed);
         }
 
-        /// <summary>Die Kernprüfung (TODO-51): fortgesetzt = ununterbrochen, mit genau N − k Rechnungen.</summary>
+        /// <summary>Core check (TODO-51): resumed = uninterrupted, with exactly N − k evaluations.</summary>
         [Theory]
         [InlineData("IdwBaseline", 5, false)]
         [InlineData("IdwBaseline", 13, true)]
@@ -534,7 +534,7 @@ namespace FluidForge.Tests
             var (fullDirectory, n, lines) = FullRun(algorithm);
             Assert.True(k < n);
 
-            string directory = Truncated($"fortgesetzt_{algorithm}_{k}", lines, k, halfLine);
+            string directory = Truncated($"resumed_{algorithm}_{k}", lines, k, halfLine);
             RunJournalContent content = RunJournal.Read(RunJournal.PathFor(directory))!;
             Assert.False(content.Completed);
             Assert.Equal(k, content.Entries.Count);
@@ -549,7 +549,7 @@ namespace FluidForge.Tests
             Assert.Equal(k, journal.ReplayedCount);
             Assert.Equal(Csv(fullDirectory), Csv(directory));
 
-            // Das fortgesetzte Journal ist am Ende wieder vollständig und gleich lang.
+            // The resumed journal is complete and the same length at the end.
             RunJournalContent after = RunJournal.Read(RunJournal.PathFor(directory))!;
             Assert.True(after.Completed);
             Assert.Equal(n, after.Entries.Count);
@@ -560,12 +560,12 @@ namespace FluidForge.Tests
         public void A_Half_Last_Line_Is_Ignored_And_Reported()
         {
             var (_, _, lines) = FullRun("Rsm");
-            string directory = Truncated("halb", lines, 3, halfLine: true);
+            string directory = Truncated("half", lines, 3, halfLine: true);
 
             RunJournalContent content = RunJournal.Read(RunJournal.PathFor(directory))!;
 
             Assert.Equal(3, content.Entries.Count);
-            Assert.Contains("unvollständig", Assert.Single(content.Warnings));
+            Assert.Contains("incomplete", Assert.Single(content.Warnings));
         }
 
         [Fact]
@@ -574,13 +574,13 @@ namespace FluidForge.Tests
             var (fullDirectory, n, lines) = FullRun("Rsm");
             const int j = 6;
 
-            // In Eintrag j einen Parameter verstellen (Zeile 0 ist der Kopf).
+            // Perturb one parameter in entry j (line 0 is the header).
             var changed = lines.ToArray();
             JsonObject entry = JsonNode.Parse(changed[1 + j])!.AsObject();
             entry["Parameters"]!["Length"] = 123.456f;
             changed[1 + j] = entry.ToJsonString();
-            // Alle n Einträge, nur ohne Schlusszeile.
-            string directory = Truncated("abweichung", changed, n, halfLine: false);
+            // All n entries, just without the closing line.
+            string directory = Truncated("deviation", changed, n, halfLine: false);
 
             RunJournal journal = RunJournal.Resume(directory, RunJournal.Read(RunJournal.PathFor(directory))!);
             Run resumed = Build(directory, "Rsm", journal);
@@ -589,7 +589,7 @@ namespace FluidForge.Tests
 
             Assert.Equal(n - j, resumed.SolverCalls);
             Assert.Equal(j, journal.ReplayedCount);
-            Assert.Single(Directory.GetFiles(RunJournal.DirectoryFor(directory), "journal_abweichung_*.jsonl"));
+            Assert.Single(Directory.GetFiles(RunJournal.DirectoryFor(directory), "journal_deviation_*.jsonl"));
             Assert.Equal(Csv(fullDirectory), Csv(directory));
 
             RunJournalContent after = RunJournal.Read(RunJournal.PathFor(directory))!;
@@ -600,7 +600,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Replayed_Records_Are_Deep_Copies()
         {
-            string directory = Sub("kopie");
+            string directory = Sub("copy");
             RunJournal writer = RunJournal.StartNew(directory, Header());
             var parameters = new Dictionary<string, float> { ["Length"] = 1f };
             var record = new ModelRecord { Iteration = 1, Variant = 1, ActiveParameters = parameters };
@@ -609,7 +609,7 @@ namespace FluidForge.Tests
             writer.Append(1, 1, 1f, "", parameters, record);
             writer.Append(1, 1, 1f, "", parameters, record);
 
-            // Der Aufrufer verändert den Datensatz nach der Rückgabe — das Journal nicht.
+            // Caller mutates the record after returning — not the journal.
             record.Fitness = 9f;
             record.PassiveParameters["Drag"] = 99f;
 
@@ -638,20 +638,20 @@ namespace FluidForge.Tests
             var parameters = new Dictionary<string, float> { ["A"] = 0.1f + 0.2f, ["B"] = 1f / 3f };
             var record = new ModelRecord { ActiveParameters = parameters };
             record.PassiveParameters["X"] = MathF.PI * 1e-7f;
-            record.PassiveParameters["Leer"] = float.NaN;
+            record.PassiveParameters["Empty"] = float.NaN;
             writer.Append(2, 3, 0.7071068f, "Verif", parameters, record);
 
             RunJournal reader = RunJournal.Resume(directory, RunJournal.Read(RunJournal.PathFor(directory))!);
             Assert.True(reader.TryReplay(2, 3, 0.7071068f, "Verif", new Dictionary<string, float>(parameters), out ModelRecord? copy));
 
             Assert.Equal(MathF.PI * 1e-7f, copy!.PassiveParameters["X"]);
-            Assert.True(float.IsNaN(copy.PassiveParameters["Leer"]));
+            Assert.True(float.IsNaN(copy.PassiveParameters["Empty"]));
         }
 
         [Fact]
         public void Starting_A_New_Journal_Archives_The_Old_One()
         {
-            string directory = Sub("archiv");
+            string directory = Sub("archive");
             RunJournal.StartNew(directory, Header()).Append(1, 1, 1f, "", new(), new ModelRecord());
 
             RunJournal.StartNew(directory, Header(), out string? archived);
@@ -665,7 +665,7 @@ namespace FluidForge.Tests
         [Fact]
         public void Without_A_Journal_Nothing_Is_Written()
         {
-            string directory = Sub("ohne");
+            string directory = Sub("none");
             Run run = Build(directory, "Rsm", journal: null, verification: "Off");
 
             run.Controller.RunOptimization();
@@ -691,7 +691,7 @@ namespace FluidForge.Tests
 
         private string WithJournal(bool completed, int seed = 777, string? deployHash = "d1")
         {
-            string directory = Sub("lauf_" + Guid.NewGuid().ToString("N"));
+            string directory = Sub("run_" + Guid.NewGuid().ToString("N"));
             var header = RunResume.CreateHeader("Test", seed, Sections("sha256:a"), new RunInfoSource { DeployHash = deployHash });
             RunJournal journal = RunJournal.StartNew(directory, header);
             journal.Append(1, 1, 1f, "", new Dictionary<string, float> { ["L"] = 1f }, new ModelRecord());
@@ -704,9 +704,9 @@ namespace FluidForge.Tests
         public void Without_A_Journal_The_Message_Is_Clear_And_Counts_As_User_Error()
         {
             var error = Assert.Throws<InvalidOperationException>(() =>
-                RunResume.Prepare(Sub("leer"), "Naca2D", Sections("sha256:a"), 0, new RunInfoSource()));
+                RunResume.Prepare(Sub("empty"), "Naca2D", Sections("sha256:a"), 0, new RunInfoSource()));
 
-            Assert.StartsWith("[WIEDERAUFNAHME] Kein abgebrochener Lauf gefunden", error.Message);
+            Assert.StartsWith($"{OutputConventions.ResumeTag} No aborted run found", error.Message);
             Assert.Contains(".\\scripts\\sim.ps1 run -Project Naca2D", error.Message);
         }
 
@@ -725,9 +725,9 @@ namespace FluidForge.Tests
             string directory = WithJournal(completed: false);
 
             var error = Assert.Throws<InvalidOperationException>(() =>
-                RunResume.Prepare(directory, "Test", Sections("sha256:GEAENDERT"), 0, new RunInfoSource()));
+                RunResume.Prepare(directory, "Test", Sections("sha256:CHANGED"), 0, new RunInfoSource()));
 
-            Assert.StartsWith("[WIEDERAUFNAHME]", error.Message);
+            Assert.StartsWith(OutputConventions.ResumeTag, error.Message);
             Assert.Contains("simulation.json", error.Message);
             Assert.DoesNotContain("su2.json", error.Message);
         }
@@ -735,9 +735,9 @@ namespace FluidForge.Tests
         [Fact]
         public void The_Seed_From_The_Journal_Wins_And_A_Code_Change_Only_Warns()
         {
-            string directory = WithJournal(completed: false, seed: 777, deployHash: "alt");
+            string directory = WithJournal(completed: false, seed: 777, deployHash: "old");
 
-            ResumePlan plan = RunResume.Prepare(directory, "Test", Sections("sha256:a"), 5, new RunInfoSource { DeployHash = "neu" });
+            ResumePlan plan = RunResume.Prepare(directory, "Test", Sections("sha256:a"), 5, new RunInfoSource { DeployHash = "new" });
 
             Assert.False(plan.AlreadyCompleted);
             Assert.Equal(777, plan.Seed);
@@ -746,7 +746,7 @@ namespace FluidForge.Tests
             Assert.True(plan.Journal!.IsReplaying);
             Assert.Equal(2, plan.Warnings.Count);
             Assert.Contains(plan.Warnings, w => w.Contains("777") && w.Contains("5"));
-            Assert.Contains(plan.Warnings, w => w.Contains("Code-Stand"));
+            Assert.Contains(plan.Warnings, w => w.Contains("Source code version"));
         }
     }
 
@@ -770,7 +770,7 @@ namespace FluidForge.Tests
             Assert.Contains("'resume'", set.Groups[1].Value);
             Assert.Contains("Invoke-Runner -Arguments 'resume'", sim);
 
-            Assert.Contains("resume)     cmd_resume ;;", runner);
+            Assert.Matches(@"resume\)\s+cmd_resume\s*;;", runner);
             Assert.Contains("_foreground --resume", runner);
         }
 
@@ -779,8 +779,8 @@ namespace FluidForge.Tests
         {
             string runner = Read("sim-runner.sh");
 
-            Assert.Contains("Wiederaufnahme/journal.jsonl", runner);
-            Assert.Contains("Abgebrochener Lauf gefunden", runner);
+            Assert.Contains($"{OutputConventions.ResumeDirectory}/{OutputConventions.JournalFileName}", runner);
+            Assert.Contains("Interrupted run found", runner);
             Assert.Contains("sim.ps1 resume -Project", runner);
         }
 
@@ -789,8 +789,8 @@ namespace FluidForge.Tests
         {
             string runner = Read("sim-runner.sh");
 
-            Assert.Contains("\"run-info.json\"", runner);
-            Assert.Contains("\"Quellstand\"", runner);
+            Assert.Contains($"\"{OutputConventions.RunInfoFileName}\"", runner);
+            Assert.Contains($"\"{OutputConventions.SourceSnapshotDirectory}\"", runner);
         }
 
         [Fact]

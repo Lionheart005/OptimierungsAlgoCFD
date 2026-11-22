@@ -5,51 +5,49 @@ using System.Linq;
 namespace FluidForge.Core
 {
     /// <summary>
-    /// Womit das Ersatzmodell arbeitet (TODO-55, TODO-56).
+    /// Target mode for the surrogate model.
     /// </summary>
     public enum SurrogateTargetMode
     {
-        /// <summary>Ein Modell für die Fitness als Ganzes (Idee 1).</summary>
+        /// <summary>A single surrogate model for overall fitness.</summary>
         Fitness,
-        /// <summary>Ein Modell je Kennwert aus <see cref="IFitnessCalculator.RequiredMetrics"/>; die Fitness rechnet die Formel des Projekts (Idee 2).</summary>
+        /// <summary>One surrogate model per metric in <see cref="IFitnessCalculator.RequiredMetrics"/>; fitness is computed by the project formula.</summary>
         Metrics
     }
 
     /// <summary>
-    /// Bayes-Optimierung mit Gauß-Prozess und Expected Improvement (TODO-55 bis TODO-58).
+    /// Bayesian optimization using Gaussian Processes and Expected Improvement.
     ///
     /// <para>
-    /// <b>Idee in Kürze:</b> Aus den bisher gerechneten Varianten lernt ein Ersatzmodell nicht nur eine
-    /// Landkarte der Fitness, sondern auch, wo es sich <i>nicht</i> auskennt (Unsicherheit). Die
-    /// Auswahlregel Expected Improvement fragt: "Wo ist die Chance am größten, den bisherigen Besten zu
-    /// schlagen?" Das kann nahe am Besten sein (verfeinern) oder im Nebel (erkunden). Jeder Vorschlag
-    /// wird danach echt gerechnet; das Modell ersetzt keine einzige echte Rechnung.
+    /// <b>Concept:</b> From previously evaluated variants, a surrogate model learns both a
+    /// fitness landscape and its own uncertainty. Expected Improvement asks: "Where is the
+    /// greatest chance of beating the current best?" This balances local refinement near the
+    /// best known point with exploration of uncertain regions. Every proposal is subsequently
+    /// evaluated by the real solver; the surrogate never replaces an actual simulation.
     /// </para>
     ///
     /// <para>
-    /// Im Modus <see cref="SurrogateTargetMode.Metrics"/> lernt jeder Kennwert (z. B. Drag, Volume) sein
-    /// eigenes Modell, und die Fitness-Formel des Projekts verrechnet die geschätzten Kennwerte. Strafen
-    /// und Grenzen der Formel wirken damit automatisch richtig. Der Kern kennt weder Formel noch
-    /// Metriknamen (F18).
+    /// In <see cref="SurrogateTargetMode.Metrics"/> mode, each metric (e.g., Drag, Volume) has its
+    /// own surrogate model, and the project's fitness formula evaluates the predicted metrics.
+    /// Penalties and bounds of the formula take effect naturally without the core knowing metric names.
     /// </para>
     ///
     /// <para>
-    /// Voraussetzung: für jeden Parameter gibt es Grenzen (<c>ParameterBounds</c>). <c>MaxDeviations</c>
-    /// wirkt bei diesem Verfahren nicht. Zustand ändert sich nur in <see cref="PrepareNextIteration"/>
-    /// (F19); mit demselben Seed und denselben Ergebnissen macht das Verfahren dieselben Vorschläge,
-    /// damit die Wiederaufnahme per Wiedergabe greift (F20).
+    /// Prerequisite: every parameter must have bounds (<c>ParameterBounds</c>). <c>MaxDeviations</c>
+    /// does not apply here. State changes only in <see cref="PrepareNextIteration"/>; with the
+    /// same seed and identical outcomes, proposals are deterministic for replay-based resume.
     /// </para>
     /// </summary>
     public sealed class BayesOptimizationAlgorithm : IOptimizationAlgorithm, IOptimizationPreflight
     {
-        // Schlüssel der Vorhersagespalten in Simulation_Results.csv (TODO-58)
+        // Prediction column keys in results.csv
         public const string PredictedFitnessKey = "Bayes_PredictedFitness";
         public const string PredictedLowKey = "Bayes_PredictedLow";
         public const string PredictedHighKey = "Bayes_PredictedHigh";
         public const string ExplorerKey = "Bayes_Explorer";
 
-        /// <summary>Name der Verlaufsdatei in <c>Analyseergebnisse/</c>.</summary>
-        public const string HistoryFileName = "Bayes_Verlauf.csv";
+        /// <summary>History filename inside <c>analysis/</c>.</summary>
+        public const string HistoryFileName = OutputConventions.BayesHistoryCsvFileName;
 
         private const int ExplorerMinimumVariants = 4;
 
@@ -61,7 +59,7 @@ namespace FluidForge.Core
         private readonly AcquisitionOptimizer _acquisition;
         private readonly BayesDiagnosticsReporter _reporter;
 
-        // Zustand des Laufs (wird beim ersten Aufruf aufgebaut)
+        // Run state (initialized on first call)
         private ParameterSpace? _space;
         private int _initialSamples;
         private bool _warnedEmptyQueue;
@@ -70,11 +68,11 @@ namespace FluidForge.Core
         private readonly Queue<BayesProposal> _queue = new();
         private readonly Dictionary<(int Iteration, int Variant), BayesProposal> _issued = new();
 
-        /// <param name="fitness">Bewertet die Modelle; im Modus "Metrics" auch die geschätzten Kennwerte.</param>
-        /// <param name="config">Nur für Tests. Im Lauf kommt die Konfiguration aus <c>context.Config.Bayes</c>.</param>
-        /// <param name="random">Zufallsquelle, im Lauf aus dem Lauf-Seed (TODO-50). Ohne Angabe echter Zufall.</param>
-        /// <param name="modelFactory">Erzeugt die Ersatzmodelle. Vorgabe ist der Gauß-Prozess; in Tests austauschbar.</param>
-        /// <param name="tuning">Interne Stellschrauben (nur für Tests), siehe <see cref="BayesTuning"/>.</param>
+        /// <param name="fitness">Evaluates models; in "Metrics" mode also evaluates predicted metrics.</param>
+        /// <param name="config">For tests only. At runtime, config comes from <c>context.Config.Bayes</c>.</param>
+        /// <param name="random">Random source, derived from the run seed at runtime. Defaults to unseeded.</param>
+        /// <param name="modelFactory">Creates surrogate models. Defaults to Gaussian Process; replaceable in tests.</param>
+        /// <param name="tuning">Internal tuning parameters (for tests), see <see cref="BayesTuning"/>.</param>
         public BayesOptimizationAlgorithm(
             IFitnessCalculator fitness,
             BayesConfig? config = null,
@@ -94,7 +92,7 @@ namespace FluidForge.Core
             }
             else
             {
-                // Eigener, aus dem Optimierer abgeleiteter Zufallsstrom für die Startpunkte der Hyperparameter.
+                // Dedicated random stream derived from the optimizer for hyperparameter multi-starts.
                 var modelRandom = new Random(_random.Next());
                 resolvedFactory = () => new GaussianProcess(new Random(modelRandom.Next()));
             }
@@ -104,24 +102,24 @@ namespace FluidForge.Core
             _reporter = new BayesDiagnosticsReporter(_ensemble);
         }
 
-        public string Name => "Bayes-Optimierung (Gauß-Prozess, Expected Improvement)";
+        public string Name => "Bayesian Optimization (Gaussian Process, Expected Improvement)";
 
-        /// <summary>Wirksamer Modus nach Auflösung von "Auto" und eventuellem Rückfall (TODO-56).</summary>
+        /// <summary>Effective mode after resolving "Auto" and any fallback.</summary>
         public SurrogateTargetMode ActiveMode => _ensemble.ActiveMode;
 
-        /// <summary>Ist der Vertrauensbereich aktiv (TODO-57)?</summary>
+        /// <summary>Whether the trust region is active.</summary>
         public bool TrustRegionActive => _acquisition.TrustRegionActive;
 
-        /// <summary>Aktuelle Seitenlänge des Vertrauensbereichs, <c>null</c> wenn aus.</summary>
+        /// <summary>Current trust region side length, or <c>null</c> if disabled.</summary>
         public double? TrustRegionLength => _acquisition.TrustRegionLength;
 
-        /// <summary>Wie viele Punkte das Modell beim letzten Lernen gesehen hat.</summary>
+        /// <summary>Number of training points seen during the last fit.</summary>
         public int LastTrainingPointCount { get; private set; }
 
-        /// <summary>Wie oft die Auswahl auf die Ausweichregel (statt auf die erwartete Verbesserung) zurückfiel. Nur Diagnose.</summary>
+        /// <summary>Number of times selection fell back to predicted fitness instead of EI. Diagnostics only.</summary>
         public int FallbackSelections => _acquisition.FallbackSelections;
 
-        /// <summary>Nur Diagnose: Fitness-Vorhersage (Median) des zuletzt gelernten Modells an einem Parameterpunkt.</summary>
+        /// <summary>Diagnostics only: median fitness prediction of the last fitted model at a parameter point.</summary>
         public double? PredictFitnessAt(IReadOnlyDictionary<string, float> parameters)
         {
             if (_lastFit == null || _space == null) return null;
@@ -129,7 +127,7 @@ namespace FluidForge.Core
             return _reporter.PredictFitnessBand(_lastFit, unit, _space.FromUnit(unit)).Median;
         }
 
-        /// <summary>Anzahl der Startrechnungen (Versuchsplan) nach Auflösung der Automatik.</summary>
+        /// <summary>Number of initial DoE evaluations after resolving auto-sizing.</summary>
         public int InitialSampleCount => _initialSamples;
 
         /// <inheritdoc/>
@@ -146,8 +144,8 @@ namespace FluidForge.Core
             if (space.Dimension == 0)
             {
                 throw new InvalidOperationException(
-                    "[KONFIGURATION] Alle Parameter sind fest (Min == Max in ParameterBounds). Der Bayes-Optimierer "
-                    + "hat nichts zu optimieren.");
+                    $"{OutputConventions.ConfigTag} All parameters are fixed (Min == Max in ParameterBounds). "
+                    + "Bayesian optimization has nothing to optimize.");
             }
 
             _space = space;
@@ -157,14 +155,14 @@ namespace FluidForge.Core
             _initialSamples = config.InitialSamples > 0 ? config.InitialSamples : Math.Max(variants, 2 * space.Dimension + 2);
             _acquisition.InitializeTrustRegion(space.Dimension, variants);
 
-            // Versuchsplan: n0 - 1 Punkte, der erste Punkt ist der Startwert (Iteration 1, Variante 1).
+            // Initial DoE: n0 - 1 points, as the first point is the base parameter set (Iteration 1, Variant 1).
             foreach (double[] point in LatinHypercube.Sample(_initialSamples - 1, space.Dimension, _random))
                 _queue.Enqueue(MakeProposal(point, fromModel: false));
 
             Console.WriteLine(
-                $"[BAYES] Modus: {ActiveMode}, {space.Dimension} freie(r) Parameter, "
-                + $"{_initialSamples} Startrechnungen (Versuchsplan), "
-                + $"Vertrauensbereich: {(TrustRegionActive ? "an" : "aus")}.");
+                $"{OutputConventions.BayesTag} Mode: {ActiveMode}, {space.Dimension} free parameter(s), "
+                + $"{_initialSamples} initial samples (DoE), "
+                + $"trust region: {(TrustRegionActive ? "on" : "off")}.");
         }
 
         private static void ValidateConfig(BayesConfig config)
@@ -174,9 +172,9 @@ namespace FluidForge.Core
 
             if (!In(config.SurrogateTarget, "Auto", "Fitness", "Metrics"))
                 throw new InvalidOperationException(
-                    $"[KONFIGURATION] Bayes.SurrogateTarget '{config.SurrogateTarget}' ist unbekannt. Gültig sind 'Auto', 'Fitness' und 'Metrics'.");
+                    $"{OutputConventions.ConfigTag} Bayes.SurrogateTarget '{config.SurrogateTarget}' is unknown. Valid values are 'Auto', 'Fitness', and 'Metrics'.");
             if (config.InitialSamples < 0)
-                throw new InvalidOperationException("[KONFIGURATION] Bayes.InitialSamples darf nicht negativ sein (0 = automatisch).");
+                throw new InvalidOperationException($"{OutputConventions.ConfigTag} Bayes.InitialSamples must not be negative (0 = automatic).");
         }
 
         private static SurrogateTargetMode ResolveMode(BayesConfig config, IFitnessCalculator fitness)
@@ -188,8 +186,8 @@ namespace FluidForge.Core
             {
                 "fitness" => SurrogateTargetMode.Fitness,
                 "metrics" when !hasMetrics => throw new InvalidOperationException(
-                    "[KONFIGURATION] Bayes.SurrogateTarget = 'Metrics' verlangt, dass die Fitness des Projekts ihre "
-                    + "Kennwerte nennt (RequiredMetrics). Sie nennt keine. Entweder 'Fitness' oder 'Auto' eintragen."),
+                    $"{OutputConventions.ConfigTag} Bayes.SurrogateTarget = 'Metrics' requires the project's fitness calculator to "
+                    + "declare its metrics (RequiredMetrics), but it declares none. Use 'Fitness' or 'Auto'."),
                 "metrics" => SurrogateTargetMode.Metrics,
                 _ => hasMetrics ? SurrogateTargetMode.Metrics : SurrogateTargetMode.Fitness
             };
@@ -212,7 +210,7 @@ namespace FluidForge.Core
                 if (!_warnedEmptyQueue)
                 {
                     _warnedEmptyQueue = true;
-                    SimulationLog.Warning("[BAYES] Keine vorbereiteten Vorschläge mehr; nehme einen Zufallspunkt (Versuchsplan).");
+                    SimulationLog.Warning($"{OutputConventions.BayesTag} No prepared proposals remaining; falling back to a random DoE point.");
                 }
                 proposal = MakeProposal(LatinHypercube.Sample(1, _space!.Dimension, _random)[0], fromModel: false);
             }
@@ -223,8 +221,8 @@ namespace FluidForge.Core
 
         public ModelRecord EvaluateAndSelectBest(List<ModelRecord> records, SimulationContext context)
         {
-            // Nur Fitness und Vorhersagespalten setzen, sonst keinen Zustand verändern (F19):
-            // diese Methode läuft auch für einzelne Feinprüf-Datensätze.
+            // Only set fitness and prediction columns without mutating other state:
+            // this method also runs for individual fine-verification records.
             foreach (ModelRecord record in records)
             {
                 _fitness.CalculateFitness(record, context.Config);
@@ -255,15 +253,13 @@ namespace FluidForge.Core
 
             if (usable < _initialSamples)
             {
-                // Versuchsplan fortsetzen. Was über diese Runde hinausgeht, bleibt für die nächsten Runden
-                // in der Warteschlange (bis 08.11.2026 ging es hier verloren, wenn der Plan länger als
-                // eine Runde reichte).
+                // Continue initial DoE; any remaining points stay queued for subsequent rounds.
                 proposals.AddRange(leftoverDoe.Take(slots));
                 deferredDoe.AddRange(leftoverDoe.Skip(slots));
                 int missing = Math.Max(0, _initialSamples - usable);
                 int failed = training.ExcludedPoints.Count;
-                string note = failed > 0 ? $" ({failed} fehlgeschlagene oder verworfene Rechnung(en) zählen nicht mit)" : "";
-                Console.WriteLine($"\n[INFO] {Name}: Aufbau des Ersatzmodells. Benötige noch {missing} Basis-Simulationen (Versuchsplan).{note}");
+                string note = failed > 0 ? $" ({failed} failed or rejected evaluation(s) excluded)" : "";
+                Console.WriteLine($"\n[INFO] {Name}: Building surrogate training set. Need {missing} more baseline simulation(s) (DoE).{note}");
             }
 
             int remaining = slots - proposals.Count;
@@ -280,9 +276,9 @@ namespace FluidForge.Core
                     }
                     catch (Exception ex)
                     {
-                        // Das Modell bricht nie den Lauf ab (F22): warnen und mit Versuchsplan-Punkten füllen.
-                        SimulationLog.Warning($"[BAYES] Das Ersatzmodell konnte nicht gelernt werden ({ex.Message}). "
-                            + "Diese Iteration wird mit Zufallspunkten (Versuchsplan) gefüllt.");
+                        // Surrogate failures never abort the run: warn and fill with DoE points.
+                        SimulationLog.Warning($"{OutputConventions.BayesTag} Surrogate model training failed ({ex.Message}). "
+                            + "Filling this iteration with random DoE points.");
                         diagnostics = null;
                     }
                 }
@@ -326,15 +322,12 @@ namespace FluidForge.Core
             _lastFit = fit;
 
             fit.Excluded = training.ExcludedPoints;
-            // Erfolgsmodell (Paket B, 08.11.2026): ein eigener Gauß-Prozess auf 1 = gelungen, 0 = abgestürzt
-            // (vom Türsteher verworfene Varianten zählen nicht, sie stoßen nur lokal ab). Seine Vorhersage ist eine geglättete Erfolgswahrscheinlichkeit, mit der die
-            // Auswahlregel multipliziert wird. Anders als eine feste Abstoßung verallgemeinert es: liegt das
-            // Optimum direkt an einer Absturzzone (Strömungsabriss), meidet es die ganze Zone, nicht nur die
-            // Umgebung einzelner Abstürze (gemessen: 87 → 65 Abstürze je 100 Rechnungen, besseres Ergebnis).
+            // Success model: dedicated Gaussian Process on 1 = succeeded, 0 = crashed
+            // (gatekeeper-rejected variants are excluded and only apply local repulsion).
             _ensemble.FitSuccessModel(training, fit);
             fit.RepulsionRadius = 0.05 * Math.Sqrt(d);
 
-            // Zufallssätze für das Monte-Carlo-Verfahren, einmal je Iteration (ruhiger Vergleich)
+            // Common random numbers for Monte Carlo integration, generated once per iteration.
             if (fit.Slots.Count > 0 && ActiveMode == SurrogateTargetMode.Metrics)
             {
                 fit.Z = new double[SurrogateModelEnsemble.FullSamples][];
@@ -345,7 +338,7 @@ namespace FluidForge.Core
                 }
             }
 
-            // Vertrauensbereich und Kandidatenpool
+            // Trust region and candidate pool
             var (lo, hi) = _acquisition.PrepareTrustBounds(fit, training, space, bestPoint);
             double[][] pool = _acquisition.BuildPool(training, lo, hi, _tuning.CandidatePool);
 

@@ -10,9 +10,9 @@ using FluidForge.Solvers.Cfd;
 namespace FluidForge.Tests
 {
     /// <summary>
-    /// <c>EnsureTunnel</c> ist der Teil des Meshers, der ohne Gmsh läuft — und seit
-    /// TODO-11 auch ohne PicoGK. Diese Tests decken den Weg von den JSON-Optionen bis
-    /// zur geschriebenen Datei ab.
+    /// <c>EnsureTunnel</c> is the part of the mesher that runs without Gmsh — and since
+    /// TODO-11 also without PicoGK. These tests cover the path from JSON options to
+    /// the written file.
     /// </summary>
     public class GmshCfdMesherTunnelTests : IDisposable
     {
@@ -30,8 +30,8 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// Standardfall seit 08.11.2026: Quader 1000 × 300 × 300 mm, Mitte 200 mm stromab
-        /// (6 L davor, 14 L Nachlauf bei 50 mm Modell), 12 Dreiecke.
+        /// Default case since 2026-11-08: box 1000 x 300 x 300 mm, center 200 mm downstream
+        /// (6 L upstream, 14 L wake for 50 mm model), 12 triangles.
         /// </summary>
         [Fact]
         public void Default_Options_Write_The_1000x300x300_Box_Shifted_Downstream()
@@ -48,7 +48,7 @@ namespace FluidForge.Tests
             Assert.Equal(new Vector3(700f, 150f, 150f), max);
         }
 
-        /// <summary>Der frühere Quader (600 × 300 × 300, zentriert) bleibt über die Optionen erreichbar.</summary>
+        /// <summary>The previous box (600 x 300 x 300, centered) remains available via options.</summary>
         [Fact]
         public void The_Previous_Centred_600_Box_Is_Still_Available()
         {
@@ -59,7 +59,7 @@ namespace FluidForge.Tests
             Assert.Equal(new Vector3(300f, 150f, 150f), max);
         }
 
-        /// <summary>Optionen, mit denen das .geo dem Stand vor dem 08.11.2026 entspricht (Regressions-Basis).</summary>
+        /// <summary>Options matching the pre-2026-11-08 .geo output (regression baseline).</summary>
         private static GmshMesherOptions PreviousDefaults() => new GmshMesherOptions
         {
             BoundaryLayerMode = "Threshold",
@@ -110,7 +110,7 @@ namespace FluidForge.Tests
             Assert.Equal(12, StlWriterTests.ReadBinaryStl(mesher.EnsureTunnel(_workingDirectory)).Count);
         }
 
-        /// <summary>Der Tunnel wird einmal erzeugt und danach wiederverwendet.</summary>
+        /// <summary>The tunnel is generated once and reused afterwards.</summary>
         [Fact]
         public void Tunnel_Is_Cached_Across_Calls()
         {
@@ -126,9 +126,9 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-39: Mit Faktor 1,0 und ausgeschalteten neuen Optionen ist das .geo byteweise
-        /// identisch zur vorherigen Version (Regression). Seit 08.11.2026 sind Prism, Nachlauf- und
-        /// Detailbox Standard; die Basis wird deshalb mit den früheren Werten explizit erzeugt.
+        /// TODO-39: With factor 1.0 and new options disabled, the .geo is byte-identical
+        /// to the previous version (regression). Since 2026-11-08, prism, wake, and
+        /// detail box are defaults; the baseline is therefore created explicitly with the previous values.
         /// </summary>
         [Fact]
         public void WriteGeoScript_Previous_Options_And_Factor_1_Produces_Exact_Regression_Lines()
@@ -141,29 +141,29 @@ namespace FluidForge.Tests
             string[] lines = File.ReadAllLines(path);
             string[] expected = new[]
             {
-                "// --- ALLGEMEINE NETZ-EINSTELLUNGEN ---",
+                "// --- GENERAL MESH SETTINGS ---",
                 "Mesh.Optimize = 1;",
                 "Mesh.OptimizeNetgen = 0;",
-                "// A) Windkanal importieren",
+                "// A) Import wind tunnel",
                 "Merge \"tunnel.stl\";",
                 "tunnel_surfs[] = Surface{:};",
-                "// B) Bauteil importieren",
+                "// B) Import part",
                 "Merge \"model.stl\";",
                 "model_surfs[] = Surface{:};",
                 "model_surfs[] -= tunnel_surfs[];",
-                "// C) Hohlraum definieren",
+                "// C) Define fluid cavity",
                 "Surface Loop(1) = {tunnel_surfs[]};",
                 "Surface Loop(2) = {model_surfs[]};",
                 "Volume(1) = {1, 2};",
-                "// D) Physische SU2 Marker",
-                "// Dieser Name ist der SU2-Marker: Farfield -> MARKER_FAR",
+                "// D) Physical SU2 Markers",
+                "// SU2 marker name: Farfield -> MARKER_FAR",
                 "Physical Surface(\"Farfield\") = {tunnel_surfs[]};",
-                "// Dieser Name ist der SU2-Marker: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING",
+                "// SU2 marker name: Wall -> MARKER_HEATFLUX, MARKER_MONITORING, MARKER_PLOTTING",
                 "Physical Surface(\"Wall\") = {model_surfs[]};",
                 "// Physical Volume(\"Fluid\") = {1};",
                 "Mesh.SaveAll = 1;",
                 "// ==========================================",
-                "// E) DISTANZFELD FUER GRENZSCHICHT (WANDNAEHE)",
+                "// E) DISTANCE FIELD FOR BOUNDARY LAYER (NEAR-WALL)",
                 "// ==========================================",
                 "Field[1] = Distance;",
                 "Field[1].SurfacesList = {model_surfs[]};",
@@ -176,7 +176,7 @@ namespace FluidForge.Tests
                 "Background Field = 2;",
                 "Mesh.CharacteristicLengthExtendFromBoundary = 0;",
                 $"General.NumThreads = {config.GmshCores};",
-                "// H) Re-Skalierung",
+                "// H) Rescaling (mm -> m)",
                 "Mesh.ScalingFactor = (1.0 / 1) * 0.001;"
             };
 
@@ -184,7 +184,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-39: Netzverfeinerungsfaktor skaliert SizeMin und SizeMax sowie Wake-Box-Zellgrößen.
+        /// TODO-39: Mesh refinement factor scales SizeMin and SizeMax as well as wake box cell sizes.
         /// </summary>
         [Fact]
         public void WriteGeoScript_RefinementFactor_Scales_Sizes()
@@ -207,7 +207,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-39: Bei aktiver Wake-Refinement-Option werden Field[3] (Box) und Field[4] (Min) eingefügt.
+        /// TODO-39: With WakeRefinement enabled, Field[3] (Box) and Field[4] (Min) are inserted.
         /// </summary>
         [Fact]
         public void WriteGeoScript_WakeRefinement_Generates_WakeBox_And_MinField()
@@ -240,7 +240,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-39: MeshSizeFromCurvature fügt Mesh.MeshSizeFromCurvature = 1 ein.
+        /// TODO-39: MeshSizeFromCurvature inserts Mesh.MeshSizeFromCurvature = 1.
         /// </summary>
         [Fact]
         public void WriteGeoScript_MeshSizeFromCurvature_Adds_Curvature_Option()
@@ -259,7 +259,7 @@ namespace FluidForge.Tests
         }
 
         /// <summary>
-        /// TODO-39: MeshRequest bildet den BaseSuffix mit optionalem Tag.
+        /// TODO-39: MeshRequest builds the BaseSuffix with an optional tag.
         /// </summary>
         [Fact]
         public void MeshRequest_BaseSuffix_Formats_With_And_Without_Tag()
@@ -268,15 +268,15 @@ namespace FluidForge.Tests
             var reqWithoutTag = new MeshRequest("model.stl", 1, 2, config, 1.0f, _workingDirectory);
             Assert.Equal("Gen1_Var2", reqWithoutTag.BaseSuffix);
 
-            var reqWithTag = new MeshRequest("model.stl", 1, 1, config, 1.0f, _workingDirectory, Tag: "Kal3");
-            Assert.Equal("Gen1_Var1_Kal3", reqWithTag.BaseSuffix);
+            var reqWithTag = new MeshRequest("model.stl", 1, 1, config, 1.0f, _workingDirectory, Tag: "Cal3");
+            Assert.Equal("Gen1_Var1_Cal3", reqWithTag.BaseSuffix);
 
             var reqWithWhitespaceTag = new MeshRequest("model.stl", 2, 4, config, 1.0f, _workingDirectory, Tag: "  Verif  ");
             Assert.Equal("Gen2_Var4_Verif", reqWithWhitespaceTag.BaseSuffix);
         }
 
         /// <summary>
-        /// TODO-39: MeshMetrics.ReadSu2CellCount liest NELEM aus SU2-Kopfzeilen.
+        /// TODO-39: MeshMetrics.ReadSu2CellCount reads NELEM from SU2 headers.
         /// </summary>
         [Fact]
         public void MeshMetrics_ReadSu2CellCount_Parses_Cell_Count_From_Su2_Header()

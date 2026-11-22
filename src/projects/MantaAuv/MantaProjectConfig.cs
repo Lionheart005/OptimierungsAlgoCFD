@@ -5,8 +5,7 @@ using FluidForge.Core;
 namespace FluidForge.Projects.MantaAuv
 {
     /// <summary>
-    /// Projektspezifische Konfiguration für das Manta-Ray AUV.
-    /// Enthält alle Parameter, Bounds und Deviations die bisher in SimulationData hardcodiert waren.
+    /// Project-specific default configuration for the Manta-Ray AUV.
     /// </summary>
     public static class MantaProjectConfig
     {
@@ -16,10 +15,10 @@ namespace FluidForge.Projects.MantaAuv
             {
                 ProjectName = "MantaAuv",
 
-                // Das Optimierungsverfahren steht im Framework (SimulationConfig /
-                // simulation.json nebenan), weil es keine Projekteigenschaft ist.
+                // The optimization algorithm is configured in SimulationConfig / simulation.json
+                // because it is a framework setting rather than a project property.
 
-                // --- INITIALE AKTIVE PARAMETER (AUV Konzept) ---
+                // --- INITIAL ACTIVE PARAMETERS (AUV concept) ---
                 BaseParameters = new Dictionary<string, float>
                 {
                     { "Length", 50.0f },
@@ -29,7 +28,7 @@ namespace FluidForge.Projects.MantaAuv
                     { "TailTaper", 1.0f }
                 },
 
-                // --- INITIALE MUTATIONS-STÄRKE (Sigma-Streuung) ---
+                // --- INITIAL MUTATION STEP SIZES (sigma) ---
                 MaxDeviations = new Dictionary<string, float>
                 {
                     { "Length", 5.0f },
@@ -39,7 +38,7 @@ namespace FluidForge.Projects.MantaAuv
                     { "TailTaper", 0.1f }
                 },
 
-                // --- PARAMETER-GRENZEN (Hard-Limits für physikalische Plausibilität) ---
+                // --- PARAMETER BOUNDS (hard limits for physical plausibility) ---
                 ParameterBounds = new Dictionary<string, (float Min, float Max)>
                 {
                     { "Length", (30.0f, 100.0f) },
@@ -49,18 +48,17 @@ namespace FluidForge.Projects.MantaAuv
                     { "TailTaper", (0.1f, 1.5f) }
                 },
 
-                // --- OPTIMIERUNGSZIELE ---
+                // --- OPTIMIZATION TARGETS ---
                 OptimizationTargets = new Dictionary<string, float>
                 {
                     { "MinimumAllowedVolume", 2000f },
                     { "MaximumAllowedVolume", 85000f },
                     { "DragBalanceFactor", 3f }
-                    // BouncerTolerance liegt jetzt im Framework (SimulationConfig),
-                    // weil der Bouncer nicht mehr projektspezifisch ist.
+                    // BouncerTolerance lives in SimulationConfig because the bouncer is framework-wide.
                 },
 
-                // --- DIMENSIONSBEHAFTETE PARAMETER (werden beim Skalieren berücksichtigt) ---
-                // TailTaper ist dimensionslos und wird NICHT skaliert
+                // --- DIMENSIONAL PARAMETERS (scaled by RubberBandScaler) ---
+                // TailTaper is dimensionless and intentionally omitted.
                 DimensionalParameters = new HashSet<string>
                 {
                     "Length", "Width", "MainRadius", "WingRadius"
