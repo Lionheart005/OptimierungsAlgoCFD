@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Controls the optimization run on the remote Linux server from Windows.
 
@@ -272,7 +272,7 @@ function Write-RemoteDeployInfo([string]$LocalHash) {
         Commit             = $git.Commit
         Branch             = $git.Branch
         DeployHash         = $LocalHash
-        DeployTime         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+        DeployedAt         = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         UncommittedChanges = Get-UncommittedChanges
     }
     $json = $info | ConvertTo-Json -Compress
@@ -290,11 +290,17 @@ function Invoke-Remote {
     $remote = "cd '$RemoteDir' && $CommandLine"
 
     if ($Quiet) {
-        # Intentionally 2>$null instead of 2>&1: PowerShell 5.1 wraps native stderr in
-        # ErrorRecords, which throws an exception under $ErrorActionPreference='Stop'
-        # even when exit code is 0.
-        $output = & ssh @SshOptions $Server $remote 2>$null
-        $code = $LASTEXITCODE
+        # Temporarily relax ErrorActionPreference: in PowerShell 5.1 native stderr
+        # triggers a terminating ErrorRecord under 'Stop' even with 2>$null.
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $output = & ssh @SshOptions $Server $remote 2>$null
+            $code = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $prevEap
+        }
     }
     else {
         # Out-Host instead of plain "& ssh ...": native output would otherwise enter
@@ -319,8 +325,15 @@ function Test-RemoteRunning {
 # Check whether any code has been deployed to the server yet. Without this check,
 # status/stop/log/fetch would fail on first use with a bare "cd: No such file".
 function Test-RemoteDeployed {
-    & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
-    return ($LASTEXITCODE -eq 0)
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
+        return ($LASTEXITCODE -eq 0)
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
 }
 
 function Assert-RemoteDeployed {
@@ -410,8 +423,14 @@ function Invoke-Deploy {
     Write-Step "Deploy to $Server ($RemoteDir)"
 
     $localHash = Get-LocalHash
-    $remoteHash = Get-RemoteHash
-    $wasRunning = Test-RemoteRunning
+    if (Test-RemoteDeployed) {
+        $remoteHash = Get-RemoteHash
+        $wasRunning = Test-RemoteRunning
+    }
+    else {
+        $remoteHash = 'none (initial deploy)'
+        $wasRunning = $false
+    }
     $changed = ($localHash -ne $remoteHash)
 
     Write-Host "    Local hash:  $localHash"
