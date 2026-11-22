@@ -1,6 +1,6 @@
 # Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch-Basis
 
-> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation) sowie Etappe 2 (`AP 1.3` God-Class-Zerlegung, `AP 1.4` Optimierer-Bereinigung, `AP 1.5` echte Integrations-Test-Suite) am 21.–22.11.2026 abgeschlossen und verifiziert (848/848 Unit-Tests + 3/3 echte Integrationstests grün, 0 Warnungen).** Offen: Server-/Branch-Cleanup (`AP 1.1`), finale Namensentscheidung & Etappe 3 (`AP 1.6` Projekt-Umbenennung & Englisch-Umstellung).  
+> **Status:** In Arbeit — **Etappe 1 (`AP 1.1` Code-/Hygiene-Fixes & `AP 1.2` `Core/`-Isolation) sowie Etappe 2 (`AP 1.3` God-Class-Zerlegung, `AP 1.4` Optimierer-Bereinigung, `AP 1.5` echte Integrations-Test-Suite) abgeschlossen und verifiziert (848/848 Unit-Tests + 3/3 echte Integrationstests grün, 0 Warnungen). Projektname final entschieden: `FluidForge` (22.11.2026).** Offen: Etappe 3 (`AP 1.6` Umbenennung zu `FluidForge` & Englisch-Umstellung) sowie Server-/Branch-Cleanup (`AP 1.1`).  
 > **Sprache dieses Plans:** Deutsch (Arbeits- & Planungssprache). **Zielsprache im Code/Repo:** Englisch (AP 1.6).  
 > **Voraussetzung:** Schritt 0 (`MantaAuv`-Lauf auf `BIC_12` gestoppt & vollständig archiviert) ist abgeschlossen (`~/Archive/MantaAuv_2026-11-21_final/` + `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`).
 
@@ -18,16 +18,11 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 
 ---
 
-## 2. Getroffene Grundsatzentscheidungen & Offener Vorab-Punkt
+## 2. Getroffene Grundsatzentscheidungen
 
-### Offener Vorab-Entscheidungspunkt: Neuer internationaler Projektname
-* **Entscheidung (21.11.2026):** Die Umbenennung weg von `OptimierungsAlgoCFD` soll direkt im Zuge von Phase 1 erfolgen (Namespaces, `.sln`/`.csproj`, Repo-Doku, `-RemoteDir` in `sim.ps1`). Der finale Name wird **kurz vor Start von AP 1.6** festgelegt.
-* **Namensvorschläge als Inspiration (für später, wenn Phase 1 startet):**
-  - **`FlowForge`** / **`ForgeFlow`** (Computational Engineering + Generative Fluidics)
-  - **`AeroVex`** / **`VoxelFlow`** (Fokus auf Voxel/Implicit + Fluidik)
-  - **`OpenCEM`** / **`PicoOpt`** / **`PicoFlow`** (direkte Nähe zu Computational Engineering Models / PicoGK)
-  - **`VeriFlow`** / **`VeriOpt`** (betont das Alleinstellungsmerkmal: *Verifiable* Computational Engineering Harness)
-  - **`MorphFlow`** / **`SynthFlow`** (algorithmische Formfindung + Strömung)
+### Neuer internationaler Projektname: **`FluidForge`** ✔
+* **Entscheidung (22.11.2026):** Das Framework wird im Zuge von `AP 1.6` vollständig von `OptimierungsAlgoCFD` auf **`FluidForge`** umbenannt (`FluidForge.sln`, `src/FluidForge/FluidForge.csproj`, `tests/FluidForge.Tests/FluidForge.Tests.csproj`, Namespaces `FluidForge.*`, Repo-Doku, `-RemoteDir` in `scripts/sim.ps1`).
+* **Begründung:** Sofort verständlicher Fluidik-/Generative-Engineering-Bezug, kurz und sauber als C#-Root-Namespace (`FluidForge.Core`, `FluidForge.Solvers.Cfd`), im CFD-/Engineering-/.NET-Umfeld frei von relevanten Kollisionen.
 
 ### Getroffene Architektur-Entscheidungen für Phase 1
 1. **`Core/` darf strikt KEINE Abhängigkeiten auf `Solvers/`, `Kernels/` oder `Projects/` haben.** Das wird nicht nur repariert, sondern durch einen dauerhaften **Architektur-Unit-Test** erzwungen.
@@ -89,13 +84,14 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
 - [x] **Echter 2D-End-to-End-Integrationstest (`Integration/Naca2DEndToEndIntegrationTests.cs`, ~2,43 s):** Reale Kette `Naca2DGeometryGenerator → Gmsh2DMesher → Su2Solver` (OpenMP Direct-Mode, 80 Iter., ohne Mocks): `MeshCells=7866` (`Tri2D=6928`, `Quad2D=938`), `CD=0,03258`, `CL=0,20936`, `YPlus_Median=1,503`, `YPlus_P95=2,021`, `YPlus_Max=2,741`.
 - [x] **Echter 3D-Meshing-Integrationstest (`Integration/Gmsh3DPrismIntegrationTests.cs`, ~0,36 s):** Scharfkantiger 3D-Doppelkeil (`50×20×12 mm`) über `GmshCfdMesher` (`BoundaryLayerMode="Prism"`): `TotalCells=5590` (`Tet=3484`, `Prism=2106`, `Pyramid=0`, `Hex=0`, `MeshFallback=0`, `BoundaryLayerStage=1`).
 
-### AP 1.6: Projekt-Umbenennung (nach Namenswahl) & komplette Englisch-Umstellung
-- [ ] **Namensentscheidung finalisieren** und Solution/Namespaces/Ordner/`sim.ps1 -RemoteDir` sauber umbenennen (erst wenn Name feststeht).
+### AP 1.6: Projekt-Umbenennung zu `FluidForge` & komplette Englisch-Umstellung
+- [x] **Namensentscheidung finalisiert (22.11.2026):** **`FluidForge`**
+- [ ] **Solution, Ordner, `.csproj`, Namespaces & Skripte auf `FluidForge` umbenennen** (`FluidForge.sln`, `src/FluidForge/`, `tests/FluidForge.Tests/`, `FluidForge.*`-Namespaces, `-RemoteDir` in `scripts/sim.ps1`, `scripts/new-project.ps1`, Vorlagen `_Vorlage3D`/`_Vorlage2D` → englische Template-Namen sofern sauber konsistent).
 - [ ] **Code, Logs & Fehlermeldungen auf Englisch:**
   - Alle Konsolenausgaben, Log-Meldungen, CSV-Spaltennamen (`Iteration`, `Variant`, `MeshCells`, `Duration_s`, `Bayes_History.csv` etc.), Fehlertexte und Code-Kommentare auf klares technisches Englisch umstellen.
   - Zentrale Meldungskonstanten/Ressourcen nutzen, damit Tests gegen strukturierte Fehlercodes/Keys statt gegen fragile deutsche Sätze prüfen.
-  - Alle ~800 Unit-Tests sauber auf die englischen Texte/Codes anpassen (`dotnet test` 100 % grün, 0 Warnungen).
-- [ ] **READMEs & Handbücher auf Englisch umstellen** (schlanke Struktur vorbereiten — das eigentliche Kürzen der 88-KB-Handbuchlast passiert direkt Hand in Hand mit der Konfigurations-Diät in Phase 2).
+  - Alle ~850 Unit- & Integrationstests sauber auf `FluidForge` und die englischen Texte/Codes anpassen (`dotnet test --filter Category!=Integration` & `Category=Integration` 100 % grün, 0 Warnungen).
+- [ ] **Aktive READMEs auf Englisch umstellen** (`README.md`, `src/FluidForge/README.md`, Projekt-READMEs; das alte 88-KB-`BEDIENHANDBUCH.md` bewusst **nicht** komplett übersetzen — wird in Phase 2 `AP 2.1` direkt durch modulare englische `docs/` ersetzt, lediglich `HandbookCoverageTests` grün halten).
 - [ ] **Hinweis:** `.plans/` bleibt ausdrücklich **auf Deutsch**!
 
 ---
@@ -130,7 +126,7 @@ Das Framework ist über die letzten Monate auf > 21.000 Zeilen Produktivcode, 17
   - **Hinweis `Core/Utilities/`:** `StlWriter.cs`, `StlSmoother.cs` und `RubberBandScaler.cs` sind bereits reines `Core` (`System.Numerics`), kein Verschieben erforderlich.
 - **Verifikation:** `dotnet build OptimierungsAlgoCFD.sln` (0 Warnungen, 0 Fehler), `dotnet test --filter Category!=Integration` (**848/848 bestanden**), `dotnet test --filter Category=Integration` (**3/3 real bestanden** in ~3,5 s).
 
-### Nächste Schritte (Etappe 3)
-- **Vor Start von Etappe 3 (`AP 1.6`):** Mit Leonardo den finalen englischen Projektnamen klären (Vorschläge siehe Abschnitt 2)! Das alte 88-KB-`BEDIENHANDBUCH.md` in `AP 1.6` bewusst **nicht** mehr komplett übersetzen, sondern in Phase 2 (`AP 2.1`) direkt durch modulare englische `docs/` ersetzen.
-- **Etappe 3 (`AP 1.6`):** Umbenennung von Solution/Namespaces/Ordnern/`sim.ps1 -RemoteDir` + Umstellung von Code, Logs, Fehlermeldungen, CSV-Spaltennamen und Tests auf konsistentes technisches Englisch (`.plans/` bleibt Deutsch).
-- **Offener Restpunkt aus `AP 1.1`:** Bei nächstem Server-Kontakt alte Git-Branches (`WindschiffProjekt`, `KI_Integration`) prüfen/bereinigen, `src/Automatisierung_v2` auf `BIC_12` aufräumen und `RunTimeEstimator`/`sim.ps1 status` einmalig auf `BIC_12` verifizieren.
+### Nächste Schritte (Etappe 3 — Abschluss von Phase 1)
+- **Projektname steht fest:** **`FluidForge`** (entschieden am 22.11.2026).
+- **Etappe 3 (`AP 1.6`):** Umbenennung von Solution/Namespaces/Ordnern/`scripts/sim.ps1 -RemoteDir` auf `FluidForge` + Umstellung von Code, Logs, Fehlermeldungen, CSV-Spaltennamen, aktiven READMEs und allen Tests auf konsistentes technisches Englisch (`.plans/` bleibt Deutsch; das alte 88-KB-`BEDIENHANDBUCH.md` bewusst **nicht** komplett übersetzen, sondern nur kompatibel für `HandbookCoverageTests` halten — Ersatz erfolgt in Phase 2 `AP 2.1`).
+- **Offener Restpunkt aus `AP 1.1` (optional mit abschließen, sofern Server erreichbar / lokal prüfbar):** Alte Git-Branches (`WindschiffProjekt`, `KI_Integration`) prüfen/bereinigen (nach kurzer Rückfrage/Check), auf `BIC_12` `src/Automatisierung_v2` aufräumen und `RunTimeEstimator`/`sim.ps1 status` verifizieren.
