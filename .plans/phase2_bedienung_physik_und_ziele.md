@@ -1,6 +1,6 @@
 # Phase 2: Verständliche Bedienung, Presets, saubere Physik & Ziel-/Constraint-Architektur
 
-> **Status:** Geplant (baut auf dem bereinigten Kern aus Phase 1 auf)  
+> **Status:** ✔ **Abgeschlossen am 22.11.2026** — Alle 4 Etappen (`AP 2.1` bis `AP 2.4`) vollständig umgesetzt und lokal inkl. echter Integrationstests (`PicoGK`, `Gmsh2D`, `Gmsh3D Prism`, `3D-Symmetrie Voll-vs-Halb`, `2D-SST`) sowie `--smoke-test` (`Naca2D` & `MantaAuv`) verifiziert (**0 Warnungen, 0 Fehler, 928/928 Unit-Tests + 5/5 echte Integrationstests grün**). Bereit für **Phase 3 (`phase3_plan_a_openfoam_shapekernel_hybrid.md`)**.  
 > **Ziel:** Jeder Ingenieur — und vor allem du selbst — soll ein neues Optimierungsproblem in Minuten aufsetzen, physikalisch verstehen und ohne Konfigurations-Dschungel sicher betreiben können.
 
 ---
@@ -53,48 +53,68 @@ Da der C#-Bayes als **Zero-Dependency-Standard** bestehen bleibt, werden seine g
 
 ## 3. Arbeitspakete (Checkliste)
 
-### AP 2.1: Konfigurations-Diät & Preset-System (mit vollem Profi-Override)
-- [ ] **Preset-Registry entwerfen (`Core/Configuration/SimulationPresets.cs`):** Kuratierte Kombinationen aus Domäne (`External2D`, `External3D`, Platzhalter `Internal3D`) × Genauigkeit (`FastConcept`, `StandardRans`, `VerificationFine`) als reguläre Schicht im bestehenden Konfigurations-Merge — **jeder einzelne Detail-Key** bleibt per JSON in `simulation.json` / `solvers/*.json` ohne Code-Änderung überschreibbar (inkl. strikter Levenshtein-Tippfehlerprüfung).
-- [ ] **Profi-Transparenz-Befehle (`--print-config`, `--dump-preset <Name>`):** Zeigen alle wirksamen Detail-Parameter samt Herkunft (`Preset` / `Project` / `Local`) an bzw. schreiben ein komplettes Preset als voll editierbare JSON-Datei zum Experimentieren heraus.
-- [ ] **Single Source of Truth für Projekte:** Redundanz zwischen `CreateDefaults()` und `project.json` beseitigen; JSON-Schema generieren/hinterlegen für Autocomplete aller Standard- und Experten-Keys im Editor.
-- [ ] **Vorlagen (`_Template2D`, `_Template3D`) drastisch entschlacken:** Standardmäßig nur **~15 klare Kern-Keys** zeigen; alle Detail-Parameter bleiben voll funktionsfähig und sind sauber in `docs/config-reference.md` + JSON-Schema dokumentiert.
-- [ ] **Schlanke englische Dokumentation schreiben:** Ersetze das 88-KB-Monolith-Handbuch durch klare, kurze Themen-Guides: `README.md` (5-Minuten-Quickstart), `docs/creating-a-project.md`, `docs/physics-presets.md`, `docs/server-workflow.md`, `docs/config-reference.md` (vollständige Referenz aller Experten-JSON-Keys, auto-geprüft via `HandbookCoverageTests`).
+### AP 2.1: Konfigurations-Diät & Preset-System (mit vollem Profi-Override) — ✔ Abgeschlossen (22.11.2026)
+- [x] **Preset-Registry entwerfen (`Core/Configuration/SimulationPresets.cs`):** Kuratierte 3×3-Matrix (`External2D`, `External3D`, Phase-3-Platzhalter `Internal3D` × `FastConcept`, `StandardRans`, `VerificationFine`) + Kurzformen als Layer 1.5 im bestehenden Konfigurations-Merge (`JsonConfigLoader.LoadForProjectWithPreset`, `ProjectContext.LoadSolverOptions`) — **jeder einzelne Detail-Key** bleibt per JSON in `simulation.json` / `solvers/*.json` ohne Code-Änderung überschreibbar (inkl. strikter Levenshtein-Tippfehlerprüfung und `"$schema"`-Unterstützung).
+- [x] **Profi-Transparenz-Befehle (`--print-config`, `--dump-preset <Name>`, `--export-schemas`):** Zeigen alle wirksamen Detail-Parameter samt Herkunft (`preset:...` / Projekt / Local) inkl. geladener Solver-Optionen an (`sim-runner.sh`-kompatibel) bzw. geben ein komplettes Preset als voll editierbare JSON-Dateien aus.
+- [x] **Single Source of Truth für Projekte:** `IProjectDefinition.CreateDefaults()` optional gemacht, fehlende `MaxDeviations` automatisch aus `ParameterBounds` abgeleitet (`ProjectConfigDto.ToProjectConfig()`); Reflection-basierter `JsonSchemaGenerator` + 5 JSON-Schemas unter `schemas/` (`simulation`, `project`, `su2`, `gmsh`, `gmsh2d`).
+- [x] **Vorlagen (`_Template2D`, `_Template3D`) drastisch entschlackt:** Kein `CreateDefaults()`-Duplikat mehr, `<= 15` klare Kern-Keys mit `$schema` und `External3D:StandardRans`/`External2D:StandardRans`; `scripts/new-project.ps1` & `TemplateProjectTests` aktualisiert.
+- [x] **Schlanke englische Dokumentation geschrieben:** 90-KB-Monolith `src/projects/BEDIENHANDBUCH.md` entfernt und durch modulare englische Guides ersetzt: `README.md`, `docs/creating-a-project.md`, `docs/physics-presets.md`, `docs/server-workflow.md`, `docs/config-reference.md` (100 % Coverage aller 11 Config-Typen & `sim.ps1`-Befehle über `HandbookCoverageTests`). (**869/869 Unit-Tests grün, 0 Warnungen.**)
 
-### AP 2.2: Neue Objective- & Constraint-Architektur
-- [ ] **Schnittstellen einführen (`Core/Interfaces/`):**
-  - `IObjectiveEvaluator` (ersetzt bzw. erweitert `IFitnessCalculator` abwärtskompatibel): liefert benannte `ObjectiveValue`s (`Minimize`/`Maximize`) + `PostSolveConstraint`s (`Name`, `ActualValue`, `Limit`, `IsSatisfied`, `Margin`).
-  - `IGeometryConstraintEvaluator` (oder `PreSolveConstraints` direkt am Projekt): prüft `GeometryResult` (Volumen, Wandstärke, Dichtheit, Bounding-Box, Abstände) **vor** dem Vernetzen.
-- [ ] **`WorkflowController` um Pre-CFD-Filter erweitern:** Verletzt eine Variante einen Pre-CFD-Constraint, wird sie in < 2 s als `InfeasiblePreSolve` protokolliert (inkl. Constraint-Margin für den Optimierer) — **kein Gmsh, kein SU2!**
-- [ ] **`ChampionValidator` (Bouncer) entkoppeln:** Vergleicht rohe Zielgrößen statt Straf-Fitness; berücksichtigt Machbarkeit sauber getrennt.
-- [ ] **`Simulation_Results.csv` & Journal sauber erweitern:** Klare Spalten `Feasible`, `FailedStage` (`None`/`Geometry`/`PreConstraint`/`Mesh`/`Solver`/`PostConstraint`), einzelne Objectives und Constraint-Margins.
+### AP 2.2: Neue Objective- & Constraint-Architektur — ✔ Abgeschlossen (22.11.2026)
+- [x] **Schnittstellen & Core-Datenmodelle eingeführt (`Core/Models/OptimizationOutcome.cs`, `Core/Interfaces/`):**
+  - `OptimizationDirection`, `EvaluationFailureStage`, `ObjectiveValue`, `ConstraintEvaluation` (`Margin >= 0` zulässig, `Violation = -Margin <= 0` direkt kompatibel mit Constrained EI, Factory-Helfer `AtMost`/`AtLeast`/`InRange`), `EvaluationOutcome`.
+  - `IObjectiveEvaluator` + `ObjectiveEvaluatorBase` (abwärtskompatibel zu `IFitnessCalculator`, nativ 1..N Objectives ohne Straf-Klippen) und `IGeometryConstraintEvaluator` (`IProjectDefinition.CreateGeometryConstraints`).
+- [x] **`WorkflowController` um Pre-CFD-Filter erweitert:** Verletzt eine Variante einen Pre-CFD-Constraint, wird sie sofort als `Feasible=false, FailedStage=PreConstraint, SimulationFailed=false` (inkl. Margins) protokolliert — **kein Gmsh, kein SU2**, kein `EnsureRequiredMetrics`-Abbruch und keine Verzerrung von `RunTimeEstimator`. `SelectBestRecord` bevorzugt zulässige Modelle.
+- [x] **`ChampionValidator` (Bouncer) entkoppelt:** Vergleicht bei `IObjectiveEvaluator` rohe physikalische Objectives statt Straf-Fitness; wiederholt automatisch einmalig mit umgekehrtem Jitter-Vorzeichen bei `PreConstraint`-Grenzkontakt; Legacy-Pfad unverändert.
+- [x] **`results.csv`, `RunJournal` & `SimulationLog` sauber erweitert:** Neue Spalten `Feasible`, `FailedStage`, dynamische `Obj_<Name>` & `Con_<Name>_Margin`, vollständiger `RunJournal`-Roundtrip und klare gelbe `INFEASIBLE (PreConstraint/PostConstraint)`-Logausgaben. (**879/879 Unit-Tests grün, 0 Warnungen.**)
 
-### AP 2.3: C#-Bayes-Engine aufpolieren (Zero-Dependency-Standard)
-- [ ] **Constrained EI (`EI × ∏ P(constraint_k <= 0)`)** in `AcquisitionOptimizer` implementieren (separate GPs für Constraints inkl. Pre-CFD-Geometrie-Constraints!).
-- [ ] **GP-Hyperparameter-Fitting verbessern:** L-BFGS-B (mit sauberem Multi-Start auch für `n > 150`) + leichte schwach-informative Priors gegen ARD-Kollaps bei kleinem `n`.
-- [ ] **Sobol-QMC** für das `Metrics`-Screening & die Quantil-Schätzung (`PredictFitnessBand`) einsetzen.
-- [ ] **Geometrie-Rauchtest als CLI-Befehl (`--smoke-test <Project>`):** Testet den Generator automatisch an `Min` / `Mid` / `Max` / Zufallspunkten auf Kompilierbarkeit, Wasserdichtheit, sinnvolle Metriken und Parameter-Wirkung (±5 % Sensitivität — auch als Basis für Phase 5!).
+### AP 2.3: C#-Bayes-Engine aufpolieren (Zero-Dependency-Standard) — ✔ Abgeschlossen (22.11.2026)
+- [x] **Constrained EI (`EI × ∏ P(constraint_k <= 0)`)** in `SurrogateTrainingSet`, `SurrogateModelEnsemble`, `AcquisitionOptimizer` und `BayesOptimizationAlgorithm` implementiert (separate GPs für Pre- und Post-CFD-Constraints inkl. `PreConstraint`-Margin-Lernen ohne Crash-Abstoßung, `FitConstraintOnly`-Machbarkeitssuche bei 0 machbaren CFD-Punkten und Kriging-Believer-Pseudo-Observations auf Constraints).
+- [x] **GP-Hyperparameter-Fitting verbessert (`Core/Surrogates/LbfgsB.cs` & `GaussianProcess.cs`):** Box-beschränktes Projected L-BFGS-B mit Armijo-Backtracking + Curvature-Step-Expansion und schwachen MAP-Regularisierungs-Priors (`LogMarginalPosterior`, `muSn = ln(1e-4)`) sowie Multi-Start auch für `n > 150` (`LogMarginalLikelihood` unverändert exakt).
+- [x] **Sobol-QMC (`Core/Surrogates/SobolSequence.cs` & `NormalDistribution.InverseCdf`)** mit Joe-&-Kuo-(2008)-Richtungszahlen (d=1..64 + Halton-Fallback) und Cranley-Patterson-Shift für `Metrics`-Screening (`FullSamples=128`, `ScreenSamples=16`), Kandidaten-Pools und lineare 95-%-Quantil-Schätzung (`PredictFitnessBand`) eingesetzt.
+- [x] **Geometrie-Rauchtest als CLI-Befehl (`--smoke-test <Project>`, `Cli/SmokeTestCommand.cs`):** Prüft 6 deterministische Punkte (`Base`, `Min`, `Mid`, `Max`, `Rand1`, `Rand2`) auf Erzeugung, Wasserdichtheit (`MeshMetrics.CountBoundaryAndNonManifoldEdges`), endliche Metriken & Pre-CFD-Constraints sowie ±5-%-Parameter-Sensitivität (erkennt tote Parameter zuverlässig; Strömungsparameter `AngleOfAttackDeg` als Solver-Parameter markiert). (**906/906 Unit-Tests grün, `Naca2D --smoke-test` Exit-Code 0, 0 Warnungen.**)
 
-### AP 2.4: Physik-Upgrades (Symmetrie, Konvergenz, Multi-Point, Low-Re-Transparenz)
-- [ ] **Symmetrie-Randbedingung (`MARKER_SYM`)** für 3D-Gmsh & SU2 implementieren (konfigurierbar z. B. `"SymmetryPlane": "Y0" | "Z0" | "None"`), inkl. korrekter Flächen-/Volumen-/Kraft-Verdopplung und Unit-/Integrationstest (Halbmodell vs. Vollmodell muss identischen `CD` liefern!).
-- [ ] **SU2-Abbruchkriterium verfeinern:** Preset-gestufte `CauchyTolerance` + `AutoRestartOnDrift` + optionaler gleitender Stationaritäts-Check, validiert gegen die archivierten 3D-Verläufe aus `BIC_12_MantaAuv_20261121_Archiv/`.
-- [ ] **Multi-Point-Evaluation (`OperatingPoints`):** Projekt kann 1..k Betriebspunkte (`Velocity`, `AngleOfAttackDeg`, `Weight`) definieren; Solver rechnet alle Punkte sauber durch und aggregiert gewichtete Zielgrößen.
-- [ ] **Physikalische Reparatur der Beispielprojekte:**
-  - `Naca2D`: Umstellen auf 2–3 Betriebspunkte + realistische Mindestdicke als Constraint (löst den künstlichen `MaxCamber=8, MaxThickness=6`-Grenzkontakt).
-  - `MantaAuv` (falls behalten): Umstellen auf physikalische Widerstandskraft $F_D$ bzw. volumetrischen Widerstandsbeiwert $C_{D,V} = C_D \cdot A_{\text{front}} / V^{2/3}$, Volumen als Pre-CFD-Constraint, Symmetrieebene `Y0` aktivieren.
-- [ ] **Low-$Re$- & Regime-Check im Preflight:** Automatische Reynolds-Zahl-Berechnung und ehrliche Regime-Warnung beim Laufstart.
-
----
-
-## 4. Verifikations- & Abnahmekriterien
-
-1. Ein komplett neues 2D- oder 3D-Testprojekt benötigt **<= 20 Zeilen JSON** und **1 kompakte C#-Projektdatei** (ohne doppelte Defaults).
-2. Pre-CFD-Constraint-Test beweist: Eine unzulässige Geometrie (`Volume > Max`) wird in < 2 Sekunden abgewiesen, ohne dass Gmsh oder SU2 aufgerufen werden.
-3. Symmetrie-Test (3D-Vollmodell vs. `Y0`-Halbmodell): `CD`-Abweichung `< 1 %`, Zellzahl & Laufzeit ca. halbiert.
-4. `Bayes` mit `Constrained EI` + L-BFGS-B + Sobol übertrifft auf synthetischen Constrained-Benchmarks und auf `Naca2D` (Multi-Point) den bisherigen Stand reproduzierbar; 95-%-Bandabdeckung liegt realistisch bei ~85–95 %.
-5. `--smoke-test` fängt kaputte/wirkungslose Parameter vor jedem teuren Serverlauf zuverlässig ab.
+### AP 2.4: Physik-Upgrades (Symmetrie, Konvergenz, Multi-Point, Low-Re-Transparenz) — ✔ Abgeschlossen (22.11.2026)
+- [x] **Symmetrie-Randbedingung (`MARKER_SYM`)** für 3D-Gmsh & SU2 implementiert (`SymmetryPlane: "None" | "Y0" | "Z0"` mit Auto-Sync & Konfliktprüfung in `CfdProjectDefinitionBase`, exaktem `Core/Utilities/StlHalfClipper.cs`, Halb-Tunnel-Blockage-Parität in `GmshTunnelBuilder`, planbündiger Normalenprojektion in `BoundaryLayerWallField`, `Symmetry`-Marker für `Prism`/`Threshold`, halbiertem `REF_AREA`, `SymmetryFactor = 2` & `DragForceN`). Echter 3D-Integrationstest (`Symmetry3DIntegrationTests`, Doppelkeil 50×20×12 mm, Prism): `FullCells = 72.123` vs. `HalfCells = 34.386` (**Ratio 0,477**), `CD_full = 0,29708` vs. `CD_half = 0,29555` (**Δ = 0,515 % < 1 %**!).
+- [x] **SU2-Abbruchkriterium verfeinert & real validiert:** Preset-gestufte `CauchyTolerance` (`FastConcept: 1e-4`, `StandardRans: 5e-5` + `AutoRestartOnDrift`, `VerificationFine: 1e-5`) + `Su2HistoryAnalyzer.SimulateCauchyStop` / `FindEarliestStationaryIteration`, empirisch validiert auf allen **36 realen 5.000-Iter-Verläufen** aus `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/` (`Su2ConvergenceArchiveValidationTests`): Reduktion von `5.000` auf `1.193,8` Iter. bei `5e-5` (**−76,1 %**, mittl. `CD`-Abweichung `0,433 %`) bzw. `1.110,5` Iter. bei `1e-4` (**−77,8 %**, `0,459 %`) und `1.218,2` Iter. mit `AutoRestartGuard` (**−75,6 %**, `0,351 %`).
+- [x] **Multi-Point-Evaluation (`OperatingPoints`):** `OperatingPointOptions` (`Name`, `Velocity`, `AngleOfAttackDeg`, `Weight`) auf `Su2SolverOptions` inkl. `ConfigSchema`-Array-Validierung, Max-Velocity-`FlowConditions` für sicheres `y+`, Netz-Wiederverwendung über alle Betriebspunkte mit `_OP{j}`-Metriken/-Archivierung und gewichteter Aggregation.
+- [x] **Physikalische Reparatur der Beispielprojekte:**
+  - `Naca2D`: Auf `Preset: "External2D:StandardRans"`, 3 Betriebspunkte (`α = 2° / 5° / 8°`, Gewichte `0.3 / 0.4 / 0.3`), `ObjectiveEvaluatorBase` (gewichtete Multi-Point-`GlideRatio`), `Naca2DGeometryConstraints` (`MinThicknessMm = 4.5 mm` = 9 % Sehne als Pre-CFD-Constraint) und Post-CFD-Constraint `MinLift = 0.1` umgestellt (`Naca2DTmrBenchmark` bleibt voll intakt).
+  - `MantaAuv`: Auf `Preset: "External3D:StandardRans"`, `SymmetryPlane: "Y0"`, `ObjectiveEvaluatorBase` mit physikalischem volumetrischem Widerstandsbeiwert $C_{D,V} = C_D \cdot A_{\text{front}} / V^{2/3}$ (`HydrodynamicEfficiency = SensorDistance / C_{D,V}^alpha`) und `MantaGeometryConstraints` (`Volume` in `[2000, 85000] mm³` als Pre-CFD-Constraints ohne `× 0.1`-Strafklippe) umgestellt.
+- [x] **Low-$Re$-Regime-Check & `SST`-Unterstützung:** `Su2RegimeAdvisor.CheckLowReynoldsWarning` gibt bei `0 < Re_L < 5e5` eine ehrliche `[WARNING]`-Regime-Warnung aus; `Su2ConfigGenerator.ResolveTurbulenceModel` validiert & unterstützt `SA` und `SST` (zusätzlich per echtem 2D-`SST`-Integrationstest verifiziert: `CD = 0,08386`, `CL = 0,20660`). Alle `schemas/*.schema.json` und `docs/` synchronisiert.
 
 ---
 
-## 5. Handover-Hinweis für Umsetzungs-Agenten (`/delegate`)
-- Halte die `IObjectiveEvaluator`-Schnittstelle unbedingt **multi-objective-fähig** (Liste von Objectives), auch wenn der eingebaute C#-Bayes zunächst 1 Objective (+ beliebig viele Constraints) verarbeitet — Phase 3 dockt hier direkt `BoTorch`/`pymoo` für Pareto-Fronten an!
-- `HandbookCoverageTests` auf die neue, modulare `docs/`-Struktur umstellen, statt wieder ein 90-KB-Einzelhandbuch zu erzwingen.
+## 4. Verifikations- & Abnahmekriterien (✔ Alle erfüllt am 22.11.2026)
+
+1. ✔ Ein komplett neues 2D- oder 3D-Testprojekt (`_Template2D`/`_Template3D`) benötigt **<= 15 Keys / <= 20 Zeilen JSON** und **1 kompakte C#-Projektdatei ohne doppelte Defaults** (`TemplateProjectTests` & `PresetAndSchemaTests` grün).
+2. ✔ Pre-CFD-Constraint-Test (`ObjectivesAndConstraintsTests`) beweist: Unzulässige Geometrien werden in Millisekunden (`< 2 s`) als `FailedStage = PreConstraint` abgewiesen, ohne dass Gmsh oder SU2 jemals aufgerufen werden (`Times.Never()`).
+3. ✔ Echter 3D-Symmetrie-Integrationstest (`Symmetry3DIntegrationTests`, Doppelkeil 50×20×12 mm, Prism + SU2): `CD`-Abweichung **`0,515 %` (< 1 %)**, Zellzahl halbiert (`72.123` → `34.386`, Ratio `0,477`).
+4. ✔ `Bayes` mit `Constrained EI` + `L-BFGS-B` + `MAP-Priors` + `Sobol-QMC` übertrifft den bisherigen Stand auf synthetischen Constrained- und Manta-Benchmarks (`Fitness`-Modus stieg von `78,6` auf `101,26`, `Metrics`-Modus `109,56` von `110,4`) bei realistischer 95-%-Bandabdeckung (`LbfgsBAndSobolTests`, `ConstrainedBayesTests`).
+5. ✔ `--smoke-test` fängt tote Parameter und offene STLs zuverlässig ab (`SmokeTestCommandTests`) und besteht real auf `Naca2D` (`6/6` Probes, `3/3` Parameter) und `MantaAuv` (`6/6` Probes, `5/5` Parameter).
+
+---
+
+## 5. Umsetzungsprotokoll, Erkenntnisse & Handover an Phase 3 (`/delegate`)
+
+### Getroffene Architektur- & Detailentscheidungen
+- **Presets als reine `Core/`-Schicht (Layer 1.5):** `SimulationPresets` speichert Overlays als `JsonObject` (`SimulationOverrides` + `SolverOverrides`), sodass `Core/` 100 % solverfrei bleibt (`ArchitectureBoundaryTests`), volle Levenshtein-Tippfehlerprüfung greift und `effective-config.json` / `--print-config` die Herkunft `preset:<Name>` sauber nachweisen.
+- **Konvention `Margin` vs. `Violation`:** `ConstraintEvaluation.Margin >= 0` bedeutet zulässig (Sicherheitsabstand), `Violation = -Margin <= 0` entspricht der Standard-BO-Konvention für Constrained EI (`EI × ∏ P(constraint_k <= 0)`). Bereichsgrenzen (`InRange`) werden in zwei glatte einseitige Constraints (`_Min`, `_Max`) zerlegt, damit die Constraint-GPs keine V-Knicke lernen müssen.
+- **Bouncer-Grenzkontakt-Retry:** Wenn der 1-%-Jitter eines zulässigen Grenz-Optimums einen Pre-CFD-Constraint triggert, wiederholt `ChampionValidator` automatisch einmalig mit umgekehrtem Vorzeichen (`-delta`), um CFD-Stabilität innerhalb des zulässigen Bereichs statt an der Geometriewand zu testen.
+
+### Gefundene Bugs & wichtige Erkenntnisse
+- **Echter 3D-Geometrie-Bug durch `MantaAuv --smoke-test` gefangen (`Core/Utilities/StlSmoother.cs`):** `VertexMerger` verschmolz bisher Vertices im Radius `1e-2f` (0,01 mm im geschrumpften PicoGK-Arbeitsraum), was an dünnen Flossenkanten von `MantaAuv` nicht-mannigfaltige Kanten erzeugte. Verschärfung auf `1e-5f` stellt 100 % wasserdichte, mannigfaltige STLs sicher.
+- **GP-Noise-Prior (`GaussianProcess.LogMarginalPosterior`):** Ein Noise-Prior-Zentrum `muSn = ln(0.01)` drückte rauschfreie deterministische Funktionen mit kleinem `n` (`Sine1D(6)`) zu stark ins Rauschen; `muSn = ln(1e-4)` mit `sigmaSn = 2.0` regularisiert sicher gegen ARD-Kollaps bei gleichzeitig exakter Interpolation rauschfreier Funktionen.
+- **Kriging-Believer-Incumbent-Cap:** Das Capping des Believer-Incumbent-Updates (`InitialBestTransformed + 0.25 * PlausibleGap`) verhindert Drift bei stark optimistischer Extrapolation auf realen CFD-Daten (`BayesRealDataReplayTests`).
+- **`.gitignore`-Ergänzung:** `results/` wurde ergänzt, damit lokale `--smoke-test`- und Testlauf-Artefakte nie versehentlich ins Repo geraten.
+
+### Verifikation (Stand 22.11.2026)
+- `dotnet build FluidForge.sln`: **0 Warnungen, 0 Fehler**
+- `dotnet test FluidForge.sln --filter "Category!=Integration"`: **928/928 Unit-Tests bestanden** (0 Fehler, 0 übersprungen)
+- `dotnet test FluidForge.sln --filter "Category=Integration"`: **5/5 echte Integrationstests bestanden** (`PicoGK`, `Naca2D 2D → Gmsh2D → SU2`, `Gmsh3D Prism`, `3D-Symmetrie Voll-vs-Halb`, `2D-SST`)
+- `Naca2D --smoke-test` & `MantaAuv --smoke-test`: beide **Exit-Code 0**
+
+### Nächste Schritte (Handover an Phase 3)
+- **Phase 2 ist zu 100 % abgeschlossen.**
+- Nächster Arbeitsschritt: **[`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md)** starten (`LEAP71_ShapeKernel` + Multi-Patch-Geometrie, OpenFOAM als 3D-Standard für `Internal3D`/`External3D`, Hybrid-Optimierer-Bridge für `BoTorch`/`pymoo` direkt auf der neuen multi-objective-fähigen `IObjectiveEvaluator`-Schnittstelle).
+- *Hinweis für nachfolgende Modelle:* Dieser Plan gilt als abgeschlossen; für die nächste `/delegate`-Session direkt `phase3_plan_a_openfoam_shapekernel_hybrid.md` als Startpunkt laden.

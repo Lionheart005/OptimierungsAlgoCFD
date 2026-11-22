@@ -1,6 +1,6 @@
 # Gesamt-Roadmap v2: Große Überarbeitung & Neuausrichtung (Plan A)
 
-> **Stand:** 22.11.2026 — **Schritt 0 und Phase 1 (`FluidForge`-Umbenennung, Bugfixes, Architektur-Sanierung, Tests & Englisch-Basis) vollständig abgeschlossen; bereit für Phase 2.**  
+> **Stand:** 22.11.2026 — **Schritt 0, Phase 1 und Phase 2 (Presets, modulare Docs, Objectives & Constraints, Bouncer-Entkopplung, Constrained Bayes mit L-BFGS-B/Sobol, `--smoke-test`, 3D-Symmetrie, Multi-Point & Projekt-Reparaturen) vollständig abgeschlossen; bereit für Phase 3.**  
 > **Sprache:** Pläne und Diskussionen in `.plans/` bleiben bewusst **auf Deutsch**. Der gesamte Produktcode, Logs, Fehlermeldungen, CSVs, Tests und Nutzer-READMEs werden ab Phase 1 konsequent auf **Englisch** umgestellt.  
 > **Archiv:** Die vorherige Roadmap (`ROADMAP_v1_2026-11-08.md`) sowie alle abgeschlossenen bzw. abgelösten Einzelpläne liegen vollständig unter [`.plans/.old/`](.old/). Alle noch offenen Punkte aus v1 wurden unten sauber übernommen.
 
@@ -82,8 +82,8 @@ Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt
 | :--- | :--- | :--- | :--- |
 | **Schritt 0** | *(in dieser Roadmap dokumentiert)* | `MantaAuv` stoppen, 20 GB auf `BIC_12` + 415 MB lokal archivieren | ✔ erledigt (21.11.2026) |
 | **Phase 1** | [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md) | Bugfixes, `Core/`-Sauberkeit, God-Classes, echte Tests, Umbenennung (`FluidForge`) & EN | ✔ erledigt (22.11.2026) |
-| **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | offen (nächster Schritt) |
-| **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`) | offen |
+| **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | ✔ erledigt (22.11.2026) |
+| **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`) | offen (nächster Schritt) |
 | **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Community-Release | offen |
 | **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 | Ausblick / Grobkonzept |
 
