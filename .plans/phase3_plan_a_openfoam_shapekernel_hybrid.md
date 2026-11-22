@@ -1,6 +1,6 @@
 # Phase 3 (Plan A): `LEAP71_ShapeKernel`, OpenFOAM (künftiger 3D-Standard) & Hybrid-Optimierer-Bridge (`BoTorch`/`pymoo`)
 
-> **Status:** Geplant (Herzstück der strategischen Neuausrichtung auf Plan A)  
+> **Status:** In Umsetzung (22.11.2026) — **Checkpoint 1 (`AP 3.1`) abgeschlossen** (`LEAP71_ShapeKernel`, Multi-Patch-Geometrie-Vertrag, `InternalFlow`-Bausteine & echter PicoGK-90°-Krümmer-Test verifiziert; `opt-py` Conda-Env auf `BIC_12` mit `torch 2.15.0+cpu`, `botorch 0.18.1`, `pymoo 0.6.2` bereits fertig installiert). Nächster Schritt: **Checkpoint 2 (`AP 3.2a`: OpenFOAM C#-Kern)**.  
 > **Vision:** `PicoGK` + `LEAP71_ShapeKernel` auf ihrem wahren Heimfeld einsetzen — komplexe, 3D-druckbare **interne Fluidik** (Verteiler, Kanäle, Mischer, Düsen, Wärmetauscher) mit **OpenFOAM als primärem 3D-Standard** + robuster Multi-Objective-/Multi-Fidelity-Optimierung — **ohne** Parameter-Chaos!
 
 ---
@@ -56,11 +56,11 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
 
 ## 3. Arbeitspakete (Checkliste)
 
-### AP 3.1: `LEAP71_ShapeKernel` einbinden & Multi-Patch-Geometrie-Vertrag bauen
-- [ ] `LEAP71_ShapeKernel` sauber einbinden (gepinnte Version / Submodule unter `third_party/ShapeKernel/` oder projektkompatibel, Bau auf Windows + Linux prüfen, `THIRD_PARTY_NOTICES.md` aktualisieren).
-- [ ] `GeometryResult` um `Dictionary<string, string> SurfacePatches` (z. B. `inlet`, `outlet`, `wall`), `Vector3? FluidSeedPoint` und `MeshUnit` erweitern (100 % abwärtskompatibel für bestehende Ein-STL-Projekte).
-- [ ] Hilfs-Bausteine unter `Kernels/PicoGk/InternalFlow/` bereitstellen: Erzeugung eines wasserdichten Fluid-Volumens mit sauber abgetrennten Einlass-/Auslass-Kappen aus `ShapeKernel`-Rohren/Kanälen (`BasePipe`, `BaseBox`, Spline-Frames) + Export als Multi-Solid-STL / Einzel-Patch-STLs.
-- [ ] Unit- & PicoGK-Integrationstest: Einfacher 90°-Rohrkrümmer aus `ShapeKernel` exportiert valide `inlet.stl`, `outlet.stl`, `wall.stl` + gültigen `FluidSeedPoint` im Inneren.
+### AP 3.1: `LEAP71_ShapeKernel` einbinden & Multi-Patch-Geometrie-Vertrag bauen — ✔ Abgeschlossen (22.11.2026)
+- [x] `LEAP71_ShapeKernel` sauber einbinden (gepinnte Vendored-Kopie Commit `09545ba15eacb64fb12a5707056dbe95b605e52d` unter `third_party/ShapeKernel/` als `Leap71.ShapeKernel.csproj`, in `FluidForge.sln`/`FluidForge.csproj`/`scripts/sim.ps1` eingebunden, `THIRD_PARTY_NOTICES.md` aktualisiert).
+- [x] `GeometryResult` um `Dictionary<string, string> SurfacePatches` (z. B. `inlet`, `outlet`, `wall`), `Vector3? FluidSeedPoint` und `MeshUnit` erweitern (100 % abwärtskompatibel; `MeshRequest` um optionales `Geometry`, `WorkflowController` um `Patch_*`-Artifacts & `StlWriter` um Multi-Solid-ASCII-STL erweitert; pure-Core `MultiPatchMeshPartitioner`).
+- [x] Hilfs-Bausteine unter `Kernels/PicoGk/InternalFlow/` bereitstellen (`FlowPort`, `InternalFlowExportResult`, `MultiPatchFluidExporter`, `ShapeKernelPipeBuilder`): wasserdichtes Fluidvolumen mit plan getrimmten Einlass-/Auslass-Kappen aus `ShapeKernel`-Rohren/Krümmern + Export als kombiniertes STL, Einzel-Patch-STLs und Multi-Solid-ASCII-STL.
+- [x] Unit- & PicoGK-Integrationstest (`MultiPatchGeometryTests.cs` + `ArchitectureBoundaryTests.cs` `Leap71`-Verbot in `Core/`): Echter 90°-Rohrkrümmer aus `ShapeKernel` exportiert wasserdichte `inlet.stl`, `outlet.stl`, `wall.stl` + gültigen `FluidSeedPoint` im Inneren (`58.024` Dreiecke, `0` offene/`0` non-manifold Kanten).
 
 ### AP 3.2: OpenFOAM-Anbindung für `Internal3D` (`Solvers/OpenFoam/`)
 - [ ] **Preset-gekapselte Konfiguration mit vollem Profi-Override (`OpenFoamOptions.cs`):** Im Standardfall nur physikalische Kernparameter in Projekt-JSONs (`Fluid`, `InletBoundary`, `OutletBoundary`, `TurbulenceModel` Default `kOmegaSST`, `Preset`); **alle** relevanten Meshing-/Solver-/Konvergenz-Details (plus optionale Dictionary-/Template-Overrides) bleiben vollständig, typgeprüft und transparent über `solvers/openfoam.json` überschreibbar, ohne C# anzufassen.
@@ -104,3 +104,17 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
 - OpenFOAM-Integration **strikt in `Solvers/OpenFoam/`** kapseln — `Core/` darf kein einziges OpenFOAM-Detail kennen!
 - Starte bei AP 3.2 zwingend mit dem einfachsten möglichen physikalischen Fall (**gerades Rohr → 90°-Rohrkrümmer**), bevor komplexe Verzweigungen gerechnet werden.
 - Prüfe vor dem Conda-OpenFOAM-Setup auf `BIC_12` die genaue MPI-Verträglichkeit (`conda-forge` `openfoam` bringt sein eigenes MPI mit — getrenntes Conda-Env wie bei `mpich` verhindert Konflikte mit SU2!).
+
+---
+
+## 6. Umsetzungsprotokoll, Entscheidungen & Erkenntnisse (Checkpoint-Log)
+
+### Checkpoint 1 (`AP 3.1`, 22.11.2026) — ✔ Abgeschlossen
+- **Entscheidungen:**
+  - `LEAP71_ShapeKernel` als gepinnte Vendored-Source-Kopie (Commit `09545ba15eacb64fb12a5707056dbe95b605e52d`, Apache 2.0) unter `third_party/ShapeKernel/` als separates Projekt `Leap71.ShapeKernel.csproj` eingebunden (isoliertes `<Nullable>disable</Nullable>` + `<NoWarn>CS8632;CS0618</NoWarn>`, sodass `FluidForge.csproj` strikt bei 0 Warnungen bleibt). `scripts/sim.ps1` um `third_party` in `$DeployRoots` & `$prune` erweitert.
+  - Pure-Core-Trennung beibehalten: Dreiecks-Partitionierung und Möller–Trumbore-Point-in-Mesh-Prüfung liegen unter `Core/Utilities/MultiPatchMeshPartitioner.cs`; `PicoGK`/`Leap71`-Zugriffe bleiben strikt in `Kernels/PicoGk/InternalFlow/` (über `ArchitectureBoundaryTests` abgesichert).
+  - `BIC_12` `opt-py` Conda-Env (`python=3.11`, `torch 2.15.0+cpu`, `botorch 0.18.1`, `gpytorch 1.15.2`, `pymoo 0.6.2`, `matplotlib`, `scipy`, `numpy`) erfolgreich parallel in `tmux` angelegt und import-verifiziert.
+- **Erkenntnisse & Fixes:**
+  - PicoGK Marching Cubes erzeugt auf achsenparallelen Schnittflächen vereinzelt kollabierte Null-Flächen-Dreiecke (`A == B`), die als Schein-Non-Manifold-Kanten auffallen; `MultiPatchFluidExporter.Export` filtert diese topologie-neutral vor der Wasserdichtheitsprüfung heraus.
+  - Supervisor-Review-Fix: Doppeltes `Voxels.Dispose()` bei `trimPorts == true` in `MultiPatchFluidExporter.Export` eliminiert.
+- **Nächster Schritt:** Checkpoint 2 (`AP 3.2a` — OpenFOAM C#-Kern unter `Solvers/OpenFoam/`, `SimulationPresets`, `OpenFoamProjectDefinition`, `_TemplateInternal3D` & `PipeBend90`).

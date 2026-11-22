@@ -1,0 +1,5 @@
+Repository: https://github.com/leap71/LEAP71_ShapeKernel.git
+Pinned Commit: 09545ba15eacb64fb12a5707056dbe95b605e52d
+License: Apache License 2.0 (see LICENSE in this directory)
+Vendored Scope: ShapeKernel/ C# library sources + LICENSE
+Vendored Date: 2026-11-22

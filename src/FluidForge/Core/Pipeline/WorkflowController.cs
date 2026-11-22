@@ -402,6 +402,14 @@ namespace FluidForge.Core
 
             record.StlPath = geoResult.StlPath;
 
+            if (geoResult.HasSurfacePatches)
+            {
+                foreach (var kvp in geoResult.SurfacePatches)
+                {
+                    record.Artifacts[$"Patch_{kvp.Key}"] = kvp.Value;
+                }
+            }
+
             // Transfer metrics from GeometryResult to record and restore physical scale
             ApplyGeometryMetrics(record, geoResult, scaler);
             record.PassiveParameters["ScaleFactor"] = scaler.ShrinkFactor;
@@ -448,7 +456,8 @@ namespace FluidForge.Core
                             _context.Config, scaler.ShrinkFactor,
                             _context.WorkingDirectory,
                             _context.EffectiveMeshRefinementFactor,
-                            _context.CurrentRunTag);
+                            _context.CurrentRunTag,
+                            Geometry: geoResult);
 
                         meshPath = stage.Mesher.GenerateMesh(meshRequest);
                         meshCache[stage.Mesher] = meshPath;

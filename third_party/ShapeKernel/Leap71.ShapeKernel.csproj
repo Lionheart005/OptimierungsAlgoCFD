@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <RootNamespace>Leap71.ShapeKernel</RootNamespace>
+    <AssemblyName>Leap71.ShapeKernel</AssemblyName>
+    <NoWarn>$(NoWarn);CS8632;CS0618</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PicoGK" Version="2.3.0" />
+  </ItemGroup>
+
+</Project>

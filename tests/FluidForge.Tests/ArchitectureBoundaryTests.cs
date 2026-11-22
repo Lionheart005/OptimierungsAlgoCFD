@@ -192,9 +192,10 @@ namespace FluidForge.Tests
 
             var forbiddenPatterns = new[]
             {
-                new Regex(@"\busing\s+(?:static\s+)?(?:FluidForge\.(?:Solvers|Kernels|Composition|Projects)|PicoGK)\b"),
+                new Regex(@"\busing\s+(?:static\s+)?(?:FluidForge\.(?:Solvers|Kernels|Composition|Projects)|PicoGK|Leap71)\b"),
                 new Regex(@"\bFluidForge\.(?:Solvers|Kernels|Composition|Projects)\."),
-                new Regex(@"\bPicoGK\.")
+                new Regex(@"\bPicoGK\."),
+                new Regex(@"\bLeap71\.")
             };
 
             List<string> files = EnumerateCsFiles(coreDir).ToList();

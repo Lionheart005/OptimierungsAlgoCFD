@@ -145,7 +145,7 @@ $SshOptions = @('-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o',
 # Directories deployed to the server. tests/ stays local: the server should compute,
 # not run unit tests -- and without tests/ the .sln would not build there, so we build
 # the csproj directly on the server.
-$DeployRoots = @('src', 'config', 'scripts')
+$DeployRoots = @('src', 'config', 'scripts', 'third_party')
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -403,9 +403,9 @@ function Push-Sources {
         #
         # At this point the tarball is already on the server: if unpacking fails,
         # running "tar -xzf deploy.tar.gz" in the repo directory recovers it.
-        $prune = "find src scripts config -type f ! -name '*.local.json' " +
+        $prune = "find src scripts config third_party -type f ! -name '*.local.json' " +
                  "-not -path '*/bin/*' -not -path '*/obj/*' -delete 2>/dev/null; " +
-                 "find src scripts config -type d -empty -delete 2>/dev/null; true"
+                 "find src scripts config third_party -type d -empty -delete 2>/dev/null; true"
 
         # Extract, normalize shell script line endings to LF (in case they were checked
         # out with CRLF on Windows), and make them executable.

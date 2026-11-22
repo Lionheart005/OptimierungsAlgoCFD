@@ -16,6 +16,10 @@
     <PackageReference Include="PicoGK" Version="2.3.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\third_party\ShapeKernel\Leap71.ShapeKernel.csproj" />
+  </ItemGroup>
+
   <!--
     Die Projekte liegen bewusst NEBEN dem Framework unter src/projects/ und nicht darin:
     "hier das Geruest, dort meine Projekte" ist fuer einen fremden Nutzer sofort lesbar.

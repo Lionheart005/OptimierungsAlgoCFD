@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Numerics;
 
 namespace FluidForge.Core
 {
@@ -46,6 +48,38 @@ namespace FluidForge.Core
         /// Alias for <see cref="StlPath"/> for full backward compatibility.
         /// </summary>
         public string GeometryPath { get => StlPath; set => StlPath = value; }
+
+        /// <summary>
+        /// Optional named surface patch STL files (e.g., <c>inlet</c>, <c>outlet</c>, <c>wall</c>)
+        /// for multi-patch internal-flow meshing.
+        /// </summary>
+        public Dictionary<string, string> SurfacePatches { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Optional point strictly inside the fluid volume (in geometry coordinates) used by
+        /// volume meshers such as snappyHexMesh (<c>locationInMesh</c>).
+        /// </summary>
+        public Vector3? FluidSeedPoint { get; set; }
+
+        /// <summary>
+        /// Coordinate unit of the exported geometry files (defaults to <c>"mm"</c>).
+        /// </summary>
+        public string MeshUnit { get; set; } = "mm";
+
+        /// <summary>
+        /// True when one or more named surface patch STLs are attached.
+        /// </summary>
+        public bool HasSurfacePatches => SurfacePatches.Count > 0;
+
+        /// <summary>
+        /// Registers a named surface patch STL file path.
+        /// </summary>
+        public void AddSurfacePatch(string patchName, string stlPath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(patchName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(stlPath);
+            SurfacePatches[patchName.Trim()] = stlPath;
+        }
 
         public Dictionary<string, float> Metrics { get; set; } = new();
         // e.g., {"Volume": 4200, "FrontalArea": 850, "SensorDistance": 120}

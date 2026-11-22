@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
+using System.Text;
 
 namespace FluidForge.Core
 {
@@ -143,6 +145,80 @@ namespace FluidForge.Core
                 Write(writer, triangle.C);
                 writer.Write((ushort)0);   // attribute byte count, ignored by SU2/Gmsh
             }
+        }
+
+        /// <summary>
+        /// Writes multiple named surface patches into a single multi-solid ASCII STL file
+        /// compatible with OpenFOAM (<c>solid &lt;name&gt;</c> ... <c>endsolid &lt;name&gt;</c>).
+        /// </summary>
+        public static void WriteAsciiMultiSolid(
+            string path,
+            IReadOnlyDictionary<string, IReadOnlyList<StlTriangle>> namedPatches)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            ArgumentNullException.ThrowIfNull(namedPatches);
+
+            string? directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+            using var writer = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            foreach (var kvp in namedPatches)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(kvp.Key);
+                ArgumentNullException.ThrowIfNull(kvp.Value);
+
+                string solidName = kvp.Key.Trim();
+                writer.WriteLine($"solid {solidName}");
+
+                foreach (StlTriangle triangle in kvp.Value)
+                {
+                    Vector3 n = triangle.Normal;
+                    writer.WriteLine(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "  facet normal {0:G9} {1:G9} {2:G9}",
+                        n.X, n.Y, n.Z));
+                    writer.WriteLine("    outer loop");
+                    WriteAsciiVertex(writer, triangle.A);
+                    WriteAsciiVertex(writer, triangle.B);
+                    WriteAsciiVertex(writer, triangle.C);
+                    writer.WriteLine("    endloop");
+                    writer.WriteLine("  endfacet");
+                }
+
+                writer.WriteLine($"endsolid {solidName}");
+            }
+        }
+
+        /// <summary>
+        /// Reads all <c>solid &lt;name&gt;</c> block names from an ASCII STL file in order of appearance.
+        /// </summary>
+        public static IReadOnlyList<string> ReadAsciiSolidNames(string path)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            if (!File.Exists(path)) throw new FileNotFoundException("STL file not found.", path);
+
+            var names = new List<string>();
+            foreach (string rawLine in File.ReadLines(path))
+            {
+                string trimmed = rawLine.Trim();
+                if (trimmed.StartsWith("solid", StringComparison.OrdinalIgnoreCase) &&
+                    (trimmed.Length == 5 || char.IsWhiteSpace(trimmed[5])))
+                {
+                    string name = trimmed.Length > 5 ? trimmed.Substring(5).Trim() : string.Empty;
+                    names.Add(name);
+                }
+            }
+
+            return names;
+        }
+
+        private static void WriteAsciiVertex(StreamWriter writer, Vector3 v)
+        {
+            writer.WriteLine(string.Format(
+                CultureInfo.InvariantCulture,
+                "      vertex {0:G9} {1:G9} {2:G9}",
+                v.X, v.Y, v.Z));
         }
 
         /// <summary>Pads or truncates the ASCII header to exactly 80 bytes.</summary>
