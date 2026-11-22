@@ -137,31 +137,52 @@ namespace FluidForge.Solvers.OpenFoam
 
             if (mpiCores > 1)
             {
-                OpenFoamCommandResult decompRes = _runner.Run(caseDir, "decomposePar -force", _options, mpiCores: 1);
-                if (decompRes.ExitCode != 0)
+                string zeroDir = Path.Combine(caseDir, "0");
+                string zeroBackup = Path.Combine(caseDir, "_0_meshing_backup");
+                bool stashedZero = false;
+                if (Directory.Exists(zeroDir))
                 {
-                    throw new MeshGenerationException(
-                        $"decomposePar (meshing) failed (ExitCode {decompRes.ExitCode}): {FirstErrorLine(decompRes.CombinedOutput)}");
+                    if (Directory.Exists(zeroBackup))
+                        Directory.Delete(zeroBackup, recursive: true);
+                    Directory.Move(zeroDir, zeroBackup);
+                    stashedZero = true;
                 }
 
-                string parallelCmd = OpenFoamProcessRunner.BuildParallelToolCommand(
-                    "snappyHexMesh", "-overwrite", _options, mpiCores);
-                OpenFoamCommandResult snappyRes = _runner.Run(caseDir, parallelCmd, _options, mpiCores);
-                if (snappyRes.ExitCode != 0)
+                try
                 {
-                    throw new MeshGenerationException(
-                        $"snappyHexMesh -parallel failed (ExitCode {snappyRes.ExitCode}): {FirstErrorLine(snappyRes.CombinedOutput)}");
-                }
+                    OpenFoamCommandResult decompRes = _runner.Run(caseDir, "decomposePar -force", _options, mpiCores: 1);
+                    if (decompRes.ExitCode != 0)
+                    {
+                        throw new MeshGenerationException(
+                            $"decomposePar (meshing) failed (ExitCode {decompRes.ExitCode}): {FirstErrorLine(decompRes.CombinedOutput)}");
+                    }
 
-                OpenFoamCommandResult reconRes = _runner.Run(caseDir, "reconstructParMesh -constant", _options, mpiCores: 1);
-                if (reconRes.ExitCode != 0)
+                    string parallelCmd = OpenFoamProcessRunner.BuildParallelToolCommand(
+                        "snappyHexMesh", "-overwrite", _options, mpiCores);
+                    OpenFoamCommandResult snappyRes = _runner.Run(caseDir, parallelCmd, _options, mpiCores);
+                    if (snappyRes.ExitCode != 0)
+                    {
+                        throw new MeshGenerationException(
+                            $"snappyHexMesh -parallel failed (ExitCode {snappyRes.ExitCode}): {FirstErrorLine(snappyRes.CombinedOutput)}");
+                    }
+
+                    OpenFoamCommandResult reconRes = _runner.Run(caseDir, "reconstructParMesh -constant", _options, mpiCores: 1);
+                    if (reconRes.ExitCode != 0)
+                    {
+                        throw new MeshGenerationException(
+                            $"reconstructParMesh failed (ExitCode {reconRes.ExitCode}): {FirstErrorLine(reconRes.CombinedOutput)}");
+                    }
+
+                    DeleteProcessorDirectories(caseDir);
+                    return snappyRes.CombinedOutput;
+                }
+                finally
                 {
-                    throw new MeshGenerationException(
-                        $"reconstructParMesh failed (ExitCode {reconRes.ExitCode}): {FirstErrorLine(reconRes.CombinedOutput)}");
+                    if (stashedZero && Directory.Exists(zeroBackup) && !Directory.Exists(zeroDir))
+                    {
+                        Directory.Move(zeroBackup, zeroDir);
+                    }
                 }
-
-                DeleteProcessorDirectories(caseDir);
-                return snappyRes.CombinedOutput;
             }
 
             OpenFoamCommandResult serialSnappy = _runner.Run(caseDir, "snappyHexMesh -overwrite", _options, mpiCores: 1);
@@ -188,7 +209,7 @@ namespace FluidForge.Solvers.OpenFoam
             string caseDir,
             string snappyLog)
         {
-            OpenFoamCommandResult checkRes = _runner.Run(caseDir, "checkMesh -allGeometry -allTopology", _options, mpiCores: 1);
+            OpenFoamCommandResult checkRes = _runner.Run(caseDir, "checkMesh", _options, mpiCores: 1);
             if (checkRes.ExitCode != 0)
             {
                 throw new MeshGenerationException(
@@ -253,13 +274,16 @@ namespace FluidForge.Solvers.OpenFoam
         private static string FirstErrorLine(string output)
         {
             if (string.IsNullOrWhiteSpace(output)) return "(no output)";
-            foreach (string raw in output.Split('\n'))
+            string[] lines = output.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
             {
-                string line = raw.Trim();
+                string line = lines[i].Trim();
                 if (line.Length == 0) continue;
                 if (line.Contains("FATAL", StringComparison.OrdinalIgnoreCase) ||
                     line.Contains("Error", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (i + 1 < lines.Length && !string.IsNullOrWhiteSpace(lines[i + 1]))
+                        return $"{line} {lines[i + 1].Trim()}";
                     return line;
                 }
             }

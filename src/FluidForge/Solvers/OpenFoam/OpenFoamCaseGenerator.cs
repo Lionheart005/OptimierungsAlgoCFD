@@ -1228,7 +1228,7 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("        geometry");
             sb.AppendLine("        {");
             sb.AppendLine($"            level ({levelMin} {levelMax});");
-            sb.AppendLine("            patchInfo");
+            sb.AppendLine("            regions");
             sb.AppendLine("            {");
             foreach (string patch in scaledPatches.Keys)
             {
@@ -1237,8 +1237,19 @@ namespace FluidForge.Solvers.OpenFoam
                      patch.StartsWith(outletPrefix, StringComparison.OrdinalIgnoreCase)))
                     ? "patch"
                     : "wall";
-                sb.AppendLine($"                {patch} {{ type {patchType}; }}");
+                sb.AppendLine($"                {patch}");
+                sb.AppendLine("                {");
+                sb.AppendLine($"                    level ({levelMin} {levelMax});");
+                sb.AppendLine("                    patchInfo");
+                sb.AppendLine("                    {");
+                sb.AppendLine($"                        type {patchType};");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                }");
             }
+            sb.AppendLine("            }");
+            sb.AppendLine("            patchInfo");
+            sb.AppendLine("            {");
+            sb.AppendLine("                type wall;");
             sb.AppendLine("            }");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
@@ -1293,7 +1304,7 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("meshQualityControls");
             sb.AppendLine("{");
             sb.AppendLine($"    maxNonOrtho     {F(options.MaxNonOrthogonality)};");
-            sb.AppendLine("    maxBoundarySkewness 20;");
+            sb.AppendLine($"    maxBoundarySkewness {F(options.MaxSkewness)};");
             sb.AppendLine($"    maxInternalSkewness {F(options.MaxSkewness)};");
             sb.AppendLine("    maxConcave      80;");
             sb.AppendLine("    minVol          1e-13;");

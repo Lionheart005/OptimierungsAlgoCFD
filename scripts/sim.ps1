@@ -34,7 +34,8 @@
 
 .EXAMPLE
     .\scripts\sim.ps1 doctor
-    Before the first run: checks SU2, mpirun, gmsh, dotnet, tmux, and libpicogk.so.
+    Before the first run: checks SU2, OpenFOAM (ESI v2506 / openfoam2506, isolated OpenMPI),
+    MPICH vs OpenMPI isolation, gmsh, dotnet, tmux, libpicogk.so, and optional opt-py.
 
 .EXAMPLE
     .\scripts\sim.ps1 run

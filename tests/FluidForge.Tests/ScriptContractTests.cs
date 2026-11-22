@@ -319,5 +319,24 @@ namespace FluidForge.Tests
             Assert.Contains("--recheck", runner);
             Assert.Contains("--finer", runner);
         }
+
+        [Fact]
+        public void Runner_Excludes_TemplateInternal3D_Kills_OpenFoam_Processes_And_Checks_Isolated_OpenFoam()
+        {
+            string runner = Read("sim-runner.sh");
+            string setup = ReadRepoFile("src/FluidForge/setup_server.sh");
+
+            Assert.Contains("_TemplateInternal3D", runner);
+            Assert.Contains("pkill -9 -u \"$USER\" -f simpleFoam", runner);
+            Assert.Contains("pkill -9 -u \"$USER\" -f snappyHexMesh", runner);
+            Assert.Contains("pkill -9 -u \"$USER\" -f cartesianMesh", runner);
+            Assert.Contains("/usr/lib/openfoam/openfoam2506/etc/bashrc", runner);
+            Assert.Contains("/usr/bin/mpirun", runner);
+            Assert.Contains("opt-py", runner);
+
+            Assert.Contains("/usr/lib/openfoam/openfoam2506/etc/bashrc", setup);
+            Assert.Contains("conda create -y -n openfoam -c conda-forge openfoam", setup);
+            Assert.Contains("opt-py", setup);
+        }
     }
 }

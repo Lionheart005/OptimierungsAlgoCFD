@@ -59,11 +59,11 @@ namespace FluidForge.Solvers.OpenFoam
             @"Failed\s+(\d+)\s+mesh\s+checks",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // Matches snappyHexMesh layer summary table rows, e.g.:
+        // Matches snappyHexMesh layer summary table rows (5 columns or ESI v2506 6 columns with target), e.g.:
         //   wall            1234    5.0       0.00123       87.5
-        //   overall         1234    5.0       0.00123       87.5 %
+        //   wall            3075    2         1.98          0.00111       97.3
         private static readonly Regex LayerSummaryRowRegex = new(
-            @"^\s*(?<patch>[A-Za-z0-9_.\-]+)\s+(?<faces>\d+)\s+(?<layers>[0-9eE+\-.]+)\s+(?<thick>[0-9eE+\-.]+)\s+(?<pct>[0-9eE+\-.]+)\s*%?\s*$",
+            @"^\s*(?<patch>[A-Za-z0-9_.\-]+)\s+(?<faces>\d+)\s+(?:(?<target>[0-9eE+\-.]+)\s+)?(?<layers>[0-9eE+\-.]+)\s+(?<thick>[0-9eE+\-.]+)\s+(?<pct>[0-9eE+\-.]+)\s*%?\s*$",
             RegexOptions.Multiline | RegexOptions.Compiled);
 
         /// <summary>
@@ -188,9 +188,22 @@ namespace FluidForge.Solvers.OpenFoam
             float? wallThick = null;
             float? overallPct = null;
             float? overallThick = null;
+            bool sawSixColumnRow = false;
 
             foreach (Match m in LayerSummaryRowRegex.Matches(snappyLog))
             {
+                bool isSixCol = m.Groups["target"].Success;
+                if (sawSixColumnRow && !isSixCol)
+                    continue;
+                if (isSixCol && !sawSixColumnRow)
+                {
+                    sawSixColumnRow = true;
+                    wallPct = null;
+                    wallThick = null;
+                    overallPct = null;
+                    overallThick = null;
+                }
+
                 string patch = m.Groups["patch"].Value.Trim();
                 float thick = ParseFloat(m.Groups["thick"].Value);
                 float pct = ParseFloat(m.Groups["pct"].Value);

@@ -50,9 +50,7 @@ namespace FluidForge.Solvers.OpenFoam
             bool divergedOrNaN = postResult.HasNonFiniteValues;
             int iterations = 0;
 
-            if (log.Contains("FOAM FATAL", StringComparison.OrdinalIgnoreCase) ||
-                log.Contains("Floating point exception", StringComparison.OrdinalIgnoreCase) ||
-                log.Contains("SIGFPE", StringComparison.OrdinalIgnoreCase))
+            if (ContainsFatalOrCrashLine(log))
             {
                 divergedOrNaN = true;
             }
@@ -104,7 +102,10 @@ namespace FluidForge.Solvers.OpenFoam
                 IReadOnlyList<float> values = kvp.Value;
                 if (values.Count < 4) continue;
 
-                int count = Math.Min(window, values.Count);
+                // Use at most the final third of iterations (when N < 3*window) so early
+                // startup transients do not trigger false drift on fast-converging runs.
+                int count = OpenFoamPostProcessor.ResolveEffectiveTailCount(values.Count, window);
+                if (count < 4) continue;
                 int start = values.Count - count;
                 int half = count / 2;
 
@@ -167,6 +168,33 @@ namespace FluidForge.Solvers.OpenFoam
                 iterations,
                 finalResiduals,
                 summary);
+        }
+
+        private static bool ContainsFatalOrCrashLine(string log)
+        {
+            if (string.IsNullOrEmpty(log))
+                return false;
+
+            foreach (string rawLine in log.Split('\n'))
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0)
+                    continue;
+
+                // OpenFOAM startup banner prints:
+                // "trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE)."
+                if (line.StartsWith("trapFpe:", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (line.Contains("FOAM FATAL", StringComparison.OrdinalIgnoreCase) ||
+                    line.Contains("Floating point exception", StringComparison.OrdinalIgnoreCase) ||
+                    line.Contains("SIGFPE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

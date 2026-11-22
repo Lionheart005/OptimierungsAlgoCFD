@@ -510,11 +510,19 @@ namespace FluidForge.Solvers.OpenFoam
             return File.Exists(direct) ? direct : null;
         }
 
+        internal static int ResolveEffectiveTailCount(int sampleCount, int configuredWindow)
+        {
+            if (sampleCount <= 0) return 0;
+            int boundedWindow = Math.Max(1, configuredWindow);
+            int maxTail = sampleCount <= 8 ? sampleCount : Math.Max(4, sampleCount / 3);
+            return Math.Min(boundedWindow, maxTail);
+        }
+
         private static PatchPressureVelocitySample TailMeanPressureVelocity(
             IReadOnlyList<PatchPressureVelocitySample> samples,
             int window)
         {
-            int count = Math.Min(window, samples.Count);
+            int count = ResolveEffectiveTailCount(samples.Count, window);
             int start = samples.Count - count;
             double pSum = 0.0, uxSum = 0.0, uySum = 0.0, uzSum = 0.0;
             for (int i = start; i < samples.Count; i++)
@@ -532,7 +540,7 @@ namespace FluidForge.Solvers.OpenFoam
 
         private static double TailMeanFlux(IReadOnlyList<PatchFluxSample> samples, int window)
         {
-            int count = Math.Min(window, samples.Count);
+            int count = ResolveEffectiveTailCount(samples.Count, window);
             int start = samples.Count - count;
             double sum = 0.0;
             for (int i = start; i < samples.Count; i++)
@@ -542,7 +550,7 @@ namespace FluidForge.Solvers.OpenFoam
 
         private static float TailMean(IReadOnlyList<float> values, int window)
         {
-            int count = Math.Min(window, values.Count);
+            int count = ResolveEffectiveTailCount(values.Count, window);
             int start = values.Count - count;
             double sum = 0.0;
             for (int i = start; i < values.Count; i++)

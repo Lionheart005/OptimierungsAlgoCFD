@@ -98,7 +98,7 @@ list_project_folders() {
     [ -d "$PROJECTS_DIR" ] || return 0
 
     find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
-        | grep -Ev '^(_Template3D|_Template2D|bin|obj|\..*)$' | sort || true
+        | grep -Ev '^(_Template3D|_Template2D|_TemplateInternal3D|bin|obj|\..*)$' | sort || true
 }
 
 # Abort if no project was specified, then derive project-specific paths.
@@ -227,7 +227,25 @@ cmd_doctor() {
     say ""
     say "--- Tool paths (effective project configuration) ---"
 
+    local is_openfoam_project=0
+    local has_su2_config=0
+    local is_pure_openfoam=0
+    [ -f "$PROJECT_DIR/solvers/su2.json" ] && has_su2_config=1
+    [ -f "$PROJECT_DIR/solvers/openfoam.json" ] && is_openfoam_project=1
+
     load_effective_config
+
+    if [ -z "$CONFIG_ERROR" ]; then
+        local preset_val
+        preset_val="$(config_value "Preset")"
+        case "$preset_val" in
+            Internal3D*) is_openfoam_project=1 ;;
+        esac
+    fi
+
+    if [ "$is_openfoam_project" -eq 1 ] && [ "$has_su2_config" -eq 0 ]; then
+        is_pure_openfoam=1
+    fi
 
     if [ -n "$CONFIG_ERROR" ]; then
         fail "Could not query effective configuration: $CONFIG_ERROR"
@@ -250,8 +268,12 @@ cmd_doctor() {
             configured="$(config_value "$entry")"
 
             if [ -z "$configured" ]; then
-                fail "$entry is missing from configuration"
-                problems=$((problems + 1))
+                if [ "$is_pure_openfoam" -eq 1 ]; then
+                    say "  [INFO]    $entry is not configured (not required for pure OpenFOAM project $PROJECT_NAME)"
+                else
+                    fail "$entry is missing from configuration"
+                    problems=$((problems + 1))
+                fi
                 continue
             fi
 
@@ -271,20 +293,147 @@ cmd_doctor() {
 
                 # Official SU2 binary is built with MPICH; OpenMPI launches independent serial copies
                 if [ "$entry" = "MpiRunPath" ] && "$resolved" --version 2>&1 | grep -qiE "open mpi|openrte|prrte"; then
-                    fail "$entry is OpenMPI; SU2 requires MPICH (otherwise each rank runs as a serial copy)"
-                    say  "          Set: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (see scripts/README.md)"
-                    problems=$((problems + 1))
+                    if [ "$is_pure_openfoam" -eq 1 ]; then
+                        say "  [INFO]    $entry is OpenMPI (SU2 requires MPICH, but $PROJECT_NAME uses OpenFOAM)"
+                    else
+                        fail "$entry is OpenMPI; SU2 requires MPICH (otherwise each rank runs as a serial copy)"
+                        say  "          Set: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (see scripts/README.md)"
+                        problems=$((problems + 1))
+                    fi
                 fi
             else
-                fail "$entry -> $configured (not a file and not in PATH)"
-                case "$configured" in
-                    */*) say "          Path does not exist or is not executable." ;;
-                    *)   say "          Searched PATH: $PATH" ;;
-                esac
-                say "          Configure '$entry' in src/projects/$PROJECT_NAME/simulation.json."
-                problems=$((problems + 1))
+                if [ "$is_pure_openfoam" -eq 1 ]; then
+                    say "  [INFO]    $entry -> $configured (not installed; not required for pure OpenFOAM project $PROJECT_NAME)"
+                else
+                    fail "$entry -> $configured (not a file and not in PATH)"
+                    case "$configured" in
+                        */*) say "          Path does not exist or is not executable." ;;
+                        *)   say "          Searched PATH: $PATH" ;;
+                    esac
+                    say "          Configure '$entry' in src/projects/$PROJECT_NAME/simulation.json."
+                    problems=$((problems + 1))
+                fi
             fi
         done
+    fi
+
+    say ""
+    say "--- OpenFOAM (isolated from Conda MPICH) ---"
+    local of_bashrc=""
+    if [ -f "/usr/lib/openfoam/openfoam2506/etc/bashrc" ]; then
+        of_bashrc="/usr/lib/openfoam/openfoam2506/etc/bashrc"
+    else
+        local candidate
+        for candidate in /usr/lib/openfoam/openfoam*/etc/bashrc; do
+            if [ -f "$candidate" ]; then
+                of_bashrc="$candidate"
+            fi
+        done
+    fi
+    if [ -z "$of_bashrc" ] && [ -f "$HOME/miniconda/envs/openfoam/etc/bashrc" ]; then
+        of_bashrc="$HOME/miniconda/envs/openfoam/etc/bashrc"
+    fi
+
+    if [ -z "$of_bashrc" ]; then
+        if [ "$is_openfoam_project" -eq 1 ]; then
+            fail "OpenFOAM etc/bashrc not found (/usr/lib/openfoam/openfoam2506/etc/bashrc or fallback)"
+            problems=$((problems + 1))
+        else
+            say "  [INFO]    OpenFOAM not found (not required for $PROJECT_NAME)"
+        fi
+    else
+        ok "OpenFOAM bashrc -> $of_bashrc"
+        local of_probe
+        of_probe="$(
+            OF_BASHRC="$of_bashrc" bash -c '
+                export PATH="$(printf "%s" "${PATH:-}" | tr ":" "\n" | grep -viE "(miniconda|anaconda|conda|mpich)" | paste -sd: -)"
+                export LD_LIBRARY_PATH="$(printf "%s" "${LD_LIBRARY_PATH:-}" | tr ":" "\n" | grep -viE "(miniconda|anaconda|conda|mpich)" | paste -sd: -)"
+                export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+                set +u
+                source "$OF_BASHRC" >/dev/null 2>&1 || true
+                set -u
+                printf "VER|%s\n" "${WM_PROJECT_VERSION:-}"
+                for t in simpleFoam snappyHexMesh checkMesh surfaceFeatureExtract cartesianMesh; do
+                    p="$(command -v "$t" 2>/dev/null || true)"
+                    printf "TOOL|%s|%s\n" "$t" "$p"
+                done
+                if [ -x /usr/bin/mpirun ]; then
+                    mv="$(/usr/bin/mpirun --version 2>&1 | head -n 1 || true)"
+                    printf "MPI|/usr/bin/mpirun|%s\n" "$mv"
+                else
+                    printf "MPI||\n"
+                fi
+            ' 2>/dev/null || true
+        )"
+
+        local kind arg1 arg2
+        while IFS='|' read -r kind arg1 arg2; do
+            case "$kind" in
+                VER)
+                    if [ -n "$arg1" ]; then
+                        if printf '%s' "$arg1" | grep -qiE '^(v?2506|v?2[3-9][0-9]{2}|2[3-9][0-9]{2})'; then
+                            ok "WM_PROJECT_VERSION -> $arg1"
+                        else
+                            say "  [INFO]    WM_PROJECT_VERSION -> $arg1 (expected ESI v2506 / 2312+)"
+                        fi
+                    else
+                        if [ "$is_openfoam_project" -eq 1 ]; then
+                            fail "WM_PROJECT_VERSION is empty after sourcing $of_bashrc"
+                            problems=$((problems + 1))
+                        else
+                            say "  [INFO]    WM_PROJECT_VERSION is empty after sourcing $of_bashrc"
+                        fi
+                    fi
+                    ;;
+                TOOL)
+                    if [ -n "$arg2" ]; then
+                        ok "$arg1 -> $arg2"
+                    else
+                        if [ "$is_openfoam_project" -eq 1 ]; then
+                            fail "$arg1 missing in isolated OpenFOAM environment"
+                            problems=$((problems + 1))
+                        else
+                            say "  [INFO]    $arg1 missing (not required for $PROJECT_NAME)"
+                        fi
+                    fi
+                    ;;
+                MPI)
+                    if [ -n "$arg1" ]; then
+                        if printf '%s' "$arg2" | grep -qiE "open mpi|openmpi|openrte|prrte" && ! printf '%s' "$arg2" | grep -qiE "mpich|hydra"; then
+                            ok "OpenFOAM MPI -> $arg1 ($arg2)"
+                        else
+                            if [ "$is_openfoam_project" -eq 1 ]; then
+                                fail "OpenFOAM MPI -> $arg1 ($arg2) is not OpenMPI (OpenFOAM requires system OpenMPI, not MPICH)"
+                                problems=$((problems + 1))
+                            else
+                                say "  [INFO]    OpenFOAM MPI -> $arg1 ($arg2)"
+                            fi
+                        fi
+                    else
+                        if [ "$is_openfoam_project" -eq 1 ]; then
+                            fail "/usr/bin/mpirun missing (OpenFOAM requires system OpenMPI)"
+                            problems=$((problems + 1))
+                        else
+                            say "  [INFO]    /usr/bin/mpirun not found (not required for $PROJECT_NAME)"
+                        fi
+                    fi
+                    ;;
+            esac
+        done <<< "$of_probe"
+    fi
+
+    say ""
+    say "--- Optional Python Optimizer Env (opt-py) ---"
+    local opt_py="$HOME/miniconda/envs/opt-py/bin/python"
+    if [ -x "$opt_py" ]; then
+        local opt_ver
+        if opt_ver="$("$opt_py" -c 'import torch, botorch, pymoo, matplotlib; print(f"torch={torch.__version__}, botorch={botorch.__version__}, pymoo={pymoo.__version__}, matplotlib={matplotlib.__version__}")' 2>/dev/null)"; then
+            ok "opt-py -> $opt_py ($opt_ver)"
+        else
+            say "  [INFO]    opt-py found at $opt_py (optional packages torch/botorch/pymoo/matplotlib incomplete)"
+        fi
+    else
+        say "  [INFO]    opt-py not installed at $opt_py (optional; C# optimizer runs natively)"
     fi
 
     say ""
@@ -577,6 +726,9 @@ cmd_stop() {
 
     pkill -9 -u "$USER" -f "$PROCESS_PATTERN" >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f SU2_CFD          >/dev/null 2>&1 || true
+    pkill -9 -u "$USER" -f simpleFoam       >/dev/null 2>&1 || true
+    pkill -9 -u "$USER" -f snappyHexMesh    >/dev/null 2>&1 || true
+    pkill -9 -u "$USER" -f cartesianMesh    >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f mpirun           >/dev/null 2>&1 || true
     pkill -9 -u "$USER" -f xvfb-run         >/dev/null 2>&1 || true
 

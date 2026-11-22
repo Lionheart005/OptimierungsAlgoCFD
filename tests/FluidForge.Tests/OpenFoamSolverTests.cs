@@ -355,6 +355,17 @@ wall            5000     5.0      0.0012                  92.5
             var collapseGate = OpenFoamMeshQualityParser.EvaluateGates(collapseReport, opts);
             Assert.False(collapseGate.Passed);
             Assert.Contains(collapseGate.Violations, v => v.Contains("layer collapse", StringComparison.OrdinalIgnoreCase));
+
+            // ESI openfoam2506 6-column layer summary table (includes target column)
+            string esi2506Snappy = @"
+patch faces        layers        overall thickness
+              target   mesh     [m]       [%]
+----- -----    -----    ----     ---       ---
+wall 3075     2        1.98     0.00111   97.3    
+";
+            var esiReport = OpenFoamMeshQualityParser.Parse(goodCheckMesh, esi2506Snappy, "wall");
+            Assert.Equal(97.3f, esiReport.LayerCoveragePercent, 2);
+            Assert.Equal(0.00111f, esiReport.AvgLayerThicknessM, 5);
         }
 
         // ------------------------------------------------------------------
@@ -415,6 +426,41 @@ wall            5000     5.0      0.0012                  92.5
             var verdict = OpenFoamConvergenceJudge.Judge("Time = 100\nSIMPLE solution converged in 100 iterations\n", post, opts);
             Assert.False(verdict.MassBalanceOk);
             Assert.False(verdict.Converged);
+
+            // Standard ESI OpenFOAM banner ("trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).")
+            // must NOT trigger DivergedOrNaN.
+            string bannerLog = "trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).\nTime = 100\nSIMPLE solution converged in 100 iterations\n";
+            var bannerVerdict = OpenFoamConvergenceJudge.Judge(bannerLog, post, opts);
+            Assert.False(bannerVerdict.DivergedOrNaN);
+
+            // Early startup transient in a 100-iteration converged run must not contaminate
+            // PressureDrop or trigger false trailing-window drift when TrailingWindowIterations=100.
+            string fastCase = Sub("fast_converge");
+            var pInLines = new List<string> { "# Time areaAverage(p) areaAverage(U)" };
+            var pOutLines = new List<string> { "# Time areaAverage(p) areaAverage(U)" };
+            var fInLines = new List<string> { "# Time sum(phi)" };
+            var fOutLines = new List<string> { "# Time sum(phi)" };
+            for (int t = 1; t <= 100; t++)
+            {
+                double pIn = t <= 5 ? 10.0 / t : 0.14;
+                pInLines.Add(string.Create(CultureInfo.InvariantCulture, $"{t} {pIn} (1.0 0 0)"));
+                pOutLines.Add(string.Create(CultureInfo.InvariantCulture, $"{t} 0.0 (1.0 0 0)"));
+                fInLines.Add(string.Create(CultureInfo.InvariantCulture, $"{t} -1.0"));
+                fOutLines.Add(string.Create(CultureInfo.InvariantCulture, $"{t} 1.0"));
+            }
+            WriteSurfaceDat(fastCase, "pressure_inlet", string.Join("\n", pInLines));
+            WriteSurfaceDat(fastCase, "pressure_outlet", string.Join("\n", pOutLines));
+            WriteSurfaceDat(fastCase, "flow_inlet", string.Join("\n", fInLines));
+            WriteSurfaceDat(fastCase, "flow_outlet", string.Join("\n", fOutLines));
+
+            var fastOpts = new OpenFoamOptions { Density = 1000f, TrailingWindowIterations = 100 };
+            OpenFoamPostProcessResult fastPost = OpenFoamPostProcessor.Evaluate(fastCase, fastOpts);
+            Assert.InRange(fastPost.Metrics["PressureDrop"], 139f, 141f);
+            var fastVerdict = OpenFoamConvergenceJudge.Judge(
+                "Time = 100\nSIMPLE solution converged in 100 iterations\n",
+                fastPost,
+                fastOpts);
+            Assert.True(fastVerdict.Converged, fastVerdict.Summary);
 
             var runnerMock = new Mock<IOpenFoamCommandRunner>();
             runnerMock.Setup(r => r.Run(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OpenFoamOptions>(), It.IsAny<int>()))

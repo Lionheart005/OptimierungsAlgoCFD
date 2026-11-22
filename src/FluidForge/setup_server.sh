@@ -94,6 +94,43 @@ wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/
 wget --no-check-certificate https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/include/KHR/khrplatform.h -O $HOME/miniconda/include/KHR/khrplatform.h
 
 # ---------------------------------------------------------
+# 3.6. OPENFOAM (ESI v2506 SYSTEM OR ROOTLESS CONDA FALLBACK)
+# ---------------------------------------------------------
+echo "Checking OpenFOAM (ESI v2506) installation..."
+OPENFOAM_BASHRC=""
+if [ -f "/usr/lib/openfoam/openfoam2506/etc/bashrc" ]; then
+    OPENFOAM_BASHRC="/usr/lib/openfoam/openfoam2506/etc/bashrc"
+else
+    for candidate in /usr/lib/openfoam/openfoam2*/etc/bashrc; do
+        if [ -f "$candidate" ]; then
+            OPENFOAM_BASHRC="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -n "$OPENFOAM_BASHRC" ]; then
+    echo "System OpenFOAM installation detected: $OPENFOAM_BASHRC (no Conda OpenFOAM install needed)."
+elif [ -f "$HOME/miniconda/envs/openfoam/etc/bashrc" ]; then
+    echo "Rootless Conda OpenFOAM environment already exists: $HOME/miniconda/envs/openfoam"
+else
+    echo "No system OpenFOAM found; creating isolated rootless Conda environment 'openfoam' (separate from mpich)..."
+    conda create -y -n openfoam -c conda-forge openfoam
+fi
+
+# ---------------------------------------------------------
+# 3.7. OPTIONAL PYTHON OPTIMIZER ENV (opt-py)
+# ---------------------------------------------------------
+if [ ! -x "$HOME/miniconda/envs/opt-py/bin/python" ]; then
+    echo "Creating optional Python optimizer environment (opt-py)..."
+    conda create -y -n opt-py -c conda-forge python=3.11 pip numpy scipy matplotlib
+    "$HOME/miniconda/envs/opt-py/bin/pip" install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+    "$HOME/miniconda/envs/opt-py/bin/pip" install --no-cache-dir botorch gpytorch pymoo
+else
+    echo "Optional Python optimizer environment (opt-py) already exists."
+fi
+
+# ---------------------------------------------------------
 # 4. COMPILE PICOGK (Headless)
 # ---------------------------------------------------------
 echo "Preparing PicoGK..."
