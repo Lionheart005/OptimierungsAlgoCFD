@@ -73,7 +73,7 @@ Da das Framework problemunabhängig aufgebaut ist, legen wir erst nach den Bench
 - [ ] **GitHub-Release-Reife prüfen:**
   - `LICENSE` (MIT) & vollständige `THIRD_PARTY_NOTICES.md` (PicoGK, LEAP71_ShapeKernel, Clipper2, SU2, Gmsh, OpenFOAM, MPICH, optional BoTorch/pymoo).
   - Starke englische `README.md` mit klarem Wertversprechen, Titelbild/ParaView-Visualisierung, Benchmark-Tabelle und 5-Minuten-Quickstart.
-- [ ] **Community-Feedback einholen:** Gezielt vorstellen und ehrliche Kritik einsammeln in z. B. **CFD-Online**, **r/CFD**, **LEAP 71 PicoGK GitHub Discussions**, **SU2 / OpenFOAM Community** — Feedback strukturiert sammeln, bevor Phase 5 startet!
+- [ ] **Community-Feedback einholen:** Gezielt vorstellen und ehrliche Kritik einsammeln in z. B. **CFD-Online**, **r/CFD**, **LEAP 71 PicoGK GitHub Discussions**, **SU2 / OpenFOAM Community** — Feedback strukturiert sammeln, bevor Phase 5 startet! 
 
 ---
 
@@ -81,4 +81,5 @@ Da das Framework problemunabhängig aufgebaut ist, legen wir erst nach den Bench
 
 1. Alle drei Literatur-Benchmarks (B1, B2, B3) sind vollständig gerechnet, reproduzierbar dokumentiert und liegen innerhalb physikalisch plausibler RANS-Toleranzen (mit ausgewiesenem GCI und `y+`).
 2. Ein Außenstehender kann ohne Vorwissen anhand der englischen `README.md` in < 15 Minuten einen ersten Lauf starten und verstehen.
-3. Community-Feedback ist eingesammelt und in offene Verbesserungen für Phase 5 gespiegelt.
+3. (Notiz von Leonardo: Bevor ich das veröffentliche, will ich auch noch einmal mit meinem Professor bzw mit echter Literatur und Recherche vernüfntige Preset-Einstellungen für die verschiedenen Physik Vorlagen sprechen, sodass man auch wirklich out of the box mit den Vorgaben gute und basierte Ergebnisse bekommt.)
+4. Community-Feedback ist eingesammelt und in offene Verbesserungen für Phase 5 gespiegelt.

@@ -1,3 +1,5 @@
+Frage: Container nutzen um auf die server alle programme und installationspakete mitzubringen? wie funktioniert das wäre das sinvoll, oder einfach mit dem conda script das machen? 
+
 Altes Deutsches Readme falls ichs nochmal brauche (nicht anfassen bitte): 
 
 Inspiriert durch verschiedene Anregungen im Internet und Publikationen, nicht zuletzt durch Leap71, wollte ich unbedingt ausprobieren, wie eine Optimierungssoftware aussehen könnte, die, unabhängig von großen CAD-Programmen mit umständlichen GUI-Bedienelementen, sondern nur mit Code komplexe Formen generieren und optimieren kann.
