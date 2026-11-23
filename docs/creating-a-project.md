@@ -40,18 +40,19 @@ Templates do **not** duplicate parameters in C# (`CreateDefaults()` defaults to 
 ```jsonc
 {
   "$schema": "../../../schemas/project.schema.json",
-  "BaseParameters": { "Length": 50.0, "Width": 30.0, "Height": 20.0 },
+  "BaseParameters": { "WidthRatio": 0.6, "HeightRatio": 0.4 },
   "ParameterBounds": {
-    "Length": { "Min": 20.0, "Max": 100.0 },
-    "Width":  { "Min": 10.0, "Max": 80.0 },
-    "Height": { "Min": 5.0,  "Max": 50.0 }
+    "WidthRatio":  { "Min": 0.2, "Max": 1.2 },
+    "HeightRatio": { "Min": 0.1, "Max": 0.8 }
   },
-  "DimensionalParameters": [ "Length", "Width", "Height" ]
+  "OptimizationTargets": { "ReferenceLengthMm": 100.0 },
+  "DimensionalParameters": []
 }
 ```
 
 - **`MaxDeviations` is optional:** If omitted for a parameter in `ParameterBounds`, `ProjectConfigDto` automatically derives `max((Max - Min) * 0.1, 1e-4)`.
-- **`DimensionalParameters` is for physical lengths (mm) only:** `RubberBandScaler` scales them to `TargetPicoGkSize` and rescales geometry metrics back. Never list angles (e.g. `AngleOfAttackDeg`), counts, or dimensionless ratios here.
+- **Recommended parameterization (fixed reference size + relative parameters + `"UseRubberBandScaler": false`):** Fix one physical reference dimension (e.g., component length, chord, or port diameter in `OptimizationTargets` or fixed bounds) and optimize **dimensionless/relative shape ratios** (`WidthRatio`, `ThicknessRatio`, `BendRadiusRatio`, `TaperRatio`) while setting `"UseRubberBandScaler": false` and `"UseStlSmoothing": false` in `simulation.json`. This keeps Reynolds number $Re_L$ comparable, avoids scale-based reward hacking, preserves exact millimeter wall thicknesses/ports (crucial for `Internal3D`), and eliminates `MetricScaling` errors.
+- **`DimensionalParameters` (opt-in only when `UseRubberBandScaler = true`):** Only needed if you intentionally keep `RubberBandScaler` enabled for multi-scale geometries; list physical lengths (mm) only — never list angles (e.g. `AngleOfAttackDeg`), counts, or dimensionless ratios.
 - **Optimizing angle of attack:** Add `"AngleOfAttackDeg"` to `BaseParameters` and `ParameterBounds` (not `DimensionalParameters`). `Su2Solver` intercepts it automatically and rotates the freestream vector.
 
 ---

@@ -41,8 +41,8 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `TargetPicoGkSize` | `float` | `50.0` | Target working size (mm) when `UseRubberBandScaler` is enabled. |
 | `VoxelSmoothingIterations` | `int` | `40` | Number of Taubin/Laplace STL smoothing iterations. |
 | `VoxelSmoothingPremeltingSteps` | `int` | `2` | Premelting steps before STL smoothing. |
-| `UseRubberBandScaler` | `bool` | `true` | Scales `DimensionalParameters` to `TargetPicoGkSize` and scales reported geometry metrics back. |
-| `UseStlSmoothing` | `bool` | `true` | Smooths the exported STL mesh (3D only). |
+| `UseRubberBandScaler` | `bool` | `false` | Opt-in scaler that normalizes `DimensionalParameters` to `TargetPicoGkSize` and scales reported geometry metrics back. When `false` (default), PicoGK operates directly in real millimeters with fixed reference dimensions and relative/dimensionless parameters. |
+| `UseStlSmoothing` | `bool` | `false` | Opt-in STL smoother for coarse organic voxel hulls (3D only; never use on planar `Internal3D` multi-patch flanges). |
 | `UseProjectedFrontalArea` | `bool` | `true` | Computes `FrontalArea` as the true projected silhouette in YZ instead of `Size.Y * Size.Z`. |
 
 ### CFD, Convergence & Parallelism
@@ -101,12 +101,12 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `Mode` | `string` | `"Off"` | `"Off"` (standard single-fidelity) or `"TwoStageFilter"` (coarse Stage 1 screening followed by full-fidelity promotion of top candidates). |
-| `CoarseMeshFactor` | `float` | `2.0` | Multiplier (`> 1.0`) applied to `EffectiveMeshRefinementFactor` in Stage 1 to coarsen the mesh. |
-| `CoarseMaxIterations` | `int` | `500` | Maximum solver iterations for Stage 1 coarse evaluations (`0` = uncapped). |
+| `CoarseMeshFactor` | `float` | `1.5` | Multiplier (`> 1.0`) applied to `EffectiveMeshRefinementFactor` in Stage 1 to coarsen the mesh. |
+| `CoarseMaxIterations` | `int` | `0` | Maximum solver iterations for Stage 1 coarse evaluations (`0` = uncapped). |
 | `PromoteTopK` | `int` | `2` | Minimum number of top coarse candidates promoted to full fidelity per iteration. |
 | `PromoteTopFraction` | `float` | `0.25` | Fraction of eligible coarse candidates promoted per iteration (combined via `max` with `PromoteTopK`). |
 
-> **Multi-Fidelity Tracking:** Every evaluation records its `FidelityLevel` (`"Coarse"` or `"Full"`) in `results.csv`, `RunJournal` (`resume/journal.jsonl`), and the external optimizer Ask/Tell JSON payloads.
+> **Multi-Fidelity Tracking, Safeguards & Caution:** Every evaluation records its `FidelityLevel` (`"Coarse"`, `"High"`, or `"Verification"`) in `results.csv`, `RunJournal` (`resume/journal.jsonl`), and the external optimizer Ask/Tell JSON payloads. Stage-2 promoted runs use the `"Stage2"` tag so they run under the regular `SimulationConfig` iteration budget rather than `ControlRuns`. At startup, `MultiFidelitySelector.GetStartupWarnings` warns if SU2 is paired with a tight `CoarseMaxIterations` (`<= 2 * CauchyElements` or `< 1000`) or if built-in C# `Bayes` is used (which trains its objective GP only on Stage-2 high-fidelity records while still tracking Stage-1 `PreConstraint` and failed locations; set `OptimizationAlgorithm = "BoTorch"` for multi-fidelity surrogate modeling). After each iteration, `[MULTI-FIDELITY] Stage-1 vs Stage-2 delta:` logs per-candidate deltas and warns on rank reversals, `> 25%` relative delta, or Stage-2 failures. Keep `Mode = "Off"` (default) for standard calibrated single-fidelity runs, 2D problems, and fine-tuning. See [Physics Presets §6](physics-presets.md#6-geometry-best-practices--multi-fidelity-caveats).
 
 ### Mesh Calibration & Fine Verification
 | Key | Type | Default | Description |

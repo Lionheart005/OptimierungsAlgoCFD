@@ -11,6 +11,28 @@ namespace FluidForge.Projects.PipeBend90
     /// </summary>
     public sealed class PipeBend90GeometryGenerator : IGeometryGenerator
     {
+        public const float DefaultPipeRadiusMm = 12.0f;
+        private readonly float _pipeRadiusMm;
+
+        /// <summary>
+        /// Initializes the generator using <c>OptimizationTargets.PipeRadiusMm</c> from
+        /// <paramref name="project"/> (defaults to 12 mm when omitted).
+        /// </summary>
+        public PipeBend90GeometryGenerator(ProjectConfig? project = null)
+        {
+            _pipeRadiusMm = DefaultPipeRadiusMm;
+            if (project?.OptimizationTargets != null &&
+                project.OptimizationTargets.TryGetValue("PipeRadiusMm", out float r))
+            {
+                if (!float.IsFinite(r) || r <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        $"{OutputConventions.ConfigTag} PipeBend90 OptimizationTargets.PipeRadiusMm must be finite and > 0 (got {r}).");
+                }
+                _pipeRadiusMm = r;
+            }
+        }
+
         /// <inheritdoc />
         public GeometryResult GenerateAndExport(
             int iteration,
@@ -19,14 +41,17 @@ namespace FluidForge.Projects.PipeBend90
             string outputDirectory,
             SimulationConfig config)
         {
-            float pipeRadiusMm = Read(parameters, "PipeRadiusMm");
-            float bendRadiusMm = Read(parameters, "BendRadiusMm");
-            float inletStraightMm = Read(parameters, "InletStraightMm");
-            float outletStraightMm = Read(parameters, "OutletStraightMm");
+            float bendRadiusRatio = Read(parameters, "BendRadiusRatio");
+            float inletStraightRatio = Read(parameters, "InletStraightRatio");
+            float outletStraightRatio = Read(parameters, "OutletStraightRatio");
             float radiusModulationMid = Read(parameters, "RadiusModulationMid");
 
+            float bendRadiusMm = _pipeRadiusMm * bendRadiusRatio;
+            float inletStraightMm = _pipeRadiusMm * inletStraightRatio;
+            float outletStraightMm = _pipeRadiusMm * outletStraightRatio;
+
             BuiltFluidVolume built = ShapeKernelPipeBuilder.BuildPipeBend90(
-                pipeRadiusMm,
+                _pipeRadiusMm,
                 bendRadiusMm,
                 inletStraightMm,
                 outletStraightMm,
@@ -44,7 +69,7 @@ namespace FluidForge.Projects.PipeBend90
                 GeometryResult result = exported.ToGeometryResult();
                 result.AddMetric(
                     "BendRadiusRatio",
-                    bendRadiusMm / MathF.Max(pipeRadiusMm, 1e-4f),
+                    bendRadiusRatio,
                     MetricScaling.None);
                 return result;
             }

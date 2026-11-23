@@ -492,6 +492,8 @@ namespace FluidForge.Core
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
+                    ["UseRubberBandScaler"] = false,
+                    ["UseStlSmoothing"] = false,
                     ["MaxIterations"] = 5,
                     ["VariantsPerIteration"] = 6,
                     ["AutoStop"] = new JsonObject
@@ -541,6 +543,8 @@ namespace FluidForge.Core
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
+                    ["UseRubberBandScaler"] = false,
+                    ["UseStlSmoothing"] = false,
                     ["MaxIterations"] = 10,
                     ["VariantsPerIteration"] = 8,
                     ["AutoStop"] = new JsonObject
@@ -591,6 +595,8 @@ namespace FluidForge.Core
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
+                    ["UseRubberBandScaler"] = false,
+                    ["UseStlSmoothing"] = false,
                     ["MaxIterations"] = 10,
                     ["VariantsPerIteration"] = 10,
                     ["AutoStop"] = new JsonObject

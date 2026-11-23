@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace FluidForge.Core
 {
@@ -92,13 +93,35 @@ namespace FluidForge.Core
             foreach (ModelRecord record in context.History)
             {
                 if (record.Variant == ControlRunVariant) continue;
-                if (!SameMeshLevel(record, context.EffectiveMeshRefinementFactor)) continue;
+
+                double[]? cachedPoint = null;
+                double[] GetPoint() => cachedPoint ??= space.ToUnit(record.ActiveParameters);
+                bool meshFailed = record.PassiveParameters.TryGetValue(ModelRecord.MeshFailedKey, out float mf) && mf > 0.5f;
+
+                if (!SameMeshLevel(record, context.EffectiveMeshRefinementFactor))
+                {
+                    if (record.IsPreConstraintInfeasible)
+                    {
+                        double[] point = GetPoint();
+                        preConstraintPoints.Add(point);
+                        if (!record.SimulationFailed && record.Constraints.Count > 0 && record.Constraints.All(c => c.IsPreSolve))
+                        {
+                            allConstraintRecords.Add(record);
+                            allConstraintInputs.Add(point);
+                        }
+                    }
+                    else if (FidelityLevels.IsCoarse(record.FidelityLevel) && record.SimulationFailed)
+                    {
+                        double[] point = GetPoint();
+                        excluded.Add(point);
+                        if (!meshFailed) failed.Add(point);
+                    }
+                    continue;
+                }
 
                 // Fallback mesh (uniformly thinned boundary layer) uses a different wall mesh:
                 // exclude from training, but do not treat as a solver crash.
                 bool meshFallback = record.PassiveParameters.TryGetValue(ModelRecord.MeshFallbackKey, out float fb) && fb > 0.5f;
-                double[]? cachedPoint = null;
-                double[] GetPoint() => cachedPoint ??= space.ToUnit(record.ActiveParameters);
 
                 if (!record.SimulationFailed && !meshFallback && record.Constraints.Count > 0)
                 {
@@ -113,7 +136,6 @@ namespace FluidForge.Core
 
                     // A meshing error is not a flow solver crash: apply local repulsion only,
                     // without teaching the success model to avoid the entire shape region.
-                    bool meshFailed = record.PassiveParameters.TryGetValue(ModelRecord.MeshFailedKey, out float mf) && mf > 0.5f;
                     if (record.SimulationFailed && !meshFailed) failed.Add(point);
                     continue;
                 }

@@ -223,11 +223,11 @@
       "properties": {
         "CoarseMaxIterations": {
           "type": "integer",
-          "default": 500
+          "default": 0
         },
         "CoarseMeshFactor": {
           "type": "number",
-          "default": 2
+          "default": 1.5
         },
         "Mode": {
           "type": "string",
@@ -291,11 +291,11 @@
     },
     "UseRubberBandScaler": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "UseStlSmoothing": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "VariantsPerIteration": {
       "type": "integer",

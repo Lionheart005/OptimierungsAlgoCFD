@@ -30,7 +30,7 @@ Jeder externe CFD-Ingenieur fragt als Erstes: *„Woher weiß ich, dass deine au
 | **B2** | **90°-Rohrkrümmer / Diffusor** (intern, turbulent) | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ (ggf. + Literatur-CFD) | Korrekte interne `PicoGK`/`ShapeKernel` → `snappyHexMesh` → `simpleFoam`-Kette, Massenbilanz `< 1 %`, realer Druckverlust in Minuten! |
 | **B3** | **DARPA SUBOFF (Bare Hull)** oder **Myring-Rumpf** | `External3D` / **OpenFOAM** (Vergleich gegen **SU2**, jeweils mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene, GCI und Freigabe von **OpenFOAM als neuem 3D-Standard** (direkter Solver-Quervergleich!) |
 
-*Zusätzlich (offener v1-Punkt):* Sauberer **3-Seed-Benchmarkvergleich** auf dem aktualisierten `Naca2D` (Multi-Point) zwischen eingebautem C#-`Bayes`, `Evolution` und optionalem `BoTorch`-Backend.
+*Zusätzlich (offener v1-Punkt):* Sauberer **3-Seed-Benchmarkvergleich** auf dem aktualisierten `Naca2D` (Multi-Point) zwischen eingebautem C#-`Bayes`, `IdwBaseline` und optionalem `BoTorch`-Backend.
 
 ---
 
@@ -55,7 +55,7 @@ Da das Framework problemunabhängig aufgebaut ist, legen wir erst nach den Bench
 ### AP 4.1: Stabilitäts-, Ergonomie- & „Fremdnutzer“-Audit
 - [ ] **Fresh-Clone-Test („Zero-to-First-Run“):** Das Repo auf einer sauberen Umgebung (lokal + Server) nur anhand der englischen `README.md` aufsetzen und ein 2D- sowie ein 3D-Beispiel starten. Jede Hürde sofort beheben.
 - [ ] **Fehlermeldungen & Diagnostics polieren:** Klare, handlungsorientierte Fehlermeldungen bei fehlenden Tools, Netzproblemen oder unplausiblen Eingaben; `sim.ps1 doctor` prüft vollständig SU2, Gmsh, OpenFOAM, PicoGK, MPICH und optionales Python/BoTorch-Env.
-- [ ] **Optionales Container-/Setup-Paket:** Prüfen, ob ein reproduzierbares `Dockerfile` / `environment.yml` das Ausprobieren für externe Entwickler auf einen Befehl reduziert.
+- [ ] **Optionales Container-/Setup-Paket (Zusatzplan [`phase4_docker_container.md`](phase4_docker_container.md)):** Reproduzierbares Toolchain-`Dockerfile` (`base`/`full`, Apptainer-kompatibel) als Zusatzangebot für externe Nutzer & Cluster mit Container-Runtime bauen und testen; `setup_server.sh` bleibt als rootless Standard für Server ohne Container-Runtime (wie `BIC_12`) erhalten.
 
 ### AP 4.2: Benchmark-Suite durchrechnen & dokumentieren
 - [ ] **B1 (`Naca2D` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich sauber auf dem Server durchrechnen und GCI + Abweichung zur NASA-Referenz dokumentieren.

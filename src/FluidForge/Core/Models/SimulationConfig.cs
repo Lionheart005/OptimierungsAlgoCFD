@@ -44,14 +44,15 @@ namespace FluidForge.Core
 
         // 1a. Toggleable Framework Building Blocks
         /// <summary>
-        /// Scales geometry to <see cref="TargetPicoGkSize"/> and rescales metrics back.
-        /// When disabled, the geometry kernel operates directly in real dimensions (ScaleFactor = 1).
+        /// Opt-in scaler that normalizes geometry to <see cref="TargetPicoGkSize"/> and rescales metrics back.
+        /// When disabled (default), the geometry kernel operates directly in real physical millimeters (<c>ScaleFactor = 1</c>).
         /// </summary>
-        public bool UseRubberBandScaler { get; set; } = true;
+        public bool UseRubberBandScaler { get; set; } = false;
         /// <summary>
-        /// Smooths the exported STL. When disabled, the STL is exported directly from the voxel model.
+        /// Opt-in STL smoother for coarse organic voxel hulls; never use on planar <c>Internal3D</c> multi-patch flanges.
+        /// When disabled (default), the STL is exported directly from the voxel model.
         /// </summary>
-        public bool UseStlSmoothing { get; set; } = true;
+        public bool UseStlSmoothing { get; set; } = false;
         /// <summary>
         /// Computes <c>FrontalArea</c> in 3D as the true projected silhouette (shadow area in the
         /// YZ plane perpendicular to flow direction X) instead of the bounding-box rectangle (<c>Size.Y × Size.Z</c>).
@@ -332,10 +333,10 @@ namespace FluidForge.Core
         public string Mode { get; set; } = "Off";
 
         /// <summary>Multiplier (&gt; 1.0) applied to <c>EffectiveMeshRefinementFactor</c> in Stage 1 (larger values coarsen the mesh).</summary>
-        public float CoarseMeshFactor { get; set; } = 2.0f;
+        public float CoarseMeshFactor { get; set; } = 1.5f;
 
         /// <summary>Maximum solver iterations for Stage 1 coarse evaluations (0 = uncapped).</summary>
-        public int CoarseMaxIterations { get; set; } = 500;
+        public int CoarseMaxIterations { get; set; } = 0;
 
         /// <summary>Minimum number of top coarse candidates to promote to full fidelity per iteration.</summary>
         public int PromoteTopK { get; set; } = 2;

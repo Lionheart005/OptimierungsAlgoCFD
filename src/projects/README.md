@@ -13,10 +13,12 @@ A **project** is a component to be optimized: its geometry generator, its fitnes
 
 ```text
 src/projects/
-├── _Template3D/     3D project template (not a runnable project; see _Template3D/README.md)
-├── _Template2D/     2D project template (not a runnable project; see _Template2D/README.md)
-├── MantaAuv/        Manta-ray shaped AUV hull (3D)
-└── Naca2D/          2D CFD NACA airfoil with NASA TMR validation
+├── _Template3D/          3D external-flow template (PicoGK -> Gmsh 3D -> SU2; see _Template3D/README.md)
+├── _Template2D/          2D external-flow template (Planar2D -> Gmsh 2D -> SU2; see _Template2D/README.md)
+├── _TemplateInternal3D/  3D internal-flow template (PicoGK + ShapeKernel -> OpenFOAM; see _TemplateInternal3D/README.md)
+├── MantaAuv/             Manta-ray shaped AUV hull (3D external, SU2)
+├── Naca2D/               2D CFD NACA airfoil with NASA TMR validation (2D external, SU2)
+└── PipeBend90/           Parametric 90-degree pipe bend (3D internal, ShapeKernel + OpenFOAM)
 ```
 
 **The folder name is the project name.** Not a field in a JSON file, not an entry in a list — the folder itself. If the folder is named `Propeller`, you run it with:
@@ -41,11 +43,12 @@ dotnet run --project src\FluidForge -- --list-projects   # locally
 ### 1. Create the Folder
 
 ```powershell
-.\scripts\new-project.ps1 Propeller                 # 3D CFD (default)
-.\scripts\new-project.ps1 MyAirfoil -Template 2D    # 2D CFD (direct 2D kernel)
+.\scripts\new-project.ps1 Propeller                      # External 3D (PicoGK -> Gmsh 3D -> SU2, default)
+.\scripts\new-project.ps1 MyAirfoil -Template 2D         # External 2D (Planar2D -> Gmsh 2D -> SU2)
+.\scripts\new-project.ps1 MyPipe -Template Internal3D    # Internal 3D (PicoGK + ShapeKernel -> OpenFOAM)
 ```
 
-This copies `_Template3D/` (or `_Template2D/`) to `Propeller/` and replaces the placeholder `MyProject` (or `MyProject2D`) everywhere — in filenames, class names, namespaces, and JSON comment headers. The name must be a valid C# identifier because it also becomes the class and namespace name.
+This copies `_Template3D/`, `_Template2D/`, or `_TemplateInternal3D/` to `<Name>/` and replaces the placeholder (`MyProject`, `MyProject2D`, or `MyInternalProject`) everywhere — in filenames, class names, namespaces, and JSON comment headers. The name must be a valid C# identifier because it also becomes the class and namespace name.
 
 The generated folder contains:
 
@@ -78,7 +81,9 @@ In `project.json` (no C# `CreateDefaults()` duplication required — `MaxDeviati
 
 The parameter names form the contract with the geometry generator. There is no fixed list of allowed parameters: whatever you define here exists.
 
-> **`DimensionalParameters` is for lengths only.** `RubberBandScaler` scales the geometry to PicoGK's working size and scales results back. A ratio, angle, or count would be distorted if scaled. `MantaAuv` intentionally omits `TailTaper` for this reason.
+> **Recommended for new projects (fixed reference size + relative parameters + `"UseRubberBandScaler": false` & `"UseStlSmoothing": false`):** Fix a physical reference dimension (e.g., component length, chord, or port diameter) and optimize dimensionless ratios instead of absolute lengths, with `"UseRubberBandScaler": false` and `"UseStlSmoothing": false` in `simulation.json`. That keeps $Re_L$ comparable, avoids unintended voxel scaling on `Internal3D` parts, and prevents subtle geometry distortion.
+>
+> **`DimensionalParameters` is only for opt-in `RubberBandScaler` (lengths only):** If you keep `UseRubberBandScaler = true`, list physical lengths (mm) only — a ratio, angle, or count would be distorted if scaled. `MantaAuv` intentionally omits `TailTaper` for this reason.
 
 > **Optimizing angle of attack:** If a parameter is named `"AngleOfAttackDeg"` (or `"AngleOfAttack"`), `Su2Solver` intercepts it automatically, sets the freestream angle of attack per variant directly in SU2, and writes it to `PassiveParameters["AngleOfAttackDeg"]`. The geometry generator does **not** need to rotate the airfoil! Never add it to `DimensionalParameters` (degrees, not a length).
 

@@ -27,7 +27,7 @@ namespace FluidForge.Projects.MyProject
 
         /// <inheritdoc/>
         public override IGeometryGenerator CreateGeometry(ProjectContext context)
-            => new MyProjectGeometryGenerator();
+            => new MyProjectGeometryGenerator(context.Project);
 
         /// <summary>
         /// Validates required optimization targets in the constructor so missing keys fail fast.

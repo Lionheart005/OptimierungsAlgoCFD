@@ -93,8 +93,8 @@ voxBody.Offset(-blendRadius);
 // voxBody.TripleOffset(blendRadius); // (+r, -2r, +r) rounds BOTH inner and outer edges
 ```
 
-### Building Block 4: Export as `Mesh` & Surface Smoothing (`StlSmoother`)
-PicoGK extracts a triangle `Mesh` from the finished `Voxels` object via Marching Cubes. Since voxel surfaces exhibit fine staircase steps, the framework component [`StlSmoother`](../../Core/Utilities/StlSmoother.cs) applies feature-preserving (Taubin/Laplace) smoothing to the exported STL mesh:
+### Building Block 4: Export as `Mesh` & Optional Surface Smoothing (`StlSmoother`)
+PicoGK extracts a triangle `Mesh` from the finished `Voxels` object via Marching Cubes. Export the STL directly for faithful geometry. Only when coarse organic voxel hulls exhibit staircase artifacts that hinder Gmsh prism extrusion should you opt in to [`StlSmoother`](../../Core/Utilities/StlSmoother.cs) (`"UseStlSmoothing": true`):
 
 ```csharp
 Mesh exportModel = new Mesh(voxBody);
@@ -109,6 +109,8 @@ if (config.UseStlSmoothing)
         config.VoxelSmoothingPremeltingSteps);
 }
 ```
+
+> **Recommendation (`UseStlSmoothing = false`):** `StlSmoother` applies Laplacian premelting, Taubin iterations, and axis-wise bounding-box rescaling, which can distort thin trailing edges, sharp features, or planar `Internal3D` ports (`MultiPatchFluidExporter` intentionally does not smooth). Prefer a finer `BaseVoxelResolution` (or `AutoVoxelResolution = true`) and keep `"UseStlSmoothing": false` unless explicitly needed.
 
 ---
 
@@ -147,15 +149,15 @@ float frontalArea = (boundingBox.vecMax.Y - boundingBox.vecMin.Y)
 
 ---
 
-## 5. Important Rules for `RubberBandScaler` & Voxel Resolution
+## 5. Recommended Sizing Strategy, `RubberBandScaler` & Voxel Resolution
 
-1. **Always use the passed `parameters`:**  
-   When `UseRubberBandScaler = true`, `WorkflowController` scales all length parameters listed in `DimensionalParameters` (`project.json`) down to `TargetPicoGkSize` (default `50` mm) before calling `GenerateAndExport`, so every model is resolved with the same relative voxel fineness regardless of its absolute size.
-2. **Register every metric with its matching `MetricScaling`:**  
-   After `GenerateAndExport`, the controller automatically scales all reported metrics back to original size:
+1. **Recommended for new projects — fixed physical size + relative parameters + `"UseRubberBandScaler": false`:**  
+   Fix a physical reference size (e.g., component length or inlet diameter) and vary **dimensionless/relative ratios** (`WidthRatio`, `ThicknessRatio`, `BendRadiusRatio`) with `"UseRubberBandScaler": false`. PicoGK then builds directly in real millimeters (`ShrinkFactor = 1.0`) with constant voxel resolution, exact physical wall thicknesses/ports, consistent Reynolds numbers, and no risk of `DimensionalParameters` or `MetricScaling` misconfiguration.
+2. **If you opt into `UseRubberBandScaler = true` (legacy / multi-scale hulls):**  
+   `WorkflowController` scales all length parameters listed in `DimensionalParameters` (`project.json`) to `TargetPicoGkSize` (default `50` mm) before calling `GenerateAndExport`, and scales reported metrics back afterward. In that mode you must register every metric with its exact `MetricScaling`:
    - `MetricScaling.Volume` ($\times s^3$) for volumes (`Volume`),
    - `MetricScaling.Area` ($\times s^2$) for areas (`FrontalArea`, `SurfaceArea`, cross products),
    - `MetricScaling.Linear` ($\times s^1$) for lengths (`Span`, `Chord`),
    - `MetricScaling.None` ($\times 1$) for dimensionless ratios or angles.
 3. **Observe minimum wall thickness & startup voxel checks:**  
-   At a voxel size of `BaseVoxelResolution = 0.5` mm, structural members and wing edges in the scaled working size should be at least ~`1.0` to `1.5` mm thick (at least 2–3 voxels) so thin skins do not tear during voxelization. `VoxelResolutionAdvisor` checks at startup that the real-space voxel is no coarser than 80% of the surface target cell size; with `"AutoVoxelResolution": true`, the framework automatically refines the effective voxel size at startup (without changing the `--resume` fingerprint).
+   At a voxel size of `BaseVoxelResolution = 0.5` mm, structural members and wing edges in PicoGK working coordinates should be at least ~`1.0` to `1.5` mm thick (at least 2–3 voxels) so thin skins do not tear during voxelization. `VoxelResolutionAdvisor` checks at startup that the real-space voxel is no coarser than 80% of the surface target cell size; with `"AutoVoxelResolution": true`, the framework automatically refines the effective voxel size at startup (without changing the `--resume` fingerprint).

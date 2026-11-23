@@ -35,11 +35,15 @@ namespace FluidForge.Projects.PipeBend90
                 ? vol
                 : float.NaN;
 
-            float pipeRadius = ReadParam(record, project, "PipeRadiusMm");
-            float bendRadius = ReadParam(record, project, "BendRadiusMm");
-            float ratio = float.IsFinite(pipeRadius) && pipeRadius > 0f && float.IsFinite(bendRadius)
-                ? bendRadius / pipeRadius
-                : float.NaN;
+            float ratio = ReadParam(record, project, "BendRadiusRatio");
+            if (!float.IsFinite(ratio))
+            {
+                float pipeRadius = ReadParam(record, project, "PipeRadiusMm");
+                float bendRadius = ReadParam(record, project, "BendRadiusMm");
+                ratio = float.IsFinite(pipeRadius) && pipeRadius > 0f && float.IsFinite(bendRadius)
+                    ? bendRadius / pipeRadius
+                    : float.NaN;
+            }
 
             var constraints = new List<ConstraintEvaluation>(3);
             constraints.AddRange(ConstraintEvaluation.InRange("Volume", volume, minVol, maxVol, isPreSolve: true));
@@ -53,6 +57,8 @@ namespace FluidForge.Projects.PipeBend90
                 return active;
             if (project.BaseParameters != null && project.BaseParameters.TryGetValue(name, out float baseline))
                 return baseline;
+            if (project.OptimizationTargets != null && project.OptimizationTargets.TryGetValue(name, out float target))
+                return target;
             return float.NaN;
         }
     }

@@ -15,7 +15,7 @@ namespace FluidForge.Projects.MyInternalProject
 
         /// <inheritdoc />
         public override IGeometryGenerator CreateGeometry(ProjectContext context)
-            => new MyInternalProjectGeometryGenerator();
+            => new MyInternalProjectGeometryGenerator(context.Project);
 
         /// <inheritdoc />
         public override IFitnessCalculator CreateFitness(ProjectContext context)

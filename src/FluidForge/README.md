@@ -21,27 +21,37 @@ FluidForge/
 ├── src/
 │   ├── FluidForge/                    The framework — NEVER modified for a new project
 │   │   ├── Program.cs                 FluidForge                  Composition Root & CLI
-│   │   ├── Composition/               FluidForge.Composition      CfdProjectDefinition (3D) & Cfd2DProjectDefinition (2D)
+│   │   ├── Composition/               FluidForge.Composition      CfdProjectDefinition (3D SU2), Cfd2DProjectDefinition (2D SU2),
+│   │   │                                                          OpenFoamProjectDefinition (3D OpenFOAM)
 │   │   ├── Core/                      FluidForge.Core             Pure domain core
-│   │   │   ├── Interfaces/            The nine central interface contracts
-│   │   │   ├── Models/                ModelRecord, GeometryResult, SimulationContext, SolverStage
-│   │   │   ├── Configuration/         JsonConfigLoader, ConfigSchema, ProjectRegistry, ProjectPaths
+│   │   │   ├── Interfaces/            Central interface contracts (geometry, mesher, solver, objectives, constraints)
+│   │   │   ├── Models/                ModelRecord, GeometryResult, SimulationContext, SolverStage, OptimizationOutcome
+│   │   │   ├── Configuration/         JsonConfigLoader, SimulationPresets, ConfigSchema, ProjectRegistry, ProjectPaths
 │   │   │   ├── Pipeline/              WorkflowController, ChampionValidator, MeshCalibrationService,
-│   │   │   │                          ChampionVerification, RunJournal, RunInfoWriter
-│   │   │   ├── Algorithms/            BayesOptimizationAlgorithm, IdwBaselineAlgorithm, Factory
-│   │   │   └── Utilities/             RubberBandScaler, StlSmoother, StlWriter, MeshMetrics,
-│   │   │                              Shape2D, ExecutableResolver
-│   │   ├── Kernels/PicoGk/            FluidForge.Kernels.PicoGk   PicoGkKernel, PicoGkMeshMetrics
-│   │   └── Solvers/Cfd/               FluidForge.Solvers.Cfd      GmshCfdMesher, Gmsh2DMesher,
-│   │                                                                   Su2Solver, Su2HistoryAnalyzer,
-│   │                                                                   BoundaryLayerCalculator, YPlusAnalyzer
+│   │   │   │                          ChampionVerification, MultiFidelitySelector, RunJournal, RunInfoWriter
+│   │   │   ├── Algorithms/            BayesOptimizationAlgorithm, IdwBaselineAlgorithm, ExternalProcessOptimizer, Factory
+│   │   │   ├── Optimization/          ExternalOptimizerProtocol (JSON Ask/Tell v1.0), ParetoFrontCalculator
+│   │   │   └── Utilities/             RubberBandScaler, StlSmoother, StlWriter, MultiPatchMeshPartitioner,
+│   │   │                              MeshMetrics, ExecutableResolver
+│   │   ├── Kernels/PicoGk/            FluidForge.Kernels.PicoGk   PicoGkKernel, PicoGkMeshMetrics, InternalFlow/ (ShapeKernel)
+│   │   ├── Kernels/Planar2D/          FluidForge.Kernels.Planar2D Shape2D, Lattice2D
+│   │   ├── Solvers/Cfd/               FluidForge.Solvers.Cfd      GmshCfdMesher, Gmsh2DMesher,
+│   │   │                                                          Su2Solver, Su2HistoryAnalyzer,
+│   │   │                                                          BoundaryLayerCalculator, YPlusAnalyzer
+│   │   └── Solvers/OpenFoam/          FluidForge.Solvers.OpenFoam OpenFoamSnappyMesher, OpenFoamSimpleSolver,
+│   │                                                              OpenFoamCaseGenerator, OpenFoamConvergenceJudge
 │   └── projects/                      All component projects (one folder = one project name)
-│       ├── _Template3D/               FluidForge.Projects.MyProject    (3D project template)
-│       ├── _Template2D/               FluidForge.Projects.MyProject2D  (2D project template)
-│       ├── MantaAuv/                  FluidForge.Projects.MantaAuv       (3D AUV hull)
-│       └── Naca2D/                    FluidForge.Projects.Naca2D         (2D NACA airfoil)
-├── scripts/                           PowerShell, Bash & Python scripts (deploy, server, plots)
-├── tests/FluidForge.Tests/            780+ unit and architecture tests (run without external solvers)
+│       ├── _Template3D/               FluidForge.Projects.MyProject         (3D external template, SU2)
+│       ├── _Template2D/               FluidForge.Projects.MyProject2D       (2D external template, SU2)
+│       ├── _TemplateInternal3D/       FluidForge.Projects.MyInternalProject (3D internal template, OpenFOAM)
+│       ├── MantaAuv/                  FluidForge.Projects.MantaAuv          (3D AUV hull, SU2)
+│       ├── Naca2D/                    FluidForge.Projects.Naca2D            (2D NACA airfoil, SU2)
+│       └── PipeBend90/                FluidForge.Projects.PipeBend90        (3D internal pipe bend, OpenFOAM)
+├── third_party/ShapeKernel/           Pinned Leap71.ShapeKernel (Apache-2.0)
+├── schemas/                           Draft 2020-12 JSON Schemas for VS Code autocomplete
+├── docs/                              Modular English user documentation
+├── scripts/                           PowerShell, Bash & Python scripts (deploy, server, plots, BoTorch/pymoo workers)
+├── tests/FluidForge.Tests/            980+ unit, architecture & real integration tests
 ├── config/                            Escape hatch for machine-specific *.local.json
 └── results/                           Per-project simulation results (results/<Project>/)
 ```
@@ -248,7 +258,7 @@ Every run records its `RandomSeed`, Git/deploy hash, tool versions, and a source
 dotnet test FluidForge.sln
 ```
 
-All 780+ unit tests run in seconds on Windows and Linux without external solvers installed (PicoGK, Gmsh, and SU2 are replaced by lightweight mocks/stubs for pipeline tests). Alongside unit tests for algorithms, scaling, GCI calibration, convergence analysis, and journaling, five dedicated test classes enforce repository-wide consistency:
+All 980+ unit tests run in seconds on Windows and Linux without external solvers installed (PicoGK, Gmsh, SU2, and OpenFOAM are replaced by lightweight mocks/stubs for unit tests; real solver tests carry `[Trait("Category", "Integration")]` or `[Trait("Category", "PythonOpt")]`). Alongside unit tests for algorithms, scaling, GCI calibration, convergence analysis, and journaling, dedicated test classes enforce repository-wide consistency:
 
 - **`ProjectLayoutTests`**: Verifies that all config files live in their project folders, `config/` contains no checked-in JSONs, and default executable paths remain `PATH`-relative.
 - **`TemplateProjectTests`**: Verifies that `_Template3D` (3D) and `_Template2D` (2D) are complete, have commented JSONs, and their code defaults match their template JSONs.

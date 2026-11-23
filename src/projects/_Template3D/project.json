@@ -1,11 +1,11 @@
 {
   // MyProject -- Project Settings (Single Source of Truth). See docs/creating-a-project.md
   "$schema": "../../../schemas/project.schema.json",
-  "BaseParameters": { "Length": 50.0, "Width": 30.0, "Height": 20.0 },
+  "BaseParameters": { "WidthRatio": 0.6, "HeightRatio": 0.4 },
   "ParameterBounds": {
-    "Length": { "Min": 20.0, "Max": 100.0 },
-    "Width":  { "Min": 10.0, "Max": 80.0 },
-    "Height": { "Min": 5.0,  "Max": 50.0 }
+    "WidthRatio":  { "Min": 0.2, "Max": 1.2 },
+    "HeightRatio": { "Min": 0.1, "Max": 0.8 }
   },
-  "DimensionalParameters": [ "Length", "Width", "Height" ]
+  "OptimizationTargets": { "ReferenceLengthMm": 100.0 },
+  "DimensionalParameters": []
 }

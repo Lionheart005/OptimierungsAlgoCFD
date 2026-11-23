@@ -598,6 +598,9 @@ wall 3075     2        1.98     0.00111   97.3
 
             ProjectContext ctx = OptimizeCommand.LoadConfiguration(projectDef, null);
             Assert.Equal("Internal3D:StandardRans", ctx.Simulation.Preset);
+            Assert.False(ctx.Simulation.UseRubberBandScaler);
+            Assert.False(ctx.Simulation.UseStlSmoothing);
+            Assert.Empty(ctx.Project.DimensionalParameters);
             SolverStage[] stages = projectDef.CreateStages(ctx);
             Assert.Single(stages);
             Assert.IsType<OpenFoamSnappyMesher>(stages[0].Mesher);
@@ -619,14 +622,14 @@ wall 3075     2        1.98     0.00111   97.3
             var constraints = new PipeBend90GeometryConstraints();
             var okRecord = new ModelRecord
             {
-                ActiveParameters = new Dictionary<string, float> { ["PipeRadiusMm"] = 12f, ["BendRadiusMm"] = 16f },
+                ActiveParameters = new Dictionary<string, float> { ["BendRadiusRatio"] = 2.5f },
                 PassiveParameters = new Dictionary<string, float> { ["Volume"] = 60000f }
             };
             Assert.All(constraints.EvaluateGeometryConstraints(okRecord, ctx.Project), c => Assert.True(c.IsSatisfied));
 
             var badBendRecord = new ModelRecord
             {
-                ActiveParameters = new Dictionary<string, float> { ["PipeRadiusMm"] = 12f, ["BendRadiusMm"] = 14f }, // 14 < 1.25 * 12 = 15
+                ActiveParameters = new Dictionary<string, float> { ["BendRadiusRatio"] = 1.15f }, // 1.15 < 1.25
                 PassiveParameters = new Dictionary<string, float> { ["Volume"] = 60000f }
             };
             var badResults = constraints.EvaluateGeometryConstraints(badBendRecord, ctx.Project);

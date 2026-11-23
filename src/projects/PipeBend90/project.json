@@ -2,23 +2,22 @@
   // PipeBend90 -- Project Settings (Single Source of Truth). See docs/creating-a-project.md
   "$schema": "../../../schemas/project.schema.json",
   "BaseParameters": {
-    "PipeRadiusMm": 12.0,
-    "BendRadiusMm": 30.0,
-    "InletStraightMm": 40.0,
-    "OutletStraightMm": 40.0,
+    "BendRadiusRatio": 2.5,
+    "InletStraightRatio": 3.33,
+    "OutletStraightRatio": 3.33,
     "RadiusModulationMid": 1.0
   },
   "ParameterBounds": {
-    "PipeRadiusMm":        { "Min": 8.0,  "Max": 18.0 },
-    "BendRadiusMm":        { "Min": 14.0, "Max": 60.0 },
-    "InletStraightMm":     { "Min": 25.0, "Max": 60.0 },
-    "OutletStraightMm":    { "Min": 25.0, "Max": 60.0 },
+    "BendRadiusRatio":     { "Min": 1.15, "Max": 5.0 },
+    "InletStraightRatio":  { "Min": 2.0,  "Max": 5.0 },
+    "OutletStraightRatio": { "Min": 2.0,  "Max": 5.0 },
     "RadiusModulationMid": { "Min": 0.75, "Max": 1.35 }
   },
   "OptimizationTargets": {
+    "PipeRadiusMm": 12.0,
     "MinimumAllowedVolume": 10000.0,
     "MaximumAllowedVolume": 2000000.0,
     "MinBendRadiusRatio": 1.25
   },
-  "DimensionalParameters": [ "PipeRadiusMm", "BendRadiusMm", "InletStraightMm", "OutletStraightMm" ]
+  "DimensionalParameters": []
 }

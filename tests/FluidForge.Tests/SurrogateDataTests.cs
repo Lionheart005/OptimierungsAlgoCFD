@@ -194,6 +194,59 @@ namespace FluidForge.Tests
             Assert.Equal(new[] { 1, 3 }, set.Records.Select(r => r.Variant));
         }
 
+        [Fact]
+        public void Coarse_Stage1_PreConstraint_And_Failed_Locations_Are_Tracked_Without_Polluting_Cfd_Records()
+        {
+            var highValid = Record(1, 100f, 20f, fitness: 50f);
+            highValid.PassiveParameters["MeshRefinementFactor"] = 1.0f;
+            highValid.FidelityLevel = FidelityLevels.High;
+
+            var coarseValid = Record(2, 110f, 22f, fitness: 99f);
+            coarseValid.PassiveParameters["MeshRefinementFactor"] = 1.5f;
+            coarseValid.FidelityLevel = FidelityLevels.Coarse;
+            coarseValid.Constraints.Add(ConstraintEvaluation.AtMost("PostDragLimit", 0.1f, 0.2f, isPreSolve: false));
+
+            var coarsePreConstraint = Record(3, 60f, 12f, fitness: 0f);
+            coarsePreConstraint.PassiveParameters["MeshRefinementFactor"] = 1.5f;
+            coarsePreConstraint.FidelityLevel = FidelityLevels.Coarse;
+            coarsePreConstraint.Feasible = false;
+            coarsePreConstraint.FailedStage = EvaluationFailureStage.PreConstraint;
+            coarsePreConstraint.Constraints.Add(ConstraintEvaluation.AtLeast("MinWidth", 12f, 15f, isPreSolve: true));
+
+            var coarseSolverFailed = Record(4, 140f, 28f, fitness: 0f);
+            coarseSolverFailed.PassiveParameters["MeshRefinementFactor"] = 1.5f;
+            coarseSolverFailed.FidelityLevel = FidelityLevels.Coarse;
+            coarseSolverFailed.SimulationFailed = true;
+            coarseSolverFailed.FailedStage = EvaluationFailureStage.Solver;
+
+            var coarseMeshFailed = Record(5, 70f, 14f, fitness: 0f);
+            coarseMeshFailed.PassiveParameters["MeshRefinementFactor"] = 1.5f;
+            coarseMeshFailed.FidelityLevel = FidelityLevels.Coarse;
+            coarseMeshFailed.SimulationFailed = true;
+            coarseMeshFailed.FailedStage = EvaluationFailureStage.Mesh;
+            coarseMeshFailed.PassiveParameters[ModelRecord.MeshFailedKey] = 1f;
+
+            var (context, space) = WithHistory(Root, highValid, coarseValid, coarsePreConstraint, coarseSolverFailed, coarseMeshFailed);
+            context.EffectiveMeshRefinementFactor = 1.0f;
+
+            var set = SurrogateTrainingSet.Build(context, space);
+
+            // Coarse CFD fitness and post-solve constraints must never pollute high-fidelity CFD sets
+            Assert.Single(set.Records);
+            Assert.Equal(1, set.Records[0].Variant);
+            Assert.Single(set.FeasibleRecords);
+
+            // Geometry pre-constraints are mesh-independent -> tracked in PreConstraintPoints & AllConstraintRecords
+            Assert.Single(set.PreConstraintPoints);
+            Assert.Single(set.AllConstraintRecords);
+            Assert.Equal(3, set.AllConstraintRecords[0].Variant);
+
+            // Failed Stage-1 locations -> ExcludedPoints (both) and FailedPoints (solver crash only, not MeshFailed)
+            Assert.Equal(2, set.ExcludedPoints.Count);
+            Assert.Single(set.FailedPoints);
+            Assert.Equal(space.ToUnit(coarseSolverFailed.ActiveParameters)[0], set.FailedPoints[0][0], 6);
+        }
+
         // ---------------------------------------------------------------- CSV column
 
         [Fact]

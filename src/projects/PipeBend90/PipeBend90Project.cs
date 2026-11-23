@@ -13,7 +13,7 @@ namespace FluidForge.Projects.PipeBend90
 
         /// <inheritdoc />
         public override IGeometryGenerator CreateGeometry(ProjectContext context)
-            => new PipeBend90GeometryGenerator();
+            => new PipeBend90GeometryGenerator(context.Project);
 
         /// <inheritdoc />
         public override IGeometryConstraintEvaluator? CreateGeometryConstraints(ProjectContext context)

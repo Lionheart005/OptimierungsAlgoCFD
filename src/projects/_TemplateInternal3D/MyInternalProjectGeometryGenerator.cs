@@ -12,6 +12,28 @@ namespace FluidForge.Projects.MyInternalProject
     /// </summary>
     public sealed class MyInternalProjectGeometryGenerator : IGeometryGenerator
     {
+        public const float DefaultInletRadiusMm = 10.0f;
+        private readonly float _inletRadiusMm;
+
+        /// <summary>
+        /// Initializes the generator using <c>OptimizationTargets.InletRadiusMm</c> from
+        /// <paramref name="project"/> (defaults to 10 mm when omitted).
+        /// </summary>
+        public MyInternalProjectGeometryGenerator(ProjectConfig? project = null)
+        {
+            _inletRadiusMm = DefaultInletRadiusMm;
+            if (project?.OptimizationTargets != null &&
+                project.OptimizationTargets.TryGetValue("InletRadiusMm", out float r))
+            {
+                if (!float.IsFinite(r) || r <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        $"{OutputConventions.ConfigTag} MyInternalProject OptimizationTargets.InletRadiusMm must be finite and > 0 (got {r}).");
+                }
+                _inletRadiusMm = r;
+            }
+        }
+
         /// <inheritdoc />
         public GeometryResult GenerateAndExport(
             int iteration,
@@ -20,10 +42,9 @@ namespace FluidForge.Projects.MyInternalProject
             string outputDirectory,
             SimulationConfig config)
         {
-            float lengthMm = Read(parameters, "LengthMm");
-            float radiusMm = Read(parameters, "RadiusMm");
+            float lengthMm = 2.0f * _inletRadiusMm * Read(parameters, "LengthToDiameterRatio");
 
-            BuiltFluidVolume built = ShapeKernelPipeBuilder.BuildStraightPipe(lengthMm, radiusMm);
+            BuiltFluidVolume built = ShapeKernelPipeBuilder.BuildStraightPipe(lengthMm, _inletRadiusMm);
             try
             {
                 InternalFlowExportResult exported = MultiPatchFluidExporter.Export(

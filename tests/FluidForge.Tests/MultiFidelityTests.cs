@@ -4,12 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using FluidForge.Core;
+using FluidForge.Solvers.Cfd;
 using FluidForge.Solvers.OpenFoam;
 using Moq;
 using Xunit;
 
 namespace FluidForge.Tests
 {
+    [Collection(ProcessWideStateCollection.Name)]
     public class MultiFidelityTests : TempDirectoryTest
     {
         private static ProjectConfig CreateProject() => new ProjectConfig
@@ -50,8 +52,8 @@ namespace FluidForge.Tests
             var cfg = SimulationConfig.CreateDefault();
             Assert.NotNull(cfg.MultiFidelity);
             Assert.Equal("Off", cfg.MultiFidelity.Mode);
-            Assert.Equal(2.0f, cfg.MultiFidelity.CoarseMeshFactor);
-            Assert.Equal(500, cfg.MultiFidelity.CoarseMaxIterations);
+            Assert.Equal(1.5f, cfg.MultiFidelity.CoarseMeshFactor);
+            Assert.Equal(0, cfg.MultiFidelity.CoarseMaxIterations);
             Assert.Equal(2, cfg.MultiFidelity.PromoteTopK);
             Assert.Equal(0.25f, cfg.MultiFidelity.PromoteTopFraction);
             Assert.False(MultiFidelitySelector.IsTwoStageEnabled(cfg.MultiFidelity));
@@ -268,9 +270,22 @@ namespace FluidForge.Tests
                 context,
                 requiredMetrics: new[] { "Drag" });
 
-            controller.RunOptimization();
+            TextWriter originalOut = Console.Out;
+            var captured = new StringWriter();
+            try
+            {
+                Console.SetOut(captured);
+                controller.RunOptimization();
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
 
-            // 4 Coarse + 2 Promoted Fine + 2 FinalTopN Verification = 8 pipeline evaluations
+            string logOutput = captured.ToString();
+            Assert.Contains("[MULTI-FIDELITY] Stage-1 vs Stage-2 delta:", logOutput);
+
+            // 4 Coarse + 2 Promoted Stage2 + 2 FinalTopN Verification = 8 pipeline evaluations
             Assert.Equal(8, meshRequests.Count);
 
             var coarseReqs = meshRequests.Take(4).ToList();
@@ -287,7 +302,7 @@ namespace FluidForge.Tests
             Assert.All(fineReqs, r =>
             {
                 Assert.Equal(1.0f, r.RefinementFactor, 4);
-                Assert.Equal("Fine", r.Tag);
+                Assert.Equal("Stage2", r.Tag);
                 Assert.Null(r.MaxSolverIterations);
                 Assert.Equal(3000, r.Config.Su2MaxIterations);
             });
@@ -339,7 +354,7 @@ namespace FluidForge.Tests
             var rFine = MakeRecord(1, 25f, fidelityLevel: FidelityLevels.High);
 
             writer.Append(1, 1, 2.0f, "Coarse", p1, rCoarse, 1.2, FidelityLevels.Coarse);
-            writer.Append(1, 1, 1.0f, "Fine", p1, rFine, 4.5, FidelityLevels.High);
+            writer.Append(1, 1, 1.0f, "Stage2", p1, rFine, 4.5, FidelityLevels.High);
             writer.MarkCompleted();
 
             RunJournalContent? content = RunJournal.Read(RunJournal.PathFor(journalDir));
@@ -352,7 +367,7 @@ namespace FluidForge.Tests
             Assert.True(replay.TryReplay(1, 1, 2.0f, "Coarse", p1, out ModelRecord? outCoarse, FidelityLevels.Coarse));
             Assert.Equal(FidelityLevels.Coarse, outCoarse!.FidelityLevel);
 
-            Assert.True(replay.TryReplay(1, 1, 1.0f, "Fine", p1, out ModelRecord? outFine, FidelityLevels.High));
+            Assert.True(replay.TryReplay(1, 1, 1.0f, "Stage2", p1, out ModelRecord? outFine, FidelityLevels.High));
             Assert.Equal(FidelityLevels.High, outFine!.FidelityLevel);
 
             // Fidelity mismatch triggers deviation stop
@@ -498,6 +513,244 @@ namespace FluidForge.Tests
             string fineControlDict = File.ReadAllText(Path.Combine(fineCase, "system", "controlDict"));
             Assert.Contains("endTime         1500;", fineControlDict);
             Assert.Contains("writeInterval   500;", fineControlDict);
+        }
+
+        // -----------------------------------------------------------------
+        // 8. Hardened Stage2 tag, startup warnings & Stage-1 vs Stage-2 diagnostics
+        // -----------------------------------------------------------------
+
+        [Fact]
+        public void Stage2_Tag_Does_Not_Trigger_Su2_ControlRunProfile()
+        {
+            Assert.False(Su2Solver.IsControlRunTag("Stage2"));
+            Assert.False(Su2Solver.IsControlRunTag("Coarse"));
+            Assert.True(Su2Solver.IsControlRunTag("Fine"));
+            Assert.True(Su2Solver.IsControlRunTag("Fine1_Gen1_Var4"));
+            Assert.True(Su2Solver.IsControlRunTag("Cal1"));
+            Assert.True(Su2Solver.IsControlRunTag("Recheck"));
+
+            var config = new SimulationConfig
+            {
+                MaxIterations = 1,
+                VariantsPerIteration = 2,
+                UseRubberBandScaler = false,
+                MeshRefinementFactor = 1.0f,
+                Su2MaxIterations = 3000,
+                ControlRuns = new ControlRunConfig { Su2MaxIterations = 20000 },
+                ChampionVerification = new ChampionVerificationConfig { Mode = "Off" },
+                MultiFidelity = new MultiFidelityConfig
+                {
+                    Mode = "TwoStageFilter",
+                    CoarseMeshFactor = 1.5f,
+                    CoarseMaxIterations = 0,
+                    PromoteTopK = 1
+                }
+            };
+
+            var context = new SimulationContext(config, CreateProject(), Sub("stage2_budget"));
+            context.EnsureDirectories();
+
+            var stage2SolverBudgets = new List<int>();
+            var stage2Tags = new List<string>();
+
+            var geoMock = new Mock<IGeometryGenerator>();
+            geoMock.Setup(g => g.GenerateAndExport(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<Dictionary<string, float>>(), It.IsAny<string>(), It.IsAny<SimulationConfig>()))
+                   .Returns((int it, int v, Dictionary<string, float> p, string dir, SimulationConfig c) =>
+                       new GeometryResult { StlPath = Path.Combine(dir, $"g_{it}_{v}.stl") });
+
+            var mesherMock = new Mock<IMeshGenerator>();
+            mesherMock.Setup(m => m.GenerateMesh(It.IsAny<MeshRequest>()))
+                      .Returns((MeshRequest req) =>
+                      {
+                          if (req.Tag == "Stage2") stage2Tags.Add(req.Tag);
+                          return Path.Combine(req.WorkingDirectory, $"Model_{req.BaseSuffix}.su2");
+                      });
+
+            var solverMock = new Mock<ISimulationSolver>();
+            solverMock.Setup(s => s.Name).Returns("SU2 CFD Solver");
+            solverMock.Setup(s => s.Solve(It.IsAny<string>(), It.IsAny<ModelRecord>(), It.IsAny<SimulationConfig>(), It.IsAny<string>()))
+                      .Callback((string mesh, ModelRecord rec, SimulationConfig cfg, string dir) =>
+                      {
+                          string tag = Su2Solver.ExtractTag(mesh, rec);
+                          SimulationConfig effective = Su2Solver.IsControlRunTag(tag)
+                              ? cfg.WithControlRunProfile()
+                              : cfg;
+                          if (tag == "Stage2") stage2SolverBudgets.Add(effective.Su2MaxIterations);
+                          rec.PassiveParameters["Drag"] = 1.0f / rec.Variant;
+                      });
+
+            var validatorMock = new Mock<IModelValidator>();
+            validatorMock.Setup(v => v.ValidateChampion(It.IsAny<List<ModelRecord>>(), It.IsAny<SimulationConfig>(), It.IsAny<Func<Dictionary<string, float>, ModelRecord>>()))
+                         .Returns((List<ModelRecord> pool, SimulationConfig c, Func<Dictionary<string, float>, ModelRecord> _) =>
+                             WorkflowController.SelectBestRecord(pool)!);
+
+            int nextVar = 1;
+            var optimizerMock = new Mock<IOptimizationAlgorithm>();
+            optimizerMock.Setup(o => o.Name).Returns("External Optimizer (BoTorch)");
+            optimizerMock.Setup(o => o.GenerateParameters(It.IsAny<SimulationContext>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+                         .Returns(() => new Dictionary<string, float> { ["X"] = nextVar++ });
+            optimizerMock.Setup(o => o.EvaluateAndSelectBest(It.IsAny<List<ModelRecord>>(), It.IsAny<SimulationContext>()))
+                         .Returns((List<ModelRecord> recs, SimulationContext ctx) =>
+                         {
+                             foreach (var r in recs) r.Fitness = 10f - r.PassiveParameters["Drag"];
+                             return WorkflowController.SelectBestRecord(recs)!;
+                         });
+
+            var controller = new WorkflowController(
+                geoMock.Object,
+                new[] { new SolverStage(mesherMock.Object, solverMock.Object) },
+                validatorMock.Object,
+                optimizerMock.Object,
+                context,
+                requiredMetrics: new[] { "Drag" });
+
+            controller.RunOptimization();
+
+            Assert.Single(stage2Tags);
+            Assert.Equal("Stage2", stage2Tags[0]);
+            Assert.Single(stage2SolverBudgets);
+            Assert.Equal(3000, stage2SolverBudgets[0]);
+        }
+
+        [Fact]
+        public void GetStartupWarnings_Detects_Tight_SU2_Budget_And_BuiltIn_Bayes()
+        {
+            var offConfig = new SimulationConfig
+            {
+                MultiFidelity = new MultiFidelityConfig { Mode = "Off", CoarseMaxIterations = 500 }
+            };
+            Assert.Empty(MultiFidelitySelector.GetStartupWarnings(offConfig, new[] { "SU2 CFD Solver" }, "Bayes"));
+
+            var tightSu2AndBayes = new SimulationConfig
+            {
+                CauchyElements = 300,
+                OptimizationAlgorithm = "Bayes",
+                MultiFidelity = new MultiFidelityConfig
+                {
+                    Mode = "TwoStageFilter",
+                    CoarseMeshFactor = 1.5f,
+                    CoarseMaxIterations = 500
+                }
+            };
+
+            IReadOnlyList<string> bothWarnings = MultiFidelitySelector.GetStartupWarnings(
+                tightSu2AndBayes,
+                new[] { "SU2 CFD Solver" },
+                "Bayesian Optimization (Gaussian Process, Expected Improvement)");
+
+            Assert.Equal(2, bothWarnings.Count);
+            Assert.Contains(bothWarnings, w => w.Contains("500") && w.Contains("300") && w.Contains("TreatUnconvergedAsFailed"));
+            Assert.Contains(bothWarnings, w => w.Contains("Built-in C# Bayes") && w.Contains("BoTorch"));
+
+            // Uncapped SU2 (CoarseMaxIterations = 0) and BoTorch produce 0 warnings
+            var cleanSu2BoTorch = new SimulationConfig
+            {
+                CauchyElements = 300,
+                OptimizationAlgorithm = "BoTorch",
+                MultiFidelity = new MultiFidelityConfig
+                {
+                    Mode = "TwoStageFilter",
+                    CoarseMeshFactor = 1.5f,
+                    CoarseMaxIterations = 0
+                }
+            };
+            Assert.Empty(MultiFidelitySelector.GetStartupWarnings(
+                cleanSu2BoTorch,
+                new[] { "SU2 CFD Solver" },
+                "External Optimizer (BoTorch)"));
+
+            // OpenFOAM with CoarseMaxIterations = 500 does not trigger the SU2 warning
+            Assert.Empty(MultiFidelitySelector.GetStartupWarnings(
+                tightSu2AndBayes,
+                new[] { "OpenFOAM simpleFoam" },
+                "External Optimizer (BoTorch)"));
+        }
+
+        [Fact]
+        public void CompareStage1AndStage2_Detects_Normal_Deltas_RankReversal_And_HighDiscrepancy()
+        {
+            // 1. Small consistent deltas -> no warning
+            var coarseOk = new[]
+            {
+                MakeRecord(4, 96f, feasible: true, fidelityLevel: FidelityLevels.Coarse),
+                MakeRecord(3, 88f, feasible: true, fidelityLevel: FidelityLevels.Coarse)
+            };
+            var highOk = new[]
+            {
+                MakeRecord(4, 99f, feasible: true, fidelityLevel: FidelityLevels.High),
+                MakeRecord(3, 90f, feasible: true, fidelityLevel: FidelityLevels.High)
+            };
+
+            StageComparisonReport okReport = MultiFidelitySelector.CompareStage1AndStage2(coarseOk, highOk);
+            Assert.False(okReport.RankReversed);
+            Assert.False(okReport.HighDiscrepancy);
+            Assert.Null(okReport.WarningLine);
+            Assert.Contains("[MULTI-FIDELITY] Stage-1 vs Stage-2 delta:", okReport.SummaryLine);
+            Assert.Contains("Var4 (coarse=96.0000 -> high=99.0000", okReport.SummaryLine);
+            Assert.True(okReport.MaxRelativeDelta < 0.05f);
+
+            // 2. Rank reversal (Var4 beats Var3 in Stage 1, loses to Var3 in Stage 2)
+            var coarseRev = new[]
+            {
+                MakeRecord(4, 95f, feasible: true, fidelityLevel: FidelityLevels.Coarse),
+                MakeRecord(3, 90f, feasible: true, fidelityLevel: FidelityLevels.Coarse)
+            };
+            var highRev = new[]
+            {
+                MakeRecord(4, 85f, feasible: true, fidelityLevel: FidelityLevels.High),
+                MakeRecord(3, 92f, feasible: true, fidelityLevel: FidelityLevels.High)
+            };
+
+            StageComparisonReport revReport = MultiFidelitySelector.CompareStage1AndStage2(coarseRev, highRev);
+            Assert.True(revReport.RankReversed);
+            Assert.False(revReport.HighDiscrepancy);
+            Assert.NotNull(revReport.WarningLine);
+            Assert.Contains("[MULTI-FIDELITY]", revReport.WarningLine);
+            Assert.Contains("rank reversal", revReport.WarningLine);
+
+            // 3. > 25% discrepancy without rank reversal
+            var coarseDisc = new[]
+            {
+                MakeRecord(4, 140f, feasible: true, fidelityLevel: FidelityLevels.Coarse),
+                MakeRecord(3, 80f, feasible: true, fidelityLevel: FidelityLevels.Coarse)
+            };
+            var highDisc = new[]
+            {
+                MakeRecord(4, 100f, feasible: true, fidelityLevel: FidelityLevels.High),
+                MakeRecord(3, 75f, feasible: true, fidelityLevel: FidelityLevels.High)
+            };
+
+            StageComparisonReport discReport = MultiFidelitySelector.CompareStage1AndStage2(coarseDisc, highDisc);
+            Assert.False(discReport.RankReversed);
+            Assert.True(discReport.HighDiscrepancy);
+            Assert.True(discReport.MaxRelativeDelta > 0.25f);
+            Assert.NotNull(discReport.WarningLine);
+            Assert.Contains("max delta > 25%", discReport.WarningLine);
+
+            // 4. Feasibility reversal + Stage-2 failure
+            var coarseFeas = new[]
+            {
+                MakeRecord(4, 95f, feasible: true, fidelityLevel: FidelityLevels.Coarse),
+                MakeRecord(3, 90f, feasible: true, fidelityLevel: FidelityLevels.Coarse)
+            };
+            var highFeas = new[]
+            {
+                MakeRecord(4, 96f, feasible: false, fidelityLevel: FidelityLevels.High),
+                MakeRecord(3, 91f, feasible: true, fidelityLevel: FidelityLevels.High)
+            };
+            StageComparisonReport feasRevReport = MultiFidelitySelector.CompareStage1AndStage2(coarseFeas, highFeas);
+            Assert.True(feasRevReport.RankReversed);
+            Assert.NotNull(feasRevReport.WarningLine);
+
+            var highFailed = new[]
+            {
+                MakeRecord(4, 0f, feasible: false, failed: true, fidelityLevel: FidelityLevels.High),
+                MakeRecord(3, 91f, feasible: true, fidelityLevel: FidelityLevels.High)
+            };
+            StageComparisonReport failReport = MultiFidelitySelector.CompareStage1AndStage2(coarseFeas, highFailed);
+            Assert.Contains("high=FAILED", failReport.SummaryLine);
+            Assert.NotNull(failReport.WarningLine);
+            Assert.Contains("Stage-2 failure", failReport.WarningLine);
         }
     }
 }

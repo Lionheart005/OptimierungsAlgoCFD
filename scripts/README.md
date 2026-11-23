@@ -13,10 +13,12 @@ Two scripts, one job: start and monitor optimization runs on the remote Linux se
 |---|---|---|
 | `sim.ps1` | Windows | Package code, upload via SSH, dispatch commands, fetch results |
 | `sim-runner.sh` | Linux | tmux, xvfb-run, paths, build, start/stop/status |
-| `new-project.ps1` | Windows | Create a new project (copies `src/projects/_Template3D` or `_Template2D`) |
+| `new-project.ps1` | Windows | Create a new project (copies `src/projects/_Template3D`, `_Template2D`, or `_TemplateInternal3D`) |
 | `plot_history.py` | Windows / Linux | Inspect and plot SU2 convergence histories (`history.csv`) |
 | `plot_calibration.py` | Windows / Linux | Analyze mesh calibration (`calibration.csv`) and generate GCI plots |
 | `plot_optimization.py` | Windows / Linux | Analyze and plot optimization results (`results.csv`) |
+| `plot_pareto.py` | Windows / Linux | Plot 2-objective Pareto fronts & hypervolume and optionally export Pareto STLs |
+| `optimizers/` | Linux / Windows | Optional external Python optimizer workers (`botorch_worker.py`, `pymoo_worker.py`, `environment_opt.yml`) |
 
 `new-project.ps1` is a local scaffolding helper kept in the same toolbox. See
 [`src/projects/README.md`](../src/projects/README.md) for what to edit after creating a project.
@@ -204,6 +206,10 @@ The Python plotting scripts require `pandas`, `matplotlib`, and `numpy` (`pip in
 - **Mesh calibration & GCI (`plot_calibration.py`):**
   ```powershell
   python scripts/plot_calibration.py server-results/<folder>
+  ```
+- **Multi-objective Pareto front & STL export (`plot_pareto.py`):**
+  ```powershell
+  python scripts/plot_pareto.py server-results/<folder> --export-stls <output-dir>
   ```
 
 ## Monitoring Server Load via SSH

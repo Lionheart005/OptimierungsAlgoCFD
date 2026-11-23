@@ -270,6 +270,7 @@ def solve_request(req: Dict[str, Any]) -> Dict[str, Any]:
 
     con_X_by_idx: List[List[List[float]]] = [[] for _ in range(K)]
     con_Y_by_idx: List[List[float]] = [[] for _ in range(K)]
+    con_fid_by_idx: List[List[float]] = [[] for _ in range(K)]
 
     for obs in history:
         status = str(_get(obs, "status", "Status", "Feasible"))
@@ -290,6 +291,7 @@ def solve_request(req: Dict[str, Any]) -> Dict[str, Any]:
                 if math.isfinite(cval):
                     con_X_by_idx[k_idx].append(u)
                     con_Y_by_idx[k_idx].append(cval)
+                    con_fid_by_idx[k_idx].append(fid)
 
         if status == "InfeasiblePreSolve":
             continue
@@ -443,16 +445,6 @@ def solve_request(req: Dict[str, Any]) -> Dict[str, Any]:
                     sequential=True,
                 )
             elif use_mf:
-                diagnostics["strategy"] = "qLogNEI_MultiFidelity"
-                acq = qLogNoisyExpectedImprovement(
-                    model=obj_gps[0],
-                    X_baseline=torch.cat(
-                        [train_X, torch.tensor(obj_fid_list, dtype=torch.float64).unsqueeze(-1)],
-                        dim=-1,
-                    ),
-                    sampler=sampler,
-                    prune_baseline=True,
-                )
                 mf_bounds = torch.cat(
                     [
                         bounds,
@@ -460,19 +452,105 @@ def solve_request(req: Dict[str, Any]) -> Dict[str, Any]:
                     ],
                     dim=1,
                 )
-                X_mf, _ = optimize_acqf(
-                    acq_function=acq,
-                    bounds=mf_bounds,
-                    q=batch_size,
-                    num_restarts=num_restarts,
-                    raw_samples=raw_samples,
-                    sequential=True,
-                )
-                X_cand = X_mf[:, :d]
-                cand_fidelities = [
-                    min(avail_fids, key=lambda af: abs(af - float(f_raw)))
-                    for f_raw in X_mf[:, d].tolist()
-                ]
+                if con_gps:
+                    try:
+                        con_gps_mf: List[SingleTaskGP] = []
+                        for k_idx in active_con_indices:
+                            cX = torch.tensor(con_X_by_idx[k_idx], dtype=torch.float64)
+                            cY = torch.tensor(con_Y_by_idx[k_idx], dtype=torch.float64).unsqueeze(-1)
+                            cF = torch.tensor(con_fid_by_idx[k_idx], dtype=torch.float64).unsqueeze(-1)
+                            cX_mf = torch.cat([cX, cF], dim=-1)
+                            if len(set(round(f, 6) for f in con_fid_by_idx[k_idx])) >= 2:
+                                try:
+                                    cmf_gp = SingleTaskMultiFidelityGP(
+                                        cX_mf,
+                                        cY,
+                                        data_fidelities=[-1],
+                                        outcome_transform=Standardize(m=1),
+                                    )
+                                    fit_gpytorch_mll(ExactMarginalLogLikelihood(cmf_gp.likelihood, cmf_gp))
+                                    con_gps_mf.append(cmf_gp)
+                                except Exception:
+                                    con_gps_mf.append(_fit_gp(cX_mf, cY))
+                            else:
+                                con_gps_mf.append(_fit_gp(cX_mf, cY))
+
+                        mf_model = ModelListGP(obj_gps[0], *con_gps_mf)
+                        mf_objective = GenericMCObjective(lambda Z, X=None: Z[..., 0])
+                        mf_constraints = [lambda Z, idx=1 + i: Z[..., idx] for i in range(len(con_gps_mf))]
+
+                        diagnostics["strategy"] = "qLogNEI_MultiFidelity_Constrained"
+                        acq = qLogNoisyExpectedImprovement(
+                            model=mf_model,
+                            X_baseline=train_X_mf,
+                            sampler=sampler,
+                            objective=mf_objective,
+                            constraints=mf_constraints,
+                            prune_baseline=True,
+                        )
+                        X_mf, _ = optimize_acqf(
+                            acq_function=acq,
+                            bounds=mf_bounds,
+                            q=batch_size,
+                            num_restarts=num_restarts,
+                            raw_samples=raw_samples,
+                            sequential=True,
+                        )
+                        X_cand = X_mf[:, :d]
+                        cand_fidelities = [
+                            min(avail_fids, key=lambda af: abs(af - float(f_raw)))
+                            for f_raw in X_mf[:, d].tolist()
+                        ]
+                    except Exception as exc:
+                        diagnostics["mf_constrained_fallback"] = f"{type(exc).__name__}: {exc}"
+                        hf_mask = [i for i, f in enumerate(obj_fid_list) if abs(f - target_fidelity) <= 1e-6]
+                        if len(hf_mask) >= min_init:
+                            hf_X = train_X[hf_mask]
+                            hf_Y = train_Y[hf_mask, :1]
+                        else:
+                            hf_X = train_X
+                            hf_Y = train_Y[:, :1]
+                        hf_obj_gp = _fit_gp(hf_X, hf_Y)
+                        obj_gps = [hf_obj_gp]
+                        use_mf = False
+                        diagnostics["strategy"] = "qLogNEI_Constrained_MFFallback"
+                        acq = qLogNoisyExpectedImprovement(
+                            model=ModelListGP(hf_obj_gp, *con_gps),
+                            X_baseline=hf_X,
+                            sampler=sampler,
+                            objective=objective,
+                            constraints=constraints,
+                            prune_baseline=True,
+                        )
+                        X_cand, _ = optimize_acqf(
+                            acq_function=acq,
+                            bounds=bounds,
+                            q=batch_size,
+                            num_restarts=num_restarts,
+                            raw_samples=raw_samples,
+                            sequential=True,
+                        )
+                else:
+                    diagnostics["strategy"] = "qLogNEI_MultiFidelity"
+                    acq = qLogNoisyExpectedImprovement(
+                        model=obj_gps[0],
+                        X_baseline=train_X_mf,
+                        sampler=sampler,
+                        prune_baseline=True,
+                    )
+                    X_mf, _ = optimize_acqf(
+                        acq_function=acq,
+                        bounds=mf_bounds,
+                        q=batch_size,
+                        num_restarts=num_restarts,
+                        raw_samples=raw_samples,
+                        sequential=True,
+                    )
+                    X_cand = X_mf[:, :d]
+                    cand_fidelities = [
+                        min(avail_fids, key=lambda af: abs(af - float(f_raw)))
+                        for f_raw in X_mf[:, d].tolist()
+                    ]
             else:
                 diagnostics["strategy"] = "qLogNEI_Constrained" if constraints else "qLogNEI"
                 acq = qLogNoisyExpectedImprovement(

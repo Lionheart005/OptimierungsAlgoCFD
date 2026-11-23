@@ -508,6 +508,17 @@ namespace FluidForge.Tests
             Assert.True(totalKeys <= 15, $"_TemplateInternal3D has {totalKeys} keys (expected <= 15).");
             Assert.DoesNotContain(ProjectPaths.TemplateInternal3DDirectoryName, ProjectPaths.ListProjectNames(), StringComparer.OrdinalIgnoreCase);
 
+            ProjectConfig tpl3d = TemplateProjectFiles.LoadProjectConfig();
+            Assert.Empty(tpl3d.DimensionalParameters);
+            Assert.Equal(100.0f, tpl3d.OptimizationTargets["ReferenceLengthMm"]);
+
+            string internalProjectJson = Path.Combine(templateDir, "project.json");
+            ProjectConfig tplInternal = JsonConfigLoader.Load(
+                ProjectConfigDto.FromProjectConfig(new MyInternalProjectProject().CreateDefaults()),
+                internalProjectJson).ToProjectConfig();
+            Assert.Empty(tplInternal.DimensionalParameters);
+            Assert.Equal(10.0f, tplInternal.OptimizationTargets["InletRadiusMm"]);
+
             Assembly program = typeof(MantaProject).Assembly;
             Assert.NotEqual(program, typeof(MyInternalProjectProject).Assembly);
             Assert.DoesNotContain(new MyInternalProjectProject().Name, ProjectRegistry.Discover(program).Names, StringComparer.OrdinalIgnoreCase);

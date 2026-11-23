@@ -451,6 +451,162 @@ namespace FluidForge.Tests
             Assert.True(File.Exists(Path.Combine(ctx.WorkingDirectory, "pareto_front.json")));
         }
 
+        [Fact]
+        public void MultiFidelity_Constrained_Request_And_BoTorchWorker_Preserve_Constraints()
+        {
+            var request = new ExternalOptimizerRequest
+            {
+                Algorithm = "BoTorch",
+                Acquisition = "Auto",
+                Iteration = 2,
+                BatchSize = 2,
+                Seed = 77,
+                MultiFidelity = true,
+                AvailableFidelities = new[] { 0.5, 1.0 },
+                Parameters =
+                {
+                    new ExternalParameterSpec { Name = "X1", Min = 0.0, Max = 1.0, BaseValue = 0.5 },
+                    new ExternalParameterSpec { Name = "X2", Min = 0.0, Max = 1.0, BaseValue = 0.5 }
+                },
+                Objectives =
+                {
+                    new ExternalObjectiveSpec { Name = "Fitness", Direction = "Maximize" }
+                },
+                Constraints =
+                {
+                    new ExternalConstraintSpec { Name = "MaxStress", IsPreSolve = false }
+                },
+                History =
+                {
+                    new ExternalObservation
+                    {
+                        Iteration = 1,
+                        Variant = 1,
+                        Status = "Feasible",
+                        Fidelity = 0.5,
+                        FidelityLevel = FidelityLevels.Coarse,
+                        Objectives = new Dictionary<string, double> { ["Fitness"] = 10.0 },
+                        ConstraintViolations = new Dictionary<string, double> { ["MaxStress"] = -0.2 }
+                    },
+                    new ExternalObservation
+                    {
+                        Iteration = 1,
+                        Variant = 2,
+                        Status = "InfeasiblePostSolve",
+                        Fidelity = 1.0,
+                        FidelityLevel = FidelityLevels.High,
+                        Objectives = new Dictionary<string, double> { ["Fitness"] = 15.0 },
+                        ConstraintViolations = new Dictionary<string, double> { ["MaxStress"] = 0.4 }
+                    }
+                }
+            };
+
+            string json = ExternalOptimizerProtocol.SerializeRequest(request);
+            ExternalOptimizerRequest? roundtrip = ExternalOptimizerProtocol.DeserializeRequest(json);
+            Assert.NotNull(roundtrip);
+            Assert.True(roundtrip!.MultiFidelity);
+            Assert.Single(roundtrip.Constraints);
+            Assert.Equal("MaxStress", roundtrip.Constraints[0].Name);
+            Assert.Equal(0.5, roundtrip.History[0].Fidelity, 6);
+            Assert.Equal(-0.2, roundtrip.History[0].ConstraintViolations["MaxStress"], 6);
+            Assert.Equal(0.4, roundtrip.History[1].ConstraintViolations["MaxStress"], 6);
+
+            string? workerPath = ProcessExternalOptimizerTransport.ResolveWorkerScript(new ExternalOptimizerConfig(), "BoTorch");
+            Assert.NotNull(workerPath);
+            string script = File.ReadAllText(workerPath!);
+            Assert.Contains("con_fid_by_idx", script);
+            Assert.Contains("con_gps_mf", script);
+            Assert.Contains("qLogNEI_MultiFidelity_Constrained", script);
+            Assert.Contains("qLogNEI_Constrained_MFFallback", script);
+        }
+
+        [PythonOptFact]
+        [Trait("Category", "Integration")]
+        [Trait("Category", "PythonOpt")]
+        public void BoTorch_MultiFidelity_Constrained_Preserves_Constraints_Live()
+        {
+            string? py = ProcessExternalOptimizerTransport.ResolvePythonExecutable(new ExternalOptimizerConfig());
+            string? worker = ProcessExternalOptimizerTransport.ResolveWorkerScript(new ExternalOptimizerConfig(), "BoTorch");
+            Assert.NotNull(py);
+            Assert.NotNull(worker);
+
+            var request = new ExternalOptimizerRequest
+            {
+                Algorithm = "BoTorch",
+                Acquisition = "Auto",
+                Iteration = 3,
+                BatchSize = 2,
+                Seed = 42,
+                MultiFidelity = true,
+                AvailableFidelities = new[] { 0.5, 1.0 },
+                Parameters =
+                {
+                    new ExternalParameterSpec { Name = "X1", Min = 0.0, Max = 1.0, BaseValue = 0.5 },
+                    new ExternalParameterSpec { Name = "X2", Min = 0.0, Max = 1.0, BaseValue = 0.5 }
+                },
+                Objectives =
+                {
+                    new ExternalObjectiveSpec { Name = "Fitness", Direction = "Maximize" }
+                },
+                Constraints =
+                {
+                    new ExternalConstraintSpec { Name = "CircleLimit", IsPreSolve = false }
+                }
+            };
+
+            var samples = new (double X1, double X2, double Fid)[]
+            {
+                (0.20, 0.50, 0.5),
+                (0.50, 0.50, 0.5),
+                (0.80, 0.80, 0.5),
+                (0.30, 0.25, 0.5),
+                (0.35, 0.50, 1.0),
+                (0.55, 0.45, 1.0),
+                (0.90, 0.90, 1.0),
+                (0.45, 0.55, 1.0)
+            };
+
+            for (int i = 0; i < samples.Length; i++)
+            {
+                var s = samples[i];
+                double dist2 = (s.X1 - 0.5) * (s.X1 - 0.5) + (s.X2 - 0.5) * (s.X2 - 0.5);
+                double violation = dist2 - 0.12; // feasible inside circle r^2 <= 0.12
+                double fitness = (1.0 - dist2) * (s.Fid < 1.0 ? 0.9 : 1.0);
+                request.History.Add(new ExternalObservation
+                {
+                    Iteration = i < 4 ? 1 : 2,
+                    Variant = (i % 4) + 1,
+                    Status = violation <= 0.0 ? "Feasible" : "InfeasiblePostSolve",
+                    Fidelity = s.Fid,
+                    FidelityLevel = s.Fid < 1.0 ? FidelityLevels.Coarse : FidelityLevels.High,
+                    Fitness = fitness,
+                    Parameters = new Dictionary<string, double> { ["X1"] = s.X1, ["X2"] = s.X2 },
+                    Objectives = new Dictionary<string, double> { ["Fitness"] = fitness },
+                    ConstraintViolations = new Dictionary<string, double> { ["CircleLimit"] = violation }
+                });
+            }
+
+            string reqPath = Path.Combine(Root, "mf_con_req.json");
+            string respPath = Path.Combine(Root, "mf_con_resp.json");
+            var transport = new ProcessExternalOptimizerTransport("BoTorch");
+            var ctx = Create2DContext(Sub("mf_con_live"), fallback: false);
+
+            ExternalOptimizerResponse response = transport.Ask(request, ctx, reqPath, respPath);
+
+            Assert.Null(response.Error);
+            Assert.Equal(2, response.Candidates.Count);
+            Assert.True(response.Diagnostics.TryGetValue("strategy", out string? strategy));
+            Assert.Contains("Constrained", strategy!, StringComparison.Ordinal);
+            Assert.All(response.Candidates, c =>
+            {
+                Assert.InRange(c.Parameters["X1"], 0.0, 1.0);
+                Assert.InRange(c.Parameters["X2"], 0.0, 1.0);
+                Assert.True(c.PredictedFeasibilityProb.HasValue);
+                Assert.InRange(c.PredictedFeasibilityProb!.Value, 0.0, 1.0);
+            });
+            _output.WriteLine($"MF constrained BoTorch strategy={strategy}, cand0 feasProb={response.Candidates[0].PredictedFeasibilityProb:F3}");
+        }
+
         [PythonOptFact]
         [Trait("Category", "Integration")]
         [Trait("Category", "PythonOpt")]

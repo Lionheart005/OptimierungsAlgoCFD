@@ -42,7 +42,9 @@ Use `"Preset": ""` or `"Preset": "Custom"` to disable Layer 1.5 completely.
 
 **Shorthands:** `"External2D"` → `"External2D:StandardRans"`, `"External3D"` → `"External3D:StandardRans"`, `"Internal3D"` → `"Internal3D:StandardRans"`.
 
-> **External3D OpenFOAM Overlay & Multi-Fidelity:** All `External3D:*` presets also carry a `solvers/openfoam.json` overlay (`DomainMode: "External3D"`, `Drag`/`Lift` metrics) so projects using `OpenFoamProjectDefinition` in external mode inherit calibrated defaults automatically. To accelerate expensive 3D runs, combine any preset with `"MultiFidelity": { "Mode": "TwoStageFilter" }` in `simulation.json` to screen candidates on a coarse mesh before promoting top candidates to full fidelity.
+> **External3D OpenFOAM Overlay:** All `External3D:*` presets also carry a `solvers/openfoam.json` overlay (`DomainMode: "External3D"`, `Drag`/`Lift` metrics) so projects using `OpenFoamProjectDefinition` in external mode inherit calibrated defaults automatically.
+>
+> **Single-Fidelity Calibration Remains the Default:** None of the curated presets enables `MultiFidelity`. All `StandardRans` and `VerificationFine` presets run full automatic mesh calibration (`MeshCalibration.Mode = "Auto"`) and evaluate every variant at full calibrated fidelity. See **Section 6** below before enabling `TwoStageFilter`.
 
 ---
 
@@ -90,3 +92,25 @@ dotnet run --project src\FluidForge -- --export-schemas schemas
 - **3D Half-Model Symmetry (`SymmetryPlane`):** Set `"SymmetryPlane": "Y0"` (keeps $Y \ge 0$) or `"Z0"` (keeps $Z \ge 0$) in `solvers/gmsh.json` and/or `solvers/su2.json`. FluidForge automatically synchronizes the plane between mesher and solver, clips full-body STLs cleanly at the symmetry plane, aligns boundary-layer extrusion vectors onto the plane, emits `MARKER_SYM= ( Symmetry )`, and halves `REF_AREA` so reported `CD`/`CL` remain exact full-body coefficients (alongside `SymmetryFactor = 2` and `DragForceN`).
 - **Multi-Point Evaluation (`OperatingPoints`):** Configure a list of `{ "Name", "Velocity", "AngleOfAttackDeg", "Weight" }` entries in `solvers/su2.json` to evaluate multiple flight/operating points sequentially on the same mesh without re-meshing. Per-point results are recorded as `<Metric>_OP1`, `<Metric>_OP2`, ... alongside weighted top-level averages.
 - **Turbulence Models & Low-$Re$ Transparency:** `TurbulenceModel` supports `"SA"` (Spalart-Allmaras) and `"SST"` (Menter $k$-$\omega$ SST). Whenever $0 < Re_L < 5 \times 10^5$, SU2 logs an explicit `[WARNING]` explaining that fully turbulent RANS ignores laminar separation bubbles.
+
+---
+
+## 6. Geometry Best Practices & Multi-Fidelity Caveats
+
+### Recommended 3D Geometry Setup (Fixed Size, Relative Parameters, Smoothing Off)
+- **Keep `UseStlSmoothing` disabled (`false`, default) unless explicitly needed:** `StlSmoother` applies Laplacian premelting, Taubin smoothing, and axis-wise bounding-box rescaling. This can subtly deform thin trailing edges, sharp features, or planar `Internal3D` inlet/outlet flanges (and is skipped by `MultiPatchFluidExporter`). Enable it intentionally (`true`) only for coarse organic voxel/`Lattice` hulls where voxel staircases interfere with Gmsh prism extrusion.
+- **Prefer a fixed physical reference size + relative (dimensionless) shape parameters + `"UseRubberBandScaler": false` (default):**
+  - Fixing a reference dimension (e.g., hull length $L$, chord $c$, or port diameter $D_{\text{in}}$) and varying dimensionless ratios (`WidthRatio`, `ThicknessRatio`, `BendRadiusRatio`, `TaperRatio`) keeps Reynolds number $Re_L$ comparable, prevents scale-based reward hacking, and avoids `DimensionalParameters`/`MetricScaling` mistakes.
+  - With `UseRubberBandScaler = false`, PicoGK operates directly in real millimeters with a predictable `BaseVoxelResolution` (important for `Internal3D` parts such as `PipeBend90` so ports and wall thicknesses are never silently shrunk to `TargetPicoGkSize`). Keep `UseRubberBandScaler = true` only as opt-in when spanning large multi-meter scales without adjusting voxel size.
+
+### Multi-Fidelity (`TwoStageFilter`) — When to Keep It `"Off"` & Operational Behavior
+- **Default is `"Off"`:** Standard automatic mesh calibration (`MeshCalibration.Mode = "Auto"`) + single-fidelity evaluation remains the recommended default for physical reliability.
+- **Conservative defaults & safeguards:** `TwoStageFilter` defaults to `CoarseMeshFactor = 1.5` and `CoarseMaxIterations = 0` (uncapped, so Stage-1 SU2 runs reach their Cauchy window without premature `TreatUnconvergedAsFailed` failures). Stage-2 promoted candidates use the `"Stage2"` tag and therefore run with the normal `SimulationConfig` iteration budget (rather than `ControlRuns` 20,000 iterations).
+- **Risk of rank reversal on coarse meshes:** Even at `CoarseMeshFactor = 1.5` (and especially at `>= 2.0`), coarse screening can miss or invert subtle boundary-layer improvements (2–5% drag gains, thin trailing edges, local separation bubbles). FluidForge compares promoted Stage-1 vs. Stage-2 fitness after every iteration (`[MULTI-FIDELITY] Stage-1 vs Stage-2 delta:`) and logs a `[WARNING]` on rank reversals, `> 25%` relative delta, or Stage-2 failures.
+- **Iteration cap (`CoarseMaxIterations`) differs sharply between solvers:**
+  - In **OpenFOAM `simpleFoam` (`Internal3D`)** with wall functions, setting `CoarseMaxIterations` (e.g. `400`–`500`) can accelerate Stage-1 screening.
+  - In **SU2 turbulent 3D external flows** (`y+ ≈ 1`, `CauchyElements = 300`), keep `CoarseMaxIterations = 0` (uncapped) or `>= 1500`; `MultiFidelitySelector.GetStartupWarnings` warns at startup if a tight SU2 cap is configured.
+- **Surrogate modeling scope:**
+  - Built-in C# `Bayes` trains its objective GP strictly on full-fidelity Stage-2 records (`SurrogateTrainingSet`, while still learning from Stage-1 `PreConstraint` boundaries and failed locations) and emits a startup warning when paired with `TwoStageFilter`.
+  - For joint multi-fidelity objective and constraint surrogate modeling, set `"OptimizationAlgorithm": "BoTorch"`.
+  - Keep `"MultiFidelity": { "Mode": "Off" }` for 2D runs, fast internal 3D runs, and fine-tuning; use `TwoStageFilter` only for expensive 3D exploratory runs after verifying coarse-vs-fine rank correlation.

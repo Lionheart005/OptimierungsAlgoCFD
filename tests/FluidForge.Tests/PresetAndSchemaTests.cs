@@ -34,6 +34,21 @@ namespace FluidForge.Tests
         }
 
         [Fact]
+        public void Defaults_And_Internal3D_Presets_Disable_Scaler_And_StlSmoothing()
+        {
+            SimulationConfig defaults = SimulationConfig.CreateDefault();
+            Assert.False(defaults.UseRubberBandScaler);
+            Assert.False(defaults.UseStlSmoothing);
+
+            foreach (string accuracy in new[] { "FastConcept", "StandardRans", "VerificationFine" })
+            {
+                PresetDefinition preset = SimulationPresets.Resolve($"Internal3D:{accuracy}")!;
+                Assert.False(preset.SimulationOverrides["UseRubberBandScaler"]?.GetValue<bool>());
+                Assert.False(preset.SimulationOverrides["UseStlSmoothing"]?.GetValue<bool>());
+            }
+        }
+
+        [Fact]
         public void Preset_Matrix_Is_Complete_And_Validates_Against_Real_Types()
         {
             Assert.Equal(9, SimulationPresets.All.Count);

@@ -29,6 +29,28 @@ namespace FluidForge.Projects.MyProject
     /// </summary>
     public sealed class MyProjectGeometryGenerator : IGeometryGenerator
     {
+        public const float DefaultReferenceLengthMm = 100.0f;
+        private readonly float _referenceLengthMm;
+
+        /// <summary>
+        /// Initializes the generator using <c>OptimizationTargets.ReferenceLengthMm</c> from
+        /// <paramref name="project"/> (defaults to 100 mm when omitted).
+        /// </summary>
+        public MyProjectGeometryGenerator(ProjectConfig? project = null)
+        {
+            _referenceLengthMm = DefaultReferenceLengthMm;
+            if (project?.OptimizationTargets != null &&
+                project.OptimizationTargets.TryGetValue("ReferenceLengthMm", out float refLen))
+            {
+                if (!float.IsFinite(refLen) || refLen <= 0f)
+                {
+                    throw new InvalidOperationException(
+                        $"{OutputConventions.ConfigTag} MyProject OptimizationTargets.ReferenceLengthMm must be finite and > 0 (got {refLen}).");
+                }
+                _referenceLengthMm = refLen;
+            }
+        }
+
         /// <inheritdoc/>
         public GeometryResult GenerateAndExport(
             int iteration, int variant,
@@ -36,11 +58,13 @@ namespace FluidForge.Projects.MyProject
             string outputDirectory,
             SimulationConfig config)
         {
-            // Parameters come from project.json and are already scaled to
-            // PicoGK's working size — the controller scales reported metrics back afterward.
-            float length = Read(parameters, "Length");
-            float width = Read(parameters, "Width");
-            float height = Read(parameters, "Height");
+            // Recommended pattern: keep a fixed physical reference size (ReferenceLengthMm) and
+            // optimize dimensionless relative shape parameters (WidthRatio, HeightRatio).
+            // With UseRubberBandScaler = false and UseStlSmoothing = false (defaults), the
+            // geometry kernel operates directly in real physical millimeters (ScaleFactor = 1).
+            float length = _referenceLengthMm;
+            float width = length * Read(parameters, "WidthRatio");
+            float height = length * Read(parameters, "HeightRatio");
 
             Voxels voxels = BuildVoxelModel(length, width, height);
 
@@ -89,14 +113,13 @@ namespace FluidForge.Projects.MyProject
             //  METRICS -- interface to the rest of the framework
             // ==============================================================
             //
-            // The second argument to AddMetric is the physical DIMENSION, which tells
-            // RubberBandScaler how to scale back from PicoGK working size:
+            // The second argument to AddMetric is the physical DIMENSION. With the default
+            // UseRubberBandScaler = false, ScaleFactor = 1 and metrics are already in real physical
+            // mm / mm^2 / mm^3; declaring the dimension also keeps opt-in scaling consistent:
             //
             //   Volume  cubic (s^3)   Area  quadratic (s^2)   Linear  linear (s^1)   None  unscaled
             //
-            // A wrong scaling dimension will NOT throw an error — the value will simply be
-            // off by s^1, s^2, or s^3. Effective scaling dimensions are recorded in
-            // results/<Project>/effective-config.json.
+            // Effective scaling dimensions are recorded in results/<Project>/effective-config.json.
             result.AddMetric("Volume", measurement.Volume, MetricScaling.Volume);
             result.AddMetric("SurfaceArea", measurement.SurfaceArea, MetricScaling.Area);
 

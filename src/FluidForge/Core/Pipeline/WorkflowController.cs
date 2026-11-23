@@ -106,6 +106,14 @@ namespace FluidForge.Core
                     $"{OutputConventions.SystemTag} Multi-fidelity TwoStageFilter: enabled "
                     + $"(coarse mesh x{mf.CoarseMeshFactor.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"
                     + $"{iterCapText}, promote top {mf.PromoteTopK} / {mf.PromoteTopFraction * 100:0.##} %)");
+
+                foreach (string warning in MultiFidelitySelector.GetStartupWarnings(
+                    _context.Config,
+                    _stages.Select(s => s.Solver.Name).ToList(),
+                    _optimizer.Name))
+                {
+                    Console.WriteLine($"{OutputConventions.WarningTag} {warning}");
+                }
             }
 
             // Run-time forecast (time-estimation plan): sliding window, per-iteration validation,
@@ -204,11 +212,21 @@ namespace FluidForge.Core
                             iter,
                             src.Variant,
                             customRefinementFactor: null,
-                            customTag: "Fine",
+                            customTag: "Stage2",
                             customFidelityLevel: FidelityLevels.High,
                             customMaxSolverIterations: null);
 
                         EvaluateAndRecordVariant(fineRecord, promotedRecords, ref requiredMetricsChecked);
+                    }
+
+                    if (promotedSource.Count > 0 && promotedRecords.Count > 0)
+                    {
+                        StageComparisonReport comparison = MultiFidelitySelector.CompareStage1AndStage2(promotedSource, promotedRecords);
+                        Console.WriteLine(comparison.SummaryLine);
+                        if (!string.IsNullOrWhiteSpace(comparison.WarningLine))
+                        {
+                            Console.WriteLine($"{OutputConventions.WarningTag} {comparison.WarningLine}");
+                        }
                     }
 
                     evaluationPool = promotedRecords.Count > 0 ? promotedRecords : coarseRecords;
