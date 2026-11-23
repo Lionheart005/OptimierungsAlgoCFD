@@ -1,6 +1,6 @@
 # Phase 3 (Plan A): `LEAP71_ShapeKernel`, OpenFOAM (künftiger 3D-Standard) & Hybrid-Optimierer-Bridge (`BoTorch`/`pymoo`)
 
-> **Status:** In Umsetzung (23.11.2026) — **Checkpoints 1–3 (`AP 3.1` & `AP 3.2`) + Checkpoint 4a (`AP 3.3` Implementierung, 972/972 Unit-Tests & `BIC_12`-Deploy) abgeschlossen.** Offen für Fortsetzung im neuen Chat: **Checkpoint 4b** (Live-Ausführung `Category=PythonOpt` auf `BIC_12` mit `opt-py`) und **Checkpoint 5** (`AP 3.4` Multi-Fidelity-Vorfilter + JSON-Schemas/Docs/Gesamtabnahme).  
+> **Status:** In Umsetzung (23.11.2026) — **Checkpoints 1–4b (`AP 3.1`, `AP 3.2`, `AP 3.3` inkl. Live-Verifikation auf `BIC_12`) abgeschlossen.** Offen: **Checkpoint 5** (`AP 3.4` Multi-Fidelity-Vorfilter + JSON-Schemas/Docs/Gesamtabnahme).  
 > **Vision:** `PicoGK` + `LEAP71_ShapeKernel` auf ihrem wahren Heimfeld einsetzen — komplexe, 3D-druckbare **interne Fluidik** (Verteiler, Kanäle, Mischer, Düsen, Wärmetauscher) mit **OpenFOAM als primärem 3D-Standard** + robuster Multi-Objective-/Multi-Fidelity-Optimierung — **ohne** Parameter-Chaos!
 
 ---
@@ -70,12 +70,12 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
 - [x] **Server- & Lokal-Setup (`setup_server.sh`, `sim-runner.sh`, `sim.ps1 doctor`):** System-Erkennung für `/usr/lib/openfoam/openfoam2506` (ESI `v2506`) + Rootless-Conda-Fallback (`openfoam`) + optionales `opt-py`-Env in `setup_server.sh`; isolierte OpenFOAM- & OpenMPI-Prüfung in `sim-runner.sh doctor` (`PipeBend90` & `MantaAuv` beide `VALIDATION SUCCEEDED`).
 - [x] **Echter Integrationstest (`OpenFoamIntegrationTests.cs`) LIVE auf `BIC_12` bestanden (2/2 in 15,89 s):** `StraightPipe` laminar (`12.755` Zellen, `Δp = 1.2613 Pa`, `MassBalanceError = 0.0000 %`) und `PipeBend90` mit echtem `ShapeKernel` + `kOmegaSST` + `mpirun -np 4` (`17.299` Zellen, `LayerCoverage = 97.0 %`, `Δp = 138.93 Pa`, `MassBalanceError = 0.0000 %`, `YPlus_Med = 12.68`).
 
-### AP 3.3: Hybrid-Optimierer-Bridge (`IExternalOptimizer` + Python BoTorch / pymoo) — Code & Unit-Tests ✔ (Live-Verifikation `Category=PythonOpt` auf `BIC_12` ausstehend)
+### AP 3.3: Hybrid-Optimierer-Bridge (`IExternalOptimizer` + Python BoTorch / pymoo) — ✔ Abgeschlossen & auf `BIC_12` verifiziert (23.11.2026)
 - [x] **Ask/Tell-JSON-Vertrag spezifizieren (`Core/Optimization/ExternalOptimizerProtocol.cs` + `ParetoFrontCalculator.cs`):** Versioniertes JSON-Schema (`ProtocolVersion = "1.0"`) für Request/Response, exakte nicht-dominierte Sortierung, 2D-Hypervolume & `pareto_front.json`/STL-Export (100 % pure `Core/`).
 - [x] **`ExternalProcessOptimizer.cs` (`IOptimizationAlgorithm`, `IOptimizationPreflight`) + `SimulationConfig.ExternalOptimizer` + `OptimizationAlgorithmFactory`:** Deterministischer Subprozess-Aufruf (`--request`/`--response`), Timeout, Fehlerprotokollierung, automatischer Fallback auf C#-`Bayes` (bzw. Fail-Fast wenn deaktiviert) und Registrierung von `"BoTorch"`, `"Pymoo"`, `"ExternalPython"`.
 - [x] **Python-Worker implementieren (`scripts/optimizers/`):** `botorch_worker.py` (`qLogEI`/Constrained `qLogNEI`, Constrained `qNEHVI`, Multi-Fidelity, ARD-Wichtigkeiten, `--check`), `pymoo_worker.py` (`NSGA-II`/`NSGA-III` mit Constraint-Handling), `environment_opt.yml` (`opt-py` bereits auf `BIC_12` installiert).
 - [x] **Pareto-Auswertung & Plots (`scripts/plot_pareto.py`):** Headless-`Agg` Pareto-Front- & Hypervolume-Plots + `--export-stls`-Export; Unit-Tests & `[PythonOptFact]`-Integrationstests in `tests/FluidForge.Tests/ExternalOptimizerTests.cs` (`972/972` Unit-Tests lokal grün, Code bereits auf `BIC_12` deployed & gebaut).
-- [ ] **Live-Ausführung `Category=PythonOpt` auf `BIC_12`:** Echter 2-Ziel-Constrained-Pareto-Test mit `~/miniconda/envs/opt-py/bin/python` (`BoTorch qNEHVI`, `pymoo NSGA2`, `plot_pareto.py`) auf `BIC_12` durchlaufen lassen und etwaige Python-Runtime-Feinheiten fixen.
+- [x] **Live-Ausführung `Category=PythonOpt` auf `BIC_12`:** Echter 2-Ziel-Constrained-Pareto-Test mit `~/miniconda/envs/opt-py/bin/python` (`BoTorch qNEHVI`, `pymoo NSGA2`, `plot_pareto.py`) auf `BIC_12` erfolgreich (`3/3 Passed, 0 Skipped, 0 Failed` in ~29 s); fehlendes `import botorch` in `scripts/optimizers/botorch_worker.py` behoben.
 
 ### AP 3.4: Multi-Fidelity-Grundlage (Grob-zu-Fein-Vorfilter)
 - [ ] **Zweistufiges Fidelity-Konzept verankern:** Ein Optimierer (insb. `BoTorch` oder ein einfacher Two-Stage-Filter) kann Varianten zunächst auf `FastConcept` (grob, Minuten) prüfen und nur vielversprechende Kandidaten auf `StandardRans` / `VerificationFine` hochstufen — die entscheidende Voraussetzung, um 3D-Läufe von Wochen auf Stunden/Tage zu drücken!
@@ -144,11 +144,15 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
   - `tests/FluidForge.Tests/ExternalOptimizerTests.cs` (Unit-Tests + `[PythonOptFact]`-Integrationstests für `BoTorch qNEHVI`, `pymoo NSGA2`, `plot_pareto.py`)
   - **Verifikation:** `dotnet build FluidForge.sln --nologo -warnaserror` (**0 Warnungen, 0 Fehler**), `dotnet test --filter "Category!=Integration"` (**972/972 Unit-Tests bestanden**), Deploy & Build auf `BIC_12` bereits grün (`0 Warning(s), 0 Error(s)`).
 
-### Ausstehende Restschritte (Handover für neuen Chat)
-1. **Checkpoint 4b (`AP 3.3` Live-Verifikation auf `BIC_12` — benötigt VPN zu `BIC_12`):**
-   - `tests/` + `FluidForge.sln` temporär nach `~/FluidForge_opt_test` auf `BIC_12` spiegeln (zusammen mit `src/`, `config/`, `scripts/`, `third_party/` aus `~/Documents/FluidForge`) und `dotnet test tests/FluidForge.Tests/FluidForge.Tests.csproj --filter "Category=PythonOpt" --logger "console;verbosity=detailed"` mit `~/miniconda/envs/opt-py/bin/python` real ausführen (`BoTorch qNEHVI`, `pymoo NSGA2`, `plot_pareto.py`).
-   - Falls `botorch 0.18.1` / `pymoo 0.6.2` / `matplotlib 3.11.0` Runtime-Feinheiten zeigen: lokal fixen, erneut deployen & auf `BIC_12` grün ziehen, danach temporären Ordner auf `BIC_12` aufräumen und Checkpoint 4b committen.
-2. **Checkpoint 5 (`AP 3.4` Multi-Fidelity + Docs/Schemas + Gesamtabnahme):**
+### Checkpoint 4b (`AP 3.3` Live-Verifikation auf `BIC_12`, 23.11.2026) — ✔ Abgeschlossen
+- **Live-Verifikation auf `BIC_12` (`~/miniconda/envs/opt-py/bin/python`, `torch 2.15.0+cpu`, `botorch 0.18.1`, `pymoo 0.6.2`):**
+  - Erster Lauf deckte fehlendes `import botorch` in `scripts/optimizers/botorch_worker.py` auf (`botorch.__version__` warf `NameError` bei `--check`).
+  - Nach Ergänzung von `import botorch`: `dotnet test tests/FluidForge.Tests/FluidForge.Tests.csproj --filter "Category=PythonOpt"` real auf `BIC_12` bestanden (**`Passed: 3, Skipped: 0, Failed: 0`** in ~29 s — `BoTorch_qNEHVI_2Obj_Constrained_Pareto_Live`, `Pymoo_NSGA2_2Obj_Constrained_Pareto_Live`, `PlotPareto_Generates_Plots_And_Exports_Stls_Live`).
+  - Temporärer Testordner `~/FluidForge_opt_test` auf `BIC_12` vollständig aufgeräumt; aktueller Stand via `sim.ps1 deploy -Project PipeBend90 -Force` deployed (`0 Warning(s), 0 Error(s)`).
+  - **Lokale Verifikation:** `dotnet build FluidForge.sln --nologo -warnaserror` (**0 Warnungen, 0 Fehler**), `972/972` Unit-Tests bestanden.
+
+### Ausstehende Restschritte (Checkpoint 5)
+1. **Checkpoint 5 (`AP 3.4` Multi-Fidelity + Docs/Schemas + Gesamtabnahme):**
    - **Multi-Fidelity-Vorfilter (`AP 3.4`):** `MultiFidelityConfig` in `SimulationConfig` (`Mode: "Off" | "TwoStageFilter"`, `CoarseMeshFactor`, `CoarseMaxIterations`, `PromoteTopK`, `PromoteTopFraction`), `FidelityLevel` auf `ModelRecord` + in `results.csv` & `RunJournal` + im Ask/Tell-JSON (`ExternalProcessOptimizer`), Two-Stage-Promotion (`FastConcept` → `StandardRans`/`VerificationFine`) in `WorkflowController` + umfassende Unit-Tests (`MultiFidelityTests.cs`).
    - **Schemas & englische Docs:** `--export-schemas schemas` (alle Schemas frisch inkl. `simulation.schema.json` & `openfoam.schema.json`), `docs/config-reference.md`, `docs/physics-presets.md`, `docs/creating-a-project.md`, `docs/server-workflow.md`, `README.md` auf vollständigen Phase-3-Stand bringen; `HandbookCoverageTests.SettingTypes()` um `OpenFoamOptions`, `ExternalOptimizerConfig` und `MultiFidelityConfig` erweitern!
    - **Gesamtabnahme:** Lokal `dotnet build -warnaserror` (0 Warnungen, 0 Fehler) + alle Unit- & lokalen Integrationstests grün; auf `BIC_12` (sofern VPN aktiv) finales `sim.ps1 deploy` + `sim.ps1 doctor` (`PipeBend90` & `MantaAuv`); `.plans/phase3_plan_a_openfoam_shapekernel_hybrid.md` & `.plans/ROADMAP.md` auf abgeschlossen setzen und final lokal committen (kein `git push`, `.plans/Anmerkungen.txt` & `.plans/phase4_validierung_benchmarks_und_release.md` weiter unberührt lassen).
