@@ -4,5 +4,6 @@
   "Preset": "Internal3D:StandardRans",
   "MaxIterations": 5,
   "VariantsPerIteration": 5,
-  "MpiCores": 8
+  "MpiCores": 18
+  
 }

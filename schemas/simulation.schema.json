@@ -212,7 +212,7 @@
     },
     "MpiCores": {
       "type": "integer",
-      "default": 12
+      "default": 18
     },
     "MpiRunPath": {
       "type": "string",
