@@ -8,6 +8,7 @@ using Xunit;
 
 using FluidForge.Core;
 using FluidForge.Solvers.Cfd;
+using FluidForge.Solvers.OpenFoam;
 
 namespace FluidForge.Tests
 {
@@ -39,6 +40,8 @@ namespace FluidForge.Tests
             new object[] { typeof(SimulationConfig), "simulation.json" },
             new object[] { typeof(AutoStopConfig), "simulation.json (AutoStop)" },
             new object[] { typeof(BayesConfig), "simulation.json (Bayes)" },
+            new object[] { typeof(ExternalOptimizerConfig), "simulation.json (ExternalOptimizer)" },
+            new object[] { typeof(MultiFidelityConfig), "simulation.json (MultiFidelity)" },
             new object[] { typeof(ControlRunConfig), "simulation.json (ControlRuns)" },
             new object[] { typeof(MeshCalibrationConfig), "simulation.json (MeshCalibration)" },
             new object[] { typeof(ChampionVerificationConfig), "simulation.json (ChampionVerification)" },
@@ -46,6 +49,7 @@ namespace FluidForge.Tests
             new object[] { typeof(Su2TimeDomainOptions), "solvers/su2.json (TimeDomain)" },
             new object[] { typeof(GmshMesherOptions), "solvers/gmsh.json" },
             new object[] { typeof(Gmsh2DMesherOptions), "solvers/gmsh.json (2D)" },
+            new object[] { typeof(OpenFoamOptions), "solvers/openfoam.json" },
             new object[] { typeof(ProjectConfigDto), "project.json" },
         };
 

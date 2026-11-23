@@ -77,6 +77,7 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `IdwExploitationSigma` | `float` | `0.1` | Local perturbation scale relative to `MaxDeviations` in `IdwBaseline`. |
 | `Bayes` | `BayesConfig` | `{}` | Bayesian optimization settings (see section 1.3). |
 | `ExternalOptimizer` | `ExternalOptimizerConfig` | `{}` | External Python optimizer bridge settings for `BoTorch`, `Pymoo`, and `ExternalPython` (see section 1.3a). |
+| `MultiFidelity` | `MultiFidelityConfig` | `{}` | Two-stage multi-fidelity screening settings (see section 1.3b). |
 | `BouncerTolerance` | `float` | `0.20` | Max allowed relative fitness deviation during champion re-simulation. |
 | `BouncerJitter` | `float` | `0.01` | Relative parameter perturbation applied during champion validation. |
 
@@ -95,6 +96,17 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `TimeoutSeconds` | `int` | `120` | Subprocess timeout in seconds per Ask call. |
 | `FallbackToBuiltInBayes` | `bool` | `true` | Falls back to built-in C# `Bayes` with a warning if Python/`opt-py` is unavailable or fails. |
 | `KeepExchangeFiles` | `bool` | `true` | Retains JSON request/response files under `analysis/external_opt/`. |
+
+#### 1.3b `MultiFidelity` (`MultiFidelityConfig`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `Mode` | `string` | `"Off"` | `"Off"` (standard single-fidelity) or `"TwoStageFilter"` (coarse Stage 1 screening followed by full-fidelity promotion of top candidates). |
+| `CoarseMeshFactor` | `float` | `2.0` | Multiplier (`> 1.0`) applied to `EffectiveMeshRefinementFactor` in Stage 1 to coarsen the mesh. |
+| `CoarseMaxIterations` | `int` | `500` | Maximum solver iterations for Stage 1 coarse evaluations (`0` = uncapped). |
+| `PromoteTopK` | `int` | `2` | Minimum number of top coarse candidates promoted to full fidelity per iteration. |
+| `PromoteTopFraction` | `float` | `0.25` | Fraction of eligible coarse candidates promoted per iteration (combined via `max` with `PromoteTopK`). |
+
+> **Multi-Fidelity Tracking:** Every evaluation records its `FidelityLevel` (`"Coarse"` or `"Full"`) in `results.csv`, `RunJournal` (`resume/journal.jsonl`), and the external optimizer Ask/Tell JSON payloads.
 
 ### Mesh Calibration & Fine Verification
 | Key | Type | Default | Description |
@@ -268,3 +280,85 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `DetailBoxCellSizeFactor` | `float` | `0.01` | Detail box cell size as fraction of $L$ at factor 1.0. |
 | `EdgeRefinementFactor` | `float` | `0.25` | Factor on wall cell size at detected leading/trailing-edge corners (`1.0` = off). |
 | `EdgeRefinementDistanceFactor` | `float` | `0.1` | Fade-out distance around detected corners as multiple of $L$. |
+
+---
+
+## 6. `solvers/openfoam.json` (`OpenFoamOptions`)
+
+### Domain, Backend & Turbulence
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `DomainMode` | `string` | `"Internal3D"` | Flow domain mode: `"Internal3D"` (multi-patch internal volume) or `"External3D"` (virtual wind/water tunnel). |
+| `MesherBackend` | `string` | `"SnappyHexMesh"` | Meshing backend: `"SnappyHexMesh"` (default) or `"CfMesh"` (`cartesianMesh`). |
+| `FallbackToCfMesh` | `bool` | `false` | Falls back to `cfMesh` if `snappyHexMesh` fails. |
+| `Solver` | `string` | `"simpleFoam"` | OpenFOAM solver application (default `"simpleFoam"`). |
+| `TurbulenceModel` | `string` | `"kOmegaSST"` | Turbulence model: `"kOmegaSST"`, `"kOmegaSSTLM"`, `"kEpsilon"`, `"SpalartAllmaras"`, or `"laminar"`. |
+| `TurbulenceIntensity` | `float` | `0.05` | Inlet turbulence intensity as a fraction (`0.05` = 5%). |
+| `HydraulicDiameter` | `float` | `0.0` | Hydraulic diameter in meters (`0` = auto-derived from inlet patch area). |
+
+### Fluid, Boundary Conditions & Reference Quantities
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `Density` | `float` | `998.2` | Fluid density in $\text{kg/m}^3$ (`998.2` = water at 20 °C). |
+| `DynamicViscosity` | `float` | `1.002e-3` | Dynamic viscosity in $\text{Pa}\cdot\text{s}$ (`1.002e-3` = water at 20 °C). |
+| `InletCondition` | `string` | `"Velocity"` | Inlet boundary condition type: `"Velocity"`, `"VolumetricFlowRate"`, or `"MassFlowRate"`. |
+| `InletVelocity` | `float` | `1.0` | Inlet flow speed in m/s when `InletCondition = "Velocity"`. |
+| `InletVolumetricFlowRate` | `float` | `0.0` | Inlet volumetric flow rate in $\text{m}^3/\text{s}$ when `InletCondition = "VolumetricFlowRate"`. |
+| `InletMassFlowRate` | `float` | `0.0` | Inlet mass flow rate in kg/s when `InletCondition = "MassFlowRate"`. |
+| `InletDirection` | `float[]` | `[]` | Explicit inlet velocity direction `[dx, dy, dz]` (`[]` = auto-derived from negated area-weighted inlet STL normal, or `AngleOfAttackDeg` for `External3D`). |
+| `OutletPressure` | `float` | `0.0` | Fixed kinematic outlet pressure $p/\rho$ in $\text{m}^2/\text{s}^2$. |
+| `AngleOfAttackDeg` | `float` | `0.0` | Angle of attack in degrees for `External3D` runs (rotated in the XZ plane). |
+| `SymmetryPlane` | `string` | `"None"` | Half-model symmetry plane for `External3D`: `"None"`, `"Y0"`, or `"Z0"`. |
+| `ReferenceLength` | `float` | `0.1` | Reference length in meters for Reynolds number and `forceCoeffs`. |
+| `ReferenceArea` | `float` | `0.0` | Explicit reference area in $\text{m}^2$ for `forceCoeffs` (`0` = read from `ReferenceAreaMetric`). |
+| `ReferenceAreaMetric` | `string` | `"FrontalArea"` | Geometry metric name (in $\text{mm}^2$) used as fallback $A_{\text{ref}}$ for `External3D`. |
+
+### External3D Domain Clearances & Patch Names
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `TunnelUpstreamFactor` | `float` | `5.0` | Upstream wind-tunnel clearance as a multiple of body length $L$ (`External3D`). |
+| `TunnelDownstreamFactor` | `float` | `15.0` | Downstream wind-tunnel clearance as a multiple of body length $L$ (`External3D`). |
+| `TunnelLateralFactor` | `float` | `5.0` | Lateral wind-tunnel clearance as a multiple of body width/height (`External3D`). |
+| `InletPatchName` | `string` | `"inlet"` | Inlet patch name in multi-solid STL and OpenFOAM dictionaries. |
+| `OutletPatchPrefix` | `string` | `"outlet"` | Prefix matching outlet patches (e.g. `outlet`, `outlet1`, `outlet2`). |
+| `WallPatchName` | `string` | `"wall"` | Wall patch name in multi-solid STL and OpenFOAM dictionaries. |
+
+### Meshing & Quality Gates
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `BaseCellSizeMm` | `float` | `2.0` | Base background cell size in mm at refinement factor `1.0`. |
+| `SurfaceRefinementLevelMin` | `int` | `1` | Minimum surface refinement level in `snappyHexMesh`. |
+| `SurfaceRefinementLevelMax` | `int` | `2` | Maximum surface refinement level in `snappyHexMesh`. |
+| `FeatureAngleDeg` | `float` | `30.0` | Feature edge angle threshold in degrees for `snappyHexMesh`. |
+| `AddLayers` | `bool` | `true` | Enables boundary-layer prism extrusion (`addLayers` / `cfMesh` `boundaryLayers`). |
+| `RelativeLayerSizes` | `bool` | `true` | Uses relative layer sizing in `snappyHexMesh` (`true` = `FinalLayerThickness`, `false` = `FirstLayerThickness`). |
+| `BoundaryLayerLayers` | `int` | `5` | Number of extruded wall boundary layers. |
+| `BoundaryLayerExpansionRatio` | `float` | `1.2` | Layer-to-layer expansion ratio. |
+| `FirstLayerThickness` | `float` | `0.05` | First layer thickness (meters when `RelativeLayerSizes = false`). |
+| `FinalLayerThickness` | `float` | `0.5` | Final layer thickness ratio (when `RelativeLayerSizes = true`). |
+| `MinLayerThickness` | `float` | `0.1` | Minimum allowed layer thickness (relative or meters). |
+| `MaxLocalCells` | `int` | `2000000` | Maximum cells per MPI rank during `snappyHexMesh`. |
+| `MaxGlobalCells` | `int` | `8000000` | Maximum global cells during `snappyHexMesh`. |
+| `MaxNonOrthogonality` | `float` | `65.0` | Hard `checkMesh` quality gate on maximum non-orthogonality in degrees. |
+| `MaxSkewness` | `float` | `4.0` | Hard `checkMesh` quality gate on maximum skewness. |
+| `MinLayerCoveragePercent` | `float` | `50.0` | Hard gate on minimum wall boundary-layer coverage percentage when `AddLayers = true`. |
+
+### Solver, Convergence & Execution
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `EndTime` | `int` | `1000` | Maximum steady-state iterations (`endTime` in `controlDict`). |
+| `WriteInterval` | `int` | `200` | Field write interval (`writeInterval` in `controlDict`). |
+| `ResidualTarget` | `float` | `1e-4` | SIMPLE residual control target for pressure and velocity/turbulence fields. |
+| `UsePotentialFoamInit` | `bool` | `false` | Runs `potentialFoam` prior to `simpleFoam` for velocity initialization. |
+| `MaxMassBalanceErrorPercent` | `float` | `1.0` | Hard verification gate: maximum allowed mass-balance error in percent. |
+| `TrailingWindowIterations` | `int` | `100` | Trailing window length (iterations/samples) for drift and metric averaging. |
+| `RelativeDriftTolerance` | `float` | `0.005` | Maximum allowed relative drift across the trailing window. |
+| `TreatUnconvergedAsFailed` | `bool` | `true` | Marks unconverged runs as failed (`SimulationFailed = true`). |
+| `TargetYPlus` | `float` | `5.0` | Target wall $y^+$ for calibration and post-solve warnings. |
+| `YPlusWarnFactor` | `float` | `3.0` | Warning multiplier on `TargetYPlus`. |
+| `ExportVtk` | `bool` | `false` | Runs `foamToVTK` after solving to export VTK post-processing files. |
+| `OpenFoamBashrcPath` | `string` | `""` | Explicit path to OpenFOAM's `etc/bashrc` (`""` auto-detects `/usr/lib/openfoam/openfoam2506/etc/bashrc` or fallback paths). |
+| `MpiRunPath` | `string` | `"/usr/bin/mpirun"` | MPI launcher used for OpenFOAM parallel runs (isolated from Conda/MPICH). |
+| `CustomTemplateDirectory` | `string` | `""` | Optional directory of custom OpenFOAM template files overriding generated dictionaries. |
+| `CustomDictionaryOverrides` | `Dictionary<string, Dictionary<string, string>>` | `{}` | Per-dictionary key overrides (e.g. `{"system/fvSolution": {"nNonOrthogonalCorrectors": "2"}}`). |
+| `ResultMetrics` | `Dictionary<string, string>` | `{"PressureDrop": "PressureDrop"}` | Maps output metric names in `PassiveParameters` to post-processed keys (e.g. `PressureDrop` or `Drag`/`Lift`). |

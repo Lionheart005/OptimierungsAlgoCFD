@@ -184,16 +184,19 @@ namespace FluidForge.Core
             var validRecords = context.History.Where(r => !r.SimulationFailed).ToList();
             if (validRecords.Count == 0) return;
 
+            var nonCoarseRecords = validRecords.Where(r => !FidelityLevels.IsCoarse(r.FidelityLevel)).ToList();
+            var selectionPool = nonCoarseRecords.Count > 0 ? nonCoarseRecords : validRecords;
+
             var itemsToVerify = new List<ModelRecord>();
 
             if (mode.Equals("FinalTopN", StringComparison.OrdinalIgnoreCase))
             {
                 int topN = Math.Max(1, context.Config.ChampionVerification.TopN);
-                itemsToVerify = validRecords.OrderByDescending(r => r.Fitness).Take(topN).ToList();
+                itemsToVerify = selectionPool.OrderByDescending(r => r.Fitness).Take(topN).ToList();
             }
             else // "Final"
             {
-                ModelRecord? champ = WorkflowController.SelectBestRecord(validRecords);
+                ModelRecord? champ = WorkflowController.SelectBestRecord(selectionPool);
                 if (champ != null) itemsToVerify.Add(champ);
             }
 

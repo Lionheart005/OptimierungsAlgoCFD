@@ -12,7 +12,8 @@ namespace FluidForge.Core
         string WorkingDirectory,
         float RefinementFactor = 1.0f,
         string Tag = "",
-        GeometryResult? Geometry = null)
+        GeometryResult? Geometry = null,
+        int? MaxSolverIterations = null)
     {
         /// <summary>
         /// Base suffix for generated mesh files (e.g., "Gen1_Var2" or "Gen1_Var2_Cal3").

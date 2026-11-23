@@ -38,6 +38,7 @@ namespace FluidForge.Core
         public int Variant { get; init; }
         public float Factor { get; init; }
         public string Tag { get; init; } = "";
+        public string FidelityLevel { get; init; } = FidelityLevels.High;
         public Dictionary<string, float> Parameters { get; init; } = new();
         public double? DurationSeconds { get; init; }
 
@@ -286,14 +287,15 @@ namespace FluidForge.Core
         /// </summary>
         public bool TryReplay(
             int iteration, int variant, float factor, string tag,
-            Dictionary<string, float> parameters, out ModelRecord? record)
+            Dictionary<string, float> parameters, out ModelRecord? record,
+            string? fidelityLevel = null)
         {
             record = null;
             LastReplayedDurationSeconds = null;
             if (!IsReplaying) return false;
 
             RunJournalEntry entry = _entries[_replayPosition];
-            string? mismatch = Compare(entry, iteration, variant, factor, tag, parameters);
+            string? mismatch = Compare(entry, iteration, variant, factor, tag, parameters, fidelityLevel);
 
             if (mismatch != null)
             {
@@ -328,8 +330,13 @@ namespace FluidForge.Core
         public void Append(
             int iteration, int variant, float factor, string tag,
             Dictionary<string, float> parameters, ModelRecord record,
-            double? durationSeconds = null)
+            double? durationSeconds = null,
+            string? fidelityLevel = null)
         {
+            string resolvedFidelity = !string.IsNullOrWhiteSpace(fidelityLevel)
+                ? fidelityLevel
+                : (!string.IsNullOrWhiteSpace(record.FidelityLevel) ? record.FidelityLevel : FidelityLevels.High);
+
             var node = new JsonObject
             {
                 ["Index"] = _entries.Count,
@@ -337,6 +344,7 @@ namespace FluidForge.Core
                 ["Variant"] = variant,
                 ["Factor"] = JsonSerializer.SerializeToNode(factor, Options),
                 ["Tag"] = tag,
+                ["FidelityLevel"] = resolvedFidelity,
                 ["Parameters"] = JsonSerializer.SerializeToNode(parameters, Options),
                 ["Record"] = JsonSerializer.SerializeToNode(record, Options)
             };
@@ -393,13 +401,17 @@ namespace FluidForge.Core
 
         private static string? Compare(
             RunJournalEntry entry, int iteration, int variant, float factor, string tag,
-            Dictionary<string, float> parameters)
+            Dictionary<string, float> parameters,
+            string? fidelityLevel)
         {
             if (entry.Iteration != iteration || entry.Variant != variant)
                 return $"expected Gen{entry.Iteration}_Var{entry.Variant}, got Gen{iteration}_Var{variant}";
 
             if (!string.Equals(entry.Tag, tag ?? "", StringComparison.Ordinal))
                 return $"expected tag '{entry.Tag}', got '{tag}'";
+
+            if (fidelityLevel != null && !string.Equals(entry.FidelityLevel, fidelityLevel, StringComparison.OrdinalIgnoreCase))
+                return $"expected fidelity '{entry.FidelityLevel}', got '{fidelityLevel}'";
 
             if (!Close(entry.Factor, factor, FactorTolerance, relative: false))
                 return $"expected mesh factor {Format(entry.Factor)}, got {Format(factor)}";
@@ -444,6 +456,7 @@ namespace FluidForge.Core
                 Variant = node["Variant"]!.GetValue<int>(),
                 Factor = node["Factor"].Deserialize<float>(Options),
                 Tag = node["Tag"]?.GetValue<string>() ?? "",
+                FidelityLevel = node["FidelityLevel"]?.GetValue<string>() ?? FidelityLevels.High,
                 Parameters = node["Parameters"].Deserialize<Dictionary<string, float>>(Options) ?? new(),
                 DurationSeconds = durationSeconds,
                 RecordJson = node["Record"]?.ToJsonString(Options)

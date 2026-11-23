@@ -13,8 +13,9 @@ Every component project lives in its own folder under `src/projects/<Name>/`. **
 ## 1. Scaffold from a Template
 
 ```powershell
-.\scripts\new-project.ps1 Propeller              # 3D CFD (PicoGK -> Gmsh 3D -> SU2)
-.\scripts\new-project.ps1 MyAirfoil -Template 2D # 2D CFD (Planar2D -> Gmsh 2D -> SU2)
+.\scripts\new-project.ps1 Propeller                      # External 3D (PicoGK -> Gmsh 3D -> SU2)
+.\scripts\new-project.ps1 MyAirfoil -Template 2D         # External 2D (Planar2D -> Gmsh 2D -> SU2)
+.\scripts\new-project.ps1 MyPipe -Template Internal3D    # Internal 3D (PicoGK / ShapeKernel -> OpenFOAM)
 ```
 
 This creates `src/projects/<Name>/` containing:
@@ -23,9 +24,10 @@ This creates `src/projects/<Name>/` containing:
 |---|---|
 | `project.json` | **Single Source of Truth** for parameters, bounds, targets, and dimensional keys |
 | `simulation.json` | Preset selection (`Preset`), budget, cores, and framework overrides |
-| `solvers/su2.json` | Fluid properties, freestream velocity, and result metric mappings |
-| `solvers/gmsh.json` | Optional mesher overrides (defaults come from the active `Preset`) |
-| `<Name>Project.cs` | Project wiring (`Name`, `CreateGeometry`, `CreateFitness`) |
+| `solvers/su2.json` | Fluid properties, freestream velocity, and result metric mappings (SU2 projects) |
+| `solvers/gmsh.json` | Optional mesher overrides (SU2 projects; defaults come from the active `Preset`) |
+| `solvers/openfoam.json` | Fluid properties, inlet/outlet BCs, `snappyHexMesh`/`simpleFoam` settings (`OpenFoamProjectDefinition`) |
+| `<Name>Project.cs` | Project wiring (`Name`, `CreateGeometry`, `CreateFitness`; inherits `CfdProjectDefinitionBase`, `Cfd2DProjectDefinition`, or `OpenFoamProjectDefinition`) |
 | `<Name>GeometryGenerator.cs` | Parametric C# geometry builder (`IGeometryGenerator`) |
 | `<Name>FitnessCalculator.cs` | Scalar objective formula (`IFitnessCalculator`) |
 
@@ -63,6 +65,7 @@ Templates do **not** duplicate parameters in C# (`CreateDefaults()` defaults to 
   result.AddMetric("Span", measurement.Bounds.Size.Y, MetricScaling.Linear);
   result.AddMetric("AspectRatio", span / length, MetricScaling.None);
   ```
+- **3D Internal Flow (`LEAP71_ShapeKernel` + `MultiPatchFluidExporter`):** For internal flow projects such as `PipeBend90` (`OpenFoamProjectDefinition`), build the fluid volume using `LEAP71_ShapeKernel` (e.g. `ShapeKernelPipeBuilder`) and export a multi-solid STL via `MultiPatchFluidExporter.Export(...)` with labeled `SurfacePatches` (`inlet`, `outlet`, `wall`) and an interior `FluidSeedPoint` (`locationInMesh` for `snappyHexMesh`).
 - **2D (`Planar2D`):** Build a `Shape2D`, export contour JSON (`shape.SaveContour(..., cornerAngleDeg: 35.0f)`) and optional SVG, measure via `shape.Measure()`, and return `GeometryKind.Contour2D`.
 
 > **Get `MetricScaling` right:** `Volume` scales as $s^3$, `Area` as $s^2$, `Linear` as $s^1$, and `None` unscaled. An incorrect dimension silently mis-scales values without throwing an error.

@@ -65,6 +65,16 @@ namespace FluidForge.Core
         /// </summary>
         public long CellLimit { get; set; }
 
+        /// <summary>
+        /// Fidelity level label for the currently executing pipeline call (<c>Coarse</c>, <c>High</c>, or <c>Verification</c>).
+        /// </summary>
+        public string CurrentFidelityLevel { get; set; } = FidelityLevels.High;
+
+        /// <summary>
+        /// Optional solver iteration cap for the currently executing pipeline call (e.g., Stage 1 coarse screening).
+        /// </summary>
+        public int? CurrentMaxSolverIterations { get; set; } = null;
+
         /// <param name="workingDirectory">
         /// Defaults to <c>results/&lt;ProjectName&gt;/</c> in the current working directory.
         /// </param>
@@ -102,6 +112,8 @@ namespace FluidForge.Core
             CalibrationReportPath = null;
             CurrentRunTag = "";
             CellLimit = 0;
+            CurrentFidelityLevel = FidelityLevels.High;
+            CurrentMaxSolverIterations = null;
         }
 
         /// <summary>
@@ -135,7 +147,7 @@ namespace FluidForge.Core
             string header = "Iteration;Variant;" +
                             string.Join(";", activeKeys) + ";" +
                             string.Join(";", passiveKeys) + ";" +
-                            "Fitness;StlPath;MeshPath;SimulationFailed;Disqualified;Feasible;FailedStage";
+                            "Fitness;StlPath;MeshPath;SimulationFailed;Disqualified;Feasible;FailedStage;FidelityLevel";
             if (objectiveNames.Count > 0)
             {
                 header += ";" + string.Join(";", objectiveNames.Select(n => $"Obj_{n}"));
@@ -152,13 +164,14 @@ namespace FluidForge.Core
             {
                 var activeVals = activeKeys.Select(k => record.ActiveParameters.ContainsKey(k) ? record.ActiveParameters[k].ToString("F3", inv) : "0");
                 var passiveVals = passiveKeys.Select(k => record.PassiveParameters.ContainsKey(k) ? record.PassiveParameters[k].ToString("F5", inv) : "0");
+                string fidelityLevel = string.IsNullOrWhiteSpace(record.FidelityLevel) ? FidelityLevels.High : record.FidelityLevel;
 
                 string line = $"{record.Iteration};{record.Variant};" +
                               $"{string.Join(";", activeVals)};" +
                               $"{string.Join(";", passiveVals)};" +
                               $"{record.Fitness.ToString("F5", inv)};{record.StlPath};{record.MeshPath};" +
                               $"{(record.SimulationFailed ? 1 : 0)};{(record.Disqualified ? 1 : 0)};" +
-                              $"{(record.Feasible ? 1 : 0)};{record.FailedStage}";
+                              $"{(record.Feasible ? 1 : 0)};{record.FailedStage};{fidelityLevel}";
 
                 if (objectiveNames.Count > 0)
                 {

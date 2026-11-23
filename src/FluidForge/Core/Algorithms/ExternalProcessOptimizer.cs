@@ -399,9 +399,11 @@ namespace FluidForge.Core
                 if (seen.Add(r)) combined.Add(r);
             }
 
-            if (combined.Any(r => r.Objectives.Count >= 2))
+            var nonCoarse = combined.Where(r => !FidelityLevels.IsCoarse(r.FidelityLevel)).ToList();
+            var paretoSource = nonCoarse.Any(r => r.Objectives.Count >= 2) ? nonCoarse : combined;
+            if (paretoSource.Any(r => r.Objectives.Count >= 2))
             {
-                ParetoFrontCalculator.ExportParetoSummary(context.WorkingDirectory, combined, copyStls: true);
+                ParetoFrontCalculator.ExportParetoSummary(context.WorkingDirectory, paretoSource, copyStls: true);
             }
 
             return WorkflowController.SelectBestRecord(records) ?? records.First();
@@ -586,14 +588,18 @@ namespace FluidForge.Core
 
             var historyObs = new List<ExternalObservation>(context.History.Count);
             var fidelities = new SortedSet<double> { 1.0 };
+            float coarseMeshFactor = context.Config.MultiFidelity?.CoarseMeshFactor ?? 2.0f;
 
             foreach (ModelRecord record in context.History)
             {
                 if (record.Variant == SurrogateTrainingSet.ControlRunVariant) continue;
 
+                string fidelityLevel = string.IsNullOrWhiteSpace(record.FidelityLevel)
+                    ? FidelityLevels.High
+                    : record.FidelityLevel;
                 double fidelity = record.PassiveParameters.TryGetValue("Fidelity", out float fVal) && float.IsFinite(fVal) && fVal > 0f
                     ? fVal
-                    : 1.0;
+                    : FidelityLevels.ToNumeric(fidelityLevel, coarseMeshFactor);
                 fidelities.Add(fidelity);
 
                 var paramDict = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -632,6 +638,7 @@ namespace FluidForge.Core
                     Variant = record.Variant,
                     Status = MapStatus(record),
                     Fidelity = fidelity,
+                    FidelityLevel = fidelityLevel,
                     Fitness = float.IsFinite(record.Fitness) ? record.Fitness : null,
                     Parameters = paramDict,
                     Objectives = objDict,
@@ -639,9 +646,16 @@ namespace FluidForge.Core
                 });
             }
 
+            bool twoStageEnabled = MultiFidelitySelector.IsTwoStageEnabled(context.Config.MultiFidelity);
+            if (twoStageEnabled)
+            {
+                fidelities.Add(FidelityLevels.ToNumeric(FidelityLevels.Coarse, coarseMeshFactor));
+            }
+
             string acquisition = string.IsNullOrWhiteSpace(cfg.Acquisition) ? "Auto" : cfg.Acquisition.Trim();
             bool multiFidelity = string.Equals(acquisition, "qMFKG", StringComparison.OrdinalIgnoreCase)
-                                 || fidelities.Count > 1;
+                                 || fidelities.Count > 1
+                                 || twoStageEnabled;
 
             return new ExternalOptimizerRequest
             {

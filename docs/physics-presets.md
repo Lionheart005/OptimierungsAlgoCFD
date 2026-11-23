@@ -14,7 +14,7 @@ Values are merged at the `JsonNode` level from general to specific (nested objec
 
 | Layer | Source | Scope |
 |---|---|---|
-| **Layer 1** | Compiled code defaults (`SimulationConfig`, `Su2SolverOptions`, `GmshMesherOptions`, `Gmsh2DMesherOptions`) | Framework baseline |
+| **Layer 1** | Compiled code defaults (`SimulationConfig`, `Su2SolverOptions`, `GmshMesherOptions`, `Gmsh2DMesherOptions`, `OpenFoamOptions`) | Framework baseline |
 | **Layer 1.5** | **`Preset`** in `simulation.json` (`SimulationPresets`) | Curated domain + accuracy overlay for `simulation.json` and `solvers/*.json` |
 | **Layer 2** | `src/projects/<Name>/*.json` | Committed project overrides |
 | **Layer 3** | `config/*.local.json` | Gitignored machine-wide escape hatch |
@@ -36,11 +36,13 @@ Use `"Preset": ""` or `"Preset": "Custom"` to disable Layer 1.5 completely.
 | `External3D:FastConcept` | `External3D` | `FastConcept` | `Manual` (`1.5`), Prism, `DetailBox: false` | 2000 iters, Cauchy `1e-4`, $y^+=2.0$, AutoStop On (12) | `Off` |
 | `External3D:StandardRans` | `External3D` | `StandardRans` | `Auto` (5% tol), Prism, `DetailBox: false` | 3000 iters, Cauchy `5e-5`, $y^+=1.5$, AutoStop On (20) | `FinalTopN` (3, 1 step) |
 | `External3D:VerificationFine` | `External3D` | `VerificationFine` | `Auto` (2% tol), Prism, `DetailBox: true` | 8000 iters, Cauchy `1e-5`, $y^+=1.0$, AutoStop Off | `FinalTopN` (3, 1 step) |
-| `Internal3D:FastConcept` | `Internal3D` | `FastConcept` | Phase 3 placeholder (OpenFOAM) | Sim budget/convergence defaults only | `Off` |
-| `Internal3D:StandardRans` | `Internal3D` | `StandardRans` | Phase 3 placeholder (OpenFOAM) | Sim budget/convergence defaults only | `FinalTopN` (3, 1 step) |
-| `Internal3D:VerificationFine` | `Internal3D` | `VerificationFine` | Phase 3 placeholder (OpenFOAM) | Sim budget/convergence defaults only | `FinalTopN` (3, 1 step) |
+| `Internal3D:FastConcept` | `Internal3D` | `FastConcept` | `Manual` (`1.5`), `BaseCellSizeMm` 3.0, 3 layers | `EndTime` 500, `ResidualTarget` `5e-4`, $y^+ \approx 30$, `PressureDrop`, AutoStop On (12) | `Off` |
+| `Internal3D:StandardRans` | `Internal3D` | `StandardRans` | `Auto` (5% tol), `BaseCellSizeMm` 2.0, 5 layers | `EndTime` 1000, `ResidualTarget` `1e-4`, $y^+ \approx 5$, `PressureDrop`, AutoStop On (20) | `FinalTopN` (3, 1 step) |
+| `Internal3D:VerificationFine` | `Internal3D` | `VerificationFine` | `Auto` (2% tol), `BaseCellSizeMm` 1.2, 8 layers | `EndTime` 2000, `ResidualTarget` `5e-5`, $y^+ \approx 1.5$, `PressureDrop`, AutoStop Off | `FinalTopN` (3, 1 step) |
 
 **Shorthands:** `"External2D"` → `"External2D:StandardRans"`, `"External3D"` → `"External3D:StandardRans"`, `"Internal3D"` → `"Internal3D:StandardRans"`.
+
+> **External3D OpenFOAM Overlay & Multi-Fidelity:** All `External3D:*` presets also carry a `solvers/openfoam.json` overlay (`DomainMode: "External3D"`, `Drag`/`Lift` metrics) so projects using `OpenFoamProjectDefinition` in external mode inherit calibrated defaults automatically. To accelerate expensive 3D runs, combine any preset with `"MultiFidelity": { "Mode": "TwoStageFilter" }` in `simulation.json` to screen candidates on a coarse mesh before promoting top candidates to full fidelity.
 
 ---
 
@@ -74,6 +76,7 @@ All configuration JSON files support a top-level `"$schema"` reference (ignored 
 | `solvers/su2.json` | `"../../../../schemas/su2.schema.json"` |
 | `solvers/gmsh.json` (3D) | `"../../../../schemas/gmsh.schema.json"` |
 | `solvers/gmsh.json` (2D) | `"../../../../schemas/gmsh2d.schema.json"` |
+| `solvers/openfoam.json` | `"../../../../schemas/openfoam.schema.json"` |
 
 Regenerate schemas after modifying configuration classes:
 ```powershell

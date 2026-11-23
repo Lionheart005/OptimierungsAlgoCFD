@@ -12,8 +12,8 @@ FluidForge runs computations on a Linux server via SSH, `tmux`, and `xvfb-run` u
 
 | Command | Description |
 |---|---|
-| `doctor` | Checks server tools (`dotnet`, `tmux`, `xvfb-run`, `mpirun`, `SU2_CFD`, `gmsh`, `libpicogk.so`) against effective project paths (uploads code on first run without building). |
-| `deploy` | Packs `src/`, `config/`, `scripts/` (excluding `bin/`, `obj/`, `*.local.json`, `*.md`, `*.ps1`, `*.pdf`), uploads if SHA-256 changed, and builds. Restarts active runs unless `-NoRestart` is passed; `-Force` forces upload. |
+| `doctor` | Checks server tools (`dotnet`, `tmux`, `xvfb-run`, `mpirun`, `SU2_CFD`, `gmsh`, `libpicogk.so`, plus OpenFOAM ESI `v2506` / `openfoam2506` with isolated system OpenMPI vs. Conda/MPICH, and optional `opt-py` Python env) against effective project paths (uploads code on first run without building). |
+| `deploy` | Packs `src/`, `config/`, `scripts/`, `third_party/` (excluding `bin/`, `obj/`, `*.local.json`, `*.md`, `*.ps1`, `*.pdf`), uploads if SHA-256 changed, and builds. Restarts active runs unless `-NoRestart` is passed; `-Force` forces upload. |
 | `run` | Runs `deploy` and starts the optimization inside a detached `tmux` session (`sim`). |
 | `resume` | Resumes an interrupted run from `results/<Project>/resume/journal.jsonl` using `--resume` and the original seed (never uploads or builds). |
 | `calibrate` | Runs `deploy` and starts isolated mesh calibration (`--calibrate`) to determine the optimal `MeshRefinementFactor`. |
@@ -39,11 +39,13 @@ FluidForge runs computations on a Linux server via SSH, `tmux`, and `xvfb-run` u
 ## 3. Typical Workflow
 
 ```powershell
-# 1. Verify environment
+# 1. Verify environment (SU2 or OpenFOAM)
 .\scripts\sim.ps1 doctor -Project Naca2D
+.\scripts\sim.ps1 doctor -Project PipeBend90
 
 # 2. Deploy, build, and start optimization in tmux
 .\scripts\sim.ps1 run -Project Naca2D
+.\scripts\sim.ps1 run -Project PipeBend90
 
 # 3. Monitor progress
 .\scripts\sim.ps1 status
@@ -56,6 +58,12 @@ FluidForge runs computations on a Linux server via SSH, `tmux`, and `xvfb-run` u
 .\scripts\sim.ps1 recheck -Project Naca2D -Variant Gen4_Var2 -Finer 1 -Unsteady
 ```
 
+> **Optional Hybrid Python Optimizers (`opt-py`):** To use `OptimizationAlgorithm: "BoTorch"` or `"Pymoo"` on the server, create the isolated Conda environment once:
+> ```bash
+> conda env create -f scripts/optimizers/environment_opt.yml
+> ```
+> OpenFOAM (`openfoam2506`) uses system OpenMPI (`/usr/bin/mpirun`) isolated from Conda/MPICH (`scripts/sim-runner.sh` and `OpenFoamOptions.MpiRunPath`).
+
 ---
 
 ## 4. Plotting Fetched Results
@@ -64,4 +72,5 @@ FluidForge runs computations on a Linux server via SSH, `tmux`, and `xvfb-run` u
 python scripts/plot_optimization.py server-results/<folder>
 python scripts/plot_history.py server-results/<folder> --compare
 python scripts/plot_calibration.py server-results/<folder>
+python scripts/plot_pareto.py server-results/<folder> --export-stls <dir>
 ```

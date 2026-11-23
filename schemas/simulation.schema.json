@@ -218,6 +218,32 @@
       "type": "string",
       "default": "mpirun"
     },
+    "MultiFidelity": {
+      "type": "object",
+      "properties": {
+        "CoarseMaxIterations": {
+          "type": "integer",
+          "default": 500
+        },
+        "CoarseMeshFactor": {
+          "type": "number",
+          "default": 2
+        },
+        "Mode": {
+          "type": "string",
+          "default": "Off"
+        },
+        "PromoteTopFraction": {
+          "type": "number",
+          "default": 0.25
+        },
+        "PromoteTopK": {
+          "type": "integer",
+          "default": 2
+        }
+      },
+      "additionalProperties": false
+    },
     "OptimizationAlgorithm": {
       "type": "string",
       "default": "Bayes"

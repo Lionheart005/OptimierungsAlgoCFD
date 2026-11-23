@@ -95,6 +95,19 @@ namespace FluidForge.Core
                     + $"over the last {autoStop.WindowVariants} variants; at most "
                     + $"{_context.Config.MaxIterations} x {_context.Config.VariantsPerIteration} variants)");
 
+            MultiFidelityConfig mf = _context.Config.MultiFidelity ?? new MultiFidelityConfig();
+            bool twoStageEnabled = MultiFidelitySelector.IsTwoStageEnabled(mf);
+            if (twoStageEnabled)
+            {
+                string iterCapText = mf.CoarseMaxIterations > 0
+                    ? $", max solver iterations {mf.CoarseMaxIterations}"
+                    : "";
+                Console.WriteLine(
+                    $"{OutputConventions.SystemTag} Multi-fidelity TwoStageFilter: enabled "
+                    + $"(coarse mesh x{mf.CoarseMeshFactor.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}"
+                    + $"{iterCapText}, promote top {mf.PromoteTopK} / {mf.PromoteTopFraction * 100:0.##} %)");
+            }
+
             // Run-time forecast (time-estimation plan): sliding window, per-iteration validation,
             // and final fine verification are all accounted for.
             var estimator = new RunTimeEstimator(_context.Config, MeshDimensions, autoStopEnabled);
@@ -114,57 +127,102 @@ namespace FluidForge.Core
             {
                 SimulationLog.PrintIterationBanner(iter, _context.Config.MaxIterations);
 
-                List<ModelRecord> currentIterationRecords = new List<ModelRecord>();
-
-                // =========================================================
-                // INNER LOOP: VARIANTS (models)
-                // =========================================================
-                for (int var = 1; var <= _context.Config.VariantsPerIteration; var++)
+                List<ModelRecord> evaluationPool;
+                if (!twoStageEnabled)
                 {
-                    Stopwatch timer = Stopwatch.StartNew();
-
-                    // 1. Generate parameters from the optimization algorithm
-                    var activeParams = _optimizer.GenerateParameters(_context, iter, var, _context.Config.VariantsPerIteration);
-
-                    SimulationLog.PrintVariantHeader(iter, _context.Config.MaxIterations, var, _context.Config.VariantsPerIteration);
-                    SimulationLog.PrintGeneLine(activeParams);
-
-                    // 2.-6. Core pipeline (scaling -> geometry -> mesh -> solver)
-                    ModelRecord record = RunPipeline(activeParams, iter, var);
-                    bool replayed = LastCallWasReplayed;
-
-                    // Evaluate immediately per variant (if successful):
-                    if (!record.SimulationFailed)
+                    var currentIterationRecords = new List<ModelRecord>();
+                    for (int var = 1; var <= _context.Config.VariantsPerIteration; var++)
                     {
-                        _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { record }, _context);
+                        Stopwatch timer = Stopwatch.StartNew();
+
+                        // 1. Generate parameters from the optimization algorithm
+                        var activeParams = _optimizer.GenerateParameters(_context, iter, var, _context.Config.VariantsPerIteration);
+
+                        SimulationLog.PrintVariantHeader(iter, _context.Config.MaxIterations, var, _context.Config.VariantsPerIteration);
+                        SimulationLog.PrintGeneLine(activeParams);
+
+                        // 2.-6. Core pipeline (scaling -> geometry -> mesh -> solver)
+                        ModelRecord record = RunPipeline(activeParams, iter, var);
+                        bool replayed = LastCallWasReplayed;
+
+                        EvaluateAndRecordVariant(record, currentIterationRecords, ref requiredMetricsChecked);
+                        UpdateTimer(timer, replayed, record, estimator, iter, var);
                     }
 
-                    // 6a. Does the pipeline provide everything the fitness formula requires?
-                    if (!requiredMetricsChecked && !record.SimulationFailed && !record.IsPreConstraintInfeasible)
+                    evaluationPool = currentIterationRecords;
+                }
+                else
+                {
+                    float coarseFactor = MultiFidelitySelector.ComputeCoarseFactor(_context.EffectiveMeshRefinementFactor, mf);
+                    int? coarseMaxIter = mf.CoarseMaxIterations > 0 ? mf.CoarseMaxIterations : null;
+                    var coarseRecords = new List<ModelRecord>();
+
+                    // Stage 1: Coarse screening across all VariantsPerIteration
+                    for (int var = 1; var <= _context.Config.VariantsPerIteration; var++)
                     {
-                        requiredMetricsChecked = true;
-                        EnsureRequiredMetrics(record);
+                        Stopwatch timer = Stopwatch.StartNew();
+
+                        var activeParams = _optimizer.GenerateParameters(_context, iter, var, _context.Config.VariantsPerIteration);
+
+                        SimulationLog.PrintVariantHeader(iter, _context.Config.MaxIterations, var, _context.Config.VariantsPerIteration);
+                        SimulationLog.PrintGeneLine(activeParams);
+
+                        ModelRecord record = RunPipeline(
+                            activeParams,
+                            iter,
+                            var,
+                            customRefinementFactor: coarseFactor,
+                            customTag: "Coarse",
+                            customFidelityLevel: FidelityLevels.Coarse,
+                            customMaxSolverIterations: coarseMaxIter);
+                        bool replayed = LastCallWasReplayed;
+
+                        EvaluateAndRecordVariant(record, coarseRecords, ref requiredMetricsChecked);
+                        UpdateTimer(timer, replayed, record, estimator, iter, var);
                     }
 
-                    // 7. Record result
-                    _context.History.Add(record);
-                    currentIterationRecords.Add(record);
-                    _context.ExportToCsv();
+                    // Stage 2: Promote top coarse candidates to full fidelity
+                    IReadOnlyList<ModelRecord> promotedSource = MultiFidelitySelector.SelectForPromotion(coarseRecords, mf);
+                    var promotedRecords = new List<ModelRecord>();
 
-                    SimulationLog.PrintVariantResult(record);
-                    SimulationLog.PrintVariantDiagnostics(record);
-                    UpdateTimer(timer, replayed, record, estimator, iter, var);
+                    if (promotedSource.Count > 0)
+                    {
+                        string promotedSummary = string.Join(", ", promotedSource.Select(r => $"Var{r.Variant} (Score={r.Fitness:F4})"));
+                        Console.WriteLine($"[MULTI-FIDELITY] Stage 1 -> Stage 2: promoting {promotedSource.Count}/{coarseRecords.Count} candidate(s): {promotedSummary}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[MULTI-FIDELITY] Stage 1 -> Stage 2: no eligible coarse candidates to promote in iteration {iter}.");
+                    }
+
+                    foreach (ModelRecord src in promotedSource)
+                    {
+                        SimulationLog.Detail($"[MULTI-FIDELITY] Promoting Gen{iter}_Var{src.Variant} to full fidelity (factor {_context.EffectiveMeshRefinementFactor:0.##})...");
+
+                        ModelRecord fineRecord = RunPipeline(
+                            new Dictionary<string, float>(src.ActiveParameters),
+                            iter,
+                            src.Variant,
+                            customRefinementFactor: null,
+                            customTag: "Fine",
+                            customFidelityLevel: FidelityLevels.High,
+                            customMaxSolverIterations: null);
+
+                        EvaluateAndRecordVariant(fineRecord, promotedRecords, ref requiredMetricsChecked);
+                    }
+
+                    evaluationPool = promotedRecords.Count > 0 ? promotedRecords : coarseRecords;
                 }
 
                 // =========================================================
                 // EVALUATION & VALIDATION
                 // =========================================================
                 // 1. Algorithm scores the iteration's variants and picks the best
-                _optimizer.EvaluateAndSelectBest(currentIterationRecords, _context);
+                _optimizer.EvaluateAndSelectBest(evaluationPool, _context);
 
                 // 2. Apply stability validator (bouncer)
                 ModelRecord trueWinner = _validator.ValidateChampion(
-                    currentIterationRecords,
+                    evaluationPool,
                     _context.Config,
                     (testParams) => ResimulateForValidation(testParams, iter));
 
@@ -173,7 +231,7 @@ namespace FluidForge.Core
                     trueWinner,
                     iter,
                     _context,
-                    (p, f, t) => RunPipeline(p, iter, ValidationVariantNumber, f, t),
+                    (p, f, t) => RunPipeline(p, iter, ValidationVariantNumber, f, t, customFidelityLevel: FidelityLevels.Verification),
                     r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
                     _requiredMetrics);
 
@@ -181,7 +239,7 @@ namespace FluidForge.Core
 
                 _context.ExportToCsv();
 
-                SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, currentIterationRecords, trueWinner);
+                SimulationLog.PrintIterationSummary(iter, _context.Config.MaxIterations, evaluationPool, trueWinner);
                 SimulationLog.PrintTimeForecast(estimator.Estimate(iter, _context.Config.VariantsPerIteration, iterationFinished: true), DateTime.Now);
 
                 // Report immediately if the champion sits on a parameter bound rather than waiting until
@@ -191,7 +249,10 @@ namespace FluidForge.Core
                 // Automatic stop: only between iterations, never mid-generation.
                 if (autoStopEnabled && iter < _context.Config.MaxIterations)
                 {
-                    AutoStopDecision decision = AutoStop.Evaluate(_context.History, autoStop);
+                    IReadOnlyList<ModelRecord> autoStopHistory = twoStageEnabled
+                        ? _context.History.Where(r => !FidelityLevels.IsCoarse(r.FidelityLevel)).ToList()
+                        : _context.History;
+                    AutoStopDecision decision = AutoStop.Evaluate(autoStopHistory, autoStop);
                     if (decision.Stop)
                     {
                         SimulationLog.PrintBanner(
@@ -206,20 +267,41 @@ namespace FluidForge.Core
                 if (iter < _context.Config.MaxIterations)
                 {
                     // 3. Prepare algorithm for the next iteration
-                    _optimizer.PrepareNextIteration(_context, currentIterationRecords, trueWinner);
+                    _optimizer.PrepareNextIteration(_context, evaluationPool, trueWinner);
                 }
             }
 
             // Final verification (Mode = "Final" or "FinalTopN", TODO-43)
             ChampionFineVerifier.VerifyFinal(
                 _context,
-                (p, f, t) => RunPipeline(p, ValidationVariantNumber, ValidationVariantNumber, f, t),
+                (p, f, t) => RunPipeline(p, ValidationVariantNumber, ValidationVariantNumber, f, t, customFidelityLevel: FidelityLevels.Verification),
                 r => _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { r }, _context),
                 _requiredMetrics);
 
             // Best record across the ENTIRE run, not just the last iteration's winner:
             // with EA they are usually the same, while with RSM/DoE they often differ.
             FinishOptimization(SelectBestRecord(_context.History), lastIterationWinner);
+        }
+
+        private void EvaluateAndRecordVariant(ModelRecord record, List<ModelRecord> targetList, ref bool requiredMetricsChecked)
+        {
+            if (!record.SimulationFailed)
+            {
+                _optimizer.EvaluateAndSelectBest(new List<ModelRecord> { record }, _context);
+            }
+
+            if (!requiredMetricsChecked && !record.SimulationFailed && !record.IsPreConstraintInfeasible)
+            {
+                requiredMetricsChecked = true;
+                EnsureRequiredMetrics(record);
+            }
+
+            _context.History.Add(record);
+            targetList.Add(record);
+            _context.ExportToCsv();
+
+            SimulationLog.PrintVariantResult(record);
+            SimulationLog.PrintVariantDiagnostics(record);
         }
 
         /// <summary>
@@ -258,9 +340,10 @@ namespace FluidForge.Core
 
         private static int SelectionTier(ModelRecord record)
         {
-            if (!record.SimulationFailed && !record.Disqualified && record.Feasible) return 3;
-            if (!record.SimulationFailed && !record.Disqualified) return 2;
-            if (!record.SimulationFailed) return 1;
+            bool highOrBetter = !FidelityLevels.IsCoarse(record.FidelityLevel);
+            if (!record.SimulationFailed && !record.Disqualified && record.Feasible) return highOrBetter ? 6 : 5;
+            if (!record.SimulationFailed && !record.Disqualified) return highOrBetter ? 4 : 3;
+            if (!record.SimulationFailed) return highOrBetter ? 2 : 1;
             return 0;
         }
 
@@ -318,10 +401,14 @@ namespace FluidForge.Core
             int iteration,
             int variant,
             float? customRefinementFactor = null,
-            string? customTag = null)
+            string? customTag = null,
+            string? customFidelityLevel = null,
+            int? customMaxSolverIterations = null)
         {
             float oldFactor = _context.EffectiveMeshRefinementFactor;
             string oldTag = _context.CurrentRunTag;
+            string oldFidelity = _context.CurrentFidelityLevel;
+            int? oldMaxIterations = _context.CurrentMaxSolverIterations;
 
             try
             {
@@ -333,6 +420,15 @@ namespace FluidForge.Core
                 {
                     _context.CurrentRunTag = customTag;
                 }
+                if (!string.IsNullOrWhiteSpace(customFidelityLevel))
+                {
+                    _context.CurrentFidelityLevel = customFidelityLevel;
+                }
+                _context.CurrentMaxSolverIterations = customMaxSolverIterations;
+
+                string fidelityLevel = string.IsNullOrWhiteSpace(_context.CurrentFidelityLevel)
+                    ? FidelityLevels.High
+                    : _context.CurrentFidelityLevel;
 
                 LastCallWasReplayed = false;
                 LastCallDurationSeconds = null;
@@ -350,7 +446,7 @@ namespace FluidForge.Core
                 float factor = _context.EffectiveMeshRefinementFactor;
                 string tag = _context.CurrentRunTag ?? "";
 
-                if (_journal.TryReplay(iteration, variant, factor, tag, parameters, out ModelRecord? replayed)
+                if (_journal.TryReplay(iteration, variant, factor, tag, parameters, out ModelRecord? replayed, fidelityLevel)
                     && replayed != null)
                 {
                     LastCallWasReplayed = true;
@@ -365,13 +461,15 @@ namespace FluidForge.Core
                 LastCallDurationSeconds = elapsedSeconds;
 
                 // Record immediately upon return before callers mutate the record.
-                _journal.Append(iteration, variant, factor, tag, parameters, record, elapsedSeconds);
+                _journal.Append(iteration, variant, factor, tag, parameters, record, elapsedSeconds, fidelityLevel);
                 return record;
             }
             finally
             {
                 _context.EffectiveMeshRefinementFactor = oldFactor;
                 _context.CurrentRunTag = oldTag;
+                _context.CurrentFidelityLevel = oldFidelity;
+                _context.CurrentMaxSolverIterations = oldMaxIterations;
             }
         }
 
@@ -389,9 +487,16 @@ namespace FluidForge.Core
             {
                 Iteration = iteration,
                 Variant = variant,
-                ActiveParameters = parameters
+                ActiveParameters = parameters,
+                FidelityLevel = string.IsNullOrWhiteSpace(_context.CurrentFidelityLevel)
+                    ? FidelityLevels.High
+                    : _context.CurrentFidelityLevel
             };
             record.PassiveParameters["MeshRefinementFactor"] = _context.EffectiveMeshRefinementFactor;
+
+            SimulationConfig effectiveConfig = _context.CurrentMaxSolverIterations.HasValue && _context.CurrentMaxSolverIterations.Value > 0
+                ? _context.Config.WithMaxIterationsCap(_context.CurrentMaxSolverIterations.Value)
+                : _context.Config;
 
             // Generate geometry (IGeometryGenerator) -> GeometryResult
             var geoResult = _geometry.GenerateAndExport(
@@ -453,11 +558,12 @@ namespace FluidForge.Core
                     {
                         var meshRequest = new MeshRequest(
                             geoResult.StlPath, iteration, variant,
-                            _context.Config, scaler.ShrinkFactor,
+                            effectiveConfig, scaler.ShrinkFactor,
                             _context.WorkingDirectory,
                             _context.EffectiveMeshRefinementFactor,
                             _context.CurrentRunTag,
-                            Geometry: geoResult);
+                            Geometry: geoResult,
+                            MaxSolverIterations: _context.CurrentMaxSolverIterations);
 
                         meshPath = stage.Mesher.GenerateMesh(meshRequest);
                         meshCache[stage.Mesher] = meshPath;
@@ -510,7 +616,7 @@ namespace FluidForge.Core
                         }
                     }
 
-                    stage.Solver.Solve(meshPath, record, _context.Config, _context.WorkingDirectory);
+                    stage.Solver.Solve(meshPath, record, effectiveConfig, _context.WorkingDirectory);
                     if (record.SimulationFailed && record.FailedStage == EvaluationFailureStage.None)
                     {
                         record.FailedStage = EvaluationFailureStage.Solver;

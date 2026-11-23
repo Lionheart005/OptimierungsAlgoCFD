@@ -67,6 +67,7 @@ namespace FluidForge.Core
         public int Variant { get; set; }
         public string Status { get; set; } = "Feasible";
         public double Fidelity { get; set; } = 1.0;
+        public string FidelityLevel { get; set; } = FidelityLevels.High;
         public double? Fitness { get; set; }
         public Dictionary<string, double> Parameters { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, double> Objectives { get; set; } = new(StringComparer.Ordinal);

@@ -134,6 +134,9 @@ namespace FluidForge.Core
         /// <summary>Fine-mesh verification of top candidates.</summary>
         public ChampionVerificationConfig ChampionVerification { get; set; } = new();
 
+        /// <summary>Two-stage multi-fidelity screening settings (coarse screening before high-fidelity promotion).</summary>
+        public MultiFidelityConfig MultiFidelity { get; set; } = new();
+
         public static SimulationConfig CreateDefault() => new SimulationConfig();
 
         /// <summary>
@@ -160,6 +163,18 @@ namespace FluidForge.Core
             var clone = (SimulationConfig)MemberwiseClone();
             clone.Su2MaxIterations = su2MaxIterations;
             clone.CauchyTolerance = cauchyTolerance;
+            return clone;
+        }
+
+        /// <summary>
+        /// Returns a shallow copy with <see cref="Su2MaxIterations"/> capped to <paramref name="maxIterations"/>
+        /// when positive and lower than the configured budget.
+        /// </summary>
+        internal SimulationConfig WithMaxIterationsCap(int maxIterations)
+        {
+            if (maxIterations <= 0 || maxIterations >= Su2MaxIterations) return this;
+            var clone = (SimulationConfig)MemberwiseClone();
+            clone.Su2MaxIterations = maxIterations;
             return clone;
         }
     }
@@ -304,5 +319,28 @@ namespace FluidForge.Core
 
         /// <summary>Relative deviation above which a mesh-dependency warning is emitted (0.05 = 5%).</summary>
         public float Tolerance { get; set; } = 0.05f;
+    }
+
+    /// <summary>
+    /// Settings for two-stage multi-fidelity screening (<c>TwoStageFilter</c>):
+    /// evaluates all candidates on a coarse mesh/iteration budget first, then promotes the top
+    /// candidates to full fidelity.
+    /// </summary>
+    public class MultiFidelityConfig
+    {
+        /// <summary>"Off" (default) or "TwoStageFilter".</summary>
+        public string Mode { get; set; } = "Off";
+
+        /// <summary>Multiplier (&gt; 1.0) applied to <c>EffectiveMeshRefinementFactor</c> in Stage 1 (larger values coarsen the mesh).</summary>
+        public float CoarseMeshFactor { get; set; } = 2.0f;
+
+        /// <summary>Maximum solver iterations for Stage 1 coarse evaluations (0 = uncapped).</summary>
+        public int CoarseMaxIterations { get; set; } = 500;
+
+        /// <summary>Minimum number of top coarse candidates to promote to full fidelity per iteration.</summary>
+        public int PromoteTopK { get; set; } = 2;
+
+        /// <summary>Fraction of eligible coarse candidates to promote per iteration (combined via max with <see cref="PromoteTopK"/>).</summary>
+        public float PromoteTopFraction { get; set; } = 0.25f;
     }
 }

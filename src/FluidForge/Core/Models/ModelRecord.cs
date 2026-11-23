@@ -1,8 +1,45 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace FluidForge.Core
 {
+    /// <summary>
+    /// Canonical fidelity level labels and numeric conversion helpers for multi-fidelity workflows.
+    /// </summary>
+    public static class FidelityLevels
+    {
+        public const string Coarse = "Coarse";
+        public const string High = "High";
+        public const string Verification = "Verification";
+
+        /// <summary>
+        /// Converts a fidelity level label to a normalized numeric fidelity in <c>(0, 1]</c>.
+        /// </summary>
+        public static double ToNumeric(string? level, float coarseMeshFactor = 2.0f)
+        {
+            if (IsCoarse(level))
+            {
+                double factor = coarseMeshFactor > 1.0f && float.IsFinite(coarseMeshFactor) ? coarseMeshFactor : 2.0;
+                return Math.Clamp(1.0 / factor, 0.1, 0.9);
+            }
+
+            return 1.0;
+        }
+
+        /// <summary>
+        /// Returns <c>true</c> for coarse/low-fidelity labels (<c>Coarse</c>, <c>FastConcept</c>, <c>Low</c>).
+        /// </summary>
+        public static bool IsCoarse(string? level)
+        {
+            if (string.IsNullOrWhiteSpace(level)) return false;
+            string trimmed = level.Trim();
+            return trimmed.Equals(Coarse, StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("FastConcept", StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals("Low", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     /// <summary>
     /// Data record for a single evaluated model (variant).
     /// </summary>
@@ -65,6 +102,11 @@ namespace FluidForge.Core
         /// </summary>
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public EvaluationFailureStage FailedStage { get; set; } = EvaluationFailureStage.None;
+
+        /// <summary>
+        /// Fidelity level at which this variant was evaluated (<c>Coarse</c>, <c>High</c>, or <c>Verification</c>).
+        /// </summary>
+        public string FidelityLevel { get; set; } = FidelityLevels.High;
 
         /// <summary>
         /// Raw physical objectives produced by an <see cref="IObjectiveEvaluator"/>.

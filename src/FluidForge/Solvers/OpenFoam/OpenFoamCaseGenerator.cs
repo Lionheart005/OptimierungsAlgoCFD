@@ -909,7 +909,7 @@ namespace FluidForge.Solvers.OpenFoam
             float referenceAreaM2,
             Vector3 inletDirection)
         {
-            WriteControlDict(caseDir, options, isExternal, inletName, outletPatches, wallName, referenceAreaM2, inletDirection);
+            WriteControlDict(caseDir, request, options, isExternal, inletName, outletPatches, wallName, referenceAreaM2, inletDirection);
             WriteFvSchemes(caseDir, options);
             WriteFvSolution(caseDir, options);
             WriteSurfaceFeatureExtractDict(caseDir, options);
@@ -920,6 +920,7 @@ namespace FluidForge.Solvers.OpenFoam
 
         private static void WriteControlDict(
             string caseDir,
+            MeshRequest request,
             OpenFoamOptions options,
             bool isExternal,
             string inletName,
@@ -928,7 +929,10 @@ namespace FluidForge.Solvers.OpenFoam
             float referenceAreaM2,
             Vector3 inletDirection)
         {
-            int endTime = Math.Max(1, options.EndTime);
+            int configuredEndTime = Math.Max(1, options.EndTime);
+            int endTime = request.MaxSolverIterations.HasValue && request.MaxSolverIterations.Value > 0
+                ? Math.Min(configuredEndTime, request.MaxSolverIterations.Value)
+                : configuredEndTime;
             int writeInterval = Math.Clamp(options.WriteInterval, 1, endTime);
 
             var sb = new StringBuilder();

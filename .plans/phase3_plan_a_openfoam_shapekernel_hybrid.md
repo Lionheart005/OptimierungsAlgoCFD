@@ -1,6 +1,6 @@
 # Phase 3 (Plan A): `LEAP71_ShapeKernel`, OpenFOAM (künftiger 3D-Standard) & Hybrid-Optimierer-Bridge (`BoTorch`/`pymoo`)
 
-> **Status:** In Umsetzung (23.11.2026) — **Checkpoints 1–4b (`AP 3.1`, `AP 3.2`, `AP 3.3` inkl. Live-Verifikation auf `BIC_12`) abgeschlossen.** Offen: **Checkpoint 5** (`AP 3.4` Multi-Fidelity-Vorfilter + JSON-Schemas/Docs/Gesamtabnahme).  
+> **Status:** ✔ Vollständig abgeschlossen (23.11.2026) — **Alle 4 Arbeitspakete (`AP 3.1`–`AP 3.4`, Checkpoints 1–5) lokal (`984/984` Unit-Tests, `0` Warnungen) und live auf `BIC_12` (`OpenFoamIntegrationTests` 2/2, `Category=PythonOpt` 3/3, `sim.ps1 doctor` für `PipeBend90` & `MantaAuv`) erfolgreich abgenommen. Bereit für Phase 4.**  
 > **Vision:** `PicoGK` + `LEAP71_ShapeKernel` auf ihrem wahren Heimfeld einsetzen — komplexe, 3D-druckbare **interne Fluidik** (Verteiler, Kanäle, Mischer, Düsen, Wärmetauscher) mit **OpenFOAM als primärem 3D-Standard** + robuster Multi-Objective-/Multi-Fidelity-Optimierung — **ohne** Parameter-Chaos!
 
 ---
@@ -77,8 +77,9 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
 - [x] **Pareto-Auswertung & Plots (`scripts/plot_pareto.py`):** Headless-`Agg` Pareto-Front- & Hypervolume-Plots + `--export-stls`-Export; Unit-Tests & `[PythonOptFact]`-Integrationstests in `tests/FluidForge.Tests/ExternalOptimizerTests.cs` (`972/972` Unit-Tests lokal grün, Code bereits auf `BIC_12` deployed & gebaut).
 - [x] **Live-Ausführung `Category=PythonOpt` auf `BIC_12`:** Echter 2-Ziel-Constrained-Pareto-Test mit `~/miniconda/envs/opt-py/bin/python` (`BoTorch qNEHVI`, `pymoo NSGA2`, `plot_pareto.py`) auf `BIC_12` erfolgreich (`3/3 Passed, 0 Skipped, 0 Failed` in ~29 s); fehlendes `import botorch` in `scripts/optimizers/botorch_worker.py` behoben.
 
-### AP 3.4: Multi-Fidelity-Grundlage (Grob-zu-Fein-Vorfilter)
-- [ ] **Zweistufiges Fidelity-Konzept verankern:** Ein Optimierer (insb. `BoTorch` oder ein einfacher Two-Stage-Filter) kann Varianten zunächst auf `FastConcept` (grob, Minuten) prüfen und nur vielversprechende Kandidaten auf `StandardRans` / `VerificationFine` hochstufen — die entscheidende Voraussetzung, um 3D-Läufe von Wochen auf Stunden/Tage zu drücken!
+### AP 3.4: Multi-Fidelity-Grundlage (Grob-zu-Fein-Vorfilter) — ✔ Abgeschlossen (23.11.2026)
+- [x] **Zweistufiges Fidelity-Konzept verankern (`MultiFidelityConfig`, `FidelityLevels`, `MultiFidelitySelector`, `WorkflowController`, `RunJournal`, `ExternalProcessOptimizer`, `OpenFoamCaseGenerator`):** `SimulationConfig.MultiFidelity` (`Mode: "Off" | "TwoStageFilter"`, `CoarseMeshFactor`, `CoarseMaxIterations`, `PromoteTopK`, `PromoteTopFraction`), `FidelityLevel` (`Coarse`/`High`/`Verification`) auf `ModelRecord`, in `results.csv`, `RunJournal` & Ask/Tell-JSON (`Fidelity` + `FidelityLevel` + `AvailableFidelities`), Two-Stage-Promotion inkl. Pareto-Präferenz, High-Fidelity-Vorrang in `SelectBestRecord`/`ChampionFineVerifier`/`AutoStop`, OpenFOAM-`controlDict.endTime`-Cap & 7 neue Unit-Tests (`MultiFidelityTests.cs`).
+- [x] **JSON-Schemas, englische Doku & `HandbookCoverageTests`:** Alle 6 Schemas via `--export-schemas schemas` aktualisiert (`MultiFidelity`, `ExternalOptimizer`, `openfoam.schema.json`), `docs/` (`config-reference.md`, `physics-presets.md`, `creating-a-project.md`, `server-workflow.md`) & `README.md` auf Phase-3-Stand gebracht, `HandbookCoverageTests` um `OpenFoamOptions`, `ExternalOptimizerConfig` & `MultiFidelityConfig` erweitert.
 
 ---
 
@@ -151,8 +152,18 @@ Mit Phasen 1 und 2 steht ein sauberer, verständlicher, englischsprachiger Kern.
   - Temporärer Testordner `~/FluidForge_opt_test` auf `BIC_12` vollständig aufgeräumt; aktueller Stand via `sim.ps1 deploy -Project PipeBend90 -Force` deployed (`0 Warning(s), 0 Error(s)`).
   - **Lokale Verifikation:** `dotnet build FluidForge.sln --nologo -warnaserror` (**0 Warnungen, 0 Fehler**), `972/972` Unit-Tests bestanden.
 
-### Ausstehende Restschritte (Checkpoint 5)
-1. **Checkpoint 5 (`AP 3.4` Multi-Fidelity + Docs/Schemas + Gesamtabnahme):**
-   - **Multi-Fidelity-Vorfilter (`AP 3.4`):** `MultiFidelityConfig` in `SimulationConfig` (`Mode: "Off" | "TwoStageFilter"`, `CoarseMeshFactor`, `CoarseMaxIterations`, `PromoteTopK`, `PromoteTopFraction`), `FidelityLevel` auf `ModelRecord` + in `results.csv` & `RunJournal` + im Ask/Tell-JSON (`ExternalProcessOptimizer`), Two-Stage-Promotion (`FastConcept` → `StandardRans`/`VerificationFine`) in `WorkflowController` + umfassende Unit-Tests (`MultiFidelityTests.cs`).
-   - **Schemas & englische Docs:** `--export-schemas schemas` (alle Schemas frisch inkl. `simulation.schema.json` & `openfoam.schema.json`), `docs/config-reference.md`, `docs/physics-presets.md`, `docs/creating-a-project.md`, `docs/server-workflow.md`, `README.md` auf vollständigen Phase-3-Stand bringen; `HandbookCoverageTests.SettingTypes()` um `OpenFoamOptions`, `ExternalOptimizerConfig` und `MultiFidelityConfig` erweitern!
-   - **Gesamtabnahme:** Lokal `dotnet build -warnaserror` (0 Warnungen, 0 Fehler) + alle Unit- & lokalen Integrationstests grün; auf `BIC_12` (sofern VPN aktiv) finales `sim.ps1 deploy` + `sim.ps1 doctor` (`PipeBend90` & `MantaAuv`); `.plans/phase3_plan_a_openfoam_shapekernel_hybrid.md` & `.plans/ROADMAP.md` auf abgeschlossen setzen und final lokal committen (kein `git push`, `.plans/Anmerkungen.txt` & `.plans/phase4_validierung_benchmarks_und_release.md` weiter unberührt lassen).
+### Checkpoint 5 (`AP 3.4` Multi-Fidelity + Docs/Schemas + Gesamtabnahme, 23.11.2026) — ✔ Abgeschlossen
+- **Entscheidungen & Umsetzung (`AP 3.4` Multi-Fidelity-Vorfilter):**
+  - `SimulationConfig.MultiFidelity` (`MultiFidelityConfig`: `Mode = "Off" | "TwoStageFilter"`, `CoarseMeshFactor = 2.0f`, `CoarseMaxIterations = 500`, `PromoteTopK = 2`, `PromoteTopFraction = 0.25f`) + `WithMaxIterationsCap(...)` hinzugefügt.
+  - `FidelityLevels` (`Coarse`, `High`, `Verification`, `ToNumeric`, `IsCoarse`) und `ModelRecord.FidelityLevel` eingeführt; vollständig durchgereicht in `results.csv` (Spalte `FidelityLevel` nach `FailedStage`), `RunJournal` (Persistenz & Replay-Prüfung gegen Fidelity-Kollisionen) sowie Ask/Tell-JSON (`ExternalObservation.Fidelity` & `FidelityLevel`, `MultiFidelity`, `AvailableFidelities`).
+  - `MultiFidelitySelector` (pure `Core/Pipeline/`) validiert Konfiguration upfront und rankt Stage-1-Kandidaten deterministisch (Feasible > Infeasible, bei Multi-Objective Pareto-Vorrang, dann Fitness/Variant).
+  - `WorkflowController` führt im Modus `TwoStageFilter` zunächst Stage 1 (Coarse-Faktor, Tag `"Coarse"`, Iterations-Cap für SU2 & OpenFOAM über `MeshRequest.MaxSolverIterations` → `OpenFoamCaseGenerator.WriteControlDict`) aus und promoviert die Top-Kandidaten auf volle Fidelity (Tag `"Fine"`, `FidelityLevel = "High"`); `SelectBestRecord`, `ChampionFineVerifier`, `AutoStop` und `ExternalProcessOptimizer`-Pareto-Export bevorzugen konsistent Non-Coarse-Ergebnisse.
+  - `tests/FluidForge.Tests/MultiFidelityTests.cs` (7 Unit-Tests) & aktualisierte `SurrogateDataTests.cs`-Headerprüfung ergänzt.
+- **Schemas, englische Doku & Coverage:**
+  - `--export-schemas schemas` aktualisierte alle 6 JSON-Schemas (`simulation.schema.json` inkl. `MultiFidelity` & `ExternalOptimizer`, `openfoam.schema.json`, etc.).
+  - `HandbookCoverageTests.SettingTypes()` um `OpenFoamOptions` (58 Keys), `ExternalOptimizerConfig` (6 Keys) und `MultiFidelityConfig` (5 Keys) erweitert.
+  - `docs/config-reference.md`, `docs/physics-presets.md`, `docs/creating-a-project.md`, `docs/server-workflow.md` und `README.md` (persönliches `## Preface` unverändert erhalten) auf vollständigen Phase-3-Stand gebracht.
+- **Finale Gesamtabnahme (lokal & `BIC_12`):**
+  - Lokal: `dotnet build FluidForge.sln --nologo -warnaserror` (**0 Warnungen, 0 Fehler**), `dotnet test --filter "Category!=Integration"` (**984/984 bestanden, 0 fehlgeschlagen, 0 übersprungen**), `PipeBend90 --print-config` geprüft.
+  - Remote `BIC_12`: `sim.ps1 deploy -Project PipeBend90 -Force` (**0 Warnungen, 0 Fehler**, 246 Dateien); `sim.ps1 doctor -Project PipeBend90` & `sim.ps1 doctor -Project MantaAuv` beide **`VALIDATION SUCCEEDED -- ready to start.`** (OpenFOAM `v2506` + isoliertes OpenMPI + `opt-py`).
+- **Handover:** Phase 3 ist vollständig abgeschlossen; nächster Schritt laut Roadmap ist **Phase 4** ([`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md)).

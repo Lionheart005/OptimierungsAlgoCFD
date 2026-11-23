@@ -206,9 +206,9 @@ namespace FluidForge.Tests
             context.ExportToCsv();
 
             string[] lines = File.ReadAllLines(Path.Combine(Root, OutputConventions.ResultsCsvFileName));
-            Assert.EndsWith(";SimulationFailed;Disqualified;Feasible;FailedStage", lines[0]);
-            Assert.EndsWith(";0;0;1;None", lines[1]);
-            Assert.EndsWith(";0;1;1;None", lines[2]);
+            Assert.EndsWith(";SimulationFailed;Disqualified;Feasible;FailedStage;FidelityLevel", lines[0]);
+            Assert.EndsWith(";0;0;1;None;High", lines[1]);
+            Assert.EndsWith(";0;1;1;None;High", lines[2]);
         }
     }
 }
