@@ -69,13 +69,14 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 ### Optimization Algorithms & Validation
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `OptimizationAlgorithm` | `string` | `"Bayes"` | Optimizer selection: `"Bayes"` (default) or `"IdwBaseline"` (legacy alias `"Rsm"`). |
+| `OptimizationAlgorithm` | `string` | `"Bayes"` | Optimizer selection: `"Bayes"` (default), `"IdwBaseline"` (legacy alias `"Rsm"`), `"BoTorch"`, `"Pymoo"`, or `"ExternalPython"`. |
 | `RandomSeed` | `int` | `0` | `0` draws a new seed at startup (recorded in `run-info.json`); non-zero makes proposals reproducible. |
 | `IdwVirtualSimulations` | `int` | `50000` | Number of virtual candidate samples evaluated by `IdwBaseline`. |
 | `IdwPower` | `float` | `3.0` | Inverse-distance weighting exponent in `IdwBaseline`. |
 | `IdwExploitationRatio` | `float` | `0.7` | Fraction of local exploitation candidates in `IdwBaseline`. |
 | `IdwExploitationSigma` | `float` | `0.1` | Local perturbation scale relative to `MaxDeviations` in `IdwBaseline`. |
 | `Bayes` | `BayesConfig` | `{}` | Bayesian optimization settings (see section 1.3). |
+| `ExternalOptimizer` | `ExternalOptimizerConfig` | `{}` | External Python optimizer bridge settings for `BoTorch`, `Pymoo`, and `ExternalPython` (see section 1.3a). |
 | `BouncerTolerance` | `float` | `0.20` | Max allowed relative fitness deviation during champion re-simulation. |
 | `BouncerJitter` | `float` | `0.01` | Relative parameter perturbation applied during champion validation. |
 
@@ -84,6 +85,16 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 |---|---|---|---|
 | `SurrogateTarget` | `string` | `"Auto"` | `"Auto"`, `"Fitness"`, or `"Metrics"`. `"Auto"` uses `"Metrics"` when `RequiredMetrics` is non-empty. |
 | `InitialSamples` | `int` | `0` | Initial DoE sample count (`0` = automatic `max(VariantsPerIteration, 2 * d + 2)`). |
+
+#### 1.3a `ExternalOptimizer` (`ExternalOptimizerConfig`)
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `PythonExecutable` | `string` | `""` | Python executable path (`""` auto-detects `~/miniconda/envs/opt-py/bin/python` on Linux or `python3`/`python`). |
+| `WorkerScript` | `string` | `""` | Worker script path (`""` auto-selects `scripts/optimizers/botorch_worker.py` or `pymoo_worker.py`). |
+| `Acquisition` | `string` | `"Auto"` | Acquisition or operator preset (`"Auto"`, `"qLogEI"`, `"qNEHVI"`, `"qMFKG"`, `"NSGA2"`, `"NSGA3"`). |
+| `TimeoutSeconds` | `int` | `120` | Subprocess timeout in seconds per Ask call. |
+| `FallbackToBuiltInBayes` | `bool` | `true` | Falls back to built-in C# `Bayes` with a warning if Python/`opt-py` is unavailable or fails. |
+| `KeepExchangeFiles` | `bool` | `true` | Retains JSON request/response files under `analysis/external_opt/`. |
 
 ### Mesh Calibration & Fine Verification
 | Key | Type | Default | Description |

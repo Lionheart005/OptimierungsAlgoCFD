@@ -15,7 +15,7 @@ namespace FluidForge.Core
         public const string DefaultAlgorithm = "Bayes";
 
         /// <summary>Valid values accepted in configuration.</summary>
-        public const string SupportedAlgorithms = "Bayes, IdwBaseline";
+        public const string SupportedAlgorithms = "Bayes, IdwBaseline, BoTorch, Pymoo, ExternalPython";
 
         /// <summary>
         /// Instantiates the algorithm for the given name (case-insensitive, trimmed).
@@ -40,6 +40,15 @@ namespace FluidForge.Core
                         "[INFO] 'Rsm' is a deprecated alias for 'IdwBaseline' " +
                         "(IDW interpolation, not a true RSM). Please use 'IdwBaseline' or 'Bayes'.");
                     return new IdwBaselineAlgorithm(fitnessCalculator, random);
+
+                case "botorch":
+                    return new ExternalProcessOptimizer(fitnessCalculator, algorithm: "BoTorch", random: random);
+
+                case "pymoo":
+                    return new ExternalProcessOptimizer(fitnessCalculator, algorithm: "Pymoo", random: random);
+
+                case "externalpython":
+                    return new ExternalProcessOptimizer(fitnessCalculator, algorithm: "ExternalPython", random: random);
 
                 case "bayes":
                     return new BayesOptimizationAlgorithm(fitnessCalculator, random: random);

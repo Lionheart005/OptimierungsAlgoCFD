@@ -93,7 +93,8 @@ namespace FluidForge.Core
 
         // 3. Optimization Algorithm Selection
         /// <summary>
-        /// Optimization algorithm to run: <c>"Bayes"</c> (default) or <c>"IdwBaseline"</c> (legacy alias <c>"Rsm"</c>).
+        /// Optimization algorithm to run: <c>"Bayes"</c> (default), <c>"IdwBaseline"</c> (legacy alias <c>"Rsm"</c>),
+        /// <c>"BoTorch"</c>, <c>"Pymoo"</c>, or <c>"ExternalPython"</c>.
         /// Resolved via <see cref="OptimizationAlgorithmFactory"/>; an unknown name logs a warning and falls back to default.
         /// </summary>
         public string OptimizationAlgorithm { get; set; } = OptimizationAlgorithmFactory.DefaultAlgorithm;
@@ -115,6 +116,10 @@ namespace FluidForge.Core
         // 4a. Algorithm Bayes. All optional; defaults work for most projects.
         /// <summary>Bayesian optimizer settings; applies only when <c>"OptimizationAlgorithm": "Bayes"</c>.</summary>
         public BayesConfig Bayes { get; set; } = new();
+
+        // 4b. External Python Optimizer Bridge (BoTorch, pymoo, or custom worker).
+        /// <summary>External Python optimizer bridge settings; applies when <c>OptimizationAlgorithm</c> is <c>"BoTorch"</c>, <c>"Pymoo"</c>, or <c>"ExternalPython"</c>.</summary>
+        public ExternalOptimizerConfig ExternalOptimizer { get; set; } = new();
 
         // 5. Champion Validation (Bouncer)
         /// <summary>Allowed relative fitness deviation during re-simulation (0.20 = 20%).</summary>
@@ -187,6 +192,30 @@ namespace FluidForge.Core
         /// <summary>Number of initial DoE samples. 0 = automatic: max(VariantsPerIteration, 2 × free parameters + 2).</summary>
         public int InitialSamples { get; set; } = 0;
 
+    }
+
+    /// <summary>
+    /// Settings for the external Python optimizer bridge (<c>BoTorch</c>, <c>Pymoo</c>, <c>ExternalPython</c>).
+    /// </summary>
+    public class ExternalOptimizerConfig
+    {
+        /// <summary>Path or command for the Python interpreter. Empty = auto-detect (<c>~/miniconda/envs/opt-py/bin/python</c> on Linux, then <c>python3</c>/<c>python</c>).</summary>
+        public string PythonExecutable { get; set; } = "";
+
+        /// <summary>Path to the worker script. Empty = auto-detect (<c>scripts/optimizers/botorch_worker.py</c> or <c>pymoo_worker.py</c>).</summary>
+        public string WorkerScript { get; set; } = "";
+
+        /// <summary>Acquisition / operator preset (<c>"Auto"</c>, <c>"qLogEI"</c>, <c>"qNEHVI"</c>, <c>"qMFKG"</c>, <c>"NSGA2"</c>, <c>"NSGA3"</c>).</summary>
+        public string Acquisition { get; set; } = "Auto";
+
+        /// <summary>Maximum time in seconds to wait for a single worker Ask call.</summary>
+        public int TimeoutSeconds { get; set; } = 120;
+
+        /// <summary>If true, transparently falls back to built-in C# <c>Bayes</c> when Python/<c>opt-py</c> is unavailable or fails.</summary>
+        public bool FallbackToBuiltInBayes { get; set; } = true;
+
+        /// <summary>If true, preserves request/response JSON exchange files under <c>analysis/external_opt/</c>.</summary>
+        public bool KeepExchangeFiles { get; set; } = true;
     }
 
     /// <summary>

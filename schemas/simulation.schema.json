@@ -108,6 +108,36 @@
       },
       "additionalProperties": false
     },
+    "ExternalOptimizer": {
+      "type": "object",
+      "properties": {
+        "Acquisition": {
+          "type": "string",
+          "default": "Auto"
+        },
+        "FallbackToBuiltInBayes": {
+          "type": "boolean",
+          "default": true
+        },
+        "KeepExchangeFiles": {
+          "type": "boolean",
+          "default": true
+        },
+        "PythonExecutable": {
+          "type": "string",
+          "default": ""
+        },
+        "TimeoutSeconds": {
+          "type": "integer",
+          "default": 120
+        },
+        "WorkerScript": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    },
     "GmshCores": {
       "type": "integer",
       "default": 12
