@@ -247,6 +247,16 @@ namespace FluidForge.Cli
                 return;
             }
 
+            if (exception.Message.Contains("Failed to load PicoGK library", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"{OutputConventions.ErrorTag} Native PicoGK library could not be loaded: {exception.Message}");
+                Console.WriteLine(
+                    $"{OutputConventions.ErrorTag} Fix: Ensure libpicogk.so and libpicogk.26.2.so exist in '{AppContext.BaseDirectory}' and that runtime dependencies "
+                    + "(e.g. libboost_iostreams from '$HOME/miniconda/lib') are on LD_LIBRARY_PATH (or embedded via RPATH from setup_server.sh). "
+                    + "Run './scripts/sim.ps1 doctor' to check native library dependencies.");
+                return;
+            }
+
             if (TryFindException<Win32Exception>(exception, out var win32Ex) && win32Ex != null)
             {
                 Console.WriteLine($"{OutputConventions.ErrorTag} External executable failed to start: {win32Ex.Message}");

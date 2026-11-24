@@ -250,6 +250,8 @@ cd ~/software/PicoGK/build
 # IMPORTANT: -DGLFW_BUILD_X11=ON is required so xvfb-run can attach a virtual display
 ~/software/cmake-3.29.3-linux-x86_64/bin/cmake \
     -DCMAKE_PREFIX_PATH="$HOME/miniconda" \
+    -DCMAKE_BUILD_RPATH="$HOME/miniconda/lib" \
+    -DCMAKE_INSTALL_RPATH="$HOME/miniconda/lib" \
     -DBoost_ROOT="$HOME/miniconda" \
     -DBoost_NO_SYSTEM_PATHS=ON \
     -DPICOGK_NO_VIEWER=ON \
