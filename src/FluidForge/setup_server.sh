@@ -217,16 +217,21 @@ fi
 # 4. COMPILE PICOGK (Headless)
 # ---------------------------------------------------------
 echo "Preparing PicoGK..."
+PICOGK_COMMIT="1713d29"
 cd ~/software
 if [ ! -d "$HOME/software/PicoGK" ]; then
-    git clone --recursive https://github.com/leap71/PicoGKRuntime.git ~/software/PicoGK
+    git clone https://github.com/leap71/PicoGKRuntime.git ~/software/PicoGK
+    cd ~/software/PicoGK
+    git checkout "$PICOGK_COMMIT"
+    git submodule update --init --recursive
 else
     echo "Updating existing PicoGK repository..."
     cd ~/software/PicoGK
-    git pull origin main
+    git fetch --all
+    git checkout "$PICOGK_COMMIT"
     git submodule update --init --recursive
-    cd ~/software
 fi
+cd ~/software
 
 # Apply C++ duration formatting fix in PicoGKTrace.h
 echo "Applying C++ fix to PicoGKTrace.h..."

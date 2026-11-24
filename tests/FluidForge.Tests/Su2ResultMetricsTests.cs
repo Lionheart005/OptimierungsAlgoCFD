@@ -212,6 +212,23 @@ namespace FluidForge.Tests
         }
 
         [Fact]
+        public void Diverged_Astronomical_Coefficient_Marks_The_Record_As_Failed()
+        {
+            string diverged =
+                "\"Inner_Iter\", \"CD\"\n" +
+                "0,             0.500\n" +
+                "1,             1e19\n";
+
+            var solver = new Su2Solver();
+            var record = new ModelRecord();
+
+            WithHistoryFile(diverged, path => solver.ReadMetricsFromHistory(path, record));
+
+            Assert.True(record.SimulationFailed);
+            Assert.False(record.PassiveParameters.ContainsKey("Drag"));
+        }
+
+        [Fact]
         public void A_History_Without_Data_Rows_Marks_The_Record_As_Failed()
         {
             var solver = new Su2Solver();

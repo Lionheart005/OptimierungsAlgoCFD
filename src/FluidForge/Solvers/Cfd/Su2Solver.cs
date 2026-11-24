@@ -388,19 +388,29 @@ namespace FluidForge.Solvers.Cfd
                         ? File.ReadAllLines(historyPath).Where(l => !string.IsNullOrWhiteSpace(l)).ToArray()
                         : null;
 
+                    if (exitCode != 0)
+                    {
+                        SimulationLog.Error($"SU2 exited with code {exitCode} (diverged or aborted).");
+                        Su2ResultArchiver.ArchiveFailureArtifacts(workingDirectory, meshPath, record, historyPath, configPath, su2Output, archiveSuffix);
+                        record.SimulationFailed = true;
+                        record.FailedStage = EvaluationFailureStage.Solver;
+                        return;
+                    }
+
                     if (restartCount == 0)
                     {
                         if (currentLines == null || currentLines.Length < 5)
                         {
                             Su2ResultArchiver.ArchiveFailureArtifacts(workingDirectory, meshPath, record, historyPath, configPath, su2Output, archiveSuffix);
+                            record.FailedStage = EvaluationFailureStage.Solver;
                             return;
                         }
                     }
                     else
                     {
-                        if (exitCode != 0 || currentLines == null || currentLines.Length < 2)
+                        if (currentLines == null || currentLines.Length < 2)
                         {
-                            SimulationLog.Warning($"[SU2] Restart #{restartCount} yielded no usable data (ExitCode={exitCode}); keeping previous history.");
+                            SimulationLog.Warning($"[SU2] Restart #{restartCount} yielded no usable data; keeping previous history.");
                             if (previousCumulativeLines != null) File.WriteAllLines(historyPath, previousCumulativeLines);
                             break;
                         }
@@ -409,7 +419,7 @@ namespace FluidForge.Solvers.Cfd
                         File.WriteAllLines(historyPath, currentLines);
                     }
 
-                    if (isUnsteady || !runOptions.AutoRestartOnDrift || runOptions.MaxConvergenceRestarts <= 0 || exitCode != 0)
+                    if (isUnsteady || !runOptions.AutoRestartOnDrift || runOptions.MaxConvergenceRestarts <= 0)
                         break;
                     if (restartCount >= runOptions.MaxConvergenceRestarts)
                         break;

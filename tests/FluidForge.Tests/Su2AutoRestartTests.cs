@@ -507,5 +507,105 @@ namespace FluidForge.Tests
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
         }
+
+        [Fact]
+        public void NonZero_ExitCode_Marks_SimulationFailed_Even_When_History_Has_Enough_Rows()
+        {
+            string dir = CreateTempDir("su2_nonzero_exit");
+            TextWriter originalOut = Console.Out;
+            var captured = new StringWriter();
+            try
+            {
+                string meshPath = Path.Combine(dir, "Model_Gen1_Var1.su2");
+                File.WriteAllText(meshPath, "dummy");
+
+                var solver = new Su2Solver(new Su2SolverOptions
+                {
+                    ResultMetrics = new() { ["Drag"] = "CD" }
+                })
+                {
+                    RunSu2Override = (wd, cores) =>
+                    {
+                        File.WriteAllLines(Path.Combine(wd, "history.csv"), BuildHistoryLines(10, i => i == 9 ? 1e19 : 0.030));
+                        return (1, "Error: Residual > 10^20", "MPI_Abort(1)");
+                    }
+                };
+
+                var config = new SimulationConfig { Su2MaxIterations = 1000, CauchyElements = 100 };
+                var record = CreateDummyRecord();
+
+                Console.SetOut(captured);
+                solver.Solve(meshPath, record, config, dir);
+                Console.SetOut(originalOut);
+
+                Assert.True(record.SimulationFailed);
+                Assert.Equal(EvaluationFailureStage.Solver, record.FailedStage);
+                Assert.False(record.PassiveParameters.ContainsKey("Drag"));
+
+                string log = captured.ToString();
+                Assert.Contains("SU2 exited with code 1 (diverged or aborted)", log);
+                Assert.DoesNotContain("Analysis succeeded", log);
+                Assert.True(File.Exists(Path.Combine(dir, OutputConventions.ErrorLogsDirectory, "SU2_Error_Model_Gen1_Var1.txt")));
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            }
+        }
+
+        [Fact]
+        public void NonZero_ExitCode_On_Restart_Also_Marks_SimulationFailed()
+        {
+            string dir = CreateTempDir("su2_nonzero_restart_exit");
+            try
+            {
+                string meshPath = Path.Combine(dir, "Model_Gen1_Var1.su2");
+                File.WriteAllText(meshPath, "dummy");
+
+                int calls = 0;
+                var solver = new Su2Solver(new Su2SolverOptions
+                {
+                    ResultMetrics = new() { ["Drag"] = "CD" },
+                    AutoRestartOnDrift = true,
+                    MaxConvergenceRestarts = 3
+                })
+                {
+                    RunSu2Override = (wd, cores) =>
+                    {
+                        calls++;
+                        if (calls == 1)
+                        {
+                            File.WriteAllLines(Path.Combine(wd, "history.csv"), BuildHistoryLines(200, i => 0.050 - 0.0001 * i));
+                            File.WriteAllText(Path.Combine(wd, "restart_flow.dat"), "restart-block-0");
+                            return (0, string.Empty, string.Empty);
+                        }
+
+                        File.WriteAllLines(Path.Combine(wd, "history.csv"), BuildHistoryLines(10, _ => 1e19));
+                        return (1, "MPI_Abort(1)", string.Empty);
+                    }
+                };
+
+                var config = new SimulationConfig
+                {
+                    Su2MaxIterations = 1000,
+                    CauchyElements = 100,
+                    IterativeToleranceFraction = 0.25f
+                };
+                config.MeshCalibration.Tolerance = 0.05f;
+
+                var record = CreateDummyRecord();
+                solver.Solve(meshPath, record, config, dir);
+
+                Assert.Equal(2, calls);
+                Assert.True(record.SimulationFailed);
+                Assert.Equal(EvaluationFailureStage.Solver, record.FailedStage);
+                Assert.True(File.Exists(Path.Combine(dir, OutputConventions.ErrorLogsDirectory, "SU2_Error_Model_Gen1_Var1.txt")));
+            }
+            finally
+            {
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            }
+        }
     }
 }

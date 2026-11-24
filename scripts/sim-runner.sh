@@ -279,7 +279,7 @@ cmd_doctor() {
                     ;;
                 tmux)
                     probe_rc=0
-                    tool_ver="$(run_probe "$tool_path" -V 2>&1 | head -n 1)" || probe_rc=$?
+                    tool_ver="$(run_probe "$tool_path" -V 2>/dev/null | head -n 1)" || probe_rc=$?
                     ok "tmux -> $tool_path (${tool_ver:-ok})"
                     ;;
                 xvfb-run)
@@ -297,11 +297,13 @@ cmd_doctor() {
     su2_bin="$(command -v SU2_CFD 2>/dev/null || true)"
     if [ -n "$su2_bin" ]; then
         probe_rc=0
-        tool_ver="$(run_probe "$su2_bin" --version 2>&1 | head -n 1)" || probe_rc=$?
+        local su2_help=""
+        su2_help="$(run_probe "$su2_bin" -h 2>&1)" || probe_rc=$?
         if [ "$probe_rc" -eq 124 ]; then
-            fail "SU2_CFD -> $su2_bin (timed out after 10s on --version)"
+            fail "SU2_CFD -> $su2_bin (timed out after 10s on -h)"
             problems=$((problems + 1))
         else
+            tool_ver="$(printf '%s\n' "$su2_help" | grep -iE 'Release|SU2' | head -n 1 | sed 's/^[|[:space:]]*//;s/[|[:space:]]*$//' || true)"
             ok "SU2_CFD -> $su2_bin (${tool_ver:-present})"
         fi
     elif [ -z "$CONFIG_ERROR" ] && [ -n "$(config_value "Su2Path")" ] && su2_bin="$(resolve_tool "$(config_value "Su2Path")")"; then
@@ -551,7 +553,7 @@ cmd_doctor() {
     if [ -x "$opt_py" ]; then
         local opt_py_ver opt_pkg_ver opt_rc=0
         opt_py_ver="$(run_probe "$opt_py" --version 2>&1 | head -n 1 || true)"
-        opt_pkg_ver="$(run_probe "$opt_py" -c 'import torch, botorch, pymoo, numpy, scipy, matplotlib; print(f"torch={torch.__version__}, botorch={botorch.__version__}, pymoo={pymoo.__version__}, numpy={numpy.__version__}, scipy={scipy.__version__}")' 2>&1)" || opt_rc=$?
+        opt_pkg_ver="$(run_probe "$opt_py" -W ignore -c 'import torch, botorch, pymoo, numpy, scipy, matplotlib; print(f"torch={torch.__version__}, botorch={botorch.__version__}, pymoo={pymoo.__version__}, numpy={numpy.__version__}, scipy={scipy.__version__}")' 2>&1)" || opt_rc=$?
         if [ "$opt_rc" -eq 0 ]; then
             ok "opt-py -> $opt_py ($opt_py_ver; $opt_pkg_ver)"
         else
@@ -759,7 +761,8 @@ cmd_start() {
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
 
     tmux new-session -d -s "$SESSION" \
-        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground"
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground" \
+        </dev/null >/dev/null 2>&1
 
     sleep 3
 
@@ -802,7 +805,8 @@ cmd_resume() {
     echo "$PROJECT_NAME" >"$LAST_PROJECT_FILE"
 
     tmux new-session -d -s "$SESSION" \
-        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --resume"
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --resume" \
+        </dev/null >/dev/null 2>&1
 
     sleep 3
 
@@ -844,7 +848,8 @@ cmd_calibrate() {
     rm -f "$EXIT_FILE"
 
     tmux new-session -d -s "$SESSION" \
-        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --calibrate"
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground --calibrate" \
+        </dev/null >/dev/null 2>&1
 
     sleep 3
 
@@ -911,7 +916,8 @@ cmd_recheck() {
     rm -f "$EXIT_FILE"
 
     tmux new-session -d -s "$SESSION" \
-        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground $recheck_args"
+        "SIM_PROJECT='$PROJECT_NAME' bash '$SCRIPT_DIR/sim-runner.sh' _foreground $recheck_args" \
+        </dev/null >/dev/null 2>&1
 
     sleep 3
 

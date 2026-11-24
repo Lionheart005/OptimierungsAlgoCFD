@@ -32,7 +32,7 @@ Use `"Preset": ""` or `"Preset": "Custom"` to disable Layer 1.5 completely.
 |---|---|---|---|---|---|
 | `External2D:FastConcept` | `External2D` | `FastConcept` | `Manual` (`1.5`), 200c farfield | 1500 iters, Cauchy `1e-4`, $y^+=1.5$, AutoStop On (12) | `Off` |
 | `External2D:StandardRans` | `External2D` | `StandardRans` | `Auto` (5% tol), 500c farfield | 3000 iters, Cauchy `5e-5`, $y^+=1.0$, AutoStop On (20) | `FinalTopN` (3, 1 step) |
-| `External2D:VerificationFine` | `External2D` | `VerificationFine` | `Auto` (2% tol), 500c farfield, BL growth `1.15` | 10000 iters, Cauchy `1e-6`, $y^+=0.8$, `SlopeLimiterFlow: NONE`, `FreestreamNuFactor: 3.0`, AutoStop Off | `FinalTopN` (3, 2 steps) |
+| `External2D:VerificationFine` | `External2D` | `VerificationFine` | `Auto` (2% tol), 500c farfield, BL growth `1.15` | 10000 iters, Cauchy `1e-6`, $y^+=0.8$, `SlopeLimiterFlow: VENKATAKRISHNAN`, `FreestreamNuFactor: 3.0`, AutoStop Off | `FinalTopN` (3, 2 steps) |
 | `External3D:FastConcept` | `External3D` | `FastConcept` | `Manual` (`1.5`), Prism, `DetailBox: false` | 2000 iters, Cauchy `1e-4`, $y^+=2.0$, AutoStop On (12) | `Off` |
 | `External3D:StandardRans` | `External3D` | `StandardRans` | `Auto` (5% tol), Prism, `DetailBox: false` | 3000 iters, Cauchy `5e-5`, $y^+=1.5$, AutoStop On (20) | `FinalTopN` (3, 1 step) |
 | `External3D:VerificationFine` | `External3D` | `VerificationFine` | `Auto` (2% tol), Prism, `DetailBox: true` | 8000 iters, Cauchy `1e-5`, $y^+=1.0$, AutoStop Off | `FinalTopN` (3, 1 step) |

@@ -16,6 +16,7 @@ namespace FluidForge.Solvers.Cfd
         private const float SquareMmToSquareM = 0.000001f;
         private const float MmToM = 0.001f;
         private const float FallbackReferenceAreaMm2 = 1.0f;
+        private const float MaxPlausibleMetricMagnitude = 1e6f;
 
         private readonly Su2SolverOptions _options;
         private bool _unknownResultAveragingReported;
@@ -317,6 +318,16 @@ namespace FluidForge.Solvers.Cfd
                 }
 
                 float finalMetricValue = ResolveAveragedMetricValue(historyResult, columnName, value, controlRun, unsteadyStationary);
+                if (!float.IsFinite(finalMetricValue)
+                    || MathF.Abs(value) > MaxPlausibleMetricMagnitude
+                    || MathF.Abs(finalMetricValue) > MaxPlausibleMetricMagnitude)
+                {
+                    float reportedValue = MathF.Abs(value) > MaxPlausibleMetricMagnitude ? value : finalMetricValue;
+                    SimulationLog.Error($"Metric '{metricName}' ({columnName}) diverged to {reportedValue.ToString("0.###e+0", CultureInfo.InvariantCulture)} (|val| > {MaxPlausibleMetricMagnitude.ToString("0.###e+0", CultureInfo.InvariantCulture)}). Marking simulation as failed.");
+                    complete = false;
+                    continue;
+                }
+
                 record.PassiveParameters[metricName] = finalMetricValue;
                 SimulationLog.Detail($"Analysis succeeded. {metricName} ({columnName}): {finalMetricValue:F5}");
             }
