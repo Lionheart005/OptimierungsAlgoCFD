@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../schemas/openfoam.schema.json",
+  "DomainMode": "External3D",
+  "SymmetryPlane": "Y0",
+  "Density": 999.1,
+  "DynamicViscosity": 0.00011062,
+  "InletVelocity": 3.05,
+  "ReferenceLength": 0.43561,
+  "ReferenceArea": 0.05988,
+  "ReferenceAreaMetric": "WettedArea",
+  "BaseCellSizeMm": 80.0,
+  "SurfaceRefinementLevelMin": 5,
+  "SurfaceRefinementLevelMax": 6,
+  "BoundaryLayerLayers": 8,
+  "TargetYPlus": 80.0,
+  "ExportVtk": true,
+  "ResultMetrics": {
+    "Drag": "Drag",
+    "Lift": "Lift"
+  }
+}

@@ -1,6 +1,6 @@
-# Phase 4 — Zusatzplan: Optionales Container-Setup (Docker / Apptainer)
+# Phase 5 — Zusatzplan: Optionales Container-Setup (Docker / Apptainer)
 
-> **Status:** Geplant (Umsetzung erst in Phase 4 / `AP 4.1`; noch **nicht** gecodet)  
+> **Status:** Geplant (Umsetzung erst in Phase 5 / optionales `AP 5.5`; noch **nicht** gecodet)  
 > **Einordnung:** Ergänzendes Deployment-Angebot für externe Nutzer, neue Linux-Server, HPC-Cluster mit Apptainer und lokale Windows-/WSL2-Tests. Das bestehende rootless Setup ([`setup_server.sh`](../src/FluidForge/setup_server.sh)) bleibt dauerhaft als gleichberechtigter Fallback bestehen.
 
 ---
@@ -18,7 +18,7 @@ Vor einer Container-Entscheidung wurde der aktuelle Arbeitsserver `BIC_12` (`Bio
 
 **Konsequenz:**
 - Auf **`BIC_12`** (und vergleichbaren gesperrten Uni-Servern ohne `sudo`) bleibt das bestehende Conda-/System-Setup ([`setup_server.sh`](../src/FluidForge/setup_server.sh) + System-`openfoam2506` + `mpich` + `opt-py`) **zwingend erforderlich** und der produktive Standard.
-- Ein Container-Setup ist daher **kein Ersatz** für `setup_server.sh`, sondern ein **zusätzliches Angebot in Phase 4** für:
+- Ein Container-Setup ist daher **kein Ersatz** für `setup_server.sh`, sondern ein **zusätzliches Angebot in Phase 5** für:
   1. externe Open-Source-Nutzer („Zero-to-First-Run“ in einem Befehl statt 200 Zeilen Build-Skript),
   2. lokale OpenFOAM-Läufe unter Windows (Docker Desktop / WSL2) und macOS/Linux,
   3. andere HPC-Cluster oder eigene Cloud-/Instituts-Server, auf denen `apptainer`/`singularity` oder `docker` installiert ist.
@@ -41,21 +41,21 @@ Vor einer Container-Entscheidung wurde der aktuelle Arbeitsserver `BIC_12` (`Bio
 
 ---
 
-## 3. Geplante Arbeitspakete (für Phase 4 — noch nicht umsetzen)
+## 3. Geplante Arbeitspakete (für Phase 5 — noch nicht umsetzen)
 
-### AP 4-C1: `docker/Dockerfile` & Entrypoint erstellen
+### AP 5-C1: `docker/Dockerfile` & Entrypoint erstellen
 - [ ] Multi-Stage-`docker/Dockerfile` auf Basis `ubuntu:24.04` mit Targets `base` und `full` erstellen (alle Tool-Versionen strikt gepinnt wie in `setup_server.sh`).
 - [ ] Saubere MPI-Trennung im Container sicherstellen: `SU2_CFD` ruft ausschließlich MPICH (`mpiexec`), `OpenFOAM` ruft ausschließlich System-OpenMPI (`/usr/bin/mpirun`) — konsistent mit `OpenFoamProcessRunner` und `sim-runner.sh`.
 - [ ] `docker/entrypoint.sh` anlegen, das optional `xvfb-run -a` für `PicoGK`-Projekte kapselt und die Host-UID/GID sauber respektiert (keine `root`-Dateien in `results/`!).
 - [ ] `.dockerignore` anlegen (`results/`, `server-results/`, `Serverergebnisse/`, `bin/`, `obj/`, `.git/` ausschließen).
 
-### AP 4-C2: Apptainer-Kompatibilität & Nutzungs-Wrapper dokumentieren
+### AP 5-C2: Apptainer-Kompatibilität & Nutzungs-Wrapper dokumentieren
 - [ ] Sicherstellen, dass das Docker-Image ohne Änderungen per `apptainer pull fluidforge.sif docker://ghcr.io/<owner>/fluidforge-toolchain:base` auf HPC-Clustern lauffähig ist (kein Schreibzugriff im Container-Dateisystem nötig, `/tmp` & Workspace per `--bind`).
 - [ ] Optionale `docker-compose.yml` (oder kurzes Wrapper-Skript `scripts/run-in-container.sh` / `.ps1`) für einzeilige Befehle:
   - `--print-config`, `--smoke-test`, `dotnet test`, 2D-SU2-Testlauf und 3D-OpenFOAM-Testlauf (`PipeBend90`).
 - [ ] Kurze Anleitung in `docs/container-workflow.md` ergänzen und aus `README.md` sowie `docs/server-workflow.md` verlinken (inkl. klarer Entscheidungshilfe: *Wann Container, wann `setup_server.sh`?*).
 
-### AP 4-C3: Verifikation & Optionales GHCR-Publish
+### AP 5-C3: Verifikation & Optionales GHCR-Publish
 - [ ] Lokal (Docker / WSL2) alle 4 Kern-Checks im Container verifizieren:
   1. `dotnet test --filter "Category!=Integration"` (alle Unit-Tests grün)
   2. `Naca2D` (`--smoke-test` + echter 2D-SU2-Integrationstest)

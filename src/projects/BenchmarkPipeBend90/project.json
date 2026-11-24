@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": {
+    "BendRadiusRatio": 3.0,
+    "RadiusModulationMid": 1.0
+  },
+  "ParameterBounds": {
+    "BendRadiusRatio": { "Min": 2.8, "Max": 3.2 },
+    "RadiusModulationMid": { "Min": 0.95, "Max": 1.05 }
+  },
+  "OptimizationTargets": {
+    "PipeRadiusMm": 15.0,
+    "InletStraightRatio": 10.0,
+    "OutletStraightRatio": 20.0,
+    "ReferenceDensity": 998.2,
+    "ReferenceViscosity": 0.001002,
+    "ReferenceInletVelocity": 3.34
+  },
+  "DimensionalParameters": []
+}

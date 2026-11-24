@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../schemas/gmsh2d.schema.json",
+  "BoundaryLayerGrowthRate": 1.15,
+  "SurfaceCellSizeFactor": 0.003,
+  "NearfieldCellSizeFactor": 0.015,
+  "WakeLengthFactor": 5.0,
+  "WakeCellSizeFactor": 0.015,
+  "DetailBox": true,
+  "DetailBoxLengthFactor": 1.5,
+  "DetailBoxWidthFactor": 0.3,
+  "DetailBoxCellSizeFactor": 0.008,
+  "EdgeRefinementFactor": 0.2,
+  "EdgeRefinementDistanceFactor": 0.08
+}

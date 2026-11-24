@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../schemas/su2.schema.json",
+  "Density": 999.1,
+  "DynamicViscosity": 0.00011062,
+  "SpeedOfSound": 1480.0,
+  "FreestreamVelocity": 3.05,
+  "TurbulenceModel": "SST",
+  "Dimensions": 3,
+  "SymmetryPlane": "Y0",
+  "ReferenceLength": 0.43561,
+  "ReferenceAreaMetric": "WettedArea",
+  "ResultMetrics": {
+    "Drag": "CD",
+    "Lift": "CL"
+  },
+  "ConvergenceField": "DRAG"
+}

@@ -24,29 +24,26 @@ Bis hierhin stehen:
 
 Jeder externe CFD-Ingenieur fragt als Erstes: *„Woher weiß ich, dass deine automatische Pipeline keine hübschen bunten Bilder mit 40 % Fehler rechnet?“* Diese **3 Standard-Benchmarks** beantworten das schwarz auf weiß:
 
-| # | Benchmark | Domäne / Solver | Literatur-Referenz | Was er beweist |
-| :--- | :--- | :--- | :--- | :--- |
-| **B1** | **NASA TMR NACA 0012** ($Re = 6\cdot 10^6$, $\alpha = 0^\circ, 10^\circ$) | `External2D` / **SU2** | NASA Turbulence Modeling Resource (`CL`, `CD`, `Cp`) | 2D-RANS-Genauigkeit innerhalb 2–3 %, GCI-Konvergenz, `y+ ~ 1` |
-| **B2** | **90°-Rohrkrümmer / Diffusor** (intern, turbulent) | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ (ggf. + Literatur-CFD) | Korrekte interne `PicoGK`/`ShapeKernel` → `snappyHexMesh` → `simpleFoam`-Kette, Massenbilanz `< 1 %`, realer Druckverlust in Minuten! |
-| **B3** | **DARPA SUBOFF (Bare Hull)** oder **Myring-Rumpf** | `External3D` / **OpenFOAM** (Vergleich gegen **SU2**, jeweils mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene, GCI und Freigabe von **OpenFOAM als neuem 3D-Standard** (direkter Solver-Quervergleich!) |
+| # | Benchmark | Projekt(e) | Domäne / Solver | Literatur-Referenz | Was er beweist |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **B1** | **NASA TMR NACA 0012** ($Re = 6\cdot 10^6$, $\alpha = 0^\circ, 10^\circ$) | `BenchmarkNaca0012` | `External2D` / **SU2** | NASA Turbulence Modeling Resource (`CL`, `CD`, `Cp`) | 2D-RANS-Genauigkeit innerhalb 2–3 %, GCI-Konvergenz, `y+ ~ 1` |
+| **B2** | **90°-Rohrkrümmer / Diffusor** (intern, turbulent) | `BenchmarkPipeBend90` | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ (ggf. + Literatur-CFD) | Korrekte interne `PicoGK`/`ShapeKernel` → `snappyHexMesh` → `simpleFoam`-Kette, Massenbilanz `< 1 %`, realer Druckverlust in Minuten! |
+| **B3** | **DARPA SUBOFF (Bare Hull)** | `BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` (Zwillingsprojekte) | `External3D` / **OpenFOAM** vs. **SU2** (jeweils mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene, GCI und Freigabe von **OpenFOAM als neuem 3D-Standard** (direkter Solver-Quervergleich!) |
 
 *Zusätzlich (offener v1-Punkt):* Sauberer **3-Seed-Benchmarkvergleich** auf dem aktualisierten `Naca2D` (Multi-Point) zwischen eingebautem C#-`Bayes`, `IdwBaseline` und optionalem `BoTorch`-Backend.
 
 ---
 
-## 3. Empfehlungen & Ideen für das große Showcase-Projekt (Entscheidung erst in Phase 4!)
+## 3. Ausgewähltes Showcase-Projekt (vorbereitet für Phase 4)
 
-Da das Framework problemunabhängig aufgebaut ist, legen wir erst nach den Benchmarks fest, welches konkrete Showcase-Bauteil (oder Duo) im Bericht & Community-Post die volle Leistungsfähigkeit (Presets, Pre-/Post-Constraints, Pareto-Front, GCI, Multi-Fidelity, OpenFOAM + SU2) demonstriert. **Konkrete Favoriten als Entscheidungsgrundlage:**
+Für den Bericht & Community-Post wurde als primäres Showcase-Projekt **`StatorCoolingRing`** vorbereitet (ergänzt um optionales 2D-Multi-Point-Profil):
 
-1. **Favorit 1 (Plan-A-Paradebeispiel — inkl. echtem 3D-Druck-Potenzial!):** **3D-druckbarer 1-zu-4 Strömungsverteiler (Manifold) mit `ShapeKernel` + OpenFOAM + Pareto (`BoTorch`)**
-   - *Ziele (Multi-Objective):* (1) Minimiere Druckverlust $\Delta p$, (2) Minimiere Massenstrom-Ungleichverteilung zwischen den 4 Auslässen.
-   - *Pre-CFD-Constraints:* Bauraum, Mindestwandstärke für 3D-Druck, maximales Materialvolumen.
-   - *Warum stark:* Zeigt exakt, wo `PicoGK`/`ShapeKernel` + OpenFOAM + Pareto glänzen — und lässt sich für ~5 € wirklich 3D-drucken und optional experimentell vermessen!
-2. **Favorit 2 (Direkt im LEAP-71-Revier):** **Kompakter interner Kühlkanal / statischer Mischer**
-   - *Ziele:* Minimiere Druckverlust $\Delta p$ vs. Maximiere benetzte Oberfläche / Mischungsgrad (oder später Wärmeübergang).
-   - *Warum stark:* Organische, im normalen CAD kaum modellierbare 3D-Druck-Formen.
-3. **Ergänzung 2D:** **Multi-Point-Profiloptimierung (`Naca2D` oder CST/Spline-Profil)** mit SU2 — zeigt in Minuten den kompletten Workflow von Startprofil über Konvergenz bis zur GCI-verifizierten Feinprüfung.
-4. **Optional 3D extern:** Repariertes `MantaAuv` (oder sauberer Myring-AUV-Rumpf) mit volumetrischem $C_{D,V}$, Pre-CFD-Volumen-Constraint und Symmetrieebene — als direkter Vorher/Nachher-Beleg gegenüber dem archivierten 2026-11-21-Lauf.
+1. **Primär-Showcase (`StatorCoolingRing`):** **3D-druckbarer 1-zu-12 E-Motor-Stator-Kühlmittel-Ringverteiler mit `ShapeKernel` + `OpenFOAM` + `BoTorch` `qNEHVI` Pareto & druckbarer Solid-STL**
+   - *Ziele (Multi-Objective):* (1) Minimiere Druckverlust $\Delta p$, (2) Minimiere Massenstrom-Ungleichverteilung zwischen den 12 Auslässen.
+   - *Pre-CFD-Constraints & Fertigung:* Bauraum, Mindestwandstärke für 3D-Druck, maximales Materialvolumen, Export einer druckbaren Solid-STL.
+   - *Warum stark:* Zeigt exakt, wo `PicoGK`/`ShapeKernel` + `OpenFOAM` + `BoTorch` (`qNEHVI` Pareto-Front) glänzen — und liefert ein real 3D-druckbares Industrie-nahes Bauteil!
+2. **Ergänzung 2D:** **Multi-Point-Profiloptimierung (`Naca2D` oder CST/Spline-Profil)** mit SU2 — zeigt in Minuten den kompletten Workflow von Startprofil über Konvergenz bis zur GCI-verifizierten Feinprüfung.
+3. **Optional 3D extern:** Repariertes `MantaAuv` (oder sauberer Myring-AUV-Rumpf) mit volumetrischem $C_{D,V}$, Pre-CFD-Volumen-Constraint und Symmetrieebene — als direkter Vorher/Nachher-Beleg gegenüber dem archivierten 2026-11-21-Lauf.
 
 ---
 
@@ -55,15 +52,16 @@ Da das Framework problemunabhängig aufgebaut ist, legen wir erst nach den Bench
 ### AP 4.1: Stabilitäts-, Ergonomie- & „Fremdnutzer“-Audit
 - [ ] **Fresh-Clone-Test („Zero-to-First-Run“):** Das Repo auf einer sauberen Umgebung (lokal + Server) nur anhand der englischen `README.md` aufsetzen und ein 2D- sowie ein 3D-Beispiel starten. Jede Hürde sofort beheben.
 - [ ] **Fehlermeldungen & Diagnostics polieren:** Klare, handlungsorientierte Fehlermeldungen bei fehlenden Tools, Netzproblemen oder unplausiblen Eingaben; `sim.ps1 doctor` prüft vollständig SU2, Gmsh, OpenFOAM, PicoGK, MPICH und optionales Python/BoTorch-Env.
-- [ ] **Optionales Container-/Setup-Paket (Zusatzplan [`phase4_docker_container.md`](phase4_docker_container.md)):** Reproduzierbares Toolchain-`Dockerfile` (`base`/`full`, Apptainer-kompatibel) als Zusatzangebot für externe Nutzer & Cluster mit Container-Runtime bauen und testen; `setup_server.sh` bleibt als rootless Standard für Server ohne Container-Runtime (wie `BIC_12`) erhalten.
+
+> *Hinweis:* Das optionale Docker-/Apptainer-Container-Setup wurde auf Phase 5 verschoben (siehe [`phase5_docker_container.md`](phase5_docker_container.md)); in Phase 4 bleibt `setup_server.sh` der einzige unterstützte Server-Setup-Pfad.
 
 ### AP 4.2: Benchmark-Suite durchrechnen & dokumentieren
-- [ ] **B1 (`Naca2D` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich sauber auf dem Server durchrechnen und GCI + Abweichung zur NASA-Referenz dokumentieren.
-- [ ] **B2 (`90°-Rohrkrümmer` / `Internal3D` OpenFOAM)** durchrechnen und Druckverlustbeiwert $\zeta$ + Massenbilanz + GCI gegen Literaturwerte dokumentieren.
-- [ ] **B3 (`DARPA SUBOFF` / `External3D` SU2 mit Symmetrie)** durchrechnen und $C_D$ gegen Literaturwerte dokumentieren.
+- [ ] **B1 (`BenchmarkNaca0012` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich (`Naca2D`) sauber auf dem Server durchrechnen und GCI + Abweichung zur NASA-Referenz dokumentieren.
+- [ ] **B2 (`BenchmarkPipeBend90` / `Internal3D` OpenFOAM)** durchrechnen und Druckverlustbeiwert $\zeta$ + Massenbilanz + GCI gegen Literaturwerte dokumentieren.
+- [ ] **B3 (`BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` / `External3D` Zwillingsprojekte mit Symmetrie)** durchrechnen und $C_D$ im Solver-Quervergleich gegen Literaturwerte dokumentieren.
 
 ### AP 4.3: Showcase-Projekt wählen, rechnen & visualisieren
-- [ ] Konkretes Showcase-Projekt aus Abschnitt 3 auswählen (z. B. 1-zu-4 Manifold + 2D-Multi-Point-Profil).
+- [ ] Ausgewähltes Showcase-Projekt **`StatorCoolingRing`** (1-zu-12 E-Motor-Stator-Kühlmittel-Ringverteiler mit `BoTorch` `qNEHVI` Pareto & druckbarer Solid-STL, ggf. ergänzt um 2D-Multi-Point-Profil) für den Lauf final prüfen.
 - [ ] Vollständigen Optimierungslauf (inkl. Kalibrierung, Pre-/Post-Constraints, Pareto-Front / Feinprüfung) durchführen und alle Daten sauber archivieren.
 - [ ] Hochwertige Visualisierungen erzeugen: Konvergenz-, GCI-, Pareto- und ARD-Sensitivitätsplots (`scripts/*.py`) + ParaView-Renderings (Stromlinien, Druckfelder, $y^+$, Schnittansichten).
 - [ ] *(Bonus, falls Lust & Zeit)*: Gewinner-STL real 3D-drucken (und ggf. einfachen Durchfluss-/Drucktest dokumentieren).

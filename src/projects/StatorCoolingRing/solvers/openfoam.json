@@ -1,0 +1,19 @@
+{
+  // StatorCoolingRing -- OpenFOAM Solver & Mesher. Fluid overrides only; mesh/solver defaults come from Preset (docs/physics-presets.md).
+  "$schema": "../../../../schemas/openfoam.schema.json",
+  "Density": 998.2,
+  "DynamicViscosity": 0.001002,
+  "InletCondition": "VolumetricFlowRate",
+  "InletVolumetricFlowRate": 0.00016667,
+  "InletVelocity": 1.255,
+  "BaseCellSizeMm": 1.6,
+  "SurfaceRefinementLevelMin": 1,
+  "SurfaceRefinementLevelMax": 2,
+  "BoundaryLayerLayers": 4,
+  "TargetYPlus": 25.0,
+  "ExportVtk": true,
+  "ResultMetrics": {
+    "PressureDrop": "PressureDrop",
+    "FlowImbalance": "FlowImbalance"
+  }
+}

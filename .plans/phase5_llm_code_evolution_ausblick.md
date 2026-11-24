@@ -77,6 +77,7 @@ Hier schließt sich der Kreis zu deiner ursprünglichen Inspiration (LEAP 71 / N
   1. Handgezeichnete Baseline-Geometrie,
   2. Parametrische Optimierung (Phase 1–4, feste Topologie),
   3. LLM-Code-Evolution + parametrische Optimierung (Phase 5, freie Topologie) — idealerweise mit 3D-Druck & realer Messung!
+- [ ] **AP 5.5 (Optional): Container-Setup (Docker / Apptainer):** Reproduzierbares Toolchain-Image (`base`/`full`) als Ergänzung zu `setup_server.sh` — siehe verschobenen Zusatzplan [`phase5_docker_container.md`](phase5_docker_container.md).
 
 ---
 

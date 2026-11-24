@@ -1,0 +1,17 @@
+{
+  // StatorCoolingRing -- Framework Settings. Presets & overrides: docs/physics-presets.md | All keys: docs/config-reference.md
+  "$schema": "../../../schemas/simulation.schema.json",
+  "Preset": "Internal3D:StandardRans",
+  "OptimizationAlgorithm": "BoTorch",
+  "ExternalOptimizer": {
+    "Acquisition": "qNEHVI",
+    "FallbackToBuiltInBayes": true
+  },
+  "UseRubberBandScaler": false,
+  "UseStlSmoothing": false,
+  "BaseVoxelResolution": 0.4,
+  "AutoVoxelResolution": true,
+  "MaxIterations": 12,
+  "VariantsPerIteration": 6,
+  "MpiCores": 18
+}

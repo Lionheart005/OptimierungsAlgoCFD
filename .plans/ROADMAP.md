@@ -71,10 +71,11 @@ Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt
                                            ▼
   ┌────────────────────────────────────────────────────────────────────────────┐
   │ Phase 5 (Grobkonzept): LLM-Code-Evolution („Open-Source Noyron+AlphaEvolve“)│
-  │ Plan: phase5_llm_code_evolution_ausblick.md                                │
+  │ Plan: phase5_llm_code_evolution_ausblick.md + phase5_docker_container.md   │
   │ • Maschinenlesbare Diagnostik / MCP-Fassade + SHA-Hash-Schutz              │
   │ • Äußere LLM-Schleife mutiert ShapeKernel-Topologien (Human-in-the-Loop)   │
   │ • Großer Vergleichslauf (Baseline vs. Parametrik vs. LLM) + Bericht 2      │
+  │ • Optional: Docker-/Apptainer-Container-Setup (AP 5.5)                     │
   └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,8 +86,8 @@ Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt
 | **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | ✔ erledigt (22.11.2026) |
 | **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`), Multi-Fidelity | ✔ erledigt (23.11.2026) |
 | **Phase 3.5** | [`phase3_5_korrekturplan_defaults_und_multifidelity.md`](phase3_5_korrekturplan_defaults_und_multifidelity.md) | Korrekturpaket: `UseStlSmoothing`/`UseRubberBandScaler`-Defaults & Multi-Fidelity-Bugfixes | ✔ erledigt (23.11.2026) |
-| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) + [`phase4_docker_container.md`](phase4_docker_container.md) | Feature-Freeze, 3 Literatur-Benchmarks, optionales Docker-/Apptainer-Setup, Showcase, LaTeX-Bericht, Release | offen |
-| **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 | Ausblick / Grobkonzept |
+| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Release | offen |
+| **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) + [`phase5_docker_container.md`](phase5_docker_container.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 + optionales Docker-/Apptainer-Setup | Ausblick / Grobkonzept |
 
 ---
 

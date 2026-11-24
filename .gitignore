@@ -47,3 +47,9 @@ imgui.ini
 
 # Personal assessment / strategy notes (not for the public repository)
 .plans/strategie_und_projektbewertung.md
+
+# Local IDE settings
+.vscode/
+
+# Local LaTeX technical report drafts & build artifacts
+docs/report/

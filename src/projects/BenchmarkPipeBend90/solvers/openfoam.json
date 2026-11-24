@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../../schemas/openfoam.schema.json",
+  "Density": 998.2,
+  "DynamicViscosity": 0.001002,
+  "InletVelocity": 3.34,
+  "TargetYPlus": 25.0,
+  "ExportVtk": true,
+  "ResultMetrics": {
+    "PressureDrop": "PressureDrop"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/su2.schema.json",
+  "Density": 1.225,
+  "SpeedOfSound": 340.28,
+  "FreestreamVelocity": 51.042,
+  "DynamicViscosity": 1.0421075e-5,
+  "TurbulenceModel": "SA",
+  "Dimensions": 2,
+  "ReferenceLength": 1.0,
+  "ReferenceAreaMetric": "Chord",
+  "OperatingPoints": [
+    { "Name": "Alpha0", "AngleOfAttackDeg": 0.0, "Weight": 0.5 },
+    { "Name": "Alpha10", "AngleOfAttackDeg": 10.0, "Weight": 0.5 }
+  ],
+  "ResultMetrics": {
+    "Drag": "CD",
+    "Lift": "CL"
+  },
+  "ConvergenceField": "DRAG"
+}

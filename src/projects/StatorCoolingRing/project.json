@@ -1,0 +1,41 @@
+{
+  // StatorCoolingRing -- Project Settings (Single Source of Truth). See docs/creating-a-project.md
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": {
+    "RingRadiusRatio": 0.85,
+    "RingTaperRatio": 1.00,
+    "InletSplitBlend": 0.20,
+    "BranchHeightMm": 20.0,
+    "BranchArcSweepDeg": 0.0,
+    "FarSideElevationMm": 0.0,
+    "RingRadialShiftMm": 0.0,
+    "NearPortThroatRatio": 1.00
+  },
+  "ParameterBounds": {
+    "RingRadiusRatio":     { "Min": 0.55, "Max": 1.20 },
+    "RingTaperRatio":      { "Min": 0.35, "Max": 1.30 },
+    "InletSplitBlend":     { "Min": 0.10, "Max": 0.90 },
+    "BranchHeightMm":      { "Min": 16.0, "Max": 30.0 },
+    "BranchArcSweepDeg":   { "Min": -25.0, "Max": 25.0 },
+    "FarSideElevationMm":  { "Min": -4.0, "Max": 10.0 },
+    "RingRadialShiftMm":   { "Min": -10.0, "Max": 10.0 },
+    "NearPortThroatRatio": { "Min": 0.70, "Max": 1.20 }
+  },
+  "OptimizationTargets": {
+    "PitchCircleRadiusMm": 65.0,
+    "OutletRadiusMm": 2.0,
+    "InletRadiusMm": 6.5,
+    "BoltCircleRadiusMm": 80.0,
+    "BoltHoleRadiusMm": 2.75,
+    "BoltKeepOutRadiusMm": 6.5,
+    "MinRequiredBoltClearanceMm": 2.0,
+    "WallThicknessMm": 2.5,
+    "MaxOuterRadiusMm": 92.0,
+    "MaxTotalHeightMm": 48.0,
+    "MinBranchRadiusMm": 1.4,
+    "MaxFluidVolumeMm3": 180000.0,
+    "MaxPrintableSolidVolumeMm3": 220000.0,
+    "ExportPrintableSolid": 1.0
+  },
+  "DimensionalParameters": []
+}

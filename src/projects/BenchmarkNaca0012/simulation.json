@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../schemas/simulation.schema.json",
+  "Preset": "External2D:VerificationFine",
+  "MaxIterations": 1,
+  "VariantsPerIteration": 1,
+  "UseRubberBandScaler": false,
+  "UseStlSmoothing": false,
+  "ChampionVerification": {
+    "Mode": "Off"
+  },
+  "MpiCores": 12,
+  "GmshCores": 12
+}

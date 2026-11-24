@@ -1,0 +1,5 @@
+# StatorCoolingRing
+
+StatorCoolingRing models an additively manufactured 1-to-12 liquid-cooling distributor manifold for the end-winding of an electric vehicle hairpin stator. Coolant enters through a radial side inlet port at `X = -105 mm` (`Ø 13.0 mm`, `10 L/min` water at `20 °C`) and splits across a symmetric Y-bifurcation into a three-dimensional collector ring that feeds twelve axial `Ø 4.0 mm` outlet jets seated on a planar `Z = 0` mounting face at `R = 65.0 mm`.
+
+Eight dimensionless and dimensional design parameters govern the ring cross-section, circumferential taper, Y-junction blend, axial ring elevation, tangential outlet-arm sweep, and near-port throat modulation while keeping the port interfaces, four M5 flange bolt keep-out zones (`R = 80.0 mm`), and 3D-printable wall thickness (`2.5 mm`) invariant. Pre-CFD packaging constraints validate outer radius, height, minimum branch radius, fluid volume, and 3D bolt clearance before multi-objective OpenFOAM optimization (`BoTorch` `qNEHVI`) minimizes total pressure drop and outlet-to-outlet flow imbalance simultaneously.

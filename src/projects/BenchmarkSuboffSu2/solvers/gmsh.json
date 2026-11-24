@@ -1,0 +1,7 @@
+{
+  "$schema": "../../../../schemas/gmsh.schema.json",
+  "SymmetryPlane": "Y0",
+  "BoundaryLayerMode": "Prism",
+  "TargetYPlus": 1.0,
+  "DetailBox": true
+}

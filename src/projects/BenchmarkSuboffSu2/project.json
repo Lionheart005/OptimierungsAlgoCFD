@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": {
+    "RadiusScale": 1.0,
+    "MidbodyLengthScale": 1.0
+  },
+  "ParameterBounds": {
+    "RadiusScale": { "Min": 0.95, "Max": 1.05 },
+    "MidbodyLengthScale": { "Min": 0.95, "Max": 1.05 }
+  },
+  "OptimizationTargets": {
+    "ModelScaleFactor": 0.1,
+    "ReferenceCt": 0.00314
+  },
+  "DimensionalParameters": []
+}

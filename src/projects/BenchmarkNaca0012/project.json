@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../schemas/project.schema.json",
+  "BaseParameters": {
+    "MaxThickness": 12.0,
+    "MaxCamber": 0.0
+  },
+  "ParameterBounds": {
+    "MaxThickness": { "Min": 11.5, "Max": 12.5 },
+    "MaxCamber": { "Min": 0.0, "Max": 0.5 }
+  },
+  "OptimizationTargets": {
+    "ChordMm": 1000.0
+  },
+  "DimensionalParameters": []
+}
