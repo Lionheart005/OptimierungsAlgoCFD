@@ -6,13 +6,26 @@
 
 FluidForge runs computations on a Linux server via SSH, `tmux`, and `xvfb-run` using `scripts/sim.ps1` from Windows (or `scripts/sim-runner.sh` directly on the server).
 
+## 0. First-Time Server Setup & Target Selection
+
+- **Select target server (`-Server <Alias>`):** All `sim.ps1` commands default to `-Server BIC_12` (from `~/.ssh/config`) and can be pointed to any server alias, e.g.:
+  ```powershell
+  .\scripts\sim.ps1 doctor -Server BIC_09 -Project PipeBend90
+  ```
+- **One-time rootless Ubuntu setup:** On a fresh server, copy [`src/FluidForge/setup_server.sh`](../src/FluidForge/setup_server.sh) to the server and run it once (installs Miniforge3 into `~/miniconda`, `conda-forge` libraries, SU2, MPICH, Gmsh, PicoGK, .NET 9, `xvfb-run` fallback if needed, and `opt-py`):
+  ```bash
+  scp src/FluidForge/setup_server.sh BIC_09:~/
+  ssh BIC_09 "chmod +x ~/setup_server.sh && ~/setup_server.sh"
+  ```
+  Ensure key-based SSH login works without prompts (`ssh -o BatchMode=yes BIC_09 "echo ok"` — see [`scripts/README.md`](../scripts/README.md)).
+
 ---
 
 ## 1. All `scripts/sim.ps1` Commands
 
 | Command | Description |
 |---|---|
-| `doctor` | Checks server tools (`dotnet`, `tmux`, `xvfb-run`, `mpirun`, `SU2_CFD`, `gmsh`, `libpicogk.so`, plus OpenFOAM ESI `v2506` / `openfoam2506` with isolated system OpenMPI vs. Conda/MPICH, and optional `opt-py` Python env) against effective project paths (uploads code on first run without building). |
+| `doctor` | Checks server tools (`dotnet`, `tmux`, `xvfb-run`, `mpirun`, `SU2_CFD`, `gmsh`, `libpicogk.so` + `libpicogk.26.2.so`, OpenFOAM ESI `v2506` / `openfoam2506` with isolated system OpenMPI vs. Conda/MPICH, and `opt-py` Python env) against effective project paths (uploads code and builds `FluidForge.dll` if missing). |
 | `deploy` | Packs `src/`, `config/`, `scripts/`, `third_party/` (excluding `bin/`, `obj/`, `*.local.json`, `*.md`, `*.ps1`, `*.pdf`), uploads if SHA-256 changed, and builds. Restarts active runs unless `-NoRestart` is passed; `-Force` forces upload. |
 | `run` | Runs `deploy` and starts the optimization inside a detached `tmux` session (`sim`). |
 | `resume` | Resumes an interrupted run from `results/<Project>/resume/journal.jsonl` using `--resume` and the original seed (never uploads or builds). |

@@ -176,6 +176,15 @@ resolve_tool() {
     command -v "$candidate" 2>/dev/null || return 1
 }
 
+# Run diagnostic binary probes with a 10s timeout so a hung binary never blocks doctor.
+run_probe() {
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 10 "$@"
+    else
+        "$@"
+    fi
+}
+
 # Ensure libpicogk.so sits next to the DLL. Must run after every dotnet build
 # because MSBuild may clean bin/Debug/net9.0.
 restore_picogk() {
@@ -213,23 +222,13 @@ cmd_doctor() {
     say "Project: $PROJECT_NAME"
     say ""
 
-    say "--- Tools ---"
-    local tool
-    for tool in dotnet tmux xvfb-run; do
-        if command -v "$tool" >/dev/null 2>&1; then
-            ok "$tool -> $(command -v "$tool")"
-        else
-            fail "$tool is not in PATH"
-            problems=$((problems + 1))
-        fi
-    done
-
-    say ""
-    say "--- Tool paths (effective project configuration) ---"
-
+    # Determine project type & optimization algorithm early so base-tool checks
+    # know whether SU2/Gmsh/MPICH, OpenFOAM, or opt-py are required even if
+    # FluidForge.dll has not been built yet.
     local is_openfoam_project=0
     local has_su2_config=0
     local is_pure_openfoam=0
+    local opt_algo=""
     [ -f "$PROJECT_DIR/solvers/su2.json" ] && has_su2_config=1
     [ -f "$PROJECT_DIR/solvers/openfoam.json" ] && is_openfoam_project=1
 
@@ -241,111 +240,175 @@ cmd_doctor() {
         case "$preset_val" in
             Internal3D*) is_openfoam_project=1 ;;
         esac
+        opt_algo="$(config_value "OptimizationAlgorithm")"
+    else
+        local sim_json=""
+        for sim_json in "$PROJECT_DIR/simulation.json" "$CONFIG_DIR/simulation.json"; do
+            [ -f "$sim_json" ] || continue
+            if [ "$is_openfoam_project" -eq 0 ]; then
+                local raw_preset
+                raw_preset="$(sed -n 's/.*"Preset"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$sim_json" 2>/dev/null | head -n 1 || true)"
+                case "$raw_preset" in
+                    Internal3D*) is_openfoam_project=1 ;;
+                esac
+            fi
+            if [ -z "$opt_algo" ]; then
+                opt_algo="$(sed -n 's/.*"OptimizationAlgorithm"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$sim_json" 2>/dev/null | head -n 1 || true)"
+            fi
+        done
     fi
 
     if [ "$is_openfoam_project" -eq 1 ] && [ "$has_su2_config" -eq 0 ]; then
         is_pure_openfoam=1
     fi
 
-    if [ -n "$CONFIG_ERROR" ]; then
-        fail "Could not query effective configuration: $CONFIG_ERROR"
-        say  "          Command was:  dotnet <DLL> $PROJECT_NAME --print-config"
-
-        if [ -n "$CONFIG_DUMP" ]; then
-            say "          Application output:"
-            printf '%s\n' "$CONFIG_DUMP" | tail -n 15 | while IFS= read -r line; do
-                say "            $line"
-            done
-        fi
-
-        say "          This is NOT a path error -- tool paths were not checked."
-        say "          A fresh build usually fixes this:  .\\scripts\\sim.ps1 build"
-        problems=$((problems + 1))
-    else
-        local entry
-        for entry in MpiRunPath Su2Path GmshPath; do
-            local configured resolved
-            configured="$(config_value "$entry")"
-
-            if [ -z "$configured" ]; then
-                if [ "$is_pure_openfoam" -eq 1 ]; then
-                    say "  [INFO]    $entry is not configured (not required for pure OpenFOAM project $PROJECT_NAME)"
-                else
-                    fail "$entry is missing from configuration"
-                    problems=$((problems + 1))
-                fi
-                continue
-            fi
-
-            # Match application behavior: bare mpirun/mpiexec prefers the dedicated MPICH environment
-            if [ "$entry" = "MpiRunPath" ]; then
-                case "$configured" in
-                    mpirun|mpiexec) [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ] && configured="$HOME/miniconda/envs/mpich/bin/mpiexec" ;;
-                esac
-            fi
-
-            if resolved="$(resolve_tool "$configured")"; then
-                if [ "$resolved" = "$configured" ]; then
-                    ok "$entry -> $resolved"
-                else
-                    ok "$entry -> $configured (via PATH: $resolved)"
-                fi
-
-                # Official SU2 binary is built with MPICH; OpenMPI launches independent serial copies
-                if [ "$entry" = "MpiRunPath" ] && "$resolved" --version 2>&1 | grep -qiE "open mpi|openrte|prrte"; then
-                    if [ "$is_pure_openfoam" -eq 1 ]; then
-                        say "  [INFO]    $entry is OpenMPI (SU2 requires MPICH, but $PROJECT_NAME uses OpenFOAM)"
-                    else
-                        fail "$entry is OpenMPI; SU2 requires MPICH (otherwise each rank runs as a serial copy)"
-                        say  "          Set: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (see scripts/README.md)"
+    say "--- Base Tools ---"
+    local tool tool_path tool_ver probe_rc
+    for tool in dotnet tmux xvfb-run; do
+        if tool_path="$(command -v "$tool" 2>/dev/null)"; then
+            case "$tool" in
+                dotnet)
+                    probe_rc=0
+                    tool_ver="$(run_probe "$tool_path" --version 2>&1 | head -n 1)" || probe_rc=$?
+                    if [ "$probe_rc" -eq 124 ]; then
+                        fail "dotnet -> $tool_path (timed out after 10s on --version)"
                         problems=$((problems + 1))
+                    else
+                        ok "dotnet -> $tool_path (${tool_ver:-ok})"
                     fi
-                fi
-            else
-                if [ "$is_pure_openfoam" -eq 1 ]; then
-                    say "  [INFO]    $entry -> $configured (not installed; not required for pure OpenFOAM project $PROJECT_NAME)"
-                else
-                    fail "$entry -> $configured (not a file and not in PATH)"
-                    case "$configured" in
-                        */*) say "          Path does not exist or is not executable." ;;
-                        *)   say "          Searched PATH: $PATH" ;;
-                    esac
-                    say "          Configure '$entry' in src/projects/$PROJECT_NAME/simulation.json."
-                    problems=$((problems + 1))
-                fi
-            fi
-        done
+                    ;;
+                tmux)
+                    probe_rc=0
+                    tool_ver="$(run_probe "$tool_path" -V 2>&1 | head -n 1)" || probe_rc=$?
+                    ok "tmux -> $tool_path (${tool_ver:-ok})"
+                    ;;
+                xvfb-run)
+                    ok "xvfb-run -> $tool_path"
+                    ;;
+            esac
+        else
+            fail "$tool is not in PATH"
+            problems=$((problems + 1))
+        fi
+    done
+
+    # Check SU2_CFD, gmsh, and dedicated MPICH even before FluidForge.dll is built.
+    local su2_bin
+    su2_bin="$(command -v SU2_CFD 2>/dev/null || true)"
+    if [ -n "$su2_bin" ]; then
+        probe_rc=0
+        tool_ver="$(run_probe "$su2_bin" --version 2>&1 | head -n 1)" || probe_rc=$?
+        if [ "$probe_rc" -eq 124 ]; then
+            fail "SU2_CFD -> $su2_bin (timed out after 10s on --version)"
+            problems=$((problems + 1))
+        else
+            ok "SU2_CFD -> $su2_bin (${tool_ver:-present})"
+        fi
+    elif [ -z "$CONFIG_ERROR" ] && [ -n "$(config_value "Su2Path")" ] && su2_bin="$(resolve_tool "$(config_value "Su2Path")")"; then
+        ok "SU2_CFD -> $su2_bin (configured via Su2Path)"
+    elif [ "$is_pure_openfoam" -eq 1 ]; then
+        say "  [INFO]    SU2_CFD not in PATH (not required for pure OpenFOAM project $PROJECT_NAME)"
+    else
+        fail "SU2_CFD not found in PATH ($HOME/software/bin)"
+        problems=$((problems + 1))
+    fi
+
+    local gmsh_bin
+    gmsh_bin="$(command -v gmsh 2>/dev/null || true)"
+    if [ -n "$gmsh_bin" ]; then
+        probe_rc=0
+        tool_ver="$(run_probe "$gmsh_bin" --version 2>&1 | head -n 1)" || probe_rc=$?
+        if [ "$probe_rc" -eq 124 ]; then
+            fail "gmsh -> $gmsh_bin (timed out after 10s on --version)"
+            problems=$((problems + 1))
+        else
+            ok "gmsh -> $gmsh_bin (${tool_ver:-present})"
+        fi
+    elif [ -z "$CONFIG_ERROR" ] && [ -n "$(config_value "GmshPath")" ] && gmsh_bin="$(resolve_tool "$(config_value "GmshPath")")"; then
+        ok "gmsh -> $gmsh_bin (configured via GmshPath)"
+    elif [ "$is_pure_openfoam" -eq 1 ]; then
+        say "  [INFO]    gmsh not in PATH (not required for pure OpenFOAM project $PROJECT_NAME)"
+    else
+        fail "gmsh not found in PATH ($HOME/software/gmsh-4.11.1-Linux64/bin)"
+        problems=$((problems + 1))
+    fi
+
+    local mpich_bin=""
+    if [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ]; then
+        mpich_bin="$HOME/miniconda/envs/mpich/bin/mpiexec"
+    elif [ -x "$HOME/miniconda/envs/mpich/bin/mpirun" ]; then
+        mpich_bin="$HOME/miniconda/envs/mpich/bin/mpirun"
+    fi
+    if [ -n "$mpich_bin" ]; then
+        probe_rc=0
+        tool_ver="$(run_probe "$mpich_bin" --version 2>&1 | head -n 2 | tr '\n' ' ')" || probe_rc=$?
+        if [ "$probe_rc" -eq 124 ]; then
+            fail "mpich -> $mpich_bin (timed out after 10s on --version)"
+            problems=$((problems + 1))
+        elif printf '%s' "$tool_ver" | grep -qiE "open mpi|openrte|prrte"; then
+            fail "mpich -> $mpich_bin reports OpenMPI instead of MPICH/Hydra"
+            problems=$((problems + 1))
+        else
+            ok "mpich -> $mpich_bin (${tool_ver:-HYDRA})"
+        fi
+    elif [ "$is_pure_openfoam" -eq 1 ]; then
+        say "  [INFO]    mpich env not found (not required for pure OpenFOAM project $PROJECT_NAME)"
+    else
+        fail "mpich conda env missing ($HOME/miniconda/envs/mpich/bin/mpiexec)"
+        problems=$((problems + 1))
     fi
 
     say ""
     say "--- OpenFOAM (isolated from Conda MPICH) ---"
     local of_bashrc=""
+    local of_source="none"
     if [ -f "/usr/lib/openfoam/openfoam2506/etc/bashrc" ]; then
         of_bashrc="/usr/lib/openfoam/openfoam2506/etc/bashrc"
+        of_source="system"
     else
         local candidate
-        for candidate in /usr/lib/openfoam/openfoam*/etc/bashrc; do
+        for candidate in /usr/lib/openfoam/openfoam2*/etc/bashrc; do
             if [ -f "$candidate" ]; then
                 of_bashrc="$candidate"
+                of_source="system"
+                break
             fi
         done
     fi
-    if [ -z "$of_bashrc" ] && [ -f "$HOME/miniconda/envs/openfoam/etc/bashrc" ]; then
+    if [ "$of_source" = "none" ] && [ -f "$HOME/miniconda/envs/openfoam/etc/bashrc" ]; then
         of_bashrc="$HOME/miniconda/envs/openfoam/etc/bashrc"
+        of_source="conda"
     fi
 
-    if [ -z "$of_bashrc" ]; then
+    if [ "$of_source" = "none" ]; then
         if [ "$is_openfoam_project" -eq 1 ]; then
-            fail "OpenFOAM etc/bashrc not found (/usr/lib/openfoam/openfoam2506/etc/bashrc or fallback)"
+            fail "OpenFOAM etc/bashrc not found (/usr/lib/openfoam/openfoam2*/etc/bashrc or fallback)"
             problems=$((problems + 1))
         else
             say "  [INFO]    OpenFOAM not found (not required for $PROJECT_NAME)"
+        fi
+    elif [ "$of_source" = "conda" ]; then
+        say "  [WARN]    System OpenFOAM (/usr/lib/openfoam/openfoam2*/etc/bashrc) missing; only Conda OpenFOAM found: $of_bashrc"
+        say "            OpenFoamProcessRunner expects system OpenMPI (/usr/bin/mpirun) and strips Conda/MPICH;"
+        say "            Conda OpenFOAM may require manual path/MPI adjustment (not validated as system OpenFOAM)."
+        if [ -x "$HOME/miniconda/envs/openfoam/bin/simpleFoam" ]; then
+            local conda_sf_ver=""
+            conda_sf_ver="$(run_probe "$HOME/miniconda/envs/openfoam/bin/simpleFoam" -help 2>&1 | head -n 1 || true)"
+            say "  [INFO]    Conda simpleFoam binary present (${conda_sf_ver:-checked})"
+        fi
+        if [ -x /usr/bin/mpirun ]; then
+            local sys_mpi_ver=""
+            sys_mpi_ver="$(run_probe /usr/bin/mpirun --version 2>&1 | head -n 1 || true)"
+            say "  [INFO]    System /usr/bin/mpirun -> $sys_mpi_ver"
+        elif [ "$is_openfoam_project" -eq 1 ]; then
+            fail "/usr/bin/mpirun missing (OpenFoamProcessRunner requires system OpenMPI)"
+            problems=$((problems + 1))
         fi
     else
         ok "OpenFOAM bashrc -> $of_bashrc"
         local of_probe
         of_probe="$(
-            OF_BASHRC="$of_bashrc" bash -c '
+            OF_BASHRC="$of_bashrc" run_probe bash -c '
                 export PATH="$(printf "%s" "${PATH:-}" | tr ":" "\n" | grep -viE "(miniconda|anaconda|conda|mpich)" | paste -sd: -)"
                 export LD_LIBRARY_PATH="$(printf "%s" "${LD_LIBRARY_PATH:-}" | tr ":" "\n" | grep -viE "(miniconda|anaconda|conda|mpich)" | paste -sd: -)"
                 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
@@ -357,8 +420,12 @@ cmd_doctor() {
                     p="$(command -v "$t" 2>/dev/null || true)"
                     printf "TOOL|%s|%s\n" "$t" "$p"
                 done
+                if command -v simpleFoam >/dev/null 2>&1; then
+                    sfv="$(timeout 10 simpleFoam --version 2>&1 | head -n 1 || true)"
+                    printf "SFVER|%s\n" "$sfv"
+                fi
                 if [ -x /usr/bin/mpirun ]; then
-                    mv="$(/usr/bin/mpirun --version 2>&1 | head -n 1 || true)"
+                    mv="$(timeout 10 /usr/bin/mpirun --version 2>&1 | head -n 1 || true)"
                     printf "MPI|/usr/bin/mpirun|%s\n" "$mv"
                 else
                     printf "MPI||\n"
@@ -397,6 +464,11 @@ cmd_doctor() {
                         fi
                     fi
                     ;;
+                SFVER)
+                    if [ -n "$arg1" ]; then
+                        say "  [INFO]    simpleFoam probe -> $arg1"
+                    fi
+                    ;;
                 MPI)
                     if [ -n "$arg1" ]; then
                         if printf '%s' "$arg2" | grep -qiE "open mpi|openmpi|openrte|prrte" && ! printf '%s' "$arg2" | grep -qiE "mpich|hydra"; then
@@ -423,21 +495,88 @@ cmd_doctor() {
     fi
 
     say ""
-    say "--- Optional Python Optimizer Env (opt-py) ---"
-    local opt_py="$HOME/miniconda/envs/opt-py/bin/python"
-    if [ -x "$opt_py" ]; then
-        local opt_ver
-        if opt_ver="$("$opt_py" -c 'import torch, botorch, pymoo, matplotlib; print(f"torch={torch.__version__}, botorch={botorch.__version__}, pymoo={pymoo.__version__}, matplotlib={matplotlib.__version__}")' 2>/dev/null)"; then
-            ok "opt-py -> $opt_py ($opt_ver)"
-        else
-            say "  [INFO]    opt-py found at $opt_py (optional packages torch/botorch/pymoo/matplotlib incomplete)"
-        fi
+    say "--- PicoGK Native Library ---"
+    local picogk_check_lib=""
+    local picogk_bin_ok=1
+    if [ -f "$BIN_DIR/libpicogk.so" ]; then
+        ok "libpicogk.so present next to DLL"
+        picogk_check_lib="$BIN_DIR/libpicogk.so"
     else
-        say "  [INFO]    opt-py not installed at $opt_py (optional; C# optimizer runs natively)"
+        picogk_bin_ok=0
+    fi
+    if [ -f "$BIN_DIR/libpicogk.26.2.so" ]; then
+        ok "libpicogk.26.2.so present next to DLL"
+        [ -z "$picogk_check_lib" ] && picogk_check_lib="$BIN_DIR/libpicogk.26.2.so"
+    else
+        picogk_bin_ok=0
+    fi
+
+    if [ "$picogk_bin_ok" -eq 0 ]; then
+        local built_picogk
+        built_picogk="$(find "$PICOGK_BUILD_DIR" -iname '*picogk.so' 2>/dev/null | head -n 1 || true)"
+        if [ -n "$built_picogk" ]; then
+            [ -z "$picogk_check_lib" ] && picogk_check_lib="$built_picogk"
+            if [ -f "$APP_DLL" ]; then
+                fail "libpicogk.so and/or libpicogk.26.2.so missing in $BIN_DIR (run 'build' to copy both)"
+                problems=$((problems + 1))
+            else
+                say "  [INFO]    libpicogk.so / libpicogk.26.2.so not copied yet -- build step will copy both"
+            fi
+        else
+            fail "libpicogk.so / libpicogk.26.2.so missing in bin folder and under $PICOGK_BUILD_DIR"
+            problems=$((problems + 1))
+        fi
+    fi
+
+    if [ -n "$picogk_check_lib" ] && command -v ldd >/dev/null 2>&1; then
+        local missing_ldd
+        missing_ldd="$(ldd "$picogk_check_lib" 2>/dev/null | grep -i "not found" || true)"
+        if [ -n "$missing_ldd" ]; then
+            fail "Missing shared library dependencies in $(basename "$picogk_check_lib") (ldd):"
+            printf '%s\n' "$missing_ldd" | while IFS= read -r line; do say "            $line"; done
+            problems=$((problems + 1))
+        else
+            ok "$(basename "$picogk_check_lib") shared library dependencies resolved (ldd)"
+        fi
     fi
 
     say ""
-    say "--- Project ---"
+    say "--- Python Optimizer Env (opt-py) ---"
+    local requires_opt_py=0
+    case "$(printf '%s' "$opt_algo" | tr '[:upper:]' '[:lower:]')" in
+        botorch|pymoo) requires_opt_py=1 ;;
+    esac
+
+    local opt_py="$HOME/miniconda/envs/opt-py/bin/python"
+    if [ -x "$opt_py" ]; then
+        local opt_py_ver opt_pkg_ver opt_rc=0
+        opt_py_ver="$(run_probe "$opt_py" --version 2>&1 | head -n 1 || true)"
+        opt_pkg_ver="$(run_probe "$opt_py" -c 'import torch, botorch, pymoo, numpy, scipy, matplotlib; print(f"torch={torch.__version__}, botorch={botorch.__version__}, pymoo={pymoo.__version__}, numpy={numpy.__version__}, scipy={scipy.__version__}")' 2>&1)" || opt_rc=$?
+        if [ "$opt_rc" -eq 0 ]; then
+            ok "opt-py -> $opt_py ($opt_py_ver; $opt_pkg_ver)"
+        else
+            if [ "$requires_opt_py" -eq 1 ]; then
+                fail "opt-py at $opt_py failed package import check (required for OptimizationAlgorithm=$opt_algo)"
+                say "          Fix: $HOME/miniconda/bin/conda env create -f scripts/optimizers/environment_opt.yml"
+                say "          (or run setup_server.sh to recreate $HOME/miniconda/envs/opt-py)"
+                problems=$((problems + 1))
+            else
+                say "  [WARN]    opt-py found at $opt_py ($opt_py_ver), but imports (torch/botorch/pymoo/numpy/scipy) failed (optional)"
+            fi
+        fi
+    else
+        if [ "$requires_opt_py" -eq 1 ]; then
+            fail "opt-py not installed at $opt_py (required by project '$PROJECT_NAME': OptimizationAlgorithm=$opt_algo)"
+            say "          Fix: $HOME/miniconda/bin/conda env create -f scripts/optimizers/environment_opt.yml"
+            say "          (or run setup_server.sh to create $HOME/miniconda/envs/opt-py)"
+            problems=$((problems + 1))
+        else
+            say "  [INFO]    opt-py not installed at $opt_py (optional; C# optimizer runs natively)"
+        fi
+    fi
+
+    say ""
+    say "--- Project & Effective Configuration ---"
     if [ -f "$APP_PROJECT" ]; then ok "csproj present"; else fail "csproj missing: $APP_PROJECT"; problems=$((problems + 1)); fi
 
     if [ -d "$PROJECT_DIR" ]; then
@@ -457,15 +596,88 @@ cmd_doctor() {
         say "            Normally none should exist -- see config/README.md."
     fi
 
-    if [ -f "$APP_DLL" ]; then ok "Built DLL present"; else say "  [INFO]    Not built yet (sim-runner.sh build)"; fi
-
-    if [ -f "$BIN_DIR/libpicogk.so" ]; then
-        ok "libpicogk.so present next to DLL"
-    elif [ -n "$(find "$PICOGK_BUILD_DIR" -iname '*picogk.so' 2>/dev/null | head -n 1 || true)" ]; then
-        say "  [INFO]    libpicogk.so not copied yet -- build step will copy it"
+    if [ -f "$APP_DLL" ]; then
+        ok "Built DLL present"
     else
-        fail "libpicogk.so missing in bin folder and under $PICOGK_BUILD_DIR"
+        say "  [INFO]    Not built yet -- build with:  .\\scripts\\sim.ps1 build   (or: bash scripts/sim-runner.sh build)"
+    fi
+
+    if [ -n "$CONFIG_ERROR" ]; then
+        fail "Could not query effective configuration: $CONFIG_ERROR"
+        say  "          Command was:  dotnet <DLL> $PROJECT_NAME --print-config"
+
+        if [ -n "$CONFIG_DUMP" ]; then
+            say "          Application output:"
+            printf '%s\n' "$CONFIG_DUMP" | tail -n 15 | while IFS= read -r line; do
+                say "            $line"
+            done
+        fi
+
+        say "          Build the application to validate effective project tool paths:"
+        say "            .\\scripts\\sim.ps1 build   (or: bash scripts/sim-runner.sh build)"
         problems=$((problems + 1))
+    else
+        local entry
+        for entry in MpiRunPath Su2Path GmshPath; do
+            local configured resolved
+            configured="$(config_value "$entry")"
+
+            if [ -z "$configured" ]; then
+                if [ "$is_pure_openfoam" -eq 1 ]; then
+                    say "  [INFO]    $entry is not configured (not required for pure OpenFOAM project $PROJECT_NAME)"
+                else
+                    fail "$entry is missing from configuration"
+                    problems=$((problems + 1))
+                fi
+                continue
+            fi
+
+            # Match application behavior: bare mpirun/mpiexec prefers the dedicated MPICH environment
+            if [ "$entry" = "MpiRunPath" ]; then
+                case "$configured" in
+                    mpirun|mpiexec) [ -x "$HOME/miniconda/envs/mpich/bin/mpiexec" ] && configured="$HOME/miniconda/envs/mpich/bin/mpiexec" ;;
+                esac
+            fi
+
+            if resolved="$(resolve_tool "$configured")"; then
+                if [ "$resolved" = "$configured" ]; then
+                    ok "$entry -> $resolved"
+                else
+                    ok "$entry -> $configured (via PATH: $resolved)"
+                fi
+
+                local cfg_ver="" cfg_rc=0
+                cfg_ver="$(run_probe "$resolved" --version 2>&1 | head -n 2 | tr '\n' ' ')" || cfg_rc=$?
+                if [ "$cfg_rc" -eq 124 ]; then
+                    fail "$entry ($resolved) timed out after 10s on --version"
+                    problems=$((problems + 1))
+                    continue
+                fi
+
+                # Official SU2 binary is built with MPICH; OpenMPI launches independent serial copies
+                if [ "$entry" = "MpiRunPath" ] && printf '%s' "$cfg_ver" | grep -qiE "open mpi|openrte|prrte"; then
+                    if [ "$is_pure_openfoam" -eq 1 ]; then
+                        say "  [INFO]    $entry is OpenMPI (SU2 requires MPICH, but $PROJECT_NAME uses OpenFOAM)"
+                    else
+                        fail "$entry is OpenMPI; SU2 requires MPICH (otherwise each rank runs as a serial copy)"
+                        say  "          Set: MpiRunPath = \$HOME/miniconda/envs/mpich/bin/mpiexec (see scripts/README.md)"
+                        problems=$((problems + 1))
+                    fi
+                fi
+            else
+                if [ "$is_pure_openfoam" -eq 1 ]; then
+                    say "  [INFO]    $entry -> $configured (not installed; not required for pure OpenFOAM project $PROJECT_NAME)"
+                else
+                    fail "$entry -> $configured (not a file and not in PATH)"
+                    case "$configured" in
+                        */*) say "          Path does not exist or is not executable." ;;
+                        *)   say "          Searched PATH: $PATH" ;;
+                    esac
+                    say "          Configure '$entry' in src/projects/$PROJECT_NAME/simulation.json."
+                    problems=$((problems + 1))
+                fi
+            fi
+        done
     fi
 
     say ""

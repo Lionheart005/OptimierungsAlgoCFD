@@ -155,6 +155,7 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `Density` | `float` | `1025.0` | Fluid density in $\text{kg/m}^3$ (seawater `1025.0`, ISA air `1.225`). |
 | `DynamicViscosity` | `float` | `0.001001` | Dynamic viscosity in $\text{Pa}\cdot\text{s}$ (seawater `0.001001`, air `1.81e-5`). |
 | `TurbulenceModel` | `string` | `"SA"` | RANS turbulence model: `"SA"` (Spalart-Allmaras) or `"SST"` (Menter $k$-$\omega$ SST). Unknown values abort with `[CONFIG]`. |
+| `FreestreamNuFactor` | `float?` | `null` | Optional Spalart-Allmaras freestream viscosity ratio $\tilde{\nu}_\infty / \nu_\infty$ (`FREESTREAM_NU_FACTOR`). `null` omits the key (SU2 default applies); ignored when `TurbulenceModel != "SA"`. |
 | `SpeedOfSound` | `float` | `343.2` | Speed of sound in m/s (only used when `FreestreamVelocity = 0`). |
 | `FreestreamVelocity` | `float` | `2.0` | Inflow velocity in m/s (`0` falls back to `MachNumber * SpeedOfSound`). |
 | `Dimensions` | `int` | `3` | Spatial dimension (`2` or `3`; `Cfd2DProjectDefinition` forces `2`). |
@@ -177,6 +178,7 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `AutoRestartOnDrift` | `bool` | `true` | Continues via `RESTART_SOL= YES` with tighter Cauchy tolerance if SU2 stops early while still drifting. |
 | `MaxConvergenceRestarts` | `int` | `3` | Maximum automatic steady restart blocks per variant (`0` disables). |
 | `ResultAveraging` | `string` | `"TailMean"` | Metric aggregation over `history.csv`: `"TailMean"`, `"Last"`, or `"CauchyWindowMean"`. |
+| `SlopeLimiterFlow` | `string` | `"VENKATAKRISHNAN"` | Convective flow slope limiter (`SLOPE_LIMITER_FLOW`): `"VENKATAKRISHNAN"`, `"NONE"`, `"VENKATAKRISHNAN_WANG"`, `"BARTH_JESPERSEN"`, or `"VAN_ALBADA_EDGE"`. `VENKAT_LIMITER_COEFF= 0.05` is emitted only for Venkatakrishnan limiters. |
 | `CflNumber` | `float` | `5.0` | Initial SU2 CFL number. |
 | `CflAdapt` | `bool` | `true` | Enables adaptive CFL control (`CFL_ADAPT= YES`). |
 | `CflAdaptFactorDown` | `float` | `0.5` | CFL reduction factor. |

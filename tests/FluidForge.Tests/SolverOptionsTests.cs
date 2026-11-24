@@ -350,5 +350,103 @@ namespace FluidForge.Tests
             Assert.NotNull(solver.Flow);
             Assert.Equal(mesher.Flow.Velocity, solver.Flow.Velocity);
         }
+
+        [Theory]
+        [InlineData("NONE", "NONE", false)]
+        [InlineData("none", "NONE", false)]
+        [InlineData("BARTH_JESPERSEN", "BARTH_JESPERSEN", false)]
+        [InlineData("VAN_ALBADA_EDGE", "VAN_ALBADA_EDGE", false)]
+        [InlineData("VENKATAKRISHNAN", "VENKATAKRISHNAN", true)]
+        [InlineData(" venkatakrishnan_wang ", "VENKATAKRISHNAN_WANG", true)]
+        [InlineData("", "VENKATAKRISHNAN", true)]
+        [InlineData("   ", "VENKATAKRISHNAN", true)]
+        public void Su2ConfigGenerator_SlopeLimiterFlow_Controls_VenkatCoeff_And_Normalization(
+            string configuredLimiter, string expectedLimiter, bool expectVenkatCoeff)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "su2cfg_limiter_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions { SlopeLimiterFlow = configuredLimiter };
+                Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options);
+
+                string[] lines = File.ReadAllLines(path);
+                Assert.Contains($"SLOPE_LIMITER_FLOW= {expectedLimiter}", lines);
+
+                bool hasVenkatCoeff = Array.Exists(lines, l => l.StartsWith("VENKAT_LIMITER_COEFF=", StringComparison.Ordinal));
+                Assert.Equal(expectVenkatCoeff, hasVenkatCoeff);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Su2ConfigGenerator_Invalid_SlopeLimiterFlow_Throws_Config_Error()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "su2cfg_badlimiter_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions { SlopeLimiterFlow = "MINMOD_UNKNOWN" };
+                var ex = Assert.Throws<InvalidOperationException>(() =>
+                    Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options));
+                Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Theory]
+        [InlineData("SA", 3.0f, true, "FREESTREAM_NU_FACTOR= 3")]
+        [InlineData("SST", 3.0f, false, null)]
+        [InlineData("SA", null, false, null)]
+        public void Su2ConfigGenerator_FreestreamNuFactor_Emits_Only_For_SA_When_Set(
+            string turbModel, float? nuFactor, bool expectLine, string? expectedLine)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "su2cfg_nufactor_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions
+                {
+                    TurbulenceModel = turbModel,
+                    FreestreamNuFactor = nuFactor
+                };
+                Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options);
+
+                string[] lines = File.ReadAllLines(path);
+                bool hasNuFactor = Array.Exists(lines, l => l.StartsWith("FREESTREAM_NU_FACTOR=", StringComparison.Ordinal));
+                Assert.Equal(expectLine, hasNuFactor);
+                if (expectedLine != null)
+                {
+                    Assert.Contains(expectedLine, lines);
+                }
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Theory]
+        [InlineData(0.0f)]
+        [InlineData(-1.5f)]
+        [InlineData(float.NaN)]
+        public void Su2ConfigGenerator_Invalid_FreestreamNuFactor_Throws_Config_Error(float invalidNuFactor)
+        {
+            string path = Path.Combine(Path.GetTempPath(), "su2cfg_badnu_" + Guid.NewGuid().ToString("N") + ".cfg");
+            try
+            {
+                var options = new Su2SolverOptions { FreestreamNuFactor = invalidNuFactor };
+                var ex = Assert.Throws<InvalidOperationException>(() =>
+                    Su2ConfigGenerator.Generate(path, "/tmp/mesh.su2", 0.001f, SimulationConfig.CreateDefault(), options));
+                Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
     }
 }

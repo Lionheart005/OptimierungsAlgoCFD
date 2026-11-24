@@ -222,8 +222,36 @@ namespace FluidForge.Tests
 
             Assert.Equal(2, su2.Dimensions);
             Assert.Equal(0.8f, su2.TargetYPlus);
+            Assert.Equal("NONE", su2.SlopeLimiterFlow);
+            Assert.Equal(3.0f, su2.FreestreamNuFactor);
             Assert.Equal(0.8f, gmsh2d.TargetYPlus);
             Assert.Equal(500.0f, gmsh2d.FarfieldRadiusFactor);
+            Assert.Equal(1.15f, gmsh2d.BoundaryLayerGrowthRate);
+        }
+
+        [Fact]
+        public void External2D_VerificationFine_Applies_Literature_Hardened_Settings()
+        {
+            PresetDefinition preset = SimulationPresets.Resolve("External2D:VerificationFine")!;
+            SimulationConfig sim = JsonConfigLoader.LoadWithPresetCore(
+                SimulationConfig.CreateDefault(), preset.Name, preset.SimulationOverrides, printOrigins: false).Value;
+
+            Assert.Equal("1e-6", sim.CauchyTolerance);
+            Assert.Equal(500, sim.CauchyElements);
+            Assert.Equal(10000, sim.Su2MaxIterations);
+
+            Su2SolverOptions su2 = JsonConfigLoader.LoadWithPresetCore(
+                new Su2SolverOptions(), preset.Name, preset.GetSolverOverrides("solvers/su2.json"), printOrigins: false).Value;
+            Assert.Equal("NONE", su2.SlopeLimiterFlow);
+            Assert.Equal(3.0f, su2.FreestreamNuFactor);
+
+            Su2SolverOptions cloned = su2.Clone();
+            Assert.Equal("NONE", cloned.SlopeLimiterFlow);
+            Assert.Equal(3.0f, cloned.FreestreamNuFactor);
+
+            Gmsh2DMesherOptions gmsh2d = JsonConfigLoader.LoadWithPresetCore(
+                new Gmsh2DMesherOptions(), preset.Name, preset.GetSolverOverrides("solvers/gmsh.json"), printOrigins: false).Value;
+            Assert.Equal(1.15f, gmsh2d.BoundaryLayerGrowthRate);
         }
 
         [Fact]

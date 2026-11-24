@@ -125,23 +125,21 @@ $OutputEncoding           = [System.Text.Encoding]::UTF8
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $RunnerCall = "bash scripts/sim-runner.sh"
 
-# SSH timeouts for EVERY ssh and scp call in this script -- intentionally generous:
+# SSH timeouts & non-interactive guards for EVERY ssh and scp call in this script:
 #
-#   ConnectTimeout=60       Connection setup and key exchange may take up to a full
-#                           minute -- even when the server is under full CPU load
-#                           and sshd responds slowly.
+#   BatchMode=yes           Never hang waiting for a password or known_hosts prompt.
+#                           Fails immediately if SSH keys or host fingerprints are missing.
+#   ConnectTimeout=60       Connection setup and key exchange time out after 60 s.
 #   ServerAliveInterval=30  After 30 s of silence, ssh sends a keepalive packet ...
-#   ServerAliveCountMax=6   ... and gives up only after 6 unanswered probes, i.e.,
-#                           3 minutes of complete connection loss.
+#   ServerAliveCountMax=6   ... and gives up after 6 unanswered probes (~3 minutes).
 #
-# Without these values, a dead VPN tunnel waits INDEFINITELY without any message.
-# sshd answers keepalive probes itself even when the remote command produces no output
-# for a long time (build, stop) -- so a quiet but healthy command is not aborted.
-# It also keeps the VPN tunnel active during "log" when otherwise idle.
+# Without these values, missing keys, unknown host keys, or a dead VPN tunnel wait
+# INDEFINITELY without any message. sshd answers keepalive probes itself even when
+# the remote command produces no output for a long time (build, stop).
 #
 # If a connection drops here, it ONLY affects the link from this workstation. A run
 # inside the tmux session on the server continues undisturbed.
-$SshOptions = @('-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=6')
+$SshOptions = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=60', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=6')
 
 # Directories deployed to the server. tests/ stays local: the server should compute,
 # not run unit tests -- and without tests/ the .sln would not build there, so we build
@@ -311,6 +309,10 @@ function Invoke-Remote {
         $output = $null
     }
 
+    if ($code -eq 255 -and -not $AllowFailure) {
+        throw "SSH connection/auth to '$Server' failed (exit code 255). Verify SSH key, known_hosts, and connectivity by running once: ssh $Server 'echo ok'"
+    }
+
     if ($code -ne 0 -and -not $AllowFailure) {
         throw "Command on $Server failed (exit code $code): $CommandLine"
     }
@@ -325,12 +327,20 @@ function Test-RemoteRunning {
 
 # Check whether any code has been deployed to the server yet. Without this check,
 # status/stop/log/fetch would fail on first use with a bare "cd: No such file".
+# Exit code 255 indicates an SSH transport/auth/host-key failure rather than missing files.
 function Test-RemoteDeployed {
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>$null
-        return ($LASTEXITCODE -eq 0)
+        $sshOut = & ssh @SshOptions $Server "test -f '$RemoteDir/scripts/sim-runner.sh'" 2>&1
+        $code = $LASTEXITCODE
+        if ($code -eq 255) {
+            $detail = ($sshOut | Out-String).Trim()
+            $hint = "SSH connection/auth to '$Server' failed (exit code 255). Verify SSH key, known_hosts fingerprint, and connectivity by running once: ssh $Server 'echo ok'"
+            if ($detail) { $hint = "$hint`n    $detail" }
+            throw $hint
+        }
+        return ($code -eq 0)
     }
     finally {
         $ErrorActionPreference = $prevEap
@@ -388,10 +398,17 @@ function Push-Sources {
         Write-Host "    Archive: $sizeKb KB - uploading to ${Server}:$RemoteDir"
 
         & ssh @SshOptions $Server "mkdir -p '$RemoteDir'"
-        if ($LASTEXITCODE -ne 0) { throw "Could not create $RemoteDir on $Server." }
+        if ($LASTEXITCODE -ne 0) {
+            if ($LASTEXITCODE -eq 255) {
+                throw "SSH connection/auth to '$Server' failed (exit code 255). Verify SSH key & known_hosts by running once: ssh $Server 'echo ok'"
+            }
+            throw "Could not create $RemoteDir on $Server."
+        }
 
         & scp @SshOptions -q $tarFile "${Server}:$RemoteDir/deploy.tar.gz"
-        if ($LASTEXITCODE -ne 0) { throw "scp failed (exit code $LASTEXITCODE)." }
+        if ($LASTEXITCODE -ne 0) {
+            throw "scp upload to '$Server' failed (exit code $LASTEXITCODE). Verify SSH key & connectivity: ssh $Server 'echo ok'"
+        }
 
         # Remove orphaned files BEFORE extracting.
         #
@@ -562,7 +579,7 @@ function Invoke-Fetch {
         Write-Step "Downloading archive from $Server"
         & scp @SshOptions -q "${Server}:$remoteArchive" $localArchive
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to download archive from $Server."
+            throw "Failed to download archive from '$Server' (exit code $LASTEXITCODE). Verify SSH key & connectivity: ssh $Server 'echo ok'"
         }
 
         Write-Step "Extracting results to $target"
@@ -684,14 +701,25 @@ try {
         }
 
         'doctor' {
-            # doctor inspects effective project paths and therefore requires code on the server.
-            # On the very first call, upload without building; path checks succeed after a build
-            # because doctor queries the application via --print-config.
+            # doctor inspects effective project paths via --print-config and therefore needs
+            # both source code and a built FluidForge.dll on the server. On a fresh server,
+            # upload first and build if FluidForge.dll is missing, then run doctor (even if
+            # the build fails, doctor still runs and reports missing tools).
             if (-not (Test-RemoteDeployed)) {
                 Write-Step "First contact with $Server - uploading code"
                 Push-Sources
-                # Do not write .deploy_hash: the next deploy should upload AND build normally.
+                # Do not write .deploy_hash: the next deploy handles full provenance normally.
             }
+
+            $dllCheck = Invoke-Remote -CommandLine "test -f 'src/FluidForge/bin/Debug/net9.0/FluidForge.dll'" -Quiet -AllowFailure
+            if ($dllCheck.ExitCode -ne 0) {
+                Write-Step "Building FluidForge.dll on $Server (initial build for doctor)"
+                $buildCheck = Invoke-Remote -CommandLine "SIM_PROJECT='$Project' $RunnerCall build" -AllowFailure
+                if ($buildCheck.ExitCode -ne 0) {
+                    Write-Warn "Initial build failed (exit code $($buildCheck.ExitCode)); continuing with environment checks."
+                }
+            }
+
             Write-Step "Checking environment on $Server"
             Invoke-Runner -Arguments 'doctor'
         }
@@ -733,6 +761,9 @@ try {
             }
             # Direct ssh call without wrapper so Ctrl+C passes through cleanly.
             & ssh @SshOptions $Server "cd '$RemoteDir' && $RunnerCall log $Lines $follow"
+            if ($LASTEXITCODE -eq 255) {
+                throw "SSH connection/auth to '$Server' failed (exit code 255). Verify SSH key & known_hosts by running once: ssh $Server 'echo ok'"
+            }
         }
     }
 }

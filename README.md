@@ -21,8 +21,7 @@ The optimization algorithms and the physics solvers are modular and interchangea
 
 For all the technical details, check out the guides and `.md` files linked below. They cover everything you need to know about configuration and settings. (And hallelujah, there are a lot of them by now — I even lost track myself in a few places, which is why we now have physics presets like `External3D:StandardRans` so you can get started with just a handful of settings and only touch the deep knobs when you want to.)
 
-For my work so far, I have used **SU2** and **Gmsh** for meshing and CFD simulation. The 3D geometry kernel is **PicoGK**, and the 2D kernel (`Planar2D`) is custom-written (...prompted) and tries to stay as close as possible to PicoGK in how its commands feel.
-The **OpenFOAM** update is coming soon — along with even bigger plans!
+For my work so far, I have used **SU2**, **Gmsh**, and **OpenFOAM** (`Internal3D` / `PipeBend90`) for meshing and CFD simulation. The 3D geometry kernel is **PicoGK** (paired with **`LEAP71_ShapeKernel`** for implicit pipes and ducts), the 2D kernel is **`Planar2D`**, and optimization supports both native C# (`Bayes`, `IdwBaseline`) and hybrid Python backends (**`BoTorch`** / **`pymoo`**)!
 
 I'm happy about any ideas, feedback, and interest!
 
@@ -57,11 +56,12 @@ Every project lives in its own folder under `src/projects/<Name>/` with clean JS
    dotnet run --project src\FluidForge --no-build -- MyComponent --smoke-test
    ```
 4. **Deploy and run on the Linux compute server:**
+   - **First-Time Server Setup:** Run [`src/FluidForge/setup_server.sh`](src/FluidForge/setup_server.sh) once on a fresh Ubuntu server (rootless, installs Miniforge3 into `~/miniconda`, `conda-forge` packages, SU2, MPICH, Gmsh, PicoGK, .NET 9, and `opt-py`). Configure an SSH host alias + key in `~/.ssh/config` and pass `-Server <Alias>` (e.g., `-Server BIC_09`, default `BIC_12`). See [`scripts/README.md`](scripts/README.md) for details.
    ```powershell
-   .\scripts\sim.ps1 doctor -Project MyComponent
-   .\scripts\sim.ps1 run    -Project MyComponent
-   .\scripts\sim.ps1 log
-   .\scripts\sim.ps1 fetch  -Project MyComponent
+   .\scripts\sim.ps1 doctor -Server BIC_09 -Project MyComponent
+   .\scripts\sim.ps1 run    -Server BIC_09 -Project MyComponent
+   .\scripts\sim.ps1 log    -Server BIC_09
+   .\scripts\sim.ps1 fetch  -Server BIC_09 -Project MyComponent
    ```
 
 ## Physics & Workflow Presets
@@ -85,6 +85,7 @@ dotnet run --project src\FluidForge -- --dump-preset External3D:StandardRans
 - **[Creating a New Project (`docs/creating-a-project.md`)](docs/creating-a-project.md)** — 2D/3D quickstart, `project.json` Single Source of Truth, geometry, fitness, and local checks.
 - **[Physics Presets & Configuration Layers (`docs/physics-presets.md`)](docs/physics-presets.md)** — Preset matrix, Layer 1–4 precedence, `--print-config`, `--dump-preset`, and VS Code JSON Schemas (`schemas/`).
 - **[Server Workflow (`docs/server-workflow.md`)](docs/server-workflow.md)** — Deploying, monitoring, fetching, resuming, calibrating, and rechecking with `scripts/sim.ps1`.
+- **[Server, Deployment & Setup Guide (`scripts/README.md`)](scripts/README.md)** — SSH key setup, one-time rootless `setup_server.sh`, deployment internals, and troubleshooting.
 - **[Configuration Reference (`docs/config-reference.md`)](docs/config-reference.md)** — Exhaustive key-by-key reference for `simulation.json`, `project.json`, `solvers/su2.json`, `solvers/gmsh.json`, and `solvers/openfoam.json`.
 - **[Project Folder Overview (`src/projects/README.md`)](src/projects/README.md)** — Existing projects (`MantaAuv`, `Naca2D`, `PipeBend90`) and templates (`_Template3D`, `_Template2D`, `_TemplateInternal3D`).
 - **[3D Geometry Kernel: PicoGK (`src/FluidForge/Kernels/PicoGk/README.md`)](src/FluidForge/Kernels/PicoGk/README.md)** — Voxel modeling (`Lattice`, `Voxels`, `Mesh`, `Offset`, `StlSmoother`).

@@ -20,6 +20,12 @@ namespace FluidForge.Solvers.Cfd
         public float DynamicViscosity { get; set; } = 1.001e-3f;
         /// <summary>Turbulence model, e.g. SA or SST.</summary>
         public string TurbulenceModel { get; set; } = "SA";
+        /// <summary>
+        /// Optional Spalart-Allmaras freestream viscosity ratio (<c>FREESTREAM_NU_FACTOR</c>,
+        /// $\tilde{\nu}_\infty / \nu_\infty$). <c>null</c> (default) omits the key so SU2's built-in
+        /// default applies; ignored when <see cref="TurbulenceModel"/> is not <c>"SA"</c>.
+        /// </summary>
+        public float? FreestreamNuFactor { get; set; } = null;
         /// <summary>Speed of sound in m/s — converts Mach number into a freestream velocity.</summary>
         public float SpeedOfSound { get; set; } = 343.2f;
 
@@ -152,7 +158,14 @@ namespace FluidForge.Solvers.Cfd
         /// </summary>
         public string ResultAveraging { get; set; } = "TailMean";
 
-        // --- CFL control ---
+        // --- CFL & numerical flux control ---
+        /// <summary>
+        /// Convective flow slope limiter for MUSCL reconstruction (<c>SLOPE_LIMITER_FLOW</c>).
+        /// Default <c>"VENKATAKRISHNAN"</c>; e.g. <c>"NONE"</c>, <c>"VENKATAKRISHNAN"</c>,
+        /// <c>"VENKATAKRISHNAN_WANG"</c>, <c>"BARTH_JESPERSEN"</c>, or <c>"VAN_ALBADA_EDGE"</c>.
+        /// </summary>
+        public string SlopeLimiterFlow { get; set; } = "VENKATAKRISHNAN";
+
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;
         /// <summary>CFL_ADAPT_PARAM: reduction factor.</summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -223,10 +224,83 @@ namespace FluidForge.Cli
         /// <summary>Distinguishes user configuration/CLI errors from unexpected crashes.</summary>
         public static void Report(Exception exception)
         {
-            bool isUserError = exception is InvalidOperationException
-                               && exception.Message.StartsWith("[", StringComparison.Ordinal);
+            if (exception == null) return;
+
             Console.WriteLine();
-            Console.WriteLine(isUserError ? exception.Message : $"{OutputConventions.ErrorTag} [CRITICAL] Program aborted:\n{exception}");
+
+            if (exception is InvalidOperationException
+                && exception.Message.StartsWith("[", StringComparison.Ordinal))
+            {
+                Console.WriteLine(exception.Message);
+                return;
+            }
+
+            if (TryFindException<DllNotFoundException>(exception, out var dllNotFound) && dllNotFound != null)
+            {
+                bool isPicoGk = dllNotFound.Message.Contains("picogk", StringComparison.OrdinalIgnoreCase);
+                Console.WriteLine($"{OutputConventions.ErrorTag} Native library could not be loaded: {dllNotFound.Message}");
+                Console.WriteLine(isPicoGk
+                    ? $"{OutputConventions.ErrorTag} Fix: Ensure libpicogk.so (or libpicogk.26.2.so / PicoGK runtime) is present in '{AppContext.BaseDirectory}' or on LD_LIBRARY_PATH. "
+                      + "Run './scripts/sim.ps1 doctor' (or 'src/FluidForge/setup_server.sh' on Ubuntu) to verify native dependencies."
+                    : $"{OutputConventions.ErrorTag} Fix: Ensure the required native shared library is present in '{AppContext.BaseDirectory}' or your library path. "
+                      + "Run './scripts/sim.ps1 doctor' (or 'src/FluidForge/setup_server.sh' on Ubuntu) to check environment dependencies.");
+                return;
+            }
+
+            if (TryFindException<Win32Exception>(exception, out var win32Ex) && win32Ex != null)
+            {
+                Console.WriteLine($"{OutputConventions.ErrorTag} External executable failed to start: {win32Ex.Message}");
+                Console.WriteLine(
+                    $"{OutputConventions.ErrorTag} Fix: Check that external solver/mesher tools (e.g. gmsh, SU2_CFD, mpirun, simpleFoam) are installed and on PATH, "
+                    + "or configure explicit paths (GmshPath, Su2Path, MpiRunPath, OpenFoamPath) in 'config/simulation.local.json'. "
+                    + "Run './scripts/sim.ps1 doctor' to diagnose missing binaries.");
+                return;
+            }
+
+            if (TryFindException<FileNotFoundException>(exception, out var fileNotFound) && fileNotFound != null)
+            {
+                string target = string.IsNullOrWhiteSpace(fileNotFound.FileName) ? string.Empty : $" ({fileNotFound.FileName})";
+                Console.WriteLine($"{OutputConventions.ErrorTag} Required file not found{target}: {fileNotFound.Message}");
+                Console.WriteLine(
+                    $"{OutputConventions.ErrorTag} Fix: Verify that the project folder, input geometry/config paths, and tool paths in 'simulation.json' or 'config/simulation.local.json' exist.");
+                return;
+            }
+
+            if (TryFindException<DirectoryNotFoundException>(exception, out var dirNotFound) && dirNotFound != null)
+            {
+                Console.WriteLine($"{OutputConventions.ErrorTag} Required directory not found: {dirNotFound.Message}");
+                Console.WriteLine(
+                    $"{OutputConventions.ErrorTag} Fix: Verify that the repository root, project directory, and configured working/tool directories exist.");
+                return;
+            }
+
+            Console.WriteLine($"{OutputConventions.ErrorTag} [CRITICAL] Program aborted:\n{exception}");
+        }
+
+        private static bool TryFindException<T>(Exception root, out T? match) where T : Exception
+        {
+            if (root is T direct)
+            {
+                match = direct;
+                return true;
+            }
+
+            if (root is AggregateException agg)
+            {
+                foreach (Exception inner in agg.InnerExceptions)
+                {
+                    if (TryFindException(inner, out match))
+                        return true;
+                }
+            }
+
+            if (root.InnerException != null && TryFindException(root.InnerException, out match))
+            {
+                return true;
+            }
+
+            match = null;
+            return false;
         }
     }
 }

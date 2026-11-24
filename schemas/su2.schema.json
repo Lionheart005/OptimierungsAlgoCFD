@@ -56,6 +56,9 @@
       "type": "number",
       "default": 0.001001
     },
+    "FreestreamNuFactor": {
+      "type": "number"
+    },
     "FreestreamVelocity": {
       "type": "number",
       "default": 2
@@ -115,6 +118,10 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "SlopeLimiterFlow": {
+      "type": "string",
+      "default": "VENKATAKRISHNAN"
     },
     "SpeedOfSound": {
       "type": "number",

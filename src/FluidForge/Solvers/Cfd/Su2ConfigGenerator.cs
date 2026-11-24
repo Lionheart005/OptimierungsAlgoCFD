@@ -81,6 +81,8 @@ namespace FluidForge.Solvers.Cfd
 
             string historyOutput = string.Join(", ", historyFields.Select(field => field.Trim()));
             string turbModel = ResolveTurbulenceModel(options.TurbulenceModel);
+            string slopeLimiter = ResolveSlopeLimiterFlow(options.SlopeLimiterFlow);
+            float? freestreamNuFactor = ValidateFreestreamNuFactor(options.FreestreamNuFactor);
             SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(options.SymmetryPlane);
 
             var cfgContent = new List<string> {
@@ -108,6 +110,14 @@ namespace FluidForge.Solvers.Cfd
                 $"FREESTREAM_DENSITY= {densityString}",
                 "VISCOSITY_MODEL= CONSTANT_VISCOSITY",
                 $"MU_CONSTANT= {viscosityString}",
+            };
+
+            if (freestreamNuFactor.HasValue && turbModel == "SA")
+            {
+                cfgContent.Add($"FREESTREAM_NU_FACTOR= {freestreamNuFactor.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            cfgContent.AddRange(new[] {
                 "%",
                 "% =============================================================================",
                 "% INITIALIZATION (initial field for steady run)",
@@ -142,7 +152,7 @@ namespace FluidForge.Solvers.Cfd
                 "MARKER_FAR= ( Farfield )",
                 "MARKER_MONITORING= ( Wall )",
                 "MARKER_PLOTTING= ( Wall )",
-            };
+            });
 
             if (symAxis != SymmetryAxis.None)
             {
@@ -156,10 +166,17 @@ namespace FluidForge.Solvers.Cfd
                 "% FDS (Flux Difference Splitting) with MUSCL (2nd order) and Venkatakrishnan limiter.",
                 "% Time discretization: implicit Euler with adaptive CFL control.",
                 "% =============================================================================",
-                "CONV_NUM_METHOD_FLOW= FDS",               
-                "MUSCL_FLOW= YES",                         
-                "SLOPE_LIMITER_FLOW= VENKATAKRISHNAN",     
-                "VENKAT_LIMITER_COEFF= 0.05",              
+                "CONV_NUM_METHOD_FLOW= FDS",
+                "MUSCL_FLOW= YES",
+                $"SLOPE_LIMITER_FLOW= {slopeLimiter}",
+            });
+
+            if (slopeLimiter.StartsWith("VENKATAKRISHNAN", StringComparison.Ordinal))
+            {
+                cfgContent.Add("VENKAT_LIMITER_COEFF= 0.05");
+            }
+
+            cfgContent.AddRange(new[] {
                 "TIME_DISCRE_FLOW= EULER_IMPLICIT",
                 $"CFL_NUMBER= {options.CflNumber.ToString(CultureInfo.InvariantCulture)}",
                 $"CFL_ADAPT= {(options.CflAdapt ? "YES" : "NO")}",
@@ -287,6 +304,48 @@ namespace FluidForge.Solvers.Cfd
 
             throw new InvalidOperationException(
                 $"{OutputConventions.ConfigTag} Unknown TurbulenceModel '{turbulenceModel}'. Allowed values are 'SA' or 'SST'.");
+        }
+
+        private static readonly HashSet<string> AllowedSlopeLimiters = new(StringComparer.Ordinal)
+        {
+            "NONE",
+            "VENKATAKRISHNAN",
+            "VENKATAKRISHNAN_WANG",
+            "BARTH_JESPERSEN",
+            "VAN_ALBADA_EDGE"
+        };
+
+        /// <summary>
+        /// Validates and normalizes <see cref="Su2SolverOptions.SlopeLimiterFlow"/>.
+        /// Empty or whitespace falls back to <c>"VENKATAKRISHNAN"</c>.
+        /// </summary>
+        public static string ResolveSlopeLimiterFlow(string? slopeLimiterFlow)
+        {
+            if (string.IsNullOrWhiteSpace(slopeLimiterFlow))
+                return "VENKATAKRISHNAN";
+
+            string normalized = slopeLimiterFlow.Trim().ToUpperInvariant();
+            if (AllowedSlopeLimiters.Contains(normalized))
+                return normalized;
+
+            throw new InvalidOperationException(
+                $"{OutputConventions.ConfigTag} Unknown SlopeLimiterFlow '{slopeLimiterFlow}'. "
+                + "Allowed values are 'NONE', 'VENKATAKRISHNAN', 'VENKATAKRISHNAN_WANG', 'BARTH_JESPERSEN', or 'VAN_ALBADA_EDGE'.");
+        }
+
+        private static float? ValidateFreestreamNuFactor(float? freestreamNuFactor)
+        {
+            if (!freestreamNuFactor.HasValue)
+                return null;
+
+            float value = freestreamNuFactor.Value;
+            if (!float.IsFinite(value) || value <= 0f)
+            {
+                throw new InvalidOperationException(
+                    $"{OutputConventions.ConfigTag} FreestreamNuFactor must be a finite positive number (got {value.ToString(CultureInfo.InvariantCulture)}).");
+            }
+
+            return value;
         }
 
         /// <summary>

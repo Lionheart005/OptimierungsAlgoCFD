@@ -251,7 +251,7 @@ namespace FluidForge.Core
                 name: "External2D:VerificationFine",
                 domain: "External2D",
                 accuracy: "VerificationFine",
-                description: "High-accuracy 2D RANS with tight calibration (2%), y+ ~ 0.8, 10k SU2 iterations, AutoStop off, and 2-step Top-3 verification.",
+                description: "High-accuracy 2D RANS (NASA-TMR aligned) with tight calibration (2%), y+ ~ 0.8, BL growth 1.15, SlopeLimiterFlow NONE, SA nu_tilde/nu=3, 10k iters (Cauchy 1e-6), AutoStop off, and 2-step Top-3 verification.",
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
@@ -263,7 +263,7 @@ namespace FluidForge.Core
                     },
                     ["Su2MaxIterations"] = 10000,
                     ["CauchyElements"] = 500,
-                    ["CauchyTolerance"] = "1e-5",
+                    ["CauchyTolerance"] = "1e-6",
                     ["MeshCalibration"] = new JsonObject
                     {
                         ["Mode"] = "Auto",
@@ -282,12 +282,15 @@ namespace FluidForge.Core
                     {
                         ["Dimensions"] = 2,
                         ["AutoRestartOnDrift"] = true,
-                        ["TargetYPlus"] = 0.8f
+                        ["TargetYPlus"] = 0.8f,
+                        ["SlopeLimiterFlow"] = "NONE",
+                        ["FreestreamNuFactor"] = 3.0f
                     },
                     ["solvers/gmsh.json"] = new JsonObject
                     {
                         ["TargetYPlus"] = 0.8f,
-                        ["FarfieldRadiusFactor"] = 500.0f
+                        ["FarfieldRadiusFactor"] = 500.0f,
+                        ["BoundaryLayerGrowthRate"] = 1.15f
                     }
                 }),
 
