@@ -50,13 +50,13 @@ Für den Bericht & Community-Post wurde als primäres Showcase-Projekt **`Stator
 ## 4. Arbeitspakete (Checkliste)
 
 ### AP 4.1: Stabilitäts-, Ergonomie- & „Fremdnutzer“-Audit
-- [ ] **Fresh-Clone-Test („Zero-to-First-Run“):** Das Repo auf einer sauberen Umgebung (lokal + Server) nur anhand der englischen `README.md` aufsetzen und ein 2D- sowie ein 3D-Beispiel starten. Jede Hürde sofort beheben.
-- [ ] **Fehlermeldungen & Diagnostics polieren:** Klare, handlungsorientierte Fehlermeldungen bei fehlenden Tools, Netzproblemen oder unplausiblen Eingaben; `sim.ps1 doctor` prüft vollständig SU2, Gmsh, OpenFOAM, PicoGK, MPICH und optionales Python/BoTorch-Env.
+- [x] **Fresh-Clone-Test („Zero-to-First-Run“):** Auf sauberem Ubuntu-Server `BIC_09` vollständig rootless via `setup_server.sh` (Miniforge3 `-p ~/miniconda`, `PicoGKRuntime` Pin `1713d29` + RPATH, SU2, Gmsh, MPICH, OpenFOAM 2506, `opt-py`, .NET 9) + `sim.ps1 doctor` + 2D (`Naca2D`) & 3D (`MantaAuv --smoke-test`, `PipeBend90`) erfolgreich durchgeführt; alle gefundenen Hürden sofort behoben (`891347d`, `b85091c`, `75e9355`, Details siehe [`phase4_ap41_und_b1_naca0012.md`](phase4_ap41_und_b1_naca0012.md)).
+- [x] **Fehlermeldungen & Diagnostics polieren:** Handlungsorientierte `[ERROR]`-Meldungen in `OptimizeCommand.Report` (`DllNotFoundException`, PicoGK, `Win32Exception`, fehlende Dateien/Ordner), SSH-`BatchMode=yes` & `tmux`-FD-Hänger-Fix sowie vollständiger `sim.ps1 doctor`-Check (SU2, Gmsh, OpenFOAM, PicoGK + `ldd`, MPICH, `opt-py`, Auto-Build bei Erstkontakt).
 
 > *Hinweis:* Das optionale Docker-/Apptainer-Container-Setup wurde auf Phase 5 verschoben (siehe [`phase5_docker_container.md`](phase5_docker_container.md)); in Phase 4 bleibt `setup_server.sh` der einzige unterstützte Server-Setup-Pfad.
 
 ### AP 4.2: Benchmark-Suite durchrechnen & dokumentieren
-- [ ] **B1 (`BenchmarkNaca0012` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich (`Naca2D`) sauber auf dem Server durchrechnen und GCI + Abweichung zur NASA-Referenz dokumentieren.
+- [ ] **B1 (`BenchmarkNaca0012` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich (`Naca2D`): `BenchmarkNaca0012` auf `BIC_12` (18 Kerne, 6 Netzstufen `Cal1`–`Cal6`, 37k–900k Zellen) gerechnet, nach `results/BenchmarkNaca0012/BIC_12_2026-11-25/` heruntergeladen und inkl. GCI, `Cp`/`Cf`/`y+` und Geometrie-/Spline-Wurzelursachenanalyse unter `docs/report/BenchmarkNaca0012_Report.md` ausgewertet (offen: optionaler 2D-Spline/Quantisierungs-Fix + 3-Seed `Naca2D`-Vergleich).
 - [ ] **B2 (`BenchmarkPipeBend90` / `Internal3D` OpenFOAM)** durchrechnen und Druckverlustbeiwert $\zeta$ + Massenbilanz + GCI gegen Literaturwerte dokumentieren.
 - [ ] **B3 (`BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` / `External3D` Zwillingsprojekte mit Symmetrie)** durchrechnen und $C_D$ im Solver-Quervergleich gegen Literaturwerte dokumentieren.
 
