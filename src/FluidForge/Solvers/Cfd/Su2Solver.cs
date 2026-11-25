@@ -435,11 +435,23 @@ namespace FluidForge.Solvers.Cfd
                     int remainingBudget = originalEffectiveConfig.Su2MaxIterations - totalIterations;
                     if (remainingBudget <= 0) break;
 
+                    string nextBlockEps = TightenTolerance(currentBlockEps, originalEffectiveConfig.CauchyToleranceFloor);
+                    bool sameTolerance = string.Equals(nextBlockEps, currentBlockEps, StringComparison.OrdinalIgnoreCase)
+                        || (double.TryParse(currentBlockEps, NumberStyles.Float, CultureInfo.InvariantCulture, out double curVal)
+                            && double.TryParse(nextBlockEps, NumberStyles.Float, CultureInfo.InvariantCulture, out double nextVal)
+                            && Math.Abs(nextVal - curVal) <= 1e-12 * Math.Max(1e-12, curVal));
+                    if (sameTolerance)
+                    {
+                        SimulationLog.Detail(
+                            $"[SU2] Drift after {totalIterations} iterations, but CauchyToleranceFloor ({originalEffectiveConfig.CauchyToleranceFloor}) already reached -- skipping further restarts.");
+                        break;
+                    }
+
                     restartCount++;
                     previousCumulativeLines = currentLines;
                     Su2RestartController.CleanHistoryFiles(workingDirectory, historyPath);
 
-                    currentBlockEps = TightenTolerance(currentBlockEps);
+                    currentBlockEps = nextBlockEps;
                     int convStartIter = Math.Min(100, Math.Max(0, remainingBudget / 10));
                     blockConfig = originalEffectiveConfig.WithSu2BlockOverrides(remainingBudget, currentBlockEps);
 
@@ -659,8 +671,8 @@ namespace FluidForge.Solvers.Cfd
         internal static string? FindSteadyRestartFile(string workingDirectory)
             => Su2RestartController.FindSteadyRestartFile(workingDirectory);
 
-        internal static string TightenTolerance(string? currentTolerance)
-            => Su2RestartController.TightenTolerance(currentTolerance);
+        internal static string TightenTolerance(string? currentTolerance, string? floorTolerance = null)
+            => Su2RestartController.TightenTolerance(currentTolerance, floorTolerance);
 
         internal static string[] StitchHistoryCsv(string[] previousLines, string[] newLines)
             => Su2RestartController.StitchHistoryCsv(previousLines, newLines);

@@ -119,19 +119,35 @@ namespace FluidForge.Solvers.Cfd
 
         /// <summary>
         /// Tightens the Cauchy tolerance for the next restart block by a factor of 10
-        /// (floor <c>1e-7</c>).
+        /// down to <paramref name="floorTolerance"/> (default <c>1e-7</c>, hard lower bound <c>1e-12</c>),
+        /// without ever loosening an already-tighter tolerance.
         /// </summary>
-        internal static string TightenTolerance(string? currentTolerance)
+        internal static string TightenTolerance(string? currentTolerance, string? floorTolerance = null)
         {
-            const double Floor = 1e-7;
+            const double DefaultFloor = 1e-7;
+            const double HardMinFloor = 1e-12;
+
+            double floor = DefaultFloor;
+            if (double.TryParse(floorTolerance, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsedFloor)
+                && double.IsFinite(parsedFloor)
+                && parsedFloor > 0.0)
+            {
+                floor = Math.Max(parsedFloor, HardMinFloor);
+            }
+
             if (!double.TryParse(currentTolerance, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
                 || !double.IsFinite(value)
                 || value <= 0.0)
             {
-                return "1e-6";
+                return Math.Max(1e-6, floor).ToString("0.###e-0", CultureInfo.InvariantCulture);
             }
 
-            double tightened = Math.Max(value / 10.0, Floor);
+            if (value <= floor)
+            {
+                return value.ToString("0.###e-0", CultureInfo.InvariantCulture);
+            }
+
+            double tightened = Math.Max(value / 10.0, floor);
             return tightened.ToString("0.###e-0", CultureInfo.InvariantCulture);
         }
 

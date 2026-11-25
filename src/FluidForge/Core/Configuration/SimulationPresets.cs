@@ -251,7 +251,7 @@ namespace FluidForge.Core
                 name: "External2D:VerificationFine",
                 domain: "External2D",
                 accuracy: "VerificationFine",
-                description: "High-accuracy 2D RANS (NASA-TMR aligned) with tight calibration (2%), y+ ~ 0.8, BL growth 1.15, SlopeLimiterFlow VENKATAKRISHNAN, SA nu_tilde/nu=3, 10k iters (Cauchy 1e-6), AutoStop off, and 2-step Top-3 verification.",
+                description: "High-accuracy 2D RANS (NASA-TMR aligned) with tight calibration (2%), y+ ~ 0.8, BL growth 1.15, SlopeLimiterFlow VENKATAKRISHNAN, SA nu_tilde/nu=3, 10k iters (Cauchy 5e-6), AutoStop off, and 2-step Top-3 verification.",
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
@@ -263,7 +263,8 @@ namespace FluidForge.Core
                     },
                     ["Su2MaxIterations"] = 10000,
                     ["CauchyElements"] = 500,
-                    ["CauchyTolerance"] = "1e-6",
+                    ["CauchyTolerance"] = "5e-6",
+                    ["CauchyToleranceFloor"] = "3e-6",
                     ["MeshCalibration"] = new JsonObject
                     {
                         ["Mode"] = "Auto",

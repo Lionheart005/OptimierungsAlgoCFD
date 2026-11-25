@@ -64,6 +64,10 @@
       "type": "string",
       "default": "1e-5"
     },
+    "CauchyToleranceFloor": {
+      "type": "string",
+      "default": "1e-7"
+    },
     "ChampionVerification": {
       "type": "object",
       "properties": {

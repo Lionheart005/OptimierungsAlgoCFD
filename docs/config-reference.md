@@ -53,6 +53,7 @@ Every JSON configuration key is validated at startup by `ConfigSchema`. Any typo
 | `Su2MaxIterations` | `int` | `3000` | Maximum SU2 iterations per normal variant. |
 | `CauchyElements` | `int` | `300` | Trailing history window length for SU2 Cauchy convergence and drift analysis. |
 | `CauchyTolerance` | `string` | `"1e-5"` | SU2 `CONV_CAUCHY_EPS` threshold. |
+| `CauchyToleranceFloor` | `string` | `"1e-7"` | Lower bound for automatic `CauchyTolerance` tightening during steady SU2 drift restarts. |
 | `IterativeToleranceFraction` | `float` | `0.25` | Max allowed tail-window drift as a fraction of `MeshCalibration.Tolerance`. |
 | `ControlRuns` | `ControlRunConfig` | `{}` | Strict solver profile for calibration, verification, and recheck (see section 1.2). |
 | `MpiCores` | `int` | `12` | MPI ranks passed to `MpiRunPath` for `SU2_CFD`. |

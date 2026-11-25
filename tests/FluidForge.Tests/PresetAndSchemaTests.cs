@@ -236,7 +236,8 @@ namespace FluidForge.Tests
             SimulationConfig sim = JsonConfigLoader.LoadWithPresetCore(
                 SimulationConfig.CreateDefault(), preset.Name, preset.SimulationOverrides, printOrigins: false).Value;
 
-            Assert.Equal("1e-6", sim.CauchyTolerance);
+            Assert.Equal("5e-6", sim.CauchyTolerance);
+            Assert.Equal("3e-6", sim.CauchyToleranceFloor);
             Assert.Equal(500, sim.CauchyElements);
             Assert.Equal(10000, sim.Su2MaxIterations);
 

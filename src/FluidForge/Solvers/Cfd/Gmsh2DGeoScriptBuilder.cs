@@ -75,12 +75,13 @@ namespace FluidForge.Solvers.Cfd
             int nextPointId = 1, nextCurveId = 1, nextLoopId = 1;
             var allBodyCurves = new List<int>();
             var allFanPointIds = new List<int>();
+            var allEdgePointIds = new List<int>();
             var bodyLoopIds = new List<int>();
 
             geoLines.Add("// --- A) PART CONTOUR POINTS (xy-plane, z=0) ---");
-            AppendContours(geoLines, contourFile, options, chordGeo, surfaceSize,
+            AppendContours(geoLines, contourFile, options, surfaceSize,
                 ref nextPointId, ref nextCurveId, ref nextLoopId,
-                allBodyCurves, allFanPointIds, bodyLoopIds);
+                allBodyCurves, allFanPointIds, allEdgePointIds, bodyLoopIds);
 
             geoLines.Add(string.Empty);
             geoLines.Add("// --- B) FARFIELD CIRCLE (circulation radius = FarfieldRadiusFactor * c) ---");
@@ -149,6 +150,28 @@ namespace FluidForge.Solvers.Cfd
             {
                 WakeAndDetailBoxBuilder.Append2DDetailBox(geoLines, options, bounds, chordGeo, factor, farfieldSize);
                 combined.Add(6);
+            }
+            if (options.EdgeRefinementFactor > 0f && options.EdgeRefinementFactor < 1f && allEdgePointIds.Count > 0)
+            {
+                float edgeSize = surfaceSize * options.EdgeRefinementFactor;
+                float edgeDistMax = Math.Max(options.EdgeRefinementDistanceFactor * chordGeo, edgeSize * 2.0f);
+                float edgeDistMin = Math.Min(0.02f * edgeDistMax, edgeSize * 2.0f);
+                if (edgeDistMin >= edgeDistMax)
+                {
+                    edgeDistMin = 0.5f * edgeDistMax;
+                }
+
+                WakeAndDetailBoxBuilder.AppendSectionHeader(geoLines, "// F3) FIELD-BASED EDGE REFINEMENT", wideBanner: true, leadingBlankLine: true);
+                geoLines.Add("Field[7] = Distance;");
+                geoLines.Add($"Field[7].PointsList = {{ {string.Join(", ", allEdgePointIds.Distinct())} }};");
+                geoLines.Add("Field[8] = Threshold;");
+                geoLines.Add("Field[8].InField = 7;");
+                geoLines.Add($"Field[8].SizeMin = {F(edgeSize)};");
+                geoLines.Add($"Field[8].SizeMax = {F(surfaceSize)};");
+                geoLines.Add($"Field[8].DistMin = {F(edgeDistMin)};");
+                geoLines.Add($"Field[8].DistMax = {F(edgeDistMax)};");
+                geoLines.Add("Field[8].StopAtDistMax = 1;");
+                combined.Add(8);
             }
 
             if (combined.Count > 1)
@@ -248,9 +271,9 @@ namespace FluidForge.Solvers.Cfd
         }
 
         private static void AppendContours(
-            List<string> geoLines, ContourFile2D contourFile, Gmsh2DMesherOptions options, float chordGeo, float surfaceSize,
+            List<string> geoLines, ContourFile2D contourFile, Gmsh2DMesherOptions options, float surfaceSize,
             ref int nextPointId, ref int nextCurveId, ref int nextLoopId,
-            List<int> allBodyCurves, List<int> allFanPointIds, List<int> bodyLoopIds)
+            List<int> allBodyCurves, List<int> allFanPointIds, List<int> allEdgePointIds, List<int> bodyLoopIds)
         {
             if (contourFile.Contours == null) return;
             string F(float v) => WakeAndDetailBoxBuilder.Format(v);
@@ -281,8 +304,13 @@ namespace FluidForge.Solvers.Cfd
                 {
                     var pt = contour.Points[i];
                     ptIdMap[i] = nextPointId++;
-                    float pointSize = refineEdges && edgeIdx.Contains(i) ? edgeSize : surfaceSize;
+                    bool isRefinedEdge = refineEdges && edgeIdx.Contains(i);
+                    float pointSize = isRefinedEdge ? edgeSize : surfaceSize;
                     geoLines.Add($"Point({ptIdMap[i]}) = {{ {F(pt[0])}, {F(pt[1])}, 0, {F(pointSize)} }};");
+                    if (isRefinedEdge)
+                    {
+                        allEdgePointIds.Add(ptIdMap[i]);
+                    }
                 }
 
                 foreach (int cornerIdx in corners)
@@ -291,15 +319,15 @@ namespace FluidForge.Solvers.Cfd
                         allFanPointIds.Add(ptIdMap[cornerIdx]);
                 }
 
-                var splitIndices = BuildSplitIndices(contour.Points, corners, cornerSet, leIdx, teIdx, refineEdges, options, chordGeo);
+                var splitIndices = BuildSplitIndices(n, corners, leIdx, teIdx);
                 var loopCurves = new List<int>();
                 int m = splitIndices.Count;
                 for (int s = 0; s < m; s++)
                 {
                     int fromIdx = splitIndices[s];
                     int toIdx = splitIndices[(s + 1) % m];
-                    var splinePts = new List<int>();
-                    int curr = fromIdx;
+                    var splinePts = new List<int> { ptIdMap[fromIdx] };
+                    int curr = (fromIdx + 1) % n;
                     while (true)
                     {
                         splinePts.Add(ptIdMap[curr]);
@@ -319,11 +347,8 @@ namespace FluidForge.Solvers.Cfd
             }
         }
 
-        private static List<int> BuildSplitIndices(
-            List<float[]> points, List<int> corners, HashSet<int> cornerSet, int leIdx, int teIdx,
-            bool refineEdges, Gmsh2DMesherOptions options, float chordGeo)
+        private static List<int> BuildSplitIndices(int n, List<int> corners, int leIdx, int teIdx)
         {
-            int n = points.Count;
             var splitIndices = new List<int>();
             if (corners.Count == 0)
             {
@@ -333,42 +358,24 @@ namespace FluidForge.Solvers.Cfd
             else if (corners.Count == 1)
             {
                 int c0 = corners[0];
-                splitIndices.Add(c0);
-                int oppIdx = 0;
-                float bestDistSq = -1f;
-                Vector2 c0Vec = new Vector2(points[c0][0], points[c0][1]);
-                for (int i = 0; i < n; i++)
+                if (c0 >= 0 && c0 < n)
                 {
-                    if (i == c0) continue;
-                    float d2 = Vector2.DistanceSquared(c0Vec, new Vector2(points[i][0], points[i][1]));
-                    if (d2 > bestDistSq) { bestDistSq = d2; oppIdx = i; }
+                    splitIndices.Add(c0);
                 }
-                splitIndices.Add(oppIdx);
+                else
+                {
+                    splitIndices.Add(leIdx);
+                    splitIndices.Add(teIdx);
+                }
             }
             else
             {
                 splitIndices.AddRange(corners.Where(idx => idx >= 0 && idx < n).Distinct());
-            }
-
-            if (refineEdges)
-            {
-                float distX = options.EdgeRefinementDistanceFactor * chordGeo;
-                float minX = points[leIdx][0], maxX = points[teIdx][0];
-                bool refineTe = !cornerSet.Contains(teIdx);
-
-                foreach (int walkDir in new[] { 1, -1 })
+                if (splitIndices.Count == 0)
                 {
-                    int fromLe = WalkTo(points, leIdx, walkDir, pt => pt[0] >= minX + distX);
-                    if (fromLe >= 0 && fromLe < n && !splitIndices.Contains(fromLe)) splitIndices.Add(fromLe);
-
-                    if (refineTe)
-                    {
-                        int fromTe = WalkTo(points, teIdx, walkDir, pt => pt[0] <= maxX - distX);
-                        if (fromTe >= 0 && fromTe < n && !splitIndices.Contains(fromTe)) splitIndices.Add(fromTe);
-                    }
+                    splitIndices.Add(leIdx);
+                    splitIndices.Add(teIdx);
                 }
-                if (!splitIndices.Contains(leIdx)) splitIndices.Add(leIdx);
-                if (!splitIndices.Contains(teIdx)) splitIndices.Add(teIdx);
             }
 
             splitIndices.Sort();

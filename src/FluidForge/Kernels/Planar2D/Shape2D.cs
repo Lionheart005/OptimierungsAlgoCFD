@@ -40,6 +40,12 @@ namespace FluidForge.Kernels.Planar2D
     /// </summary>
     public class Shape2D
     {
+        /// <summary>
+        /// Decimal precision passed to Clipper2 (6 = 1e-6 mm = 1 nm).
+        /// Prevents sub-micrometer rounding distortion on fine airfoil leading edges.
+        /// </summary>
+        public const int ClipperPrecision = 6;
+
         public PathsD Paths { get; private set; } = new();
 
         /// <summary>
@@ -75,7 +81,7 @@ namespace FluidForge.Kernels.Planar2D
             {
                 Paths = Paths.Count == 0
                     ? new PathsD(other.Paths)
-                    : Clipper.Union(Paths, other.Paths, FillRule.NonZero);
+                    : Clipper.Union(Paths, other.Paths, FillRule.NonZero, ClipperPrecision);
             }
             return this;
         }
@@ -87,7 +93,7 @@ namespace FluidForge.Kernels.Planar2D
         {
             if (other?.Paths != null && other.Paths.Count > 0 && Paths.Count > 0)
             {
-                Paths = Clipper.Difference(Paths, other.Paths, FillRule.NonZero);
+                Paths = Clipper.Difference(Paths, other.Paths, FillRule.NonZero, ClipperPrecision);
             }
             return this;
         }
@@ -103,7 +109,7 @@ namespace FluidForge.Kernels.Planar2D
             }
             else
             {
-                Paths = Clipper.Intersect(Paths, other.Paths, FillRule.NonZero);
+                Paths = Clipper.Intersect(Paths, other.Paths, FillRule.NonZero, ClipperPrecision);
             }
             return this;
         }
@@ -122,7 +128,7 @@ namespace FluidForge.Kernels.Planar2D
                 return this;
 
             // Clipper.InflatePaths(PathsD, double delta, JoinType, EndType, double miterLimit, int precision, double arcTolerance)
-            Paths = Clipper.InflatePaths(Paths, distanceMm, JoinType.Round, EndType.Polygon, 2.0, 6, 0.002);
+            Paths = Clipper.InflatePaths(Paths, distanceMm, JoinType.Round, EndType.Polygon, 2.0, ClipperPrecision, 0.002);
             return this;
         }
 
@@ -168,9 +174,7 @@ namespace FluidForge.Kernels.Planar2D
             }
 
             var newPaths = new PathsD { path };
-            Paths = Paths.Count == 0
-                ? Clipper.Union(newPaths, FillRule.NonZero)
-                : Clipper.Union(Paths, newPaths, FillRule.NonZero);
+            Paths = Clipper.Union(Paths, newPaths, FillRule.NonZero, ClipperPrecision);
 
             return this;
         }
@@ -194,9 +198,7 @@ namespace FluidForge.Kernels.Planar2D
             }
 
             var newPaths = new PathsD { path };
-            Paths = Paths.Count == 0
-                ? Clipper.Union(newPaths, FillRule.NonZero)
-                : Clipper.Union(Paths, newPaths, FillRule.NonZero);
+            Paths = Clipper.Union(Paths, newPaths, FillRule.NonZero, ClipperPrecision);
 
             return this;
         }

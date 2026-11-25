@@ -78,6 +78,12 @@ namespace FluidForge.Core
         public string CauchyTolerance { get; set; } = "1e-5";
 
         /// <summary>
+        /// Lower floor for automatic Cauchy tolerance tightening during steady SU2 restarts
+        /// (prevents tightening below achievable solver precision).
+        /// </summary>
+        public string CauchyToleranceFloor { get; set; } = "1e-7";
+
+        /// <summary>
         /// Maximum allowed iterative error of a normal variant as a fraction of the mesh tolerance
         /// (<see cref="MeshCalibrationConfig.Tolerance"/>) to be considered converged.
         /// 0.25 = one quarter (e.g., at 2% mesh tolerance, at most 0.5% drift in the trailing window).

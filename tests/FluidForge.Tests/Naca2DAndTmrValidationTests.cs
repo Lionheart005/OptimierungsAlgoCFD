@@ -108,9 +108,16 @@ namespace FluidForge.Tests
                 Assert.True(File.Exists(geoPath));
                 string[] lines = File.ReadAllLines(geoPath);
 
-                // Spline split at sharp trailing edge
+                // Single closed smooth spline starting and ending at the sharp trailing edge
                 int splineCount = lines.Count(l => l.StartsWith("Spline("));
-                Assert.True(splineCount >= 2, $"Expected at least 2 splines at corner, found: {splineCount}");
+                Assert.Equal(1, splineCount);
+                string splineLine = lines.First(l => l.StartsWith("Spline(1) = {"));
+                string[] splineIds = splineLine.Split('{')[1].Split('}')[0]
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                Assert.Equal(splineIds[0], splineIds[^1]);
+                string fanLine = lines.First(l => l.StartsWith("Field[1].FanPointsList = {"));
+                string fanId = fanLine.Split('{')[1].Split('}')[0].Trim();
+                Assert.Equal(fanId, splineIds[0]);
 
                 // BoundaryLayer field present
                 Assert.Contains(lines, l => l.Contains("Field[1] = BoundaryLayer;"));

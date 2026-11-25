@@ -16,7 +16,7 @@ namespace FluidForge.Projects.Naca2D
     public sealed class Naca2DGeometryGenerator : IGeometryGenerator
     {
         private const float DefaultChordLength = 50.0f; // Chord length c in mm
-        private const int ChordStations = 200;          // Stations per half-chord (upper/lower)
+        private const int ChordStations = 300;          // Stations per half-chord (upper/lower)
 
         /// <summary>
         /// Whether the trailing edge should be closed to a sharp point (default: true, coefficient -0.1036f),

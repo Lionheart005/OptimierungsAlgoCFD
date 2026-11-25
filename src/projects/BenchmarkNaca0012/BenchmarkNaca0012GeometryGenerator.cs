@@ -16,7 +16,7 @@ namespace FluidForge.Projects.BenchmarkNaca0012
     {
         public const float DefaultChordMm = 1000.0f;
         private const float FixedCamberPosition = 0.40f;
-        private const int ChordStations = 240;
+        private const int ChordStations = 400;
 
         private readonly float _chordMm;
 

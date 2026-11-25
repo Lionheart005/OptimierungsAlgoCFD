@@ -34,7 +34,7 @@ namespace FluidForge.Kernels.Planar2D
                     center.Y + radius * Math.Sin(angle)));
             }
 
-            Paths = Clipper.Union(Paths, new PathsD { path }, FillRule.NonZero);
+            Paths = Clipper.Union(Paths, new PathsD { path }, FillRule.NonZero, Shape2D.ClipperPrecision);
         }
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace FluidForge.Kernels.Planar2D
                     a.Y + (r1 * Math.Sin(angle))));
             }
 
-            Paths = Clipper.Union(Paths, new PathsD { polygon }, FillRule.NonZero);
+            Paths = Clipper.Union(Paths, new PathsD { polygon }, FillRule.NonZero, Shape2D.ClipperPrecision);
         }
     }
 }

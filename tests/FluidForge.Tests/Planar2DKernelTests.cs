@@ -422,6 +422,60 @@ namespace FluidForge.Tests
             }
         }
 
+        [Fact]
+        public void AddPolygon_And_SaveLoadContour_Preserve_SubMicrometer_Naca_Nose_Precision()
+        {
+            string tempDir = Path.Combine(Path.GetTempPath(), "Planar2DNosePrecision_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            string jsonPath = Path.Combine(tempDir, "naca_nose.json");
+
+            try
+            {
+                // Typical NACA 0012 nose coordinates at c = 1000 mm (with ClipperPrecision = 2 this truncated by 0.01 mm!)
+                var noseUpper = new Vector2(0.0428f, 1.1642f);
+                var noseLower = new Vector2(0.0428f, -1.1642f);
+                var polygon = new List<Vector2>
+                {
+                    new(1000f, 0f),
+                    new(500f, -52.94f),
+                    new(10f, -17.34f),
+                    noseLower,
+                    new(0f, 0f),
+                    noseUpper,
+                    new(10f, 17.34f),
+                    new(500f, 52.94f)
+                };
+
+                var shape = new Shape2D().AddPolygon(polygon);
+                shape.SaveContour(jsonPath, cornerAngleDeg: 35.0f);
+                var loaded = Shape2D.LoadContour(jsonPath);
+
+                Assert.Single(loaded.Contours);
+                var pts = loaded.Contours[0].Points;
+                Assert.Equal(polygon.Count, pts.Count);
+
+                float bestUpperDist = float.MaxValue;
+                float bestLowerDist = float.MaxValue;
+                foreach (float[] p in pts)
+                {
+                    float du = Vector2.Distance(new Vector2(p[0], p[1]), noseUpper);
+                    float dl = Vector2.Distance(new Vector2(p[0], p[1]), noseLower);
+                    if (du < bestUpperDist) bestUpperDist = du;
+                    if (dl < bestLowerDist) bestLowerDist = dl;
+                }
+
+                Assert.True(bestUpperDist < 1e-4f, $"Expected sub-micrometer accuracy (< 1e-4 mm) at noseUpper, got {bestUpperDist}");
+                Assert.True(bestLowerDist < 1e-4f, $"Expected sub-micrometer accuracy (< 1e-4 mm) at noseLower, got {bestLowerDist}");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                {
+                    try { Directory.Delete(tempDir, recursive: true); } catch { }
+                }
+            }
+        }
+
         #endregion
     }
 }

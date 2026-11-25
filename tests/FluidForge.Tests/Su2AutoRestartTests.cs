@@ -400,6 +400,80 @@ namespace FluidForge.Tests
             Assert.Equal(expected, Su2Solver.TightenTolerance(input));
         }
 
+        [Theory]
+        [InlineData("5e-6", "3e-6", "3e-6")]
+        [InlineData("3e-6", "3e-6", "3e-6")]
+        [InlineData("1e-6", "3e-6", "1e-6")] // Never-loosen guard: already tighter than floor
+        [InlineData("1e-4", "3e-6", "1e-5")]
+        public void TightenTolerance_Respects_Configurable_Floor_And_Never_Loosens(
+            string input, string floor, string expected)
+        {
+            Assert.Equal(expected, Su2Solver.TightenTolerance(input, floor));
+        }
+
+        [Fact]
+        public void Solver_Stops_Without_Redundant_Restart_When_CauchyToleranceFloor_Reached()
+        {
+            string dir = CreateTempDir("su2_floor_stop");
+            TextWriter originalOut = Console.Out;
+            var captured = new StringWriter();
+            try
+            {
+                string meshPath = Path.Combine(dir, "Model_Gen1_Var1.su2");
+                File.WriteAllText(meshPath, "dummy");
+
+                var observedEps = new List<string>();
+                var solver = new Su2Solver(new Su2SolverOptions
+                {
+                    ResultMetrics = new() { ["Drag"] = "CD" },
+                    AutoRestartOnDrift = true,
+                    MaxConvergenceRestarts = 3
+                })
+                {
+                    RunSu2Override = (wd, cores) =>
+                    {
+                        string[] cfgLines = File.ReadAllLines(Path.Combine(wd, "current_config.cfg"));
+                        string epsLine = cfgLines.First(l => l.StartsWith("CONV_CAUCHY_EPS=", StringComparison.Ordinal));
+                        observedEps.Add(epsLine);
+
+                        // Persistent drift and early Cauchy stop in every block
+                        File.WriteAllLines(
+                            Path.Combine(wd, "history.csv"),
+                            BuildHistoryLines(150, i => 0.080 - 0.0002 * ((observedEps.Count - 1) * 150 + i)));
+                        File.WriteAllText(Path.Combine(wd, "restart_flow.dat"), $"restart-{observedEps.Count}");
+                        return (0, string.Empty, string.Empty);
+                    }
+                };
+
+                var config = new SimulationConfig
+                {
+                    Su2MaxIterations = 2000,
+                    CauchyElements = 100,
+                    CauchyTolerance = "5e-6",
+                    CauchyToleranceFloor = "3e-6",
+                    IterativeToleranceFraction = 0.25f
+                };
+                config.MeshCalibration.Tolerance = 0.05f;
+
+                var record = CreateDummyRecord();
+                Console.SetOut(captured);
+                solver.Solve(meshPath, record, config, dir);
+                Console.SetOut(originalOut);
+
+                // Block 0 runs at 5e-6, Block 1 runs at 3e-6; next tighten would stay at 3e-6 -> no redundant Block 2!
+                Assert.Equal(2, observedEps.Count);
+                Assert.Equal("CONV_CAUCHY_EPS= 5e-6", observedEps[0]);
+                Assert.Equal("CONV_CAUCHY_EPS= 3e-6", observedEps[1]);
+                Assert.Contains("CauchyToleranceFloor (3e-6) already reached", captured.ToString());
+                Assert.True(record.SimulationFailed);
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            }
+        }
+
         [Fact]
         public void Solver_Logs_Three_Decimal_Fach_Format()
         {

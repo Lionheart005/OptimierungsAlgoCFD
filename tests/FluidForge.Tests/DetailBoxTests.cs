@@ -103,32 +103,52 @@ namespace FluidForge.Tests
         }
 
         [Fact]
-        public void Leading_And_Trailing_Edge_Points_Get_Finer_Cells_Without_Extra_Fields()
+        public void Leading_And_Trailing_Edge_Points_Use_Field_Refinement_And_Respect_Factor()
         {
-            var lines = Geo2D(new Gmsh2DMesherOptions());
+            var lines1 = Geo2D(new Gmsh2DMesherOptions(), 1.0f);
+            var lines05 = Geo2D(new Gmsh2DMesherOptions(), 0.5f);
+            var linesOff = Geo2D(new Gmsh2DMesherOptions { EdgeRefinementFactor = 1.0f }, 1.0f);
 
-            // Gmsh 4.11 loops endlessly with distance/ball fields below wall cell size when boundary layer is active
-            // (server test 2026-11-06): edge refinement therefore runs solely via point sizes.
-            Assert.DoesNotContain(lines, l => l.StartsWith("Field[7]") || l.StartsWith("Field[8]"));
+            // Field-based edge refinement: Field[7] Distance -> Field[8] Threshold (with StopAtDistMax = 1)
+            Assert.Contains(lines1, l => l.Trim() == "Field[7] = Distance;");
+            Assert.Contains(lines1, l => l.StartsWith("Field[7].PointsList = {"));
+            Assert.Contains(lines1, l => l.Trim() == "Field[8] = Threshold;");
+            Assert.Contains(lines1, l => l.Trim() == "Field[8].InField = 7;");
+            Assert.Contains(lines1, l => l.Trim() == "Field[8].StopAtDistMax = 1;");
+            Assert.Contains(lines1, l => l.StartsWith("Field[5].FieldsList") && l.Contains("8"));
 
-            var contourPoints = lines.Where(l => l.StartsWith("Point(") && l.Contains(", 0,")).ToList();
+            // Edge SizeMin = 0.5 * 0.25 = 0.125, SizeMax = surfaceSize = 0.5 (both scaled by factor)
+            Assert.Equal(0.125f, Value(lines1, "Field[8].SizeMin"), 4);
+            Assert.Equal(0.5f, Value(lines1, "Field[8].SizeMax"), 4);
+            Assert.Equal(0.0625f, Value(lines05, "Field[8].SizeMin"), 4);
+            Assert.Equal(0.25f, Value(lines05, "Field[8].SizeMax"), 4);
+
+            // Disabled when EdgeRefinementFactor = 1.0
+            Assert.DoesNotContain(linesOff, l => l.StartsWith("Field[7]") || l.StartsWith("Field[8]"));
+            Assert.DoesNotContain(linesOff, l => l.StartsWith("Field[5].FieldsList") && l.Contains("8"));
+
+            var contourPoints = lines1.Where(l => l.StartsWith("Point(") && l.Contains(", 0,")).ToList();
             float Size(string l) => float.Parse(l.Split(',').Last().Replace("};", "").Replace("}", "").Trim(), CultureInfo.InvariantCulture);
             float min = contourPoints.Min(Size), max = contourPoints.Max(Size);
-            // Contour cell size c/100 = 0.5 mm; a quarter of that at the edges.
+            // Contour cell size c/100 = 0.5 mm; a quarter of that at the smooth leading edge.
             Assert.Equal(0.125f, min, 3);
             Assert.True(max > 0.4f);
         }
 
         [Fact]
-        public void Contour_Is_Split_Near_Both_Edges_So_The_Refinement_Stays_Local()
+        public void Single_Corner_Airfoil_Stays_One_Closed_Spline_Regardless_Of_Edge_Refinement()
         {
             var on = Geo2D(new Gmsh2DMesherOptions());
             var off = Geo2D(new Gmsh2DMesherOptions { EdgeRefinementFactor = 1.0f });
 
-            int splinesOn = on.Count(l => l.StartsWith("Spline("));
-            int splinesOff = off.Count(l => l.StartsWith("Spline("));
-            // Split points 0.1 L behind the leading edge and ahead of the trailing edge, top and bottom.
-            Assert.True(splinesOn > splinesOff, $"{splinesOn} splines with, {splinesOff} without edge refinement.");
+            Assert.Equal(1, on.Count(l => l.StartsWith("Spline(")));
+            Assert.Equal(1, off.Count(l => l.StartsWith("Spline(")));
+
+            string splineLine = on.First(l => l.StartsWith("Spline(1) = {"));
+            string[] ids = splineLine.Split('{')[1].Split('}')[0]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.True(ids.Length >= 4);
+            Assert.Equal(ids[0], ids[^1]);
         }
 
         [Fact]

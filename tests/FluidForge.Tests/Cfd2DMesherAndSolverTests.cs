@@ -20,18 +20,30 @@ namespace FluidForge.Tests
     {
         private static List<Vector2> CreateAirfoilContour(float chordMm = 50.0f)
         {
-            // Typical NACA-like airfoil contour with a sharp trailing-edge corner
+            // Typical NACA-like airfoil contour with a sharp trailing-edge corner and rounded nose
             var pts = new List<Vector2>
             {
                 new(chordMm, 0f),                 // 0: trailing edge (corner point)
                 new(chordMm * 0.75f, -chordMm * 0.03f),
                 new(chordMm * 0.5f, -chordMm * 0.05f),
                 new(chordMm * 0.25f, -chordMm * 0.04f),
-                new(0f, 0f),                      // 4: leading edge (rounded)
-                new(chordMm * 0.25f, chordMm * 0.06f),
-                new(chordMm * 0.5f, chordMm * 0.08f),
-                new(chordMm * 0.75f, chordMm * 0.05f)
+                new(chordMm * 0.10f, -chordMm * 0.025f),
             };
+
+            float rNose = 0.02f * chordMm;
+            int noseSteps = 8;
+            for (int i = 0; i <= noseSteps; i++)
+            {
+                float angle = -MathF.PI * 0.5f + (MathF.PI * i / noseSteps);
+                float x = rNose * (1.0f - MathF.Cos(angle));
+                float y = rNose * MathF.Sin(angle);
+                pts.Add(new Vector2(x, y));
+            }
+
+            pts.Add(new(chordMm * 0.10f, chordMm * 0.035f));
+            pts.Add(new(chordMm * 0.25f, chordMm * 0.06f));
+            pts.Add(new(chordMm * 0.5f, chordMm * 0.08f));
+            pts.Add(new(chordMm * 0.75f, chordMm * 0.05f));
             return pts;
         }
 
@@ -66,9 +78,32 @@ namespace FluidForge.Tests
                 Assert.Contains(lines, l => l.StartsWith("Point("));
                 Assert.Contains(lines, l => l.StartsWith("Spline("));
 
-                // 2. Spline split at the sharp trailing edge -> at least 2 splines
+                // 2. Single closed smooth spline starting and ending at the sharp trailing-edge corner
                 int splineCount = lines.Count(l => l.StartsWith("Spline("));
-                Assert.True(splineCount >= 2, $"Expected at least 2 splines (split at corner), found: {splineCount}");
+                Assert.Equal(1, splineCount);
+
+                string splineLine = lines.First(l => l.StartsWith("Spline(1) = {"));
+                string[] splineIds = splineLine.Split('{')[1].Split('}')[0]
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                Assert.Equal(splineIds[0], splineIds[^1]);
+
+                string fanLine = lines.First(l => l.StartsWith("Field[1].FanPointsList = {"));
+                string fanId = fanLine.Split('{')[1].Split('}')[0].Trim();
+                Assert.Equal(fanId, splineIds[0]);
+
+                // 2b. Multi-corner contour (2 sharp corners) still splits into >= 2 splines
+                string twoCornerContour = Path.Combine(tempDir, "diamond.json");
+                string twoCornerGeo = Path.Combine(tempDir, "diamond.geo");
+                new Shape2D().AddPolygon(new[]
+                {
+                    new Vector2(0f, 0f),
+                    new Vector2(25f, 5f),
+                    new Vector2(50f, 0f),
+                    new Vector2(25f, -5f)
+                }).SaveContour(twoCornerContour, cornerAngleDeg: 35.0f);
+                mesher.WriteGeoScript(twoCornerGeo, twoCornerContour, config, scaleFactor: 1.0f, refinementFactor: 1.0f);
+                int twoCornerSplines = File.ReadAllLines(twoCornerGeo).Count(l => l.StartsWith("Spline("));
+                Assert.True(twoCornerSplines >= 2, $"Expected >= 2 splines for multi-corner contour, found: {twoCornerSplines}");
 
                 // 3. BoundaryLayer field
                 Assert.Contains(lines, l => l.Contains("Field[1] = BoundaryLayer;"));
