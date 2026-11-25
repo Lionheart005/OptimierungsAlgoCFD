@@ -28,6 +28,9 @@ namespace FluidForge.Projects.StatorCoolingRing
         private const float RotorSeedRadiusMm = 58.0f;
         private const float MaxStepDisplacementMm = 2.2f;
         private const float MurraySigmaMm = 2.4f;
+        private const float HexBackXMm = -96.5f;
+        private const float HexKeepOutPlaneXMm = -93.5f;
+        private const float HexRibClearanceXMm = -94.5f;
         private const float DegToRad = StatorCoolingRingConstants.DegToRad;
 
         /// <summary>
@@ -168,6 +171,12 @@ namespace FluidForge.Projects.StatorCoolingRing
 
             float splitAngleDeg = 75.0f * p.UpperLowerSplitBias;
             IReadOnlyList<float> outletAnglesDeg = GetOutletAnglesDeg();
+            var outletDirXY = new Vector2[PathCount];
+            for (int i = 0; i < PathCount; i++)
+            {
+                float rad = outletAnglesDeg[i] * DegToRad;
+                outletDirXY[i] = new Vector2(MathF.Cos(rad), MathF.Sin(rad));
+            }
             ObstacleCapsule[] obstacles = GetObstacleCapsules();
 
             var boltPositionsXY = new Vector2[StatorCoolingRingConstants.BoltAnglesDeg.Length];
@@ -242,9 +251,8 @@ namespace FluidForge.Projects.StatorCoolingRing
             for (int i = 0; i < PathCount; i++)
             {
                 int row = i * NodesPerPath;
-                float rad = outletAnglesDeg[i] * DegToRad;
-                float outX = targets.PitchCircleRadiusMm * MathF.Cos(rad);
-                float outY = targets.PitchCircleRadiusMm * MathF.Sin(rad);
+                float outX = targets.PitchCircleRadiusMm * outletDirXY[i].X;
+                float outY = targets.PitchCircleRadiusMm * outletDirXY[i].Y;
 
                 nodes[row] = inletP0;
                 nodes[row + 1] = inletP1;
@@ -376,7 +384,7 @@ namespace FluidForge.Projects.StatorCoolingRing
 
                             bool hit = FindClosestOnPath(
                                 pos, j, nodes, tangents, arcParams, rEst, chunkCenters, chunkRadii, pathMin, pathMax, maxInteractionRange,
-                                out Vector3 qClosest, out Vector3 qTan, out _, out float rJ, out float distSq);
+                                out Vector3 qClosest, out Vector3 qTan, out float qU, out float rJ, out float distSq);
 
                             if (!hit) continue;
 
@@ -385,8 +393,9 @@ namespace FluidForge.Projects.StatorCoolingRing
                                 lastBundledArc[j] = arcDistances[idx];
 
                             float cDir = Vector3.Dot(tan, qTan);
-
-                            bool inSnapZone = cDir > 0.25f && dist < rSnap && rSnap > 1e-4f;
+                            bool isDescendingNozzle = qU >= 0.86f || qClosest.Z < 15.0f;
+                            bool inSnapZone = !isDescendingNozzle && cDir > 0.25f && dist < rSnap && rSnap > 1e-4f;
+                            bool shouldRepel = false;
                             if (inSnapZone)
                             {
                                 float normD = dist / rSnap;
@@ -394,22 +403,7 @@ namespace FluidForge.Projects.StatorCoolingRing
 
                                 // Bistable well split: commit to bundling when strong, otherwise fan out cleanly past inlet neck
                                 bool snapCommitted = rawAttr >= 0.18f && (iter < 120 || dist <= 1.75f || rawAttr >= 0.28f);
-                                if (!snapCommitted && inletRepelFade > 1e-3f)
-                                {
-                                    float wallJ = EvaluateLocalWallThicknessMm(rJ, targets);
-                                    float dSep = rFluid + rJ + wall + wallJ + 3.0f;
-                                    if (dist < dSep)
-                                    {
-                                        float arcSinceBundle = arcDistances[idx] - lastBundledArc[j];
-                                        float yFade = SmoothStep(arcSinceBundle / 5.0f) * inletRepelFade;
-                                        if (yFade > 1e-3f)
-                                        {
-                                            Vector3 away = dist > 1e-4f ? (pos - qClosest) / dist : SideSpreadNormal(pos, i, j);
-                                            repelSum += 0.90f * yFade * (dSep - dist) * away;
-                                        }
-                                    }
-                                }
-                                else if (snapCommitted)
+                                if (snapCommitted)
                                 {
                                     lastBundledArc[j] = arcDistances[idx];
                                     float w = 1.85f * rawAttr;
@@ -418,22 +412,22 @@ namespace FluidForge.Projects.StatorCoolingRing
                                     bundlePullSum += w * (qClosest - pos);
                                     bundleWeightSum += w;
                                 }
-                            }
-                            else if (inletRepelFade > 1e-3f)
-                            {
-                                // Zone 2: Anti-Sliver Repulsion outside Y-bifurcation and inlet transition
-                                float wallJ = EvaluateLocalWallThicknessMm(rJ, targets);
-                                float dSep = rFluid + rJ + wall + wallJ + 3.0f;
-                                if (dist < dSep)
+                                else
                                 {
-                                    float arcSinceBundle = arcDistances[idx] - lastBundledArc[j];
-                                    float yFade = SmoothStep(arcSinceBundle / 5.0f) * inletRepelFade;
-                                    if (yFade > 1e-3f)
-                                    {
-                                        Vector3 away = dist > 1e-4f ? (pos - qClosest) / dist : SideSpreadNormal(pos, i, j);
-                                        repelSum += 0.90f * yFade * (dSep - dist) * away;
-                                    }
+                                    shouldRepel = true;
                                 }
+                            }
+                            else
+                            {
+                                shouldRepel = true;
+                            }
+
+                            if (shouldRepel && inletRepelFade > 1e-3f)
+                            {
+                                repelSum += ComputeAntiSliverRepulsion(
+                                    pos, qClosest, qU, dist, i, j, rFluid, rJ, wall, muSplit,
+                                    inletRepelFade, arcDistances[idx] - lastBundledArc[j],
+                                    outletDirXY, targets);
                             }
                         }
 
@@ -674,6 +668,17 @@ namespace FluidForge.Projects.StatorCoolingRing
                         center, tangent, rFluid, wall, p.CrossSectionAspect, endFade, targets));
                     minObstacleClearance = MathF.Min(minObstacleClearance, ComputeObstacleClearance(
                         center, tangent, rFluid, wall, p.CrossSectionAspect, endFade, obstacles));
+
+                    if (s >= FixedStartNodes)
+                    {
+                        float rInletAxis = ComputeInletAxisDistance(center);
+                        if ((s >= 4 || rInletAxis > 4.0f) && (rInletAxis > 4.0f || center.X < -85.0f))
+                        {
+                            float rBackX = EvaluateTeardropCrossSectionRadius(rFluid, p.CrossSectionAspect, -Vector3.UnitX, tangent, endFade) + wall;
+                            float hexClearance = (center.X - rBackX) - HexBackXMm;
+                            minObstacleClearance = MathF.Min(minObstacleClearance, hexClearance);
+                        }
+                    }
                 }
             }
 
@@ -996,6 +1001,10 @@ namespace FluidForge.Projects.StatorCoolingRing
                 if (pt.Z + rRib > targets.MaxTotalHeightMm - 0.5f) return false;
                 if (pt.Z - rRib < minZAllowed) return false;
 
+                float rInletAxis = ComputeInletAxisDistance(pt);
+                if ((rInletAxis > 4.0f || pt.X < -85.0f) && (pt.X - rRib < HexRibClearanceXMm))
+                    return false;
+
                 foreach (ObstacleCapsule obs in obstacles)
                 {
                     float distObs = DistancePointToSegment(pt, obs.Start, obs.End);
@@ -1233,14 +1242,85 @@ namespace FluidForge.Projects.StatorCoolingRing
                 }
             }
 
+            // SW-24 hex wrench keep-out barrier (protects X <= -96.5 mm outside coaxial inlet neck)
+            float rInletAxis = ComputeInletAxisDistance(pos);
+            if (nodeIdx >= 4 || rInletAxis > 3.5f || pos.X < -85.0f)
+            {
+                float rBackX = EvaluateTeardropCrossSectionRadius(rFluid, p.CrossSectionAspect, -Vector3.UnitX, tangent, endFade) + wall;
+                float minCenterX = HexKeepOutPlaneXMm + rBackX;
+                if (pos.X < minCenterX + 3.5f)
+                    f.X += SoftQuadraticRepulsion(minCenterX - pos.X, 3.5f, stiffness: 9.0f);
+            }
+
             return f;
         }
 
-        private static Vector3 SideSpreadNormal(Vector3 pos, int pathI, int pathJ)
+        private static Vector3 ComputeAntiSliverRepulsion(
+            Vector3 pos,
+            Vector3 qClosest,
+            float qU,
+            float dist,
+            int pathI,
+            int pathJ,
+            float rFluid,
+            float rJ,
+            float wall,
+            float muSplit,
+            float inletRepelFade,
+            float arcSinceBundle,
+            Vector2[] outletDirXY,
+            StatorCoolingRingTargets targets)
         {
+            float wallJ = EvaluateLocalWallThicknessMm(rJ, targets);
+            float dSep = rFluid + rJ + wall + wallJ + 2.2f;
+            if (dist >= dSep)
+                return Vector3.Zero;
+
+            float yFade = SmoothStep(arcSinceBundle / 5.0f) * inletRepelFade;
+            if (yFade <= 1e-3f)
+                return Vector3.Zero;
+
+            Vector3 sideSpreadXY = SideSpreadNormal(pos, pathI, pathJ, outletDirXY);
+            Vector3 away = dist > 1e-4f ? (pos - qClosest) / dist : sideSpreadXY;
+            if (muSplit < 0.75f && away.Z > 0f && qClosest.Z >= 14.0f)
+            {
+                float xyLen = MathF.Sqrt(away.X * away.X + away.Y * away.Y);
+                float sideMix = MathF.Max(0f, 0.65f - xyLen);
+                away = new Vector3(
+                    away.X + sideMix * sideSpreadXY.X,
+                    away.Y + sideMix * sideSpreadXY.Y,
+                    away.Z * 0.20f);
+                float awayLen = away.Length();
+                away = awayLen >= 1e-4f ? away / awayLen : sideSpreadXY;
+            }
+
+            return 0.90f * yFade * (dSep - dist) * away;
+        }
+
+        private static Vector3 SideSpreadNormal(Vector3 pos, int pathI, int pathJ, Vector2[] outletDirXY)
+        {
+            Vector2 diffXY = outletDirXY[pathI] - outletDirXY[pathJ];
+            float diffLenSq = diffXY.LengthSquared();
+            if (diffLenSq > 1e-6f)
+            {
+                Vector2 dir = diffXY / MathF.Sqrt(diffLenSq);
+                return new Vector3(dir.X, dir.Y, 0f);
+            }
+
             float rXY = MathF.Sqrt(pos.X * pos.X + pos.Y * pos.Y);
-            Vector3 radial = rXY > 1e-5f ? new Vector3(pos.X / rXY, pos.Y / rXY, 0f) : Vector3.UnitX;
-            return pathI < pathJ ? Vector3.UnitZ + 0.25f * radial : -Vector3.UnitZ - 0.25f * radial;
+            Vector2 radial = rXY > 1e-5f ? new Vector2(pos.X / rXY, pos.Y / rXY) : Vector2.UnitX;
+            Vector2 tangent = new(-radial.Y, radial.X);
+            float sign = pathI < pathJ ? 1.0f : -1.0f;
+            Vector2 fallback = sign * (0.85f * tangent + 0.35f * radial);
+            float fbLen = fallback.Length();
+            fallback = fbLen > 1e-6f ? fallback / fbLen : Vector2.UnitX;
+            return new Vector3(fallback.X, fallback.Y, 0f);
+        }
+
+        private static float ComputeInletAxisDistance(Vector3 pt)
+        {
+            float dz = pt.Z - StatorCoolingRingConstants.DefaultInletZMm;
+            return MathF.Sqrt(pt.Y * pt.Y + dz * dz);
         }
 
         private static float SoftQuadraticRepulsion(float penetration, float preWarn, float stiffness)

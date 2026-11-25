@@ -227,6 +227,97 @@ namespace FluidForge.Tests
         }
 
         [Fact]
+        public void OpenDendriticTree_And_All_Showcase_Morphologies_Keep_SW24_Hex_Zone_Clear()
+        {
+            ProjectConfig project = LoadProjectConfig();
+            StatorCoolingRingTargets targets = StatorCoolingRingTargets.FromProject(project);
+
+            var morphologies = new (string Name, bool RequireZeroSlivers, Dictionary<string, float> Params)[]
+            {
+                ("Base", true, new Dictionary<string, float>(project.BaseParameters)),
+                ("HighBundling_Asym4_8", true, new Dictionary<string, float>(project.BaseParameters)
+                {
+                    ["BundlingStrength"] = 0.96f,
+                    ["BundlingRangeMm"] = 30.0f,
+                    ["SplitReleaseBias"] = 0.24f,
+                    ["UpperLowerSplitBias"] = 0.55f,
+                    ["FarSideLoopAttraction"] = 0.05f,
+                    ["MurrayExponent"] = 2.30f
+                }),
+                ("OpenDendriticTree", true, new Dictionary<string, float>(project.BaseParameters)
+                {
+                    ["BundlingStrength"] = 0.12f,
+                    ["BundlingRangeMm"] = 11.0f,
+                    ["SplitReleaseBias"] = 0.64f,
+                    ["UpperLowerSplitBias"] = 0.00f,
+                    ["FarSideLoopAttraction"] = 0.00f,
+                    ["ElevationTiltMm"] = 8.0f,
+                    ["HydraulicBalanceGain"] = 0.90f
+                }),
+                ("ClosedLoop", false, new Dictionary<string, float>(project.BaseParameters)
+                {
+                    ["BundlingStrength"] = 0.78f,
+                    ["BundlingRangeMm"] = 26.0f,
+                    ["SplitReleaseBias"] = 0.30f,
+                    ["UpperLowerSplitBias"] = 0.05f,
+                    ["FarSideLoopAttraction"] = 1.00f,
+                    ["ObstacleOverpassBias"] = 0.85f
+                })
+            };
+
+            foreach (var (name, requireZeroSlivers, prms) in morphologies)
+            {
+                StatorCoolingRingParams p = StatorCoolingRingParams.Read(prms);
+                VascularNetwork net = StatorCoolingRingVascularEngine.BuildVascularNetwork(p, targets);
+                StatorCoolingRingPackagingReport rep =
+                    StatorCoolingRingVascularEngine.EvaluateAnalyticalPackaging(net, p, targets);
+
+                float minBackWallX = float.MaxValue;
+                foreach (VascularPath path in net.Paths)
+                {
+                    float totalLen = MathF.Max(1e-6f, path.PathLengthMm);
+                    float accum = 0f;
+                    for (int s = 0; s < path.Points.Count; s++)
+                    {
+                        if (s > 0)
+                            accum += Vector3.Distance(path.Points[s], path.Points[s - 1]);
+                        if (s < 3)
+                            continue;
+
+                        Vector3 center = path.Points[s];
+                        float dy = center.Y;
+                        float dz = center.Z - StatorCoolingRingConstants.DefaultInletZMm;
+                        float rInletAxis = MathF.Sqrt(dy * dy + dz * dz);
+                        if (rInletAxis <= 4.0f)
+                            continue;
+
+                        float u = accum / totalLen;
+                        float rFluid = path.FluidRadii[s];
+                        float wall = StatorCoolingRingVascularEngine.EvaluateLocalWallThicknessMm(rFluid, targets);
+                        Vector3 tangent = EstimateTangent(path.Points, s);
+                        float endFade = StatorCoolingRingVascularEngine.EvaluateEndCircularFade(u);
+                        float rBackX = StatorCoolingRingVascularEngine.EvaluateTeardropCrossSectionRadius(
+                            rFluid, p.CrossSectionAspect, -Vector3.UnitX, tangent, endFade) + wall;
+                        minBackWallX = MathF.Min(minBackWallX, center.X - rBackX);
+                    }
+                }
+
+                _output.WriteLine(
+                    $"{name} ({net.UpperCount}/{net.LowerCount}): Feasible={rep.IsFeasible}, Slivers={rep.SliverGapCount}, MinGap={rep.MinUnbundledGapMm:F2}, " +
+                    $"Inner={rep.InnerRadiusMm:F2}, Outer={rep.OuterRadiusMm:F2}, Height={rep.TotalHeightMm:F2}, " +
+                    $"BoltClr={rep.MinBoltClearanceMm:F2}, ObsClr={rep.MinObstacleClearanceMm:F2}, MinBackWallX={minBackWallX:F2}");
+
+                Assert.True(rep.IsFeasible, $"{name} should be feasible, got {rep}");
+                Assert.True(rep.MinUnbundledGapMm >= 1.5f,
+                    $"{name} MinUnbundledGapMm={rep.MinUnbundledGapMm:F2} < 1.5 mm.");
+                if (requireZeroSlivers)
+                    Assert.Equal(0, rep.SliverGapCount);
+                Assert.True(minBackWallX >= -94.5f,
+                    $"{name} intruded SW-24 hex zone: min(center.X - rBackX) = {minBackWallX:F2} mm < -94.5 mm.");
+            }
+        }
+
+        [Fact]
         public void DesignSpace14D_RandomSample_Achieves_High_Feasibility()
         {
             ProjectConfig project = LoadProjectConfig();
