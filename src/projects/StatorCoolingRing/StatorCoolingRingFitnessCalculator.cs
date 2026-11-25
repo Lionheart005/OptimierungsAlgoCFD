@@ -26,7 +26,9 @@ namespace FluidForge.Projects.StatorCoolingRing
             "MassBalanceError",
             "Volume",
             "PrintableSolidVolume",
-            "MinBoltClearanceMm"
+            "InnerRadiusMm",
+            "MinBoltClearanceMm",
+            "MinObstacleClearanceMm"
         };
 
         public StatorCoolingRingFitnessCalculator(ProjectConfig project)

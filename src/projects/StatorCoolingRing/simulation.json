@@ -11,7 +11,7 @@
   "UseStlSmoothing": false,
   "BaseVoxelResolution": 0.4,
   "AutoVoxelResolution": true,
-  "MaxIterations": 12,
+  "MaxIterations": 16,
   "VariantsPerIteration": 6,
   "MpiCores": 18
 }

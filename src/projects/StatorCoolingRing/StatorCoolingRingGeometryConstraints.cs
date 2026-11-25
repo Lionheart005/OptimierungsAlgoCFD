@@ -5,7 +5,7 @@ using FluidForge.Core;
 namespace FluidForge.Projects.StatorCoolingRing
 {
     /// <summary>
-    /// Pre-CFD packaging, bolt-clearance, and volume constraints for <c>StatorCoolingRing</c>.
+    /// Pre-CFD packaging, bolt-clearance, HV-obstacle-clearance, and volume constraints for <c>StatorCoolingRing</c>.
     /// Short-circuits meshing and OpenFOAM solving for variants violating physical stator envelope limits.
     /// </summary>
     public sealed class StatorCoolingRingGeometryConstraints : IGeometryConstraintEvaluator
@@ -20,23 +20,27 @@ namespace FluidForge.Projects.StatorCoolingRing
 
             StatorCoolingRingTargets targets = StatorCoolingRingTargets.FromProject(project);
 
+            float innerRadius = ReadMetric(record, "InnerRadiusMm");
             float outerRadius = ReadMetric(record, "OuterRadiusMm");
             float totalHeight = ReadMetric(record, "TotalHeightMm");
             float minBoltClearance = ReadMetric(record, "MinBoltClearanceMm");
+            float minObstacleClearance = ReadMetric(record, "MinObstacleClearanceMm");
             float minBranchRadius = ReadMetric(record, "MinBranchRadiusMm");
 
             // Allow pure-analytical constraint evaluation in tests even when PicoGK metrics weren't populated.
-            if ((!float.IsFinite(outerRadius) || !float.IsFinite(totalHeight) ||
-                 !float.IsFinite(minBoltClearance) || !float.IsFinite(minBranchRadius)) &&
-                HasAllActiveParams(record, project))
+            if ((!float.IsFinite(innerRadius) || !float.IsFinite(outerRadius) || !float.IsFinite(totalHeight) ||
+                 !float.IsFinite(minBoltClearance) || !float.IsFinite(minObstacleClearance) || !float.IsFinite(minBranchRadius)) &&
+                StatorCoolingRingParams.HasAllParameters(record, project))
             {
                 Dictionary<string, float> mergedParams = BuildMergedParameters(record, project);
                 StatorCoolingRingPackagingReport report =
-                    StatorCoolingRingGeometryGenerator.EvaluateAnalyticalPackaging(mergedParams, project);
+                    StatorCoolingRingVascularEngine.EvaluateAnalyticalPackaging(mergedParams, project);
 
+                if (!float.IsFinite(innerRadius)) innerRadius = report.InnerRadiusMm;
                 if (!float.IsFinite(outerRadius)) outerRadius = report.OuterRadiusMm;
                 if (!float.IsFinite(totalHeight)) totalHeight = report.TotalHeightMm;
                 if (!float.IsFinite(minBoltClearance)) minBoltClearance = report.MinBoltClearanceMm;
+                if (!float.IsFinite(minObstacleClearance)) minObstacleClearance = report.MinObstacleClearanceMm;
                 if (!float.IsFinite(minBranchRadius)) minBranchRadius = report.MinBranchRadiusMm;
             }
 
@@ -45,11 +49,13 @@ namespace FluidForge.Projects.StatorCoolingRing
                 ? mv
                 : DefaultMinFluidVolumeMm3;
 
-            var constraints = new List<ConstraintEvaluation>(6)
+            var constraints = new List<ConstraintEvaluation>(9)
             {
+                ConstraintEvaluation.AtLeast("InnerRadiusMm", innerRadius, targets.MinInnerRadiusMm, isPreSolve: true),
                 ConstraintEvaluation.AtMost("OuterRadiusMm", outerRadius, targets.MaxOuterRadiusMm, isPreSolve: true),
                 ConstraintEvaluation.AtMost("TotalHeightMm", totalHeight, targets.MaxTotalHeightMm, isPreSolve: true),
                 ConstraintEvaluation.AtLeast("MinBoltClearanceMm", minBoltClearance, targets.MinRequiredBoltClearanceMm, isPreSolve: true),
+                ConstraintEvaluation.AtLeast("MinObstacleClearanceMm", minObstacleClearance, targets.MinRequiredObstacleClearanceMm, isPreSolve: true),
                 ConstraintEvaluation.AtLeast("MinBranchRadiusMm", minBranchRadius, targets.MinBranchRadiusMm, isPreSolve: true)
             };
             constraints.AddRange(ConstraintEvaluation.InRange(
@@ -70,22 +76,6 @@ namespace FluidForge.Projects.StatorCoolingRing
             return record.PassiveParameters != null && record.PassiveParameters.TryGetValue(name, out float value)
                 ? value
                 : float.NaN;
-        }
-
-        private static bool HasAllActiveParams(ModelRecord record, ProjectConfig project)
-        {
-            string[] names =
-            {
-                "RingRadiusRatio", "RingTaperRatio", "InletSplitBlend", "BranchHeightMm",
-                "BranchArcSweepDeg", "FarSideElevationMm", "RingRadialShiftMm", "NearPortThroatRatio"
-            };
-            foreach (string name in names)
-            {
-                bool inActive = record.ActiveParameters != null && record.ActiveParameters.ContainsKey(name);
-                bool inBase = project.BaseParameters != null && project.BaseParameters.ContainsKey(name);
-                if (!inActive && !inBase) return false;
-            }
-            return true;
         }
 
         private static Dictionary<string, float> BuildMergedParameters(ModelRecord record, ProjectConfig project)
