@@ -210,7 +210,7 @@ namespace FluidForge.Tests
                 1, 1, ctx.Project.BaseParameters, geomDir, ctx.Simulation);
 
             string caseDir = Sub("suboff_of_case");
-            var request = new MeshRequest(geom.StlPath, 1, 1, ctx.Simulation, 1.0f, Root, Geometry: geom);
+            var request = new MeshRequest(geom.StlPath, 1, 1, ctx.Simulation, ctx.Simulation.MeshRefinementFactor, Root, Geometry: geom);
             var record = new ModelRecord();
             foreach (var kvp in geom.Metrics)
             {
@@ -276,6 +276,29 @@ namespace FluidForge.Tests
 
             // Basic English sanity check (no German umlauts / eszett)
             Assert.DoesNotMatch(@"[äöüÄÖÜß]", content);
+        }
+
+        [Theory]
+        [InlineData("BenchmarkNaca0012", "External2D:VerificationFine", 0.5f)]
+        [InlineData("BenchmarkPipeBend90", "Internal3D:VerificationFine", 1.0f)]
+        [InlineData("BenchmarkSuboffOpenFoam", "External3D:VerificationFine", 0.8f)]
+        [InlineData("BenchmarkSuboffSu2", "External3D:VerificationFine", 0.8f)]
+        public void All_Physics_Benchmarks_Inherit_VerificationFine_Manual_Defaults_From_Preset(
+            string projectName,
+            string expectedPreset,
+            float expectedFactor)
+        {
+            IProjectDefinition definition = ProjectRegistry.Discover(typeof(Program).Assembly).Resolve(projectName);
+            ProjectContext ctx = OptimizeCommand.LoadConfiguration(definition, null);
+
+            Assert.Equal(expectedPreset, ctx.Simulation.Preset);
+            Assert.Equal("Manual", ctx.Simulation.MeshCalibration.Mode);
+            Assert.Equal("Off", ctx.Simulation.ChampionVerification.Mode);
+            Assert.Equal(1, ctx.Simulation.MaxIterations);
+            Assert.Equal(1, ctx.Simulation.VariantsPerIteration);
+            Assert.Equal(expectedFactor, ctx.Simulation.MeshRefinementFactor);
+            Assert.False(ctx.Simulation.UseRubberBandScaler);
+            Assert.False(ctx.Simulation.UseStlSmoothing);
         }
     }
 }

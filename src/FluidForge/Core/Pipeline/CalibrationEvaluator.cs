@@ -196,7 +196,10 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Evaluates a calibration sequence and selects the coarsest level within tolerance.
+        /// Evaluates a calibration sequence using a contiguous fine-to-coarse suffix check and selects
+        /// the coarsest level whose entire finer suffix up to the reference level satisfies all criteria
+        /// (Converged, YPlusOk, and within tolerance). Stops immediately at the first failing level so a
+        /// coincidental coarse match cannot bypass an intermediate out-of-tolerance mesh.
         /// Allowed deviation is <c>|Δ| ≤ tolerance · |reference| + absoluteFloor</c> (<see cref="MetricTolerance"/>).
         /// </summary>
         public static CalibrationDecision EvaluateCalibration(
@@ -283,44 +286,61 @@ namespace FluidForge.Core
                     normalizedDeviations);
             }
 
-            // Candidate search from coarse to fine (excluding the reference level itself)
+            // Candidate search from fine to coarse (contiguous suffix check excluding the reference level itself)
+            bool StageMatches(CalibrationStageData candidate)
+            {
+                if (!candidate.Converged || !candidate.YPlusOk) return false;
+                if (!normalizedDeviations.TryGetValue(candidate.LevelIndex, out var devDict)) return false;
+
+                foreach (string metric in metricsToMonitor)
+                {
+                    if (devDict.TryGetValue(metric, out float dev) && dev > 1.0f)
+                        return false;
+                }
+                return true;
+            }
+
             CalibrationStageData? selected = null;
+            CalibrationStageData? firstFailing = null;
             var candidates = stages
                 .Where(s => s.Factor > refStage.Factor)
-                .OrderByDescending(s => s.Factor);
+                .OrderBy(s => s.Factor)
+                .ToList();
 
             foreach (var candidate in candidates)
             {
-                if (!candidate.Converged || !candidate.YPlusOk) continue;
-
-                bool withinTolerance = true;
-                foreach (string metric in metricsToMonitor)
-                {
-                    if (normalizedDeviations[candidate.LevelIndex].TryGetValue(metric, out float dev))
-                    {
-                        if (dev > 1.0f)
-                        {
-                            withinTolerance = false;
-                            break;
-                        }
-                    }
-                }
-
-                if (withinTolerance)
+                if (StageMatches(candidate))
                 {
                     selected = candidate;
-                    break; // Coarsest level found that satisfies all criteria.
                 }
+                else
+                {
+                    firstFailing = candidate;
+                    break;
+                }
+            }
+
+            CalibrationStageData? skippedCoarseMatch = firstFailing != null
+                ? candidates.FirstOrDefault(c => c.Factor > firstFailing.Factor && StageMatches(c))
+                : null;
+
+            string nonMonotonicNote = string.Empty;
+            if (firstFailing != null && skippedCoarseMatch != null)
+            {
+                string failCause = !firstFailing.Converged
+                    ? "did not converge"
+                    : (!firstFailing.YPlusOk ? "violated y+" : "exceeded tolerance");
+                nonMonotonicNote = $" (non-monotonic: coarser level {skippedCoarseMatch.LevelIndex} matched reference coincidentally but was rejected because finer level {firstFailing.LevelIndex} {failCause})";
             }
 
             if (selected != null)
             {
-                string msg = $"Level {selected.LevelIndex} (factor {selected.Factor:0.00}) meets {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.";
+                string msg = $"Level {selected.LevelIndex} (factor {selected.Factor:0.00}) meets {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.{nonMonotonicNote}";
                 return new CalibrationDecision(true, selected, refStage, stages, deviations, gci, msg, normalizedDeviations);
             }
             else
             {
-                string msg = $"No coarse level achieves {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.";
+                string msg = $"No coarse level achieves {tolerance * 100:0.0} % tolerance relative to reference level {refStage.Factor:0.00}.{nonMonotonicNote}";
                 var fallback = stages
                     .Where(s => s.Factor > refStage.Factor && s.Converged && s.YPlusOk)
                     .OrderBy(s => s.Factor)
@@ -342,10 +362,11 @@ namespace FluidForge.Core
         }
 
         /// <summary>
-        /// Evaluates the 3-level 3D confirmation around f2D (TODO-48).
+        /// Evaluates the 3-level 3D confirmation around f2D (TODO-48) using a contiguous fine-to-coarse check.
         /// The finest of the three levels is the 3D reference.
-        /// If the coarse level (f2D * √2) satisfies the criteria (Converged, YPlusOk, within tolerance),
-        /// it is selected; otherwise f2D. If neither meets tolerance, Success = false.
+        /// First checks the medium level (f2D): only if f2D satisfies all criteria (Converged, YPlusOk, within tolerance)
+        /// may the coarse level (f2D * √2) be checked and selected when it also matches; otherwise f2D is selected.
+        /// If f2D fails, the coarse level is rejected even if it coincidentally matches, returning Success = false.
         /// </summary>
         public static CalibrationDecision EvaluateConfirmation3D(
             float factor2D,
@@ -406,7 +427,7 @@ namespace FluidForge.Core
             }
 
             // Identify levels: coarse (largest factor) and medium (middle factor)
-            // Candidate search from coarse to fine
+            // Contiguous fine-to-coarse check: medium (f2D) must pass before coarse can be considered
             CalibrationStageData? coarseStage = sortedAsc.Count >= 3 ? sortedAsc[^1] : null;
             CalibrationStageData? mediumStage = sortedAsc.Count >= 2 ? sortedAsc[^2] : null;
 
@@ -422,19 +443,28 @@ namespace FluidForge.Core
                 return true;
             }
 
-            if (coarseStage != null && StageMatches(coarseStage))
+            bool mediumOk = mediumStage != null && StageMatches(mediumStage);
+            if (mediumOk)
             {
-                string msg = $"Coarse 3D level (factor {coarseStage.Factor:0.00}, level {coarseStage.LevelIndex}) meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
-                return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
-            }
+                if (coarseStage != null && StageMatches(coarseStage))
+                {
+                    string msg = $"Coarse 3D level (factor {coarseStage.Factor:0.00}, level {coarseStage.LevelIndex}) meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
+                    return new CalibrationDecision(true, coarseStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
+                }
 
-            if (mediumStage != null && StageMatches(mediumStage))
-            {
-                string msg = $"2D level (factor {mediumStage.Factor:0.00}, level {mediumStage.LevelIndex}) confirmed in 3D: meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
-                return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, msg, normalizedDeviations);
+                string medMsg = $"2D level (factor {mediumStage!.Factor:0.00}, level {mediumStage.LevelIndex}) confirmed in 3D: meets {tolerance * 100:0.0} % tolerance relative to 3D reference level {refStage.Factor:0.00}.";
+                return new CalibrationDecision(true, mediumStage, refStage, stages3D, deviations, gci, medMsg, normalizedDeviations);
             }
 
             string failMsg = $"Neither the coarse 3D level nor the 2D factor ({factor2D:0.00}) achieves {tolerance * 100:0.0} % tolerance in 3D relative to 3D reference level {refStage.Factor:0.00}.";
+            if (coarseStage != null && StageMatches(coarseStage))
+            {
+                string medDesc = mediumStage != null ? $"level {mediumStage.LevelIndex} (factor {mediumStage.Factor:0.00})" : $"2D factor ({factor2D:0.00})";
+                string medFailCause = mediumStage != null && !mediumStage.Converged
+                    ? "did not converge"
+                    : (mediumStage != null && !mediumStage.YPlusOk ? "violated y+" : "exceeded tolerance");
+                failMsg += $" (non-monotonic: coarse 3D level {coarseStage.LevelIndex} matched reference coincidentally but was rejected because {medDesc} {medFailCause})";
+            }
             var fallback3D = (mediumStage != null && mediumStage.Converged && mediumStage.YPlusOk) ? mediumStage : refStage;
             return new CalibrationDecision(false, null, refStage, stages3D, deviations, gci, failMsg, normalizedDeviations, fallback3D);
         }

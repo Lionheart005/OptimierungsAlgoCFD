@@ -70,11 +70,16 @@ namespace FluidForge.Tests
                     // Validate SimulationOverrides against SimulationConfig
                     ConfigSchema.Validate(typeof(SimulationConfig), preset.SimulationOverrides, $"preset:{preset.Name}");
 
-                    // Presets in Auto calibration mode must NOT set MeshRefinementFactor
+                    // Presets in Auto calibration mode must NOT set MeshRefinementFactor;
+                    // presets in Manual calibration mode must set MeshRefinementFactor explicitly.
                     string? calMode = preset.SimulationOverrides["MeshCalibration"]?["Mode"]?.GetValue<string>();
                     if (string.Equals(calMode, "Auto", StringComparison.OrdinalIgnoreCase))
                     {
                         Assert.Null(preset.SimulationOverrides["MeshRefinementFactor"]);
+                    }
+                    else if (string.Equals(calMode, "Manual", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Assert.NotNull(preset.SimulationOverrides["MeshRefinementFactor"]);
                     }
 
                     // Validate solver overrides
@@ -237,9 +242,12 @@ namespace FluidForge.Tests
                 SimulationConfig.CreateDefault(), preset.Name, preset.SimulationOverrides, printOrigins: false).Value;
 
             Assert.Equal("5e-6", sim.CauchyTolerance);
-            Assert.Equal("3e-6", sim.CauchyToleranceFloor);
+            Assert.Equal("2e-6", sim.CauchyToleranceFloor);
             Assert.Equal(500, sim.CauchyElements);
             Assert.Equal(10000, sim.Su2MaxIterations);
+            Assert.Equal("Manual", sim.MeshCalibration.Mode);
+            Assert.Equal(0.5f, sim.MeshRefinementFactor);
+            Assert.Equal("Off", sim.ChampionVerification.Mode);
 
             Su2SolverOptions su2 = JsonConfigLoader.LoadWithPresetCore(
                 new Su2SolverOptions(), preset.Name, preset.GetSolverOverrides("solvers/su2.json"), printOrigins: false).Value;
@@ -253,6 +261,49 @@ namespace FluidForge.Tests
             Gmsh2DMesherOptions gmsh2d = JsonConfigLoader.LoadWithPresetCore(
                 new Gmsh2DMesherOptions(), preset.Name, preset.GetSolverOverrides("solvers/gmsh.json"), printOrigins: false).Value;
             Assert.Equal(1.15f, gmsh2d.BoundaryLayerGrowthRate);
+        }
+
+        [Theory]
+        [InlineData("External2D:VerificationFine", 0.5f, "2e-6")]
+        [InlineData("External3D:VerificationFine", 0.8f, "1e-6")]
+        [InlineData("Internal3D:VerificationFine", 1.0f, null)]
+        public void All_VerificationFine_Presets_Use_Manual_Fine_Mesh_Without_Calibration_Or_Verification(
+            string presetName,
+            float expectedFactor,
+            string? expectedCauchyFloor)
+        {
+            PresetDefinition preset = SimulationPresets.Resolve(presetName)!;
+            SimulationConfig sim = JsonConfigLoader.LoadWithPresetCore(
+                SimulationConfig.CreateDefault(), preset.Name, preset.SimulationOverrides, printOrigins: false).Value;
+
+            Assert.Equal("Manual", sim.MeshCalibration.Mode);
+            Assert.Equal(expectedFactor, sim.MeshRefinementFactor);
+            Assert.Equal("Off", sim.ChampionVerification.Mode);
+            if (expectedCauchyFloor != null)
+            {
+                Assert.Equal(expectedCauchyFloor, sim.CauchyToleranceFloor);
+            }
+        }
+
+        [Fact]
+        public void VerificationFine_Overridden_To_Auto_Calibration_Does_Not_Abort_On_Preset_MeshRefinementFactor()
+        {
+            string projectDir = Path.Combine(_tempRoot, "VerificationPlusAuto");
+            Directory.CreateDirectory(projectDir);
+            File.WriteAllText(Path.Combine(projectDir, "simulation.json"), @"{
+                ""Preset"": ""External2D:VerificationFine"",
+                ""MeshCalibration"": { ""Mode"": ""Auto"" }
+            }");
+
+            PresetDefinition preset = SimulationPresets.Resolve("External2D:VerificationFine")!;
+            var result = JsonConfigLoader.LoadForProjectWithPreset(
+                SimulationConfig.CreateDefault(), "simulation.json", projectDir, preset.Name, preset.SimulationOverrides);
+
+            Assert.Equal("Auto", result.Value.MeshCalibration.Mode);
+            Assert.Equal($"preset:{preset.Name}", result.Report.Origins["MeshRefinementFactor"]);
+
+            // Must NOT throw when MeshRefinementFactor comes solely from the preset
+            MeshCalibration.ValidateConfig(result.Value, result.Report, "VerificationPlusAuto");
         }
 
         [Fact]

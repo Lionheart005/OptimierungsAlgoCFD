@@ -251,7 +251,7 @@ namespace FluidForge.Core
                 name: "External2D:VerificationFine",
                 domain: "External2D",
                 accuracy: "VerificationFine",
-                description: "High-accuracy 2D RANS (NASA-TMR aligned) with tight calibration (2%), y+ ~ 0.8, BL growth 1.15, SlopeLimiterFlow VENKATAKRISHNAN, SA nu_tilde/nu=3, 10k iters (Cauchy 5e-6), AutoStop off, and 2-step Top-3 verification.",
+                description: "High-accuracy 2D RANS (NASA-TMR aligned) with manual fine 0.5x mesh, calibration & verification off, y+ ~ 0.8, BL growth 1.15, SlopeLimiterFlow VENKATAKRISHNAN, SA nu_tilde/nu=3, 10k iters (Cauchy 5e-6 / floor 2e-6), AutoStop off.",
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
@@ -264,17 +264,16 @@ namespace FluidForge.Core
                     ["Su2MaxIterations"] = 10000,
                     ["CauchyElements"] = 500,
                     ["CauchyTolerance"] = "5e-6",
-                    ["CauchyToleranceFloor"] = "3e-6",
+                    ["CauchyToleranceFloor"] = "2e-6",
+                    ["MeshRefinementFactor"] = 0.5f,
                     ["MeshCalibration"] = new JsonObject
                     {
-                        ["Mode"] = "Auto",
+                        ["Mode"] = "Manual",
                         ["Tolerance"] = 0.02f
                     },
                     ["ChampionVerification"] = new JsonObject
                     {
-                        ["Mode"] = "FinalTopN",
-                        ["TopN"] = 3,
-                        ["RefinementSteps"] = 2
+                        ["Mode"] = "Off"
                     }
                 },
                 solverOverrides: new Dictionary<string, JsonObject>
@@ -427,7 +426,7 @@ namespace FluidForge.Core
                 name: "External3D:VerificationFine",
                 domain: "External3D",
                 accuracy: "VerificationFine",
-                description: "High-accuracy 3D external RANS with tight calibration (2%), prism y+ ~ 1.0, DetailBox on, and 8k SU2 iterations.",
+                description: "High-accuracy 3D external RANS with manual fine 0.8x mesh, calibration & verification off, prism y+ ~ 1.0, DetailBox on, and 8k SU2 iterations (Cauchy 1e-5 / floor 1e-6).",
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
@@ -440,16 +439,16 @@ namespace FluidForge.Core
                     ["Su2MaxIterations"] = 8000,
                     ["CauchyElements"] = 500,
                     ["CauchyTolerance"] = "1e-5",
+                    ["CauchyToleranceFloor"] = "1e-6",
+                    ["MeshRefinementFactor"] = 0.8f,
                     ["MeshCalibration"] = new JsonObject
                     {
-                        ["Mode"] = "Auto",
+                        ["Mode"] = "Manual",
                         ["Tolerance"] = 0.02f
                     },
                     ["ChampionVerification"] = new JsonObject
                     {
-                        ["Mode"] = "FinalTopN",
-                        ["TopN"] = 3,
-                        ["RefinementSteps"] = 1
+                        ["Mode"] = "Off"
                     }
                 },
                 solverOverrides: new Dictionary<string, JsonObject>
@@ -595,7 +594,7 @@ namespace FluidForge.Core
                 name: "Internal3D:VerificationFine",
                 domain: "Internal3D",
                 accuracy: "VerificationFine",
-                description: "High-accuracy 3D internal OpenFOAM RANS with tight calibration (2%), 8 layers, y+ ~ 1.5, and 2k simpleFoam iterations.",
+                description: "High-accuracy 3D internal OpenFOAM RANS with manual fine 1.0x mesh (BaseCellSizeMm 1.2, 8 layers, y+ ~ 1.5, 2k simpleFoam iterations), calibration & verification off.",
                 isPlaceholder: false,
                 simulationOverrides: new JsonObject
                 {
@@ -607,16 +606,15 @@ namespace FluidForge.Core
                     {
                         ["Mode"] = "Off"
                     },
+                    ["MeshRefinementFactor"] = 1.0f,
                     ["MeshCalibration"] = new JsonObject
                     {
-                        ["Mode"] = "Auto",
+                        ["Mode"] = "Manual",
                         ["Tolerance"] = 0.02f
                     },
                     ["ChampionVerification"] = new JsonObject
                     {
-                        ["Mode"] = "FinalTopN",
-                        ["TopN"] = 3,
-                        ["RefinementSteps"] = 1
+                        ["Mode"] = "Off"
                     }
                 },
                 solverOverrides: new Dictionary<string, JsonObject>

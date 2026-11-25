@@ -327,6 +327,70 @@ namespace FluidForge.Tests
             Assert.Contains("not in the asymptotic range", printed);
         }
 
+        [Fact]
+        public void EvaluateCalibration_Naca2DUCurve_RejectsCoincidentalCoarseMatch()
+        {
+            // Real Naca2D U-curve observed on BIC_12: Level 1 (2.00) coincidentally hits Level 6 (0.35),
+            // while intermediate levels 0.50..1.41 drop up to ~23% below reference.
+            var stages = new List<CalibrationStageData>
+            {
+                new(1, 2.00f, 10000, 10.0, new Dictionary<string, float> { ["Drag"] = 0.01826f }, 10f, true, 1.0f, true),
+                new(2, 1.41f, 20000, 20.0, new Dictionary<string, float> { ["Drag"] = 0.01550f }, 11f, true, 1.0f, true),
+                new(3, 1.00f, 40000, 40.0, new Dictionary<string, float> { ["Drag"] = 0.01446f }, 12f, true, 1.0f, true),
+                new(4, 0.71f, 80000, 80.0, new Dictionary<string, float> { ["Drag"] = 0.01525f }, 13f, true, 1.0f, true),
+                new(5, 0.50f, 160000, 160.0, new Dictionary<string, float> { ["Drag"] = 0.01717f }, 14f, true, 1.0f, true),
+                new(6, 0.35f, 320000, 320.0, new Dictionary<string, float> { ["Drag"] = 0.01884f }, 15f, true, 1.0f, true),
+            };
+
+            var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Drag" }, 0.05f);
+
+            Assert.False(decision.Success);
+            Assert.Null(decision.SelectedStage);
+            Assert.Contains("No coarse level achieves", decision.SummaryMessage);
+            Assert.Contains("non-monotonic", decision.SummaryMessage);
+        }
+
+        [Fact]
+        public void EvaluateCalibration_IntermediateDip_SelectsContiguousSuffixOnly()
+        {
+            // Fine-to-coarse suffix 0.71 & 1.00 match within 2%, 1.41 dips out of tolerance (12.5%),
+            // and 2.00 coincidentally matches again -> must select 1.00 (Level 3), not 2.00 (Level 1).
+            var stages = new List<CalibrationStageData>
+            {
+                new(1, 2.00f, 10000, 10.0, new Dictionary<string, float> { ["Drag"] = 0.0401f }, 10f, true, 1.0f, true),
+                new(2, 1.41f, 25000, 25.0, new Dictionary<string, float> { ["Drag"] = 0.0450f }, 11f, true, 1.0f, true),
+                new(3, 1.00f, 70000, 60.0, new Dictionary<string, float> { ["Drag"] = 0.0404f }, 12f, true, 1.0f, true),
+                new(4, 0.71f, 200000, 150.0, new Dictionary<string, float> { ["Drag"] = 0.0402f }, 13f, true, 1.0f, true),
+                new(5, 0.50f, 550000, 400.0, new Dictionary<string, float> { ["Drag"] = 0.0400f }, 14f, true, 1.0f, true),
+            };
+
+            var decision = CalibrationEvaluator.EvaluateCalibration(stages, new[] { "Drag" }, 0.02f);
+
+            Assert.True(decision.Success, decision.SummaryMessage);
+            Assert.NotNull(decision.SelectedStage);
+            Assert.Equal(1.00f, decision.SelectedStage!.Factor);
+            Assert.Equal(3, decision.SelectedStage.LevelIndex);
+            Assert.Contains("non-monotonic", decision.SummaryMessage);
+        }
+
+        [Fact]
+        public void EvaluateConfirmation3D_MediumExceedsTolerance_RejectsCoincidentalCoarseMatch()
+        {
+            // Coarse (0.71) coincidentally matches fine (0.35), while medium f2D (0.50) exceeds 2% tolerance.
+            var stages3D = new List<CalibrationStageData>
+            {
+                new(1, 0.71f, 50000, 30.0, new Dictionary<string, float> { ["Drag"] = 0.0452f }, 10f, true, 1.0f, true),
+                new(2, 0.50f, 120000, 70.0, new Dictionary<string, float> { ["Drag"] = 0.0520f }, 12f, true, 1.0f, true),
+                new(3, 0.35f, 300000, 180.0, new Dictionary<string, float> { ["Drag"] = 0.0450f }, 14f, true, 1.0f, true),
+            };
+
+            var decision = CalibrationEvaluator.EvaluateConfirmation3D(0.50f, stages3D, new[] { "Drag" }, 0.02f);
+
+            Assert.False(decision.Success);
+            Assert.Null(decision.SelectedStage);
+            Assert.Contains("non-monotonic", decision.SummaryMessage);
+        }
+
         #endregion
 
         #region Part 2: MeshCalibration Config Validation and Hints Tests

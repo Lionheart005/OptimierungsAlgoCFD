@@ -1,11 +1,12 @@
 # FluidForge — Automated CFD Shape Optimization
 
 ## Preface
+[Currently under heavy development]
 
 Inspired by various ideas across the internet and in publications — not least by LEAP 71 — I really wanted to explore what an optimization framework could look like that generates and optimizes complex shapes purely through code, completely independent of bulky CAD programs and cumbersome GUI menus.
 What mattered most to me was keeping the optimization pipeline free from proprietary third-party black boxes so it can scale to arbitrary complexity. There are no artificial limits on the number of parameters, the objective function, model complexity, runtime, or choice of algorithm. Looking ahead, the long-term vision is to hook up a neural network / LLM that writes the C# geometry code for PicoGK itself, while taking over the evaluation of $n$-dimensional optimization problems that are far too complex for deterministic brute-force methods.
 
-Naturally, a lot of this was built with the help of AI — I'm not a software developer by trade, and that's why I'm very open to feedback and constructive criticism.
+Of course, a lot of this was built with the help of AI — I'm not a software developer by trade, and that's why I'm very open to feedback and constructive criticism.
 
 ### How it works
 

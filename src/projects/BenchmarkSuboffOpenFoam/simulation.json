@@ -5,8 +5,5 @@
   "VariantsPerIteration": 1,
   "UseRubberBandScaler": false,
   "UseStlSmoothing": false,
-  "ChampionVerification": {
-    "Mode": "Off"
-  },
   "MpiCores": 18
 }

@@ -175,5 +175,37 @@ namespace FluidForge.Tests
             Assert.NotNull(decision.FallbackStage);
             Assert.Equal(0.50f, decision.FallbackStage!.Factor);
         }
+
+        [Fact]
+        public void Run_DoesNotSkipCal2_AndRejectsCoincidentalCal1_WhenCal2ExceedsTolerance()
+        {
+            using var s = new Scenario(cfg => cfg.MeshCalibration.Tolerance = 0.02f);
+            Func<float, string, ModelRecord> runner = (factor, tag) =>
+            {
+                s.Factors.Add(factor);
+                var rec = new ModelRecord();
+                rec.PassiveParameters["MeshCells"] = (float)(20000.0 / (factor * factor));
+                rec.PassiveParameters["YPlus_P95"] = 1.0f;
+                rec.PassiveParameters["Su2_Converged"] = 1f;
+                rec.PassiveParameters["Drag"] = factor switch
+                {
+                    > 1.8f => 0.0401f, // Cal1 (2.00): coincidental match
+                    > 1.2f => 0.0460f, // Cal2 (1.41): outlier (+15%)
+                    > 0.9f => 0.0404f, // Cal3 (1.00): within 2%
+                    > 0.6f => 0.0402f, // Cal4 (0.71): within 2%
+                    _ => 0.0400f       // Cal5 (0.50): reference
+                };
+                return rec;
+            };
+
+            var (decision, _) = MeshCalibration.Run(s.Context, s.SimContext, runner, new[] { "Drag" }, dimensions: 2);
+
+            Assert.Contains(1.41f, s.Factors);
+            Assert.True(decision.Success, decision.SummaryMessage);
+            Assert.NotNull(decision.SelectedStage);
+            Assert.Equal(1.00f, decision.SelectedStage!.Factor);
+            Assert.Equal(3, decision.SelectedStage.LevelIndex);
+            Assert.Contains("non-monotonic", decision.SummaryMessage);
+        }
     }
 }

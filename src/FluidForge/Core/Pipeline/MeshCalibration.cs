@@ -282,9 +282,9 @@ namespace FluidForge.Core
         {
             var intermediateConfigs = new[]
             {
-                (Index: 2, Factor: 1.41f, Tag: $"{tagPrefix}2"),
+                (Index: 4, Factor: 0.71f, Tag: $"{tagPrefix}4"),
                 (Index: 3, Factor: 1.00f, Tag: $"{tagPrefix}3"),
-                (Index: 4, Factor: 0.71f, Tag: $"{tagPrefix}4")
+                (Index: 2, Factor: 1.41f, Tag: $"{tagPrefix}2")
             };
 
             foreach (var inter in intermediateConfigs)
@@ -292,12 +292,14 @@ namespace FluidForge.Core
                 Console.WriteLine($"\n[{label}] Level {inter.Index}/5: Intermediate level (factor {inter.Factor:0.00})...");
                 stages.Add(RunCalibrationStage(runStage, inter.Index, inter.Factor, inter.Tag, metricsToMonitor, yPlusLimit, durationProvider));
 
-                if (stages.Count >= 3)
+                // Cal4 (0.71) and Cal3 (1.00) always run to form an r=sqrt(2) GCI triplet.
+                // After Cal3, skip Cal2 only if the contiguous fine-to-coarse suffix already failed below 1.00.
+                if (inter.Index == 3)
                 {
                     var tempDecision = CalibrationEvaluator.EvaluateCalibration(stages, metricsToMonitor, cal.Tolerance, cal.AbsoluteTolerances);
-                    if (tempDecision.Success && tempDecision.SelectedStage != null && tempDecision.SelectedStage.LevelIndex == inter.Index)
+                    if (!tempDecision.Success || tempDecision.SelectedStage == null || tempDecision.SelectedStage.Factor < 1.0f - 1e-4f)
                     {
-                        Console.WriteLine($"       -> Level {inter.Index} already satisfies the tolerance!");
+                        Console.WriteLine("       -> Level 3/4 did not satisfy contiguous tolerance — skipping coarser level 2.");
                         break;
                     }
                 }
