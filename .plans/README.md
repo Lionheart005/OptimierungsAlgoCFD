@@ -17,13 +17,15 @@ Neue Sessions und KI-Agenten orientieren sich ausschließlich an diesen aktiven 
    - Dokumentation des 2D-Clipper-/Gmsh-/Cauchy-Fixes (`6cb8d67`) sowie der aktuell auf `BIC_12` laufenden `Naca2D`-3-Seed-Optimierer-Vergleichskette (`tmux b1_chain`, `ALL_B1_DONE`) inkl. Download- & Auswertungsbefehlen.
 4. **[`phase4_presets_benchmarks_und_calibration_fix.md`](phase4_presets_benchmarks_und_calibration_fix.md) — Direkt anstehende Benchmark-Läufe (B1–B3 `VerificationFine`):**
    - Umstellung aller `*:VerificationFine`-Presets auf manuelle höchste Detailstufe, Calibration-Suffix-Monotonie-Bugfix (`1074/1074` Tests) sowie alle exakten Deploy-, Start- und Fetch-Befehle für `BenchmarkNaca0012`, `BenchmarkPipeBend90`, `BenchmarkSuboffOpenFoam` und `BenchmarkSuboffSu2` auf `BIC_12`.
-5. **[`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) — Geplantes Showcase-Upgrade (`StatorCoolingRing v3`):**
-   - Ausführlicher Bauplan für das topologiefreie, emergente 12-Pfad-Gefäßnetz (Force-Directed Edge Bundling, SDF-Hindernis-Lernen um Rotor/M5-Bolzen/HV-Kabelbaum, Murray’s Law, nicht-verfälschende 1D-Vorbalancierung `HydraulicBalanceGain`, organische Inter-Tube-Rippenmatrix mit PicoGK `voxFillet`) als nächster `/delegate`-Lauf vor AP 4.3!
-6. **[`phase5_docker_container.md`](phase5_docker_container.md) — Phase 5 Zusatzplan (Docker / Apptainer):**
+5. **[`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) — Abgeschlossenes Showcase-Upgrade (`StatorCoolingRing v3`):**
+   - Vollständig umgesetztes & verifiziertes topologiefreies 12-Pfad-Gefäßnetz (`14D`-DNA, Force-Directed Edge Bundling, 3D-SDF-Hindernis-Lernen, Murray’s Law, maskierte 1D-Vorbalancierung, organische Rippenmatrix, Post-Fillet-SW-24-Sechskant; lokal + `BIC_09` inkl. `69 s` `snappyHexMesh`-Check verifiziert, bereit für AP 4.3 auf `BIC_12`).
+6. **[`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) — Phase 4.5 (Generalisierte Gefäßnetz-Engine im Kern & `_TemplateVascular3D`):**
+   - Extraktion des bewährten `StatorCoolingRing v3`-Pfaderzeugungs-Algorithmus als wiederverwendbares Kernmodul (`src/FluidForge/Kernels/Vascular/` + `VascularVoxelBuilder` unter `Kernels/PicoGk/InternalFlow/`) mit deklarativen Ports/SDF-Hindernissen, DNA-Presets, neuer Vorlage `_TemplateVascular3D` (`new-project.ps1 -Template Vascular3D`) und Dogfooding-Refaktorierung von `StatorCoolingRing` (bewusst nach Phase-4-Feature-Freeze eingeordnet).
+7. **[`phase5_docker_container.md`](phase5_docker_container.md) — Phase 5 Zusatzplan (Docker / Apptainer):**
    - Optionales Container-Setup für externe Nutzer und HPC-Cluster (bewusst auf Phase 5 verschoben; `setup_server.sh` bleibt der einzige Phase-4-Pfad).
-7. **[`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) — Phase 5 (Ausblick / Grobkonzept):**
-   - Äußere LLM-Code-Evolution-Schleife auf `ShapeKernel`-Generatoren — Ausdetaillierung nach Phase 4.
-8. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen des Nutzers:**
+8. **[`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) — Phase 5 (Ausblick / Grobkonzept):**
+   - Äußere LLM-Code-Evolution-Schleife auf `ShapeKernel`-Generatoren — Ausdetaillierung nach Phase 4 / 4.5.
+9. **[`Anmerkungen.txt`](Anmerkungen.txt) — Rohnotizen des Nutzers:**
    - Aktuelle Ablaufnotizen für die laufenden/anstehenden Serverläufe (wird nicht automatisch von KI-Agenten verändert).
 
 ---

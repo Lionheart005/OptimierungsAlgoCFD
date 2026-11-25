@@ -70,6 +70,14 @@ Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt
   └────────────────────────────────────────┬───────────────────────────────────┘
                                            ▼
   ┌────────────────────────────────────────────────────────────────────────────┐
+  │ Phase 4.5: Generalisierte Gefäßnetz-Engine im Kern & _TemplateVascular3D   │
+  │ Plan: phase4_5_vascular_routing_core_engine.md                             │
+  │ • Pure-C# FluidForge.Kernels.Vascular (M×N-Ports, SDF-KeepIn/KeepOut, DNA) │
+  │ • PicoGK VascularVoxelBuilder + Rippenmatrix + _TemplateVascular3D-Vorlage │
+  │ • Dogfooding-Refaktorierung StatorCoolingRing + Brücke zu Phase 5 (LLM)    │
+  └────────────────────────────────────────┬───────────────────────────────────┘
+                                           ▼
+  ┌────────────────────────────────────────────────────────────────────────────┐
   │ Phase 5 (Grobkonzept): LLM-Code-Evolution („Open-Source Noyron+AlphaEvolve“)│
   │ Plan: phase5_llm_code_evolution_ausblick.md + phase5_docker_container.md   │
   │ • Maschinenlesbare Diagnostik / MCP-Fassade + SHA-Hash-Schutz              │
@@ -86,7 +94,8 @@ Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt
 | **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | ✔ erledigt (22.11.2026) |
 | **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`), Multi-Fidelity | ✔ erledigt (23.11.2026) |
 | **Phase 3.5** | [`phase3_5_korrekturplan_defaults_und_multifidelity.md`](phase3_5_korrekturplan_defaults_und_multifidelity.md) | Korrekturpaket: `UseStlSmoothing`/`UseRubberBandScaler`-Defaults & Multi-Fidelity-Bugfixes | ✔ erledigt (23.11.2026) |
-| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Release | offen |
+| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Release | in Arbeit |
+| **Phase 4.5** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) | Generalisierte emergente Gefäßnetz-Engine (`FluidForge.Kernels.Vascular`), `VascularVoxelBuilder`, `_TemplateVascular3D` & Dogfooding | geplant (nach Phase 4) |
 | **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) + [`phase5_docker_container.md`](phase5_docker_container.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 + optionales Docker-/Apptainer-Setup | Ausblick / Grobkonzept |
 
 ---
