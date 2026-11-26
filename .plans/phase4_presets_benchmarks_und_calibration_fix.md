@@ -53,42 +53,26 @@
 
 ---
 
-## 5. Ausstehende Arbeitsschritte & Handover für die nächste KI-Session (sobald `Naca2D`-Seeds auf `BIC_12` fertig sind)
+## 5. Ausstehende Arbeitsschritte & Handover (Stand 26.11.2026)
 
-1. **Prüfen, ob `Naca2D_Benchmark` auf `BIC_12` abgeschlossen ist (`ALL_B1_DONE`):**
+- [x] **`Naca2D_Benchmark` heruntergeladen & knapp ausgewertet (26.11.2026):** Vollständig ohne Alt-Backup nach `results/Naca2D_Benchmark/` geladen (`9/9` Läufe `rc=0`, `ALL_B1_DONE`); knappe Wertetabelle unter `results/Naca2D_Benchmark/summary.md` (`Bayes` `53.23 ± 0.08` / Verified `66.92 ± 0.33`, `BoTorch` `53.32 ± 0.14` / Verified `66.97 ± 0.25`, `IdwBaseline` `50.04 ± 1.15` / Verified `59.80 ± 0.60`).
+- [x] **Lokaler `results/`-Ordner bereinigt (26.11.2026):** Alte Benchmark-/Seed-Daten (`Benchmark*/BIC_12_2026-11-25`, `Benchmark*/smoke-test`, `Naca2D/`) entfernt; `StatorCoolingRing*`, `MantaAuv`, `PipeBend90` unberührt.
+- [x] **Deploy & 4-Benchmark-Chain auf `BIC_12` gestartet (26.11.2026):** Verwaiste `Benchmark*/simulation.local.json` & alte `results/Benchmark*` auf `BIC_12` bereinigt, aktueller Stand (`e0738467fe29e1f6`, 0W/0E) deployed, `doctor` für alle 4 Projekte PASS, sequentielle Kette (`BenchmarkNaca0012` → `BenchmarkPipeBend90` → `BenchmarkSuboffOpenFoam` → `BenchmarkSuboffSu2`) läuft detached in `tmux` `physics_benchmarks` via `scripts/run_physics_benchmarks_on_server.sh` (Live-Check: `BenchmarkNaca0012` rechnet `External2D:VerificationFine`, `MeshFactor=0.50 MANUAL`, `Alpha0` 1/2).
+
+### Nächste Schritte (sobald `PHYSICS_BENCHMARKS_DONE` auf `BIC_12` vorliegt)
+1. **Status auf `BIC_12` prüfen:**
    ```powershell
-   ssh -o BatchMode=yes BIC_12 'export PATH="$HOME/miniconda/bin:$PATH"; tmux ls || true; ls -la ~/Documents/FluidForge/results/Naca2D_Benchmark/ALL_B1_* 2>/dev/null || true; tail -n 20 ~/Documents/FluidForge/results/Naca2D_Benchmark/benchmark.log'
+   ssh -o BatchMode=yes BIC_12 'export PATH="$HOME/miniconda/bin:$PATH"; tmux ls 2>&1 || true; ls -la ~/Documents/FluidForge/results/PHYSICS_BENCHMARKS_* 2>/dev/null || true; cat ~/Documents/FluidForge/results/physics_benchmarks.log 2>/dev/null || true'
    ```
-2. **Fertige `Naca2D`-3-Seed-Ergebnisse von `BIC_12` herunterladen (VOR dem nächsten Deploy!):**
+2. **Alle 4 Physik-Benchmark-Ergebnisse herunterladen:**
    ```powershell
-   scp -r BIC_12:Documents/FluidForge/results/Naca2D_Benchmark results/Naca2D_Benchmark_BIC_12_2026-11-25
+   .\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkNaca0012 -Out results/BenchmarkNaca0012
+   .\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkPipeBend90 -Out results/BenchmarkPipeBend90
+   .\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkSuboffOpenFoam -Out results/BenchmarkSuboffOpenFoam
+   .\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkSuboffSu2 -Out results/BenchmarkSuboffSu2
    ```
-3. **Neuen Stand lokal committen (optional) und auf `BIC_12` deployen (erst wenn `tmux ls` leer ist!):**
-   ```powershell
-   .\scripts\sim.ps1 deploy -Server BIC_12 -Project BenchmarkNaca0012
-   ```
-4. **Physik-Benchmarks nacheinander auf `BIC_12` starten (alle laufen nun automatisch im manuellen `*:VerificationFine`-Modus ohne Kalibrierung/Optimierung/Re-Check):**
-   - **B1 (`BenchmarkNaca0012` — `External2D:VerificationFine`, `0.5x`, `Alpha0` 0° & `Alpha10` 10°):**
-     ```powershell
-     .\scripts\sim.ps1 run -Server BIC_12 -Project BenchmarkNaca0012
-     ```
-     Danach holen: `.\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkNaca0012 -Out results/BenchmarkNaca0012`
-   - **B2 (`BenchmarkPipeBend90` — `Internal3D:VerificationFine`, `1.0x`, OpenFOAM):**
-     ```powershell
-     .\scripts\sim.ps1 run -Server BIC_12 -Project BenchmarkPipeBend90
-     ```
-     Danach holen: `.\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkPipeBend90 -Out results/BenchmarkPipeBend90`
-   - **B3a (`BenchmarkSuboffOpenFoam` — `External3D:VerificationFine`, `0.8x`, OpenFOAM `Y0`):**
-     ```powershell
-     .\scripts\sim.ps1 run -Server BIC_12 -Project BenchmarkSuboffOpenFoam
-     ```
-     Danach holen: `.\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkSuboffOpenFoam -Out results/BenchmarkSuboffOpenFoam`
-   - **B3b (`BenchmarkSuboffSu2` — `External3D:VerificationFine`, `0.8x`, SU2 `Y0`):**
-     ```powershell
-     .\scripts\sim.ps1 run -Server BIC_12 -Project BenchmarkSuboffSu2
-     ```
-     Danach holen: `.\scripts\sim.ps1 fetch -All -Server BIC_12 -Project BenchmarkSuboffSu2 -Out results/BenchmarkSuboffSu2`
-5. **Auswertung & Bericht (`docs/report/`):**
+   *(Hinweis: Projekt-reine Server-Logs liegen jeweils zusätzlich als `results/<Project>/simulation_server.log` im Remote-Ordner.)*
+3. **Auswertung & Bericht (`docs/report/`):**
    - Falls ein Benchmark physikalisch unplausible Ergebnisse liefert, gezielt das zugrunde liegende `*:VerificationFine`-Preset anpassen und neu prüfen.
-   - `BenchmarkNaca0012_Report.md` um den `VerificationFine`-Nachher-Vergleich ergänzen, `Naca2D`-3-Seed-Vergleich auswerten und die Methodik-Notizen aus `docs/report/report_notes.md` in den späteren Abschlussbericht (AP 4.4) einfließen lassen.
+   - `BenchmarkNaca0012_Report.md` um den `VerificationFine`-Nachher-Vergleich ergänzen, B2/B3 auswerten und die Methodik-Notizen aus `docs/report/report_notes.md` in den späteren Abschlussbericht (AP 4.4) einfließen lassen.
    - Danach `AP 4.3` (`StatorCoolingRing` Showcase mit `StandardRans`, automatischer Kalibrierung & `FinalTopN`-Feinprüfung).
