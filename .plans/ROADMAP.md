@@ -47,11 +47,13 @@
   │           • Naca0012 0°-Diagnose, OpenFOAM-Konvergenz auf SU2-Niveau       │
   │           • MaxCells3D = 15M, skaleninvariantes Auto-Meshing + y+-Layer    │
   │           • Re-Run aller 4 Physik-Benchmarks auf BIC_12 & Literatur-Check  │
-  │  [ ] 4.3a Vaskulären Algorithmus (StatorCoolingRing v3) prüfen & verfeinern│
-  │           → Plan: phase4_stator_cooling_ring_v3_emergent_vascular.md       │
-  │  [ ] 4.3b Showcase StatorCoolingRing auf BIC_12 vollständig rechnen        │
+  │  [ ] 4.3a Grundlegende Überarbeitung Vaskulärer Algorithmus (v4 BOT/GCO)   │
+  │           → Plan: phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md     │
+  │           • Geodätischer Baum + Krümmungs-Limit + Druckgleichheits-Wege    │
+  │           • Objektiver A/B-Vergleich (v4 vs. v3) → Kürung Showcase-Sieger  │
+  │  [ ] 4.3b Showcase StatorCoolingRing (Gewinner-Version) auf BIC_12 rechnen │
   │           (StandardRans, Kalibrierung, BoTorch qNEHVI Pareto, Feinprüfung) │
-  │  [ ] 4.4  Vaskuläre Routing-Engine als Kernmodul & Preset ins Hauptprogramm│
+  │  [ ] 4.4  Beste Showcase-Version als Kernmodul & Preset ins Hauptprogramm  │
   │           → Plan: phase4_5_vascular_routing_core_engine.md                 │
   │           (FluidForge.Kernels.Vascular + _TemplateVascular3D + Dogfooding) │
   │  [ ] 4.5  Gesamtauswertung, Plots/ParaView, Prof-/Literatur-Preset-Check,  │
@@ -75,8 +77,8 @@
 | **Phase 4.1 — Audit & `BIC_09`** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | **✔ erledigt** (`25.11.2026`) |
 | **Phase 4.2a — `Naca2D` 3-Seed** | *(archiviert in [`.old/phase4_b1_2d_fix_und_naca2d_benchmark.md`](.old/phase4_b1_2d_fix_und_naca2d_benchmark.md))* | **✔ erledigt** (`9/9` Läufe in `results/Naca2D_Benchmark/summary.md`) |
 | **Phase 4.2b — Physik-Benchmarks B1–B3 & Solver-Reife** | **[`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)** | **▶ NÄCHSTER SCHRITT** (1. Lauf ausgewertet; Fixes geplant) |
-| **Phase 4.3a/b — Showcase `StatorCoolingRing` (Review + Lauf)** | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) | **v3-Basis ✔** → als Nächstes: Algorithmus-Review/Verbesserung, dann Großlauf auf `BIC_12` |
-| **Phase 4.4 — Vaskuläre Engine ins Hauptprogramm** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) | **Geplant** (direkt nach Showcase-Lauf) |
+| **Phase 4.3a/b — Showcase `StatorCoolingRing` (`v4`-Redesign + Lauf)** | [`phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md`](phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md), [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) | **v3-Basis ✔** → `4.3a`: Neubau Routing-Kern (`v4` BOT/GCO-Baum) + A/B vs. `v3`; `4.3b`: Großlauf der besten Version auf `BIC_12` |
+| **Phase 4.4 — Beste Showcase-Engine ins Hauptprogramm** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) | **Geplant** (übernimmt exakt die finale Showcase-Gewinner-Version aus `4.3a/b` als Kern & Preset!) |
 | **Phase 4.5 — Auswertung, LaTeX-Bericht & Release** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | **Geplant** (nach Abschluss 4.2–4.4) |
 | **Phase 5 — LLM-Code-Evolution & Docker/Apptainer** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md), [`phase5_docker_container.md`](phase5_docker_container.md) | **Ausblick / Grobkonzept** (nach Phase 4 & Community-Feedback) |
 

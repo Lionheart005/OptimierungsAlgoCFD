@@ -13,9 +13,9 @@
 | **AP 4.1** | Stabilitäts-, Ergonomie- & „Zero-to-First-Run“-Audit (`BIC_09`) | **✔ fertig** | archiviert in [`.old/phase4_ap41_und_b1_naca0012.md`](.old/phase4_ap41_und_b1_naca0012.md) |
 | **AP 4.2a** | 3-Seed-Optimierer-Vergleich `Naca2D` (`Bayes`, `BoTorch`, `IdwBaseline`) & Calibration-Suffix-Bugfix | **✔ fertig** | `results/Naca2D_Benchmark/summary.md` (`9/9` Läufe `rc=0`) |
 | **AP 4.2b** | **Physik-Benchmarks (B1–B3) & allgemeine Solver-/Preset-Reife** (Naca0012 0°-Diagnose, OpenFOAM-Konvergenz/AutoRestart/Auto-Meshing/$y^+$, `MaxCells3D = 15M`, Re-Run auf `BIC_12`) | **▶ JETZT** | **[`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)** |
-| **AP 4.3a** | **Vaskulären Algorithmus (`StatorCoolingRing v3`) nochmals kritisch prüfen & ggf. verbessern** | **offen** *(v3-Basis ✔)* | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) |
-| **AP 4.3b** | **Showcase `StatorCoolingRing` vollständig rechnen** (Kalibrierung, `BoTorch qNEHVI` Pareto-Front, Feinprüfung auf `BIC_12`) | **offen** | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) |
-| **AP 4.4** | **Vaskuläre Routing-Engine als Kernmodul & Preset (`_TemplateVascular3D`) ins Hauptprogramm übernehmen** | **offen** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) |
+| **AP 4.3a** | **Grundlegende Überarbeitung des vaskulären Algorithmus (`v4` BOT/GCO-Baum) & A/B-Kürung gegen `v3`** | **geplant** *(v3-Basis ✔)* | [`phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md`](phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md) |
+| **AP 4.3b** | **Showcase `StatorCoolingRing` (gekürte Gewinner-Version) vollständig rechnen** (Kalibrierung, `BoTorch qNEHVI` Pareto-Front, Feinprüfung auf `BIC_12`) | **offen** | [`phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md`](phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md) |
+| **AP 4.4** | **Beste Showcase-Engine als Kernmodul & Preset (`_TemplateVascular3D`) ins Hauptprogramm übernehmen** | **offen** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) |
 | **AP 4.5** | **Gesamtauswertung, Visualisierungen, Prof-/Literatur-Preset-Abgleich, LaTeX-Bericht & Community-Release** | **offen** | *(in diesem Masterplan unten)* |
 
 ---
@@ -52,11 +52,11 @@
 
 ### AP 4.3: Showcase-Projekt `StatorCoolingRing` (Review + Optimierungslauf)
 - [x] **Mechanik-Basis (`v2`) & Topologie-Evolution (`v3`) implementiert & verifiziert:** Emergentes 12-Pfad-Gefäßnetz (`14D`-DNA, Force-Directed Edge Bundling, 3D-SDF-Hindernis-Lernen, Murray’s Law, maskierte 1D-Vorbalancierung, Rippenmatrix, Post-Fillet-SW-24-Sechskant; `1077/1077` Tests, `BIC_09` `--smoke-test` `6/6`, `14/14 EFFECTIVE`, `87 %` Feasibility, `69 s` `snappyHexMesh`).
-- [ ] **4.3a — Vaskulären Algorithmus nochmals prüfen & ggf. verbessern:** Geometrie-Qualität, Verzweigungs-/Rippen-Übergänge, hydraulische Balance, 3D-Druckbarkeit und Zusammenspiel mit dem neuen skaleninvarianten OpenFOAM-Auto-Meshing prüfen und bei Bedarf nachschärfen.
-- [ ] **4.3b — Vollständigen Optimierungslauf auf `BIC_12` rechnen:** `StandardRans` + automatische Netzkalibrierung + Pre-/Post-Constraints + `BoTorch qNEHVI` Pareto-Front (`PressureDrop` vs. `FlowImbalance`) + `FinalTopN`-Feinprüfung durchführen und alle Daten + Gewinner-STLs sauber archivieren.
+- [ ] **4.3a — Grundlegende Überarbeitung des vaskulären Routing-Kerns (`v4` BOT/GCO-Baum, Detailplan: [`phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md`](phase4_3a_vascular_algorithm_v4_bot_tree_redesign.md)):** Ersatz des FDEB-Spaghetti-Kerns durch einen expliziten, geodätischen BOT/GCO-Gefäßbaum mit harter PBD-Krümmungs-/Abstands-Projektion, sauberem Y-Winkel-Korridor, bewusster Druckgleichheits-Wegverlängerung (`PathBalanceWeight`) und objektivem A/B-Vergleich gegen `v3` zur Kürung der besten Version.
+- [ ] **4.3b — Vollständigen Optimierungslauf (gekürte Gewinner-Version) auf `BIC_12` rechnen:** `StandardRans` + automatische Netzkalibrierung + Pre-/Post-Constraints + `BoTorch qNEHVI` Pareto-Front (`PressureDrop` vs. `FlowImbalance`) + `FinalTopN`-Feinprüfung durchführen und alle Daten + Gewinner-STLs sauber archivieren.
 
-### AP 4.4: Vaskuläre Routing-Engine als Kernmodul & Preset ins Hauptprogramm
-- [ ] Umsetzung nach Detailplan [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md):
+### AP 4.4: Beste Showcase-Routing-Engine als Kernmodul & Preset ins Hauptprogramm
+- [ ] Umsetzung nach Detailplan [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) — **verbindlich auf Basis der finalen, im Showcase (`4.3a/b`) verwendeten Gewinner-Version** (Ziel: `v4` BOT/GCO-Baum):
   - Pure-C#-Modul `src/FluidForge/Kernels/Vascular/` (`M×N`-Ports, SDF-KeepIn/KeepOut, DNA-Profile, `Core/` bleibt 100 % physik-/geometrieneutral!).
   - PicoGK-Brücke `VascularVoxelBuilder` unter `src/FluidForge/Kernels/PicoGk/InternalFlow/`.
   - Projektvorlage `_TemplateVascular3D` + `scripts/new-project.ps1 -Template Vascular3D` + englische Doku `docs/vascular-routing.md`.
