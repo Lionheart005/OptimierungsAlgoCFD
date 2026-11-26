@@ -112,25 +112,35 @@ namespace FluidForge.Solvers.OpenFoam
                 if (dirName.StartsWith("pressure_", StringComparison.OrdinalIgnoreCase))
                 {
                     string patch = dirName.Substring("pressure_".Length);
-                    string? datFile = FindLatestDatFile(funcDir, "surfaceFieldValue.dat");
-                    if (datFile != null)
+                    IReadOnlyList<string> datFiles = FindAllDatFilesChronological(funcDir, "surfaceFieldValue.dat");
+                    if (datFiles.Count > 0)
                     {
-                        IReadOnlyList<PatchPressureVelocitySample> parsed = ParsePressureVelocityDat(datFile, out bool nonFinite);
-                        if (nonFinite) hasNonFinite = true;
-                        if (parsed.Count > 0)
-                            pressureSamplesByPatch[patch] = parsed;
+                        var merged = new List<PatchPressureVelocitySample>();
+                        foreach (string datFile in datFiles)
+                        {
+                            IReadOnlyList<PatchPressureVelocitySample> parsed = ParsePressureVelocityDat(datFile, out bool nonFinite);
+                            if (nonFinite) hasNonFinite = true;
+                            MergeTimeSeries(merged, parsed, static s => s.Time);
+                        }
+                        if (merged.Count > 0)
+                            pressureSamplesByPatch[patch] = merged;
                     }
                 }
                 else if (dirName.StartsWith("flow_", StringComparison.OrdinalIgnoreCase))
                 {
                     string patch = dirName.Substring("flow_".Length);
-                    string? datFile = FindLatestDatFile(funcDir, "surfaceFieldValue.dat");
-                    if (datFile != null)
+                    IReadOnlyList<string> datFiles = FindAllDatFilesChronological(funcDir, "surfaceFieldValue.dat");
+                    if (datFiles.Count > 0)
                     {
-                        IReadOnlyList<PatchFluxSample> parsed = ParseFluxDat(datFile, out bool nonFinite);
-                        if (nonFinite) hasNonFinite = true;
-                        if (parsed.Count > 0)
-                            fluxSamplesByPatch[patch] = parsed;
+                        var merged = new List<PatchFluxSample>();
+                        foreach (string datFile in datFiles)
+                        {
+                            IReadOnlyList<PatchFluxSample> parsed = ParseFluxDat(datFile, out bool nonFinite);
+                            if (nonFinite) hasNonFinite = true;
+                            MergeTimeSeries(merged, parsed, static s => s.Time);
+                        }
+                        if (merged.Count > 0)
+                            fluxSamplesByPatch[patch] = merged;
                     }
                 }
             }
@@ -292,6 +302,8 @@ namespace FluidForge.Solvers.OpenFoam
             }
         }
 
+        private readonly record struct ForceCoeffSample(float Time, float? Cd, float? Cl);
+
         private static void EvaluateForceCoeffs(
             string postDir,
             int window,
@@ -302,51 +314,75 @@ namespace FluidForge.Solvers.OpenFoam
             string forceDir = Path.Combine(postDir, "forceCoeffs");
             if (!Directory.Exists(forceDir)) return;
 
-            string? datFile = FindLatestDatFile(forceDir, "coefficient.dat")
-                ?? FindLatestDatFile(forceDir, "forceCoeffs.dat");
-            if (datFile == null) return;
+            IReadOnlyList<string> datFiles = FindAllDatFilesChronological(forceDir, "coefficient.dat");
+            if (datFiles.Count == 0)
+                datFiles = FindAllDatFilesChronological(forceDir, "forceCoeffs.dat");
+            if (datFiles.Count == 0) return;
 
-            var cdList = new List<float>();
-            var clList = new List<float>();
-            int cdCol = -1;
-            int clCol = -1;
-
-            foreach (string rawLine in File.ReadLines(datFile))
+            var merged = new List<ForceCoeffSample>();
+            foreach (string datFile in datFiles)
             {
-                string trimmed = rawLine.Trim();
-                if (trimmed.Length == 0) continue;
+                var fileSamples = new List<ForceCoeffSample>();
+                int cdCol = -1;
+                int clCol = -1;
 
-                if (trimmed.StartsWith('#'))
+                foreach (string rawLine in File.ReadLines(datFile))
                 {
-                    string headerContent = trimmed.TrimStart('#').Trim();
-                    string[] headerCols = headerContent.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-                    for (int i = 0; i < headerCols.Length; i++)
+                    string trimmed = rawLine.Trim();
+                    if (trimmed.Length == 0) continue;
+
+                    if (trimmed.StartsWith('#'))
                     {
-                        if (headerCols[i].Equals("Cd", StringComparison.OrdinalIgnoreCase)) cdCol = i;
-                        else if (headerCols[i].Equals("Cl", StringComparison.OrdinalIgnoreCase)) clCol = i;
+                        string headerContent = trimmed.TrimStart('#').Trim();
+                        string[] headerCols = headerContent.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                        for (int i = 0; i < headerCols.Length; i++)
+                        {
+                            if (headerCols[i].Equals("Cd", StringComparison.OrdinalIgnoreCase)) cdCol = i;
+                            else if (headerCols[i].Equals("Cl", StringComparison.OrdinalIgnoreCase)) clCol = i;
+                        }
+                        continue;
                     }
-                    continue;
+
+                    string[] cols = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                    if (cols.Length == 0 || !TryParseFloat(cols[0], out float time))
+                    {
+                        if (cols.Length > 0) hasNonFinite = true;
+                        continue;
+                    }
+
+                    int effectiveCdCol = cdCol >= 0 ? cdCol : 1;
+                    int effectiveClCol = clCol >= 0 ? clCol : 2;
+
+                    float? cdVal = null;
+                    if (effectiveCdCol < cols.Length)
+                    {
+                        if (TryParseFloat(cols[effectiveCdCol], out float cd))
+                            cdVal = cd;
+                        else
+                            hasNonFinite = true;
+                    }
+
+                    float? clVal = null;
+                    if (effectiveClCol < cols.Length)
+                    {
+                        if (TryParseFloat(cols[effectiveClCol], out float cl))
+                            clVal = cl;
+                        else
+                            hasNonFinite = true;
+                    }
+
+                    fileSamples.Add(new ForceCoeffSample(time, cdVal, clVal));
                 }
 
-                string[] cols = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-                int effectiveCdCol = cdCol >= 0 ? cdCol : 1;
-                int effectiveClCol = clCol >= 0 ? clCol : 2;
+                MergeTimeSeries(merged, fileSamples, static s => s.Time);
+            }
 
-                if (effectiveCdCol < cols.Length)
-                {
-                    if (TryParseFloat(cols[effectiveCdCol], out float cd))
-                        cdList.Add(cd);
-                    else
-                        hasNonFinite = true;
-                }
-
-                if (effectiveClCol < cols.Length)
-                {
-                    if (TryParseFloat(cols[effectiveClCol], out float cl))
-                        clList.Add(cl);
-                    else
-                        hasNonFinite = true;
-                }
+            var cdList = new List<float>(merged.Count);
+            var clList = new List<float>(merged.Count);
+            foreach (ForceCoeffSample sample in merged)
+            {
+                if (sample.Cd.HasValue) cdList.Add(sample.Cd.Value);
+                if (sample.Cl.HasValue) clList.Add(sample.Cl.Value);
             }
 
             if (cdList.Count > 0)
@@ -367,46 +403,62 @@ namespace FluidForge.Solvers.OpenFoam
             if (!Directory.Exists(yPlusDir))
                 return (null, null, null);
 
-            string? datFile = FindLatestDatFile(yPlusDir, "yPlus.dat");
-            if (datFile == null)
+            IReadOnlyList<string> datFiles = FindAllDatFilesChronological(yPlusDir, "yPlus.dat");
+            if (datFiles.Count == 0)
                 return (null, null, null);
 
-            float? lastTime = null;
-            var latestAvgs = new List<float>();
-            var latestMaxes = new List<float>();
+            float? bestTime = null;
+            var bestAvgs = new List<float>();
+            var bestMaxes = new List<float>();
 
-            foreach (string rawLine in File.ReadLines(datFile))
+            foreach (string datFile in datFiles)
             {
-                string trimmed = rawLine.Trim();
-                if (trimmed.Length == 0 || trimmed.StartsWith('#')) continue;
+                float? fileLastTime = null;
+                var fileAvgs = new List<float>();
+                var fileMaxes = new List<float>();
 
-                string[] cols = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-                // Format: Time patch min max average
-                if (cols.Length >= 5 &&
-                    TryParseFloat(cols[0], out float time) &&
-                    TryParseFloat(cols[3], out float maxVal) &&
-                    TryParseFloat(cols[4], out float avgVal))
+                foreach (string rawLine in File.ReadLines(datFile))
                 {
-                    if (!lastTime.HasValue || time > lastTime.Value + 1e-6f)
-                    {
-                        lastTime = time;
-                        latestAvgs.Clear();
-                        latestMaxes.Clear();
-                    }
+                    string trimmed = rawLine.Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith('#')) continue;
 
-                    if (MathF.Abs(time - lastTime.Value) <= 1e-6f)
+                    string[] cols = trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                    // Format: Time patch min max average
+                    if (cols.Length >= 5 &&
+                        TryParseFloat(cols[0], out float time) &&
+                        TryParseFloat(cols[3], out float maxVal) &&
+                        TryParseFloat(cols[4], out float avgVal))
                     {
-                        latestAvgs.Add(avgVal);
-                        latestMaxes.Add(maxVal);
+                        if (!fileLastTime.HasValue || time > fileLastTime.Value + 1e-6f)
+                        {
+                            fileLastTime = time;
+                            fileAvgs.Clear();
+                            fileMaxes.Clear();
+                        }
+
+                        if (MathF.Abs(time - fileLastTime.Value) <= 1e-6f)
+                        {
+                            fileAvgs.Add(avgVal);
+                            fileMaxes.Add(maxVal);
+                        }
                     }
+                }
+
+                // Ignore empty restart files without valid rows; newer files at >= bestTime win.
+                if (fileLastTime.HasValue && fileAvgs.Count > 0 &&
+                    (!bestTime.HasValue || fileLastTime.Value >= bestTime.Value - 1e-6f))
+                {
+                    bestTime = fileLastTime.Value;
+                    bestAvgs = fileAvgs;
+                    bestMaxes = fileMaxes;
                 }
             }
 
-            if (latestAvgs.Count == 0 || latestMaxes.Count == 0)
+            if (bestAvgs.Count == 0 || bestMaxes.Count == 0)
                 return (null, null, null);
 
-            float ypMed = latestAvgs.Average();
-            float ypMax = latestMaxes.Max();
+            float ypMed = bestAvgs.Average();
+            float ypMax = bestMaxes.Max();
             // Conservative P95 estimate from average and maximum when full surface distribution is absent.
             float ypP95 = MathF.Min(ypMax, ypMed + 0.65f * MathF.Max(0f, ypMax - ypMed));
             return (ypMed, ypP95, ypMax);
@@ -477,12 +529,13 @@ namespace FluidForge.Solvers.OpenFoam
             return samples;
         }
 
-        private static string? FindLatestDatFile(string functionDirectory, string fileName)
+        private static IReadOnlyList<string> FindAllDatFilesChronological(string functionDirectory, string fileName)
         {
-            if (!Directory.Exists(functionDirectory)) return null;
+            if (!Directory.Exists(functionDirectory))
+                return Array.Empty<string>();
 
-            string? bestFile = null;
-            double bestTime = double.NegativeInfinity;
+            var numeric = new List<(double Time, string Path)>();
+            var nonNumeric = new List<string>();
 
             foreach (string timeDir in Directory.EnumerateDirectories(functionDirectory))
             {
@@ -490,24 +543,61 @@ namespace FluidForge.Solvers.OpenFoam
                 if (!File.Exists(candidate)) continue;
 
                 string folderName = Path.GetFileName(timeDir);
-                if (double.TryParse(folderName, NumberStyles.Float, CultureInfo.InvariantCulture, out double t))
+                if (double.TryParse(folderName, NumberStyles.Float, CultureInfo.InvariantCulture, out double t) &&
+                    double.IsFinite(t))
                 {
-                    if (t >= bestTime)
-                    {
-                        bestTime = t;
-                        bestFile = candidate;
-                    }
+                    numeric.Add((t, candidate));
                 }
-                else if (bestFile == null)
+                else
                 {
-                    bestFile = candidate;
+                    nonNumeric.Add(candidate);
                 }
             }
 
-            if (bestFile != null) return bestFile;
+            if (numeric.Count > 0)
+            {
+                numeric.Sort(static (a, b) =>
+                {
+                    int cmp = a.Time.CompareTo(b.Time);
+                    return cmp != 0 ? cmp : StringComparer.Ordinal.Compare(a.Path, b.Path);
+                });
+                return numeric.Select(static x => x.Path).ToList();
+            }
+
+            if (nonNumeric.Count > 0)
+            {
+                nonNumeric.Sort(StringComparer.Ordinal);
+                return nonNumeric;
+            }
 
             string direct = Path.Combine(functionDirectory, fileName);
-            return File.Exists(direct) ? direct : null;
+            return File.Exists(direct) ? new[] { direct } : Array.Empty<string>();
+        }
+
+        private static void MergeTimeSeries<TSample>(
+            List<TSample> merged,
+            IReadOnlyList<TSample> incoming,
+            Func<TSample, float> getTime)
+        {
+            if (incoming.Count == 0) return;
+
+            float firstNewTime = getTime(incoming[0]);
+            if (merged.Count > 0 && firstNewTime <= getTime(merged[^1]))
+            {
+                int keepCount = merged.Count;
+                while (keepCount > 0 && getTime(merged[keepCount - 1]) >= firstNewTime)
+                    keepCount--;
+                if (keepCount < merged.Count)
+                    merged.RemoveRange(keepCount, merged.Count - keepCount);
+            }
+
+            foreach (TSample sample in incoming)
+            {
+                float t = getTime(sample);
+                while (merged.Count > 0 && getTime(merged[^1]) >= t)
+                    merged.RemoveAt(merged.Count - 1);
+                merged.Add(sample);
+            }
         }
 
         internal static int ResolveEffectiveTailCount(int sampleCount, int configuredWindow)

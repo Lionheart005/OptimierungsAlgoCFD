@@ -193,7 +193,7 @@
         },
         "MaxCells3D": {
           "type": "integer",
-          "default": 3000000
+          "default": 15000000
         },
         "Mode": {
           "type": "string",

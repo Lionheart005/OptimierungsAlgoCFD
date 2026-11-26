@@ -497,5 +497,65 @@ namespace FluidForge.Tests
             foreach (var (file, _) in expected)
                 Assert.True(File.Exists(Path.Combine(tempSchemas, file)));
         }
+
+        [Fact]
+        public void Default_Cell_Limits_Are_15M_Global_And_4M_Local()
+        {
+            SimulationConfig simDefaults = SimulationConfig.CreateDefault();
+            Assert.Equal(15_000_000L, simDefaults.MeshCalibration.MaxCells3D);
+
+            var ofDefaults = new OpenFoamOptions();
+            Assert.Equal(15_000_000, ofDefaults.MaxGlobalCells);
+            Assert.Equal(4_000_000, ofDefaults.MaxLocalCells);
+        }
+
+        [Theory]
+        [InlineData("Internal3D:FastConcept", 10f, 30f, false)]
+        [InlineData("Internal3D:StandardRans", 20f, 5f, false)]
+        [InlineData("Internal3D:VerificationFine", 32f, 5f, true)]
+        [InlineData("External3D:FastConcept", 60f, 30f, false)]
+        [InlineData("External3D:StandardRans", 120f, 5f, false)]
+        [InlineData("External3D:VerificationFine", 200f, 5f, true)]
+        public void All_OpenFoam_Presets_Enforce_ScaleInvariant_AutoSizing_And_YPlus_Defaults(
+            string presetName,
+            float expectedCellsPerCharLen,
+            float expectedTargetYPlus,
+            bool expectedSecondOrderTurb)
+        {
+            PresetDefinition preset = SimulationPresets.Resolve(presetName)!;
+            OpenFoamOptions opts = JsonConfigLoader.LoadWithPresetCore(
+                new OpenFoamOptions(), preset.Name, preset.GetSolverOverrides("solvers/openfoam.json"), printOrigins: false).Value;
+
+            Assert.Equal(0f, opts.BaseCellSizeMm, 3);
+            Assert.Equal(0, opts.BoundaryLayerLayers);
+            Assert.Equal(expectedCellsPerCharLen, opts.CellsPerCharacteristicLength, 3);
+            Assert.Equal(expectedTargetYPlus, opts.TargetYPlus, 3);
+            Assert.Equal(expectedSecondOrderTurb, opts.SecondOrderTurbulence);
+            Assert.True(opts.AutoRestartOnDrift);
+        }
+
+        [Fact]
+        public void VenkatLimiterCoeff_Resolves_Per_Preset_And_Rejects_Invalid_Values()
+        {
+            PresetDefinition ext2dFine = SimulationPresets.Resolve("External2D:VerificationFine")!;
+            Su2SolverOptions su2_2d = JsonConfigLoader.LoadWithPresetCore(
+                new Su2SolverOptions(), ext2dFine.Name, ext2dFine.GetSolverOverrides("solvers/su2.json"), printOrigins: false).Value;
+            Assert.Equal(0.5f, su2_2d.VenkatLimiterCoeff, 3);
+
+            PresetDefinition ext3dFine = SimulationPresets.Resolve("External3D:VerificationFine")!;
+            Su2SolverOptions su2_3d = JsonConfigLoader.LoadWithPresetCore(
+                new Su2SolverOptions(), ext3dFine.Name, ext3dFine.GetSolverOverrides("solvers/su2.json"), printOrigins: false).Value;
+            Assert.Equal(0.05f, su2_3d.VenkatLimiterCoeff, 3);
+
+            SimulationConfig sim = SimulationConfig.CreateDefault();
+            foreach (float badCoeff in new[] { 0f, -0.1f, float.NaN })
+            {
+                var badOpts = new Su2SolverOptions { VenkatLimiterCoeff = badCoeff };
+                string cfgPath = Path.Combine(_tempRoot, $"bad_venkat_{Guid.NewGuid():N}.cfg");
+                var ex = Assert.Throws<InvalidOperationException>(
+                    () => Su2ConfigGenerator.Generate(cfgPath, "/tmp/mesh.su2", 0.01f, sim, badOpts));
+                Assert.StartsWith(OutputConventions.ConfigTag, ex.Message);
+            }
+        }
     }
 }

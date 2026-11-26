@@ -82,6 +82,7 @@ namespace FluidForge.Solvers.Cfd
             string historyOutput = string.Join(", ", historyFields.Select(field => field.Trim()));
             string turbModel = ResolveTurbulenceModel(options.TurbulenceModel);
             string slopeLimiter = ResolveSlopeLimiterFlow(options.SlopeLimiterFlow);
+            float venkatLimiterCoeff = ValidateVenkatLimiterCoeff(options.VenkatLimiterCoeff);
             float? freestreamNuFactor = ValidateFreestreamNuFactor(options.FreestreamNuFactor);
             SymmetryAxis symAxis = StlHalfClipper.ParseConfigValue(options.SymmetryPlane);
 
@@ -173,7 +174,7 @@ namespace FluidForge.Solvers.Cfd
 
             if (slopeLimiter.StartsWith("VENKATAKRISHNAN", StringComparison.Ordinal))
             {
-                cfgContent.Add("VENKAT_LIMITER_COEFF= 0.05");
+                cfgContent.Add($"VENKAT_LIMITER_COEFF= {venkatLimiterCoeff.ToString("G", CultureInfo.InvariantCulture)}");
             }
 
             cfgContent.AddRange(new[] {
@@ -331,6 +332,17 @@ namespace FluidForge.Solvers.Cfd
             throw new InvalidOperationException(
                 $"{OutputConventions.ConfigTag} Unknown SlopeLimiterFlow '{slopeLimiterFlow}'. "
                 + "Allowed values are 'NONE', 'VENKATAKRISHNAN', 'VENKATAKRISHNAN_WANG', 'BARTH_JESPERSEN', or 'VAN_ALBADA_EDGE'.");
+        }
+
+        private static float ValidateVenkatLimiterCoeff(float venkatLimiterCoeff)
+        {
+            if (!float.IsFinite(venkatLimiterCoeff) || venkatLimiterCoeff <= 0f)
+            {
+                throw new InvalidOperationException(
+                    $"{OutputConventions.ConfigTag} VenkatLimiterCoeff must be a finite positive number (got {venkatLimiterCoeff.ToString(CultureInfo.InvariantCulture)}).");
+            }
+
+            return venkatLimiterCoeff;
         }
 
         private static float? ValidateFreestreamNuFactor(float? freestreamNuFactor)

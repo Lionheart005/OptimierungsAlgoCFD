@@ -8,6 +8,12 @@
       "type": "string",
       "description": "Optional JSON Schema reference for editor validation and autocomplete."
     },
+    "AbsoluteTolerances": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
     "AddLayers": {
       "type": "boolean",
       "default": true
@@ -15,6 +21,10 @@
     "AngleOfAttackDeg": {
       "type": "number",
       "default": 0
+    },
+    "AutoRestartOnDrift": {
+      "type": "boolean",
+      "default": true
     },
     "BaseCellSizeMm": {
       "type": "number",
@@ -27,6 +37,10 @@
     "BoundaryLayerLayers": {
       "type": "integer",
       "default": 5
+    },
+    "CellsPerCharacteristicLength": {
+      "type": "number",
+      "default": 0
     },
     "CustomDictionaryOverrides": {
       "type": "object",
@@ -107,13 +121,17 @@
       "type": "number",
       "default": 0
     },
+    "MaxConvergenceRestarts": {
+      "type": "integer",
+      "default": 3
+    },
     "MaxGlobalCells": {
       "type": "integer",
-      "default": 8000000
+      "default": 15000000
     },
     "MaxLocalCells": {
       "type": "integer",
-      "default": 2000000
+      "default": 4000000
     },
     "MaxMassBalanceErrorPercent": {
       "type": "number",
@@ -179,11 +197,19 @@
       "type": "number",
       "default": 0.0001
     },
+    "ResidualTargetFloor": {
+      "type": "number",
+      "default": 1E-07
+    },
     "ResultMetrics": {
       "type": "object",
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "SecondOrderTurbulence": {
+      "type": "boolean",
+      "default": false
     },
     "Solver": {
       "type": "string",

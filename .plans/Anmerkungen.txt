@@ -1,1 +1,11 @@
+Anmerkungen zum Vasculären Algorithmus: Es kann Passieren, dass Pfade sich teilen und beim Kreuzen wieder verschmelzen. ich bezweifle dass das bei biologischen strukturen wie adern so ist oder? ich gehe davon aus, dass sich pfade nur weiter teilen können, aber nicht wieder verschmelzen. die frage ist ein bisschen ob das ein problem für uns ist oder nicht. das verhindern davon würde zumindest den folgenden punkt beheben: 
+schon garnicht soll das passieren, wenn sich pfade wirklich kreuzen, also nicht wirklich in die selbe richtung laufen. 
+die winkel in denen die pfade sich trennen sind mir gefühlt manchmal noch etwas zu steil und ich frage mich ob es nicht noch etwas flacher gehen könnte, also dass sich pfade etwas weicher voneinander trennen und nicht durch den plötzlich überwundenen snapp so stark auseinandergedrückt werden. andererseits dürfen die wände ja auch nicht zu dünn und scharf werden im gang, vielleicht ist es also auch hier sogar am besten einen minimalen winkel zu definieren, es soll dann aber auch möglich sein diesen zu erreichen, wenn es strömungstechnisch sinn macht. 
+und beim highbundling modell ist es so, dass fast alle seitenpfade im 90 grad winkel aus dem haupt pfad rausgehen. das wirkt total ineffizient und ich frage mich ob das ein artefakt ist oder tatächlich so gewollt von den pfaden. 
+auch darf sich ein pfad auf keinen fall nochmal selbst kreuzen bzw geschweige denn mit sich selbst verschmelzen, und noch schlimmer wenn er in sich selbt hin und zurückläuft.
+auch auf keinen fall dürfen sich pfade snappen wenn sie in unterschiedliche richtungen laufen, selbst wenn sie einen kleinen winkel zueinander haben.
+als ausgangssituaton versucht ja erstmal jeder pfad den kürzesten weg zu finden zu seinem ziel oder? das sieht teilweise noch nicht ganz so aus, ist da in der logik alles richtig?
 
+auch sollten knicke unbedingt verhindert werden, also dass sich ein pfad mit einem zu kleinen radius um einen zu großen winkel krümmt. teilweise gibt es richtige 120 grad turns mit mini radius wo eine unnötig strömungsbehindernde kammer enststeht. 
+
+die ganzen kritikpunkte sollen den algorithmus natürlich nur noch mehr organisch und plausibel machen um die besten wege zu finden, nicht das ganze noch verschlechtern durch regeln die die pfade noch mehr davon abhalten den besten weg zu finden. 

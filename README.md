@@ -73,7 +73,13 @@ Instead of tuning dozens of solver and meshing knobs manually, `simulation.json`
 |---|---|---|---|
 | `External2D` | 2D manual 1.5x mesh, $y^+ \approx 1.5$, 200c farfield | 2D auto-calibrated (5%), $y^+ \approx 1.0$, 500c farfield | 2D auto-calibrated (2%), $y^+ \approx 0.8$, 10k SU2 iters |
 | `External3D` | 3D manual 1.5x mesh, prism $y^+ \approx 2.0$, fast budget | 3D auto-calibrated (5%), prism $y^+ \approx 1.5$, Top-3 verify | 3D auto-calibrated (2%), prism $y^+ \approx 1.0$, DetailBox on |
-| `Internal3D` | OpenFOAM 3.0 mm, 3 layers, $y^+ \approx 30$, 500 iters | OpenFOAM auto-calibrated (5%), 2.0 mm, 5 layers, $y^+ \approx 5$ | OpenFOAM auto-calibrated (2%), 1.2 mm, 8 layers, $y^+ \approx 1.5$ |
+| `Internal3D` | OpenFOAM auto-sized ($D_h$, 10 cells/$D_h$), auto layers, $y^+ \approx 30$, 500 iters | OpenFOAM auto-calibrated (5%, 20 cells/$D_h$), auto layers, $y^+ \approx 5$ | OpenFOAM 32 cells/$D_h$, auto layers, $y^+ \approx 5$, 2nd-order turb., 2k iters |
+
+> **3D Cell-Count Safeguards (`MaxCells3D` / `MaxGlobalCells` / `MaxLocalCells`):**
+> To protect against out-of-memory (RAM overflow) crashes and multi-hour miscalculations from accidentally over-refined 3D meshes, FluidForge enforces default cell caps of `MeshCalibration.MaxCells3D = 15_000_000`, `OpenFoam.MaxGlobalCells = 15_000_000`, and `OpenFoam.MaxLocalCells = 4_000_000` (in serial runs with `MpiCores == 1`, `maxLocalCells` automatically scales up to `MaxGlobalCells`).
+> - **Adjust per project:** Override `MeshCalibration.MaxCells3D` in `src/projects/<Name>/simulation.json` or `MaxGlobalCells` / `MaxLocalCells` in `solvers/openfoam.json`.
+> - **Adjust per machine:** Set `MeshCalibration.MaxCells3D` in `config/simulation.local.json` (e.g., workstation vs. HPC server — survives every `sim.ps1 deploy`).
+> - **Disable completely:** Set `"MaxCells3D": 0` to turn off the upper cell-count limit in both optimization and calibration when very large detail meshes are needed.
 
 Inspect presets and effective values anytime via CLI:
 ```powershell

@@ -81,7 +81,7 @@ namespace FluidForge.Core
 
             var stages = new List<CalibrationStageData>();
             var cal = context.Simulation.MeshCalibration;
-            long maxCells = dimensions == 2 ? cal.MaxCells2D : Math.Min(maxEstimatedFineCells, cal.MaxCells3D);
+            long maxCells = dimensions == 2 ? (cal.MaxCells2D > 0 ? cal.MaxCells2D : 0) : (cal.MaxCells3D > 0 ? Math.Min(maxEstimatedFineCells, cal.MaxCells3D) : 0);
 
             // The cell limit applies to the MEASURED cell count and is checked after meshing, before SU2 runs.
             simulationContext.CellLimit = maxCells;
@@ -96,7 +96,7 @@ namespace FluidForge.Core
                 {
                     long estimatedFineCells = EstimateCells(stage1.MeshCells, 2.0f, 0.5f, dimensions);
                     Console.WriteLine($"       -> Coarse cells: {stage1.MeshCells:N0} | rough preview for reference (0.50): ~{estimatedFineCells:N0} cells");
-                    if (estimatedFineCells > maxCells)
+                    if (maxCells > 0 && estimatedFineCells > maxCells)
                         Console.WriteLine($"       -> [HINT] Rough preview exceeds limit of {maxCells:N0} cells. The measured cell count after meshing level 5 is decisive.");
                 }
 
@@ -453,7 +453,7 @@ namespace FluidForge.Core
                 if (next < MinRefinementFactor) return;
 
                 long estimated = EstimateNextCells(stages, next, dimensions);
-                if (refStage.MeshCells > 0 && estimated > maxCells * 1.5)
+                if (maxCells > 0 && refStage.MeshCells > 0 && estimated > maxCells * 1.5)
                 {
                     Console.WriteLine($"       -> [{label}] Next level (factor {next:0.00}) would require ~{estimated:N0} cells, well above limit {maxCells:N0} - stopping refinement.");
                     return;

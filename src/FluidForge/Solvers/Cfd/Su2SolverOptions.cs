@@ -166,6 +166,13 @@ namespace FluidForge.Solvers.Cfd
         /// </summary>
         public string SlopeLimiterFlow { get; set; } = "VENKATAKRISHNAN";
 
+        /// <summary>
+        /// Venkatakrishnan limiter coefficient (<c>VENKAT_LIMITER_COEFF</c>) when
+        /// <see cref="SlopeLimiterFlow"/> starts with <c>"VENKATAKRISHNAN"</c>.
+        /// Must be finite and &gt; 0 (default <c>0.05f</c>).
+        /// </summary>
+        public float VenkatLimiterCoeff { get; set; } = 0.05f;
+
         public float CflNumber { get; set; } = 5.0f;
         public bool CflAdapt { get; set; } = true;
         /// <summary>CFL_ADAPT_PARAM: reduction factor.</summary>

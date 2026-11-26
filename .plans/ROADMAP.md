@@ -1,129 +1,100 @@
-# Gesamt-Roadmap v2: Große Überarbeitung & Neuausrichtung (Plan A)
+# Gesamt-Roadmap v2: FluidForge (Plan A)
 
-> **Stand:** 23.11.2026 — **Schritt 0, Phase 1, Phase 2 und Phase 3 (`LEAP71_ShapeKernel`, OpenFOAM ESI `v2506` `Internal3D`/`External3D`-Overlay, Hybrid-Optimierer-Bridge `BoTorch`/`pymoo`, Multi-Fidelity `TwoStageFilter`, Schemas & Docs; 984/984 Unit-Tests + `BIC_12`-Live-Verifikation) vollständig abgeschlossen; bereit für Phase 4.**  
-> **Sprache:** Pläne und Diskussionen in `.plans/` bleiben bewusst **auf Deutsch**. Der gesamte Produktcode, Logs, Fehlermeldungen, CSVs, Tests und Nutzer-READMEs werden ab Phase 1 konsequent auf **Englisch** umgestellt.  
-> **Archiv:** Die vorherige Roadmap (`ROADMAP_v1_2026-11-08.md`) sowie alle abgeschlossenen bzw. abgelösten Einzelpläne liegen vollständig unter [`.plans/.old/`](.old/). Alle noch offenen Punkte aus v1 wurden unten sauber übernommen.
+> **Stand: 26.11.2026** — **Schritt 0 sowie Phasen 1, 2, 3 und 3.5 vollständig abgeschlossen.** Aktuell läuft **Phase 4** (Validierung, Physik-Benchmarks B1–B3, Showcase `StatorCoolingRing`, Übernahme der vaskulären Engine ins Hauptprogramm, Gesamtauswertung/LaTeX-Bericht & Community-Release).  
+> **Sprache:** Pläne und Diskussionen in `.plans/` bleiben bewusst **auf Deutsch**. Produktcode, Logs, Fehlermeldungen, CSVs, Tests und Nutzer-Doku sind konsequent auf **Englisch**.  
+> **Archiv:** Alle abgeschlossenen Phasen (`1`–`3.5`) sowie ältere Zwischenpläne und v1-Dokumente liegen unter [`.plans/.old/`](.old/).
 
 ---
 
 ## 1. Strategische Vision & Zielbild
 
-Dieses Projekt entwickelt sich von einem experimentellen 3D-CFD-Studentenprojekt zu einer **schlanken, physikalisch verifizierbaren, international nutzbaren Open-Source-Plattform für Computational Engineering** (inspiriert von LEAP 71 / Noyron, `PicoGK` + `LEAP71_ShapeKernel` und moderner Code-Evolution à la AlphaEvolve/OpenEvolve):
+`FluidForge` entwickelt sich zu einer **schlanken, physikalisch verifizierbaren, international nutzbaren Open-Source-Plattform für Computational Engineering** (inspiriert von LEAP 71 / Noyron, `PicoGK` + `LEAP71_ShapeKernel` und Code-Evolution à la AlphaEvolve/OpenEvolve):
 
-- **Klare Nische (Plan A):** Komplexe, topologisch variable, 3D-druckbare **interne Fluidik** (Rohrkrümmer, Strömungsverteiler/Manifolds, Mischer, Kühlkanäle, Düsen) mit **`PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`**, ergänzt um die bewährte 2D-/3D-Außenumströmungs-Pipeline mit **SU2** (NASA-TMR-validiert).
-- **Alleinstellungsmerkmal („Verifiable Engineering Harness“):** Deterministische Prüftore (`--smoke-test`, `checkMesh`, Massenbilanz, `y+`, Konvergenzrichter, GCI, Bouncer, Hash-geschützte Bewertung) garantieren physikalisch belastbare Ergebnisse — erst für menschliche Ingenieure (Phasen 1–4) und später als kugelsicheres Verifikations-Backend für **LLM-gestützte Topologie-/Code-Evolution** (Phase 5).
-- **Wichtigstes Qualitätsprinzip:** **Weniger, aber rund.** Keine Parameter-Explosion, keine ungetesteten Features, keine vorzeitige Überfrachtung. Erst entschlacken, validieren und einfach bedienbar machen — dann erst in der Community testen und danach das LLM andocken.
+- **Klare Nische (Plan A):** Komplexe, topologisch variable, 3D-druckbare **interne Fluidik** (Rohrkrümmer, Strömungsverteiler/Manifolds, emergente Gefäßnetze, Kühlkanäle) mit **`PicoGK` + `LEAP71_ShapeKernel` + `OpenFOAM`**, ergänzt um die NASA-TMR-validierte 2D-/3D-Außenumströmungs-Pipeline mit **SU2** und **OpenFOAM**.
+- **Alleinstellungsmerkmal („Verifiable Engineering Harness“):** Deterministische Prüftore (`--smoke-test`, `checkMesh`, Massenbilanz, `y+`, Konvergenzrichter inkl. Wirbel-/Stationaritätserkennung, GCI, Bouncer, Hash-Schutz) garantieren physikalisch belastbare Ergebnisse — für Ingenieure (Phase 4) und später als Verifikations-Backend für **LLM-gestützte Topologie-/Code-Evolution** (Phase 5).
+- **Qualitätsprinzip:** Erst physikalisch sauber validieren, skaleninvariante Presets absichern und das Showcase + Gefäßnetz-Modul rund machen — dann auswerten, veröffentlichen und in Phase 5 das LLM andocken.
 
 ---
 
-## 2. Getroffene Grundsatzentscheidungen (Stand 21.11.2026)
+## 2. Verbindliche Grundsatzentscheidungen (`E1`–`E7`)
 
 | # | Thema | Beschlossene Linie |
 | :--- | :--- | :--- |
-| **E1** | **Schritt 0 (`MantaAuv`-Serverlauf)** | **Erledigt (21.11.2026):** Lauf auf `BIC_12` sauber gestoppt; 20-GB-Vollarchiv liegt unter `~/Archive/MantaAuv_2026-11-21_final/` auf `BIC_12`, kompaktes Analyse- & Modellpaket (415,4 MB: alle 49 STLs, 44 CSV-Zeilen, `Bayes_Verlauf.csv`, `Kalibrierung/`, `Quellstand/`, Logs, Champion- & Start-VTUs) liegt lokal unter `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`. |
-| **E2** | **Zielfunktion, Constraints & Optimierer-Backend** | **Single-Objective + getrennte Pre-CFD- & Post-CFD-Constraints** als einfacher, transparenter Standard; Schnittstelle direkt **multi-objective-fähig (Pareto-Front)**. **Hybrid-Backend:** Gefixter C#-`Bayes` bleibt eingebauter Zero-Dependency-Standard; optionale JSON-Ask/Tell-Bridge zu einem Conda-Python-Env (**BoTorch/Ax** für Constrained `qLogEI`, `qNEHVI` Pareto & Multi-Fidelity, **pymoo** für `NSGA-II/III`). |
-| **E3** | **Rollenverteilung OpenFOAM vs. SU2** | **OpenFOAM** wird langfristig der **primäre 3D-Standard-Solver** (zuerst `Internal3D` in Phase 3, nach Benchmark-Validierung auch Standard für `External3D`, inkl. Perspektive auf Transition `kOmegaSSTLM` & Wärme `chtMultiRegionSimpleFoam` — weniger 3D-Doppelpflege, 10× größere Community). **SU2** bleibt gezielt erhalten als: (1) **`External2D`-Standard** (NASA-TMR, echte 2D-Netze), (2) **Windows-native lokale Test-Pipeline** ohne WSL und (3) **optionale `External3D`- / spätere kompressible High-Speed-Variante** (sowie 3D-Basis in Phase 1–2). Alle Detail-Parameter beider Solver bleiben für Profis vollständig per JSON überschreibbar (kein Code-Zwang). |
-| **E4** | **Bedienung & Konfigurations-Diät (Progressive Disclosure)** | Radikale Entschlackung der **Standard-Vorlagen** von ~127 sichtbaren Keys auf **~15 Projekt-Keys** durch Presets (`External2D`/`External3D`/`Internal3D` × `FastConcept`/`StandardRans`/`VerificationFine`), Single Source of Truth und modulare englische Doku statt 88-KB-Monolith. **Wichtig:** Der manuelle Profi-Weg geht ausdrücklich **nicht** verloren — **jede** Detail-Einstellung (Solver, Mesher, Grenzschicht, Konvergenz, Optimierer) bleibt transparent per JSON überschreibbar (`Preset` + Einzel-Overrides oder voll manuell), ohne C#-Code ändern zu müssen; `effective-config.json` und `--print-config` zeigen jederzeit alle wirksamen Detailwerte. |
-| **E5** | **Sprache & Projektname** | **Umgesetzt in Phase 1 (22.11.2026):** Projekt vollständig in **`FluidForge`** umbenannt; Code, Logs, Fehlermeldungen, Output-Pfade, CSV-Header, Skripte, aktive READMEs und alle Tests sind komplett auf Englisch umgestellt (`.plans/` bleibt Deutsch; das Alt-Handbuch `BEDIENHANDBUCH.md` wird in Phase 2 `AP 2.1` durch modulare englische `docs/` ersetzt). |
-| **E6** | **Benchmarks, Showcase & LaTeX-Bericht** | LaTeX-Dokument wird bewusst **zurückgestellt bis Phase 4** (nach vollständigem Feinschliff). Dauerhafte **Literatur-Benchmarks** (NASA TMR 2D, 90°-Rohrkrümmer 3D intern, DARPA SUBOFF 3D extern) werden eingebaut; das konkrete große Showcase-Projekt bleibt problemunabhängig und wird erst in Phase 4 final gewählt. |
-| **E7** | **Reihenfolge LLM & FEM** | **LLM-Anbindung** erst in **Phase 5**, nachdem Kern, OpenFOAM, Benchmarks und Community-Feedback (Phase 4) stehen (Schnittstellen werden aber schon in Phasen 1–3 sauber vorbereitet). **FEM** bleibt bewusst Zukunftsmusik (siehe Abschnitt 6). |
+| **E1** | **Alt-Archiv (`MantaAuv`)** | **Erledigt (21.11.2026):** 20-GB-Vollarchiv auf `BIC_12`, 415-MB-Analyse-Paket lokal unter `Serverergebnisse/BIC_12_MantaAuv_20261121_Archiv/`. |
+| **E2** | **Ziele, Constraints & Optimierer** | Getrennte Pre-CFD- & Post-CFD-Constraints, Single- & Multi-Objective (Pareto). Eingebauter C#-`Bayes` als Zero-Dependency-Standard; optionale JSON-Ask/Tell-Bridge zu Python (`BoTorch` `qLogEI`/`qNEHVI`, `pymoo` `NSGA-II`). |
+| **E3** | **Solver-Rollen (OpenFOAM vs. SU2)** | **OpenFOAM** als primärer 3D-Standard (`Internal3D` & nach B3-Validierung auch `External3D`); **SU2** als `External2D`-Standard, lokaler Windows-Testpfad und optionale `External3D`-/kompressible Variante. Beide Solver bekommen einheitlich hohe Konvergenz- und Auto-Meshing-Qualität. |
+| **E4** | **Presets & Profi-Transparenz** | 3×3-Presets (`External2D`/`External3D`/`Internal3D` × `FastConcept`/`StandardRans`/`VerificationFine`) mit ~15 sichtbaren Projekt-Keys; **jede** Detail-Einstellung bleibt per JSON überschreibbar (`effective-config.json` & `--print-config`). |
+| **E5** | **Sprache & Name** | Projektname **`FluidForge`**; gesamter Produktcode, Logs, CSVs, Tests und Nutzer-Doku vollständig auf **Englisch** (`.plans/` auf Deutsch). |
+| **E6** | **Validierung vor Release** | Erst objektive Literatur-Benchmarks (B1–B3) + Optimierer-Benchmark (`Naca2D` 3-Seed ✔) + Showcase (`StatorCoolingRing`) + Übernahme der vaskulären Engine ins Hauptprogramm; danach Gesamtauswertung, Prof-/Literatur-Abgleich der Presets, LaTeX-Bericht und Community-Release. |
+| **E7** | **Reihenfolge Phase 5 & FEM** | **LLM-Code-Evolution** und optionales **Docker-/Apptainer-Setup** erst in **Phase 5** nach Community-Feedback. **FEM (`CalculiX`)** bleibt bewusst geparkt (Abschnitt 5). |
 
 ---
 
-## 3. Phasen-Übersicht & Abhängigkeiten
+## 3. Aktueller Stand & Exakte Reihenfolge (Stand 26.11.2026)
 
 ```text
-  [✔] Schritt 0: Laufenden MantaAuv-Lauf auf BIC_12 stoppen & doppelt archivieren (21.11.2026)
+  [✔] Schritt 0 + Phasen 1–3.5: Kern, EN, Presets, ShapeKernel, OpenFOAM, BoTorch/pymoo, Multi-Fidelity
                                            │
                                            ▼
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 1: Entschlackung, Bugfixes, Architektur-Sanierung, Tests & Englisch  │
-  │ Plan: phase1_entschlackung_und_kern.md                                     │
-  │ • 6+ gefundene Bugs fixen (GP sn2, GCI, Smoother-Order, CellLimit, Retry)  │
-  │ • Core/-Isolation reparieren + Architektur-Test; 4 God-Classes zerlegen    │
-  │ • Echte Integrationstests (PicoGK, Gmsh, SU2); Umbenennung & EN-Umstellung │
+  │ PHASE 4: Validierung, Showcase, Vascular-Kern & Community-Release          │
+  │ Masterplan: phase4_validierung_benchmarks_und_release.md                   │
+  │                                                                            │
+  │  [✔] 4.1  Server-/Ergonomie-Audit & Zero-to-First-Run (BIC_09, doctor)     │
+  │  [✔] 4.2a Optimierer-Vergleich Naca2D (3-Seed × 3 Algos, 9/9 ausgewertet)  │
+  │  [▶] 4.2b JETZT: OpenFOAM/SU2-Preset-Reife & Physik-Benchmarks B1–B3       │
+  │           → Plan: phase4_openfoam_su2_presets_und_benchmarks.md            │
+  │           • Naca0012 0°-Diagnose, OpenFOAM-Konvergenz auf SU2-Niveau       │
+  │           • MaxCells3D = 15M, skaleninvariantes Auto-Meshing + y+-Layer    │
+  │           • Re-Run aller 4 Physik-Benchmarks auf BIC_12 & Literatur-Check  │
+  │  [ ] 4.3a Vaskulären Algorithmus (StatorCoolingRing v3) prüfen & verfeinern│
+  │           → Plan: phase4_stator_cooling_ring_v3_emergent_vascular.md       │
+  │  [ ] 4.3b Showcase StatorCoolingRing auf BIC_12 vollständig rechnen        │
+  │           (StandardRans, Kalibrierung, BoTorch qNEHVI Pareto, Feinprüfung) │
+  │  [ ] 4.4  Vaskuläre Routing-Engine als Kernmodul & Preset ins Hauptprogramm│
+  │           → Plan: phase4_5_vascular_routing_core_engine.md                 │
+  │           (FluidForge.Kernels.Vascular + _TemplateVascular3D + Dogfooding) │
+  │  [ ] 4.5  Gesamtauswertung, Plots/ParaView, Prof-/Literatur-Preset-Check,  │
+  │           LaTeX-Bericht, GitHub-Release & Community-Feedback               │
   └────────────────────────────────────────┬───────────────────────────────────┘
                                            ▼
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 2: Verständliche Bedienung, Presets, Physik & Ziel-/Constraint-Kern  │
-  │ Plan: phase2_bedienung_physik_und_ziele.md                                 │
-  │ • Konfig-Diät (127 → ~15 Keys über Presets); modulare englische Docs       │
-  │ • Trennung Objectives + Pre-CFD- & Post-CFD-Constraints; Bouncer-Fix       │
-  │ • Symmetrieebene, besseres SU2-Abbruchkriterium, Multi-Point, --smoke-test │
-  │ • C#-Bayes-Feinschliff (Constrained EI, L-BFGS-B, Sobol-QMC)               │
-  └────────────────────────────────────────┬───────────────────────────────────┘
-                                           ▼
-  ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 3 (Plan A): ShapeKernel, OpenFOAM (3D-Standard) & Hybrid-Optimierer  │
-  │ Plan: phase3_plan_a_openfoam_shapekernel_hybrid.md                         │
-  │ • LEAP71_ShapeKernel + Multi-Patch-Geometrie (inlet/outlet/wall/seed)      │
-  │ • OpenFOAM als 3D-Standard (zuerst Internal3D, danach External3D-Option)   │
-  │ • Hybrid-Bridge (JSON Ask/Tell) für BoTorch (Pareto/Multi-Fidelity) & pymoo│
-  └────────────────────────────────────────┬───────────────────────────────────┘
-                                           ▼
-  ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 4: Validierung, Benchmarks, Feinschliff & Community-Release          │
-  │ Plan: phase4_validierung_benchmarks_und_release.md                         │
-  │ • STRIKTER FEATURE-FREEZE: Stabilität, 15-Minuten-Quickstart, Feinschliff  │
-  │ • 3 Literatur-Benchmarks (NASA TMR 2D, 90°-Krümmer 3D, DARPA SUBOFF 3D)    │
-  │ • Großes Showcase-Projekt wählen & rechnen → LaTeX-Bericht → CFD-Community │
-  └────────────────────────────────────────┬───────────────────────────────────┘
-                                           ▼
-  ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 4.5: Generalisierte Gefäßnetz-Engine im Kern & _TemplateVascular3D   │
-  │ Plan: phase4_5_vascular_routing_core_engine.md                             │
-  │ • Pure-C# FluidForge.Kernels.Vascular (M×N-Ports, SDF-KeepIn/KeepOut, DNA) │
-  │ • PicoGK VascularVoxelBuilder + Rippenmatrix + _TemplateVascular3D-Vorlage │
-  │ • Dogfooding-Refaktorierung StatorCoolingRing + Brücke zu Phase 5 (LLM)    │
-  └────────────────────────────────────────┬───────────────────────────────────┘
-                                           ▼
-  ┌────────────────────────────────────────────────────────────────────────────┐
-  │ Phase 5 (Grobkonzept): LLM-Code-Evolution („Open-Source Noyron+AlphaEvolve“)│
-  │ Plan: phase5_llm_code_evolution_ausblick.md + phase5_docker_container.md   │
-  │ • Maschinenlesbare Diagnostik / MCP-Fassade + SHA-Hash-Schutz              │
-  │ • Äußere LLM-Schleife mutiert ShapeKernel-Topologien (Human-in-the-Loop)   │
-  │ • Großer Vergleichslauf (Baseline vs. Parametrik vs. LLM) + Bericht 2      │
-  │ • Optional: Docker-/Apptainer-Container-Setup (AP 5.5)                     │
+  │ PHASE 5: LLM-Code-Evolution & Optionales Container-Setup                   │
+  │ Pläne: phase5_llm_code_evolution_ausblick.md + phase5_docker_container.md  │
+  │  [ ] 5.1–5.4  Diagnostik-/MCP-Fassade, SHA-Hash-Tor, LLM-Topologie-Loop,   │
+  │               Vergleichslauf (Baseline vs. Parametrik vs. LLM) & Bericht 2 │
+  │  [ ] 5.5      Optional: Docker-/Apptainer-Toolchain-Container (base/full)  │
   └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Schritt / Phase | Plan-Datei | Fokus | Status |
-| :--- | :--- | :--- | :--- |
-| **Schritt 0** | *(in dieser Roadmap dokumentiert)* | `MantaAuv` stoppen, 20 GB auf `BIC_12` + 415 MB lokal archivieren | ✔ erledigt (21.11.2026) |
-| **Phase 1** | [`phase1_entschlackung_und_kern.md`](phase1_entschlackung_und_kern.md) | Bugfixes, `Core/`-Sauberkeit, God-Classes, echte Tests, Umbenennung (`FluidForge`) & EN | ✔ erledigt (22.11.2026) |
-| **Phase 2** | [`phase2_bedienung_physik_und_ziele.md`](phase2_bedienung_physik_und_ziele.md) | Presets (Konfig-Diät), Objectives & Constraints, Symmetrie, Multi-Point, C#-Bayes | ✔ erledigt (22.11.2026) |
-| **Phase 3** | [`phase3_plan_a_openfoam_shapekernel_hybrid.md`](phase3_plan_a_openfoam_shapekernel_hybrid.md) | `LEAP71_ShapeKernel`, OpenFOAM `Internal3D`, Hybrid-Bridge (`BoTorch`/`pymoo`), Multi-Fidelity | ✔ erledigt (23.11.2026) |
-| **Phase 3.5** | [`phase3_5_korrekturplan_defaults_und_multifidelity.md`](phase3_5_korrekturplan_defaults_und_multifidelity.md) | Korrekturpaket: `UseStlSmoothing`/`UseRubberBandScaler`-Defaults & Multi-Fidelity-Bugfixes | ✔ erledigt (23.11.2026) |
-| **Phase 4** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | Feature-Freeze, 3 Literatur-Benchmarks, Showcase, LaTeX-Bericht, Release | in Arbeit |
-| **Phase 4.5** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) | Generalisierte emergente Gefäßnetz-Engine (`FluidForge.Kernels.Vascular`), `VascularVoxelBuilder`, `_TemplateVascular3D` & Dogfooding | geplant (nach Phase 4) |
-| **Phase 5** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md) + [`phase5_docker_container.md`](phase5_docker_container.md) | Grobkonzept LLM-Topologie-Evolution + Verifikations-Harness + Bericht 2 + optionales Docker-/Apptainer-Setup | Ausblick / Grobkonzept |
+### Gesamt-Status-Tabelle
 
----
-
-## 4. Übernommene offene Restpunkte aus den v1-Plänen (vollständige Rückverfolgbarkeit)
-
-Damit beim Archivieren der alten Pläne nach `.plans/.old/` nichts verloren geht, ist hier jeder noch offene Punkt aus v1 seinem neuen Zielpaket zugeordnet:
-
-| Alter v1-Plan | Noch offener Punkt | Neu eingeordnet in |
+| Phase / Schritt | Aktive Plan-Datei | Status (26.11.2026) |
 | :--- | :--- | :--- |
-| `.old/zeitschaetzung.md` | Deploy & Server-Verifikation von `RunTimeEstimator` und `sim.ps1 status`-Prognose | **Phase 1 (`AP 1.1`)** |
-| `.old/netzstrategie_und_su2_abbruch.md` | Server-Validierung & praxistauglicher SU2-Konvergenzabbruch (da `1e-5` bei 3D-Rauschen oft 5.000 Iter. durchlief) | **Phase 2 (`AP 2.4`) & Phase 4 (`AP 4.2`)** |
-| `.old/wandschicht_zellzahl.md` | Geplanter `ClassifyAngleDeg`-Retry in Gmsh Schritt 1 bei `Wrong topology` (fehlte noch im Code) | **Phase 1 (`AP 1.1`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | Wiederholungslauf `Naca2D` (Bayes 10×10, 3 Seeds) nach Spätphasen-Fix | **Phase 4 (`AP 4.2`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | `Naca2D`-Grenzkontakt (`MaxCamber=8`, `MaxThickness=6`) fachlich lösen | **Phase 2 (`AP 2.4`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | Alten Server-Ordner `src/Automatisierung_v2` löschen, alte Branches aufräumen, `-RemoteDir` vereinheitlichen | **Phase 1 (`AP 1.1` & `AP 1.6`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | Englische Gesamtfassung (Code, Logs, READMEs, Handbücher) | **vorgezogen in Phase 1 (`AP 1.6`) & Phase 2 (`AP 2.1`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | Große LaTeX-Dokumentation, ParaView-Showcases, GitHub-Release & `THIRD_PARTY_NOTICES.md`-Check | **Phase 4 (`AP 4.3` & `AP 4.4`)** |
-| `.old/ROADMAP_v1_2026-11-08.md` | FEM-Integration (`CalculiX`) | **Bewusst geparkt (Abschnitt 5 unten)** |
+| **Schritt 0 & Phasen 1–3.5** | *(archiviert in [`.old/`](.old/))* | **✔ komplett erledigt** (`21.–23.11.2026`) |
+| **Phase 4.1 — Audit & `BIC_09`** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | **✔ erledigt** (`25.11.2026`) |
+| **Phase 4.2a — `Naca2D` 3-Seed** | *(archiviert in [`.old/phase4_b1_2d_fix_und_naca2d_benchmark.md`](.old/phase4_b1_2d_fix_und_naca2d_benchmark.md))* | **✔ erledigt** (`9/9` Läufe in `results/Naca2D_Benchmark/summary.md`) |
+| **Phase 4.2b — Physik-Benchmarks B1–B3 & Solver-Reife** | **[`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)** | **▶ NÄCHSTER SCHRITT** (1. Lauf ausgewertet; Fixes geplant) |
+| **Phase 4.3a/b — Showcase `StatorCoolingRing` (Review + Lauf)** | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) | **v3-Basis ✔** → als Nächstes: Algorithmus-Review/Verbesserung, dann Großlauf auf `BIC_12` |
+| **Phase 4.4 — Vaskuläre Engine ins Hauptprogramm** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) | **Geplant** (direkt nach Showcase-Lauf) |
+| **Phase 4.5 — Auswertung, LaTeX-Bericht & Release** | [`phase4_validierung_benchmarks_und_release.md`](phase4_validierung_benchmarks_und_release.md) | **Geplant** (nach Abschluss 4.2–4.4) |
+| **Phase 5 — LLM-Code-Evolution & Docker/Apptainer** | [`phase5_llm_code_evolution_ausblick.md`](phase5_llm_code_evolution_ausblick.md), [`phase5_docker_container.md`](phase5_docker_container.md) | **Ausblick / Grobkonzept** (nach Phase 4 & Community-Feedback) |
 
 ---
 
-## 5. Geparkte Zukunftsmusik: FEM-Strukturkopplung (bewusst noch NICHT in Planung)
+## 4. Rückverfolgbarkeit der alten v1-Restpunkte
 
-> **Status:** Zurückgestellt für die Zeit nach Phase 4/5 — hier festgehalten, damit es nicht aus dem Gedächtnis verschwindet und spätere Änderungen den Weg nicht verbauen. Alle technischen Vorüberlegungen (CalculiX `ccx`, Gmsh `C3D10`, Drucklasttransfer, Randbedingungs-Zonen) bleiben vollständig archiviert in [`.plans/.old/fem_ausblick.md`](.old/fem_ausblick.md).
+Alle offenen Punkte aus `ROADMAP_v1_2026-11-08.md` sind inzwischen abgearbeitet (Phasen 1–3.5 & `Naca2D` 3-Seed ✔) — bis auf die bewusst für den Abschluss von Phase 4 eingeordneten Punkte:
+- Großer technischer LaTeX-Bericht, ParaView-Visualisierungen, `THIRD_PARTY_NOTICES.md`-Check & GitHub-Release → **Phase 4.5**.
+- FEM-Strukturkopplung (`CalculiX`) → **bewusst geparkt (Abschnitt 5)**.
 
-**Vier Architektur-Leitplanken, die wir in Phasen 1–3 nebenbei gratis einhalten, damit FEM später schmerzfrei andockt:**
-1. **`Core/` bleibt physikneutral** (kein `Drag`, kein `.su2`, kein OpenFOAM-Typ im Kern — wird ab Phase 1 per Architektur-Test erzwungen).
-2. **Stufenkette & Artefakte statt festem Einzel-Solver:** `ModelRecord.Artifacts` (Phase 1) und konfigurierbare `SolverStage[]` erlauben später einfach `"Stages": ["Cfd", "Fem"]` (oder `"Fem"` als schnellen Vorfilter vor CFD).
-3. **Eindeutige Kennwert-Präfixe & echte Multi-Constraint-Unterstützung:** `Fem_MaxVonMises`, `Fem_MaxDisplacement`, `Fem_FirstEigenfrequency` passen ab Phase 2 direkt als Post-Solve-Constraints oder Pareto-Ziele.
-4. **Benannte Funktionsflächen im Geometrie-Generator:** Der Multi-Patch-Vertrag aus Phase 3 (`inlet`, `outlet`, `wall`) lässt sich später direkt um mechanische Zonen (`mount`, `load_surface`) erweitern.
+---
+
+## 5. Geparkte Zukunftsmusik: FEM-Strukturkopplung (nach Phase 4/5)
+
+> **Status:** Zurückgestellt; Vorüberlegungen archiviert in [`.old/fem_ausblick.md`](.old/fem_ausblick.md).  
+> **Architektur-Leitplanken (bereits aktiv & per Test geschützt):**
+> 1. `Core/` bleibt strikt physik- und geometrieneutral.
+> 2. Stufenkette & Artefakte (`ModelRecord.Artifacts`, `SolverStage[]`) ermöglichen später `"Stages": ["Cfd", "Fem"]`.
+> 3. Eindeutige Kennwert-Präfixe (`Fem_MaxVonMises`, `Fem_MaxDisplacement`) passen direkt ins Constraint-/Pareto-System.
+> 4. Multi-Patch-Geometrie (`inlet`, `outlet`, `wall`) lässt sich direkt um mechanische Zonen (`mount`, `load_surface`) erweitern.

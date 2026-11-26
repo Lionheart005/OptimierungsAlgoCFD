@@ -195,13 +195,16 @@ namespace FluidForge.Tests
         }
 
         [Fact]
-        public void BenchmarkSuboffOpenFoam_Generates_Reasonable_BlockMesh_Half_ReferenceArea_And_YPlus80()
+        public void BenchmarkSuboffOpenFoam_Generates_AutoSized_Mesh_With_WakeBoxes_LowRe_And_SecondOrderTurbulence()
         {
             var projectDef = new BenchmarkSuboffOpenFoamProject();
             ProjectContext ctx = OptimizeCommand.LoadConfiguration(projectDef, null);
 
             OpenFoamOptions openFoamOptions = ctx.LoadSolverOptions<OpenFoamOptions>("openfoam");
-            Assert.Equal(80.0f, openFoamOptions.TargetYPlus, 3);
+            Assert.Equal(5.0f, openFoamOptions.TargetYPlus, 3);
+            Assert.Equal(0.0f, openFoamOptions.BaseCellSizeMm, 3);
+            Assert.Equal(0, openFoamOptions.BoundaryLayerLayers);
+            Assert.True(openFoamOptions.SecondOrderTurbulence);
             Assert.Equal("Y0", openFoamOptions.SymmetryPlane);
             Assert.Equal("External3D", openFoamOptions.DomainMode);
 
@@ -220,9 +223,27 @@ namespace FluidForge.Tests
             OpenFoamCaseInfo caseInfo = OpenFoamCaseGenerator.Generate(caseDir, request, openFoamOptions, record);
 
             Assert.Equal(0.02994f, caseInfo.ReferenceAreaM2, 5);
+            Assert.NotNull(caseInfo.MeshPlan);
+            Assert.True(caseInfo.MeshPlan!.IsAutoSized);
+            Assert.True(caseInfo.MeshPlan.HasRefinementRegions);
 
             string controlDict = File.ReadAllText(Path.Combine(caseDir, "system", "controlDict"));
             Assert.Contains("Aref            0.02994;", controlDict);
+
+            string snappyDict = File.ReadAllText(Path.Combine(caseDir, "system", "snappyHexMeshDict"));
+            Assert.Contains("wakeBox", snappyDict);
+            Assert.Contains("nearfieldBox", snappyDict);
+
+            string nutField = File.ReadAllText(Path.Combine(caseDir, "0", "nut"));
+            Assert.Contains("nutUSpaldingWallFunction", nutField);
+
+            string kField = File.ReadAllText(Path.Combine(caseDir, "0", "k"));
+            Assert.Contains("kLowReWallFunction", kField);
+
+            string fvSchemes = File.ReadAllText(Path.Combine(caseDir, "system", "fvSchemes"));
+            Assert.Contains("bounded Gauss linearUpwind grad(k);", fvSchemes);
+            Assert.Contains("grad(k)", fvSchemes);
+            Assert.Contains("cellLimited Gauss linear 1;", fvSchemes);
 
             string blockMeshDict = File.ReadAllText(Path.Combine(caseDir, "system", "blockMeshDict"));
             Match match = Regex.Match(
@@ -236,7 +257,7 @@ namespace FluidForge.Tests
             int nz = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
             long totalBackgroundCells = (long)nx * ny * nz;
 
-            Assert.InRange(totalBackgroundCells, 100, 99_999);
+            Assert.InRange(totalBackgroundCells, 10, 99_999);
         }
 
         [Theory]
@@ -299,6 +320,13 @@ namespace FluidForge.Tests
             Assert.Equal(expectedFactor, ctx.Simulation.MeshRefinementFactor);
             Assert.False(ctx.Simulation.UseRubberBandScaler);
             Assert.False(ctx.Simulation.UseStlSmoothing);
+            Assert.Equal(15_000_000L, ctx.Simulation.MeshCalibration.MaxCells3D);
+
+            if (projectName == "BenchmarkNaca0012")
+            {
+                var su2 = ctx.LoadSolverOptions<FluidForge.Solvers.Cfd.Su2SolverOptions>("su2");
+                Assert.Equal(0.5f, su2.VenkatLimiterCoeff, 3);
+            }
         }
     }
 }

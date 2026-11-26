@@ -7,9 +7,27 @@ using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
 using FluidForge.Core;
+using FluidForge.Solvers.Cfd;
 
 namespace FluidForge.Solvers.OpenFoam
 {
+    /// <summary>
+    /// Resolved, scale-invariant mesh and prism-layer sizing plan for an OpenFOAM case.
+    /// </summary>
+    public sealed record OpenFoamMeshPlan(
+        bool IsAutoSized,
+        float CharacteristicLengthM,
+        float BaseCellSizeM,
+        float TargetSurfaceCellSizeM,
+        int LevelMin,
+        int LevelMax,
+        int EffectiveLayers,
+        float FirstLayerThicknessM,
+        float EffectiveExpansionRatio,
+        bool UseRelativeLayerSizes,
+        float MinLayerThicknessM,
+        bool HasRefinementRegions);
+
     /// <summary>
     /// Metadata returned by <see cref="OpenFoamCaseGenerator.Generate"/> describing the prepared OpenFOAM case.
     /// </summary>
@@ -21,7 +39,8 @@ namespace FluidForge.Solvers.OpenFoam
         float InletAreaM2,
         float ReferenceAreaM2,
         IReadOnlyList<string> PatchNames,
-        IReadOnlyList<string> OutletPatchNames);
+        IReadOnlyList<string> OutletPatchNames,
+        OpenFoamMeshPlan? MeshPlan = null);
 
     /// <summary>
     /// Generates ESI OpenFOAM <c>v2506</c>-compatible case directories (<c>0/</c>, <c>constant/</c>,
@@ -67,7 +86,6 @@ namespace FluidForge.Solvers.OpenFoam
 
             (Vector3 minBounds, Vector3 maxBounds) = ComputeBounds(scaledPatches);
             float diagM = MathF.Max((maxBounds - minBounds).Length(), 1e-4f);
-            float cellSizeM = MathF.Max(options.BaseCellSizeMm * 0.001f * MathF.Max(request.RefinementFactor, 0.05f), 1e-5f);
 
             SymmetryAxis symAxis = isExternal ? StlHalfClipper.ParseConfigValue(options.SymmetryPlane) : SymmetryAxis.None;
 
@@ -94,9 +112,10 @@ namespace FluidForge.Solvers.OpenFoam
             Vector3 inletDirection = ResolveInletDirection(options, scaledPatches, inletName, isExternal);
             float inletAreaM2 = ComputePatchArea(scaledPatches, inletName);
             float referenceAreaM2 = ResolveReferenceAreaM2(options, record, minBounds, maxBounds, symAxis);
+            OpenFoamMeshPlan meshPlan = ResolveMeshPlan(request, options, isExternal, minBounds, maxBounds, inletAreaM2);
 
             WriteBlockMeshDict(
-                caseDirectory, options, isExternal, symAxis, minBounds, maxBounds, diagM, cellSizeM, inletName, outletPrefix);
+                caseDirectory, options, isExternal, symAxis, minBounds, maxBounds, diagM, meshPlan.BaseCellSizeM, inletName, outletPrefix);
 
             WriteZeroFields(
                 caseDirectory, options, isExternal, symAxis, patchNames, inletName, outletPrefix,
@@ -107,7 +126,7 @@ namespace FluidForge.Solvers.OpenFoam
             WriteSystemDictionaries(
                 caseDirectory, request, options, isExternal, symAxis, scaledPatches,
                 inletName, outletPrefix, outletPatchNames, wallName,
-                locationInMesh, cellSizeM, referenceAreaM2, inletDirection);
+                locationInMesh, minBounds, maxBounds, diagM, meshPlan, referenceAreaM2, inletDirection);
 
             return new OpenFoamCaseInfo(
                 caseDirectory,
@@ -117,7 +136,164 @@ namespace FluidForge.Solvers.OpenFoam
                 inletAreaM2,
                 referenceAreaM2,
                 patchNames,
-                outletPatchNames);
+                outletPatchNames,
+                meshPlan);
+        }
+
+        private static float ResolveEffectiveSpeed(OpenFoamOptions options, float inletAreaM2)
+        {
+            float speed = MathF.Max(options.InletVelocity, 1e-4f);
+            if (inletAreaM2 > 1e-12f)
+            {
+                string cond = (options.InletCondition ?? "Velocity").Trim();
+                if (cond.Equals("VolumetricFlowRate", StringComparison.OrdinalIgnoreCase) && options.InletVolumetricFlowRate > 0f)
+                {
+                    speed = options.InletVolumetricFlowRate / inletAreaM2;
+                }
+                else if (cond.Equals("MassFlowRate", StringComparison.OrdinalIgnoreCase) && options.InletMassFlowRate > 0f)
+                {
+                    speed = options.InletMassFlowRate / (MathF.Max(options.Density, 1e-3f) * inletAreaM2);
+                }
+            }
+            return speed;
+        }
+
+        internal static OpenFoamMeshPlan ResolveMeshPlan(
+            MeshRequest request,
+            OpenFoamOptions options,
+            bool isExternal,
+            Vector3 minBounds,
+            Vector3 maxBounds,
+            float inletAreaM2)
+        {
+            float rf = MathF.Max(request.RefinementFactor, 0.05f);
+            Vector3 size = maxBounds - minBounds;
+            float lenX = MathF.Max(size.X, 1e-3f);
+            float dh = options.HydraulicDiameter > 0f
+                ? options.HydraulicDiameter
+                : (inletAreaM2 > 1e-12f
+                    ? MathF.Sqrt(4f * inletAreaM2 / MathF.PI)
+                    : MathF.Max(MathF.Min(size.X, MathF.Min(size.Y, size.Z)), 1e-4f));
+            float charLenM = isExternal ? lenX : dh;
+
+            bool isAutoSized = options.BaseCellSizeMm <= 0f;
+            float baseCellM;
+            float targetSurfM;
+            int levelMin;
+            int levelMax;
+            bool hasRefinementRegions;
+
+            if (!isAutoSized)
+            {
+                baseCellM = MathF.Max(options.BaseCellSizeMm * 0.001f * rf, 1e-5f);
+                levelMin = Math.Max(0, options.SurfaceRefinementLevelMin);
+                levelMax = Math.Max(levelMin, options.SurfaceRefinementLevelMax);
+                targetSurfM = baseCellM / MathF.Pow(2f, levelMax);
+                hasRefinementRegions = false;
+            }
+            else if (!isExternal)
+            {
+                float nCells = options.CellsPerCharacteristicLength > 0f ? options.CellsPerCharacteristicLength : 20f;
+                targetSurfM = MathF.Max((dh / nCells) * rf, 1e-5f);
+                levelMin = Math.Max(0, options.SurfaceRefinementLevelMin);
+                levelMax = Math.Max(levelMin, options.SurfaceRefinementLevelMax);
+                baseCellM = MathF.Max(MathF.Min(targetSurfM * MathF.Pow(2f, levelMax), dh / 5.0f), 1e-5f);
+                targetSurfM = baseCellM / MathF.Pow(2f, levelMax);
+                hasRefinementRegions = false;
+            }
+            else
+            {
+                float nCells = options.CellsPerCharacteristicLength > 0f ? options.CellsPerCharacteristicLength : 120f;
+                targetSurfM = MathF.Max((lenX / nCells) * rf, 1e-5f);
+                baseCellM = MathF.Max(lenX * 0.25f * rf, targetSurfM * 2f);
+                levelMin = Math.Clamp((int)MathF.Round(MathF.Log2(baseCellM / targetSurfM)), 1, 7);
+                levelMax = Math.Min(levelMin + 1, 8);
+                hasRefinementRegions = true;
+            }
+
+            bool physicsLayers = options.AddLayers &&
+                                 options.TargetYPlus > 0f &&
+                                 (options.BaseCellSizeMm <= 0f || options.BoundaryLayerLayers <= 0);
+
+            int effLayers;
+            float firstLayerM;
+            float effRatio;
+            bool useRel;
+            float minLayerThicknessM;
+
+            if (physicsLayers)
+            {
+                float uRef = ResolveEffectiveSpeed(options, inletAreaM2);
+                float r0 = MathF.Max(options.BoundaryLayerExpansionRatio, 1.05f);
+                BoundaryLayerSpec spec = BoundaryLayerCalculator.Calculate(
+                    MathF.Max(options.Density, 1e-3f),
+                    uRef,
+                    MathF.Max(options.DynamicViscosity, 1e-9f),
+                    MathF.Max(charLenM * 1000f, 1e-3f),
+                    options.TargetYPlus,
+                    r0);
+
+                firstLayerM = Math.Clamp(2.0f * spec.FirstLayerHeightMm * 0.001f, 1e-7f, 0.5f * targetSurfM);
+                if (options.BoundaryLayerLayers > 0)
+                {
+                    effLayers = options.BoundaryLayerLayers;
+                    effRatio = r0;
+                }
+                else
+                {
+                    float tTarget = 0.5f * targetSurfM;
+                    float maxTotal = isExternal
+                        ? MathF.Min(1.5f * spec.BoundaryLayerThicknessMm * 0.001f, 0.35f * MathF.Max(size.Y, MathF.Max(size.Z, 1e-3f)))
+                        : 0.20f * dh;
+
+                    static int ComputeGeomLayers(float firstM, float targetM, float maxTotM, float ratio)
+                    {
+                        int nTarget = firstM >= targetM
+                            ? 1
+                            : 1 + (int)MathF.Ceiling(MathF.Log(targetM / firstM) / MathF.Log(ratio));
+                        if (maxTotM > firstM)
+                        {
+                            int nCap = (int)MathF.Floor(MathF.Log(1f + (maxTotM / firstM) * (ratio - 1f)) / MathF.Log(ratio));
+                            nTarget = Math.Min(nTarget, Math.Max(1, nCap));
+                        }
+                        return nTarget;
+                    }
+
+                    effRatio = r0;
+                    int nGeom = ComputeGeomLayers(firstLayerM, tTarget, maxTotal, effRatio);
+                    if (nGeom > 25 && effRatio < 1.25f)
+                    {
+                        effRatio = 1.25f;
+                        nGeom = ComputeGeomLayers(firstLayerM, tTarget, maxTotal, effRatio);
+                    }
+                    effLayers = Math.Clamp(nGeom, 3, 28);
+                }
+
+                useRel = false;
+                minLayerThicknessM = MathF.Max(firstLayerM * 0.25f, 1e-8f);
+            }
+            else
+            {
+                useRel = options.RelativeLayerSizes;
+                effLayers = Math.Max(1, options.BoundaryLayerLayers);
+                firstLayerM = options.FirstLayerThickness;
+                minLayerThicknessM = options.MinLayerThickness;
+                effRatio = MathF.Max(options.BoundaryLayerExpansionRatio, 1.01f);
+            }
+
+            return new OpenFoamMeshPlan(
+                isAutoSized,
+                charLenM,
+                baseCellM,
+                targetSurfM,
+                levelMin,
+                levelMax,
+                effLayers,
+                firstLayerM,
+                effRatio,
+                useRel,
+                minLayerThicknessM,
+                hasRefinementRegions);
         }
 
         private static Dictionary<string, IReadOnlyList<StlTriangle>> LoadAndScalePatches(
@@ -384,6 +560,37 @@ namespace FluidForge.Solvers.OpenFoam
             return boxArea;
         }
 
+        private static (Vector3 BoxMin, Vector3 BoxMax) ComputeBlockMeshBounds(
+            OpenFoamOptions options,
+            bool isExternal,
+            SymmetryAxis symAxis,
+            Vector3 bodyMin,
+            Vector3 bodyMax,
+            float diagM,
+            float cellSizeM)
+        {
+            if (isExternal)
+            {
+                Vector3 size = bodyMax - bodyMin;
+                float lenX = MathF.Max(size.X, 1e-3f);
+                float latY = MathF.Max(size.Y, lenX * 0.25f) * MathF.Max(options.TunnelLateralFactor, 1.0f);
+                float latZ = MathF.Max(size.Z, lenX * 0.25f) * MathF.Max(options.TunnelLateralFactor, 1.0f);
+
+                var boxMin = new Vector3(
+                    bodyMin.X - MathF.Max(options.TunnelUpstreamFactor, 1.0f) * lenX,
+                    symAxis == SymmetryAxis.Y0 ? 0.0f : bodyMin.Y - latY,
+                    symAxis == SymmetryAxis.Z0 ? 0.0f : bodyMin.Z - latZ);
+                var boxMax = new Vector3(
+                    bodyMax.X + MathF.Max(options.TunnelDownstreamFactor, 2.0f) * lenX,
+                    bodyMax.Y + latY,
+                    bodyMax.Z + latZ);
+                return (boxMin, boxMax);
+            }
+
+            float pad = MathF.Max(2.5f * cellSizeM, 0.05f * diagM);
+            return (bodyMin - new Vector3(pad), bodyMax + new Vector3(pad));
+        }
+
         private static void WriteBlockMeshDict(
             string caseDir,
             OpenFoamOptions options,
@@ -396,31 +603,8 @@ namespace FluidForge.Solvers.OpenFoam
             string inletName,
             string outletName)
         {
-            Vector3 boxMin;
-            Vector3 boxMax;
-
-            if (isExternal)
-            {
-                Vector3 size = bodyMax - bodyMin;
-                float lenX = MathF.Max(size.X, 1e-3f);
-                float latY = MathF.Max(size.Y, lenX * 0.25f) * MathF.Max(options.TunnelLateralFactor, 1.0f);
-                float latZ = MathF.Max(size.Z, lenX * 0.25f) * MathF.Max(options.TunnelLateralFactor, 1.0f);
-
-                boxMin = new Vector3(
-                    bodyMin.X - MathF.Max(options.TunnelUpstreamFactor, 1.0f) * lenX,
-                    symAxis == SymmetryAxis.Y0 ? 0.0f : bodyMin.Y - latY,
-                    symAxis == SymmetryAxis.Z0 ? 0.0f : bodyMin.Z - latZ);
-                boxMax = new Vector3(
-                    bodyMax.X + MathF.Max(options.TunnelDownstreamFactor, 2.0f) * lenX,
-                    bodyMax.Y + latY,
-                    bodyMax.Z + latZ);
-            }
-            else
-            {
-                float pad = MathF.Max(2.5f * cellSizeM, 0.05f * diagM);
-                boxMin = bodyMin - new Vector3(pad);
-                boxMax = bodyMax + new Vector3(pad);
-            }
+            (Vector3 boxMin, Vector3 boxMax) = ComputeBlockMeshBounds(
+                options, isExternal, symAxis, bodyMin, bodyMax, diagM, cellSizeM);
 
             Vector3 span = boxMax - boxMin;
             int nx = Math.Max(4, (int)MathF.Ceiling(span.X / cellSizeM));
@@ -541,19 +725,7 @@ namespace FluidForge.Solvers.OpenFoam
             Vector3 inletDirection,
             float inletAreaM2)
         {
-            float speed = MathF.Max(options.InletVelocity, 1e-4f);
-            if (inletAreaM2 > 1e-12f)
-            {
-                string cond = (options.InletCondition ?? "Velocity").Trim();
-                if (cond.Equals("VolumetricFlowRate", StringComparison.OrdinalIgnoreCase) && options.InletVolumetricFlowRate > 0f)
-                {
-                    speed = options.InletVolumetricFlowRate / inletAreaM2;
-                }
-                else if (cond.Equals("MassFlowRate", StringComparison.OrdinalIgnoreCase) && options.InletMassFlowRate > 0f)
-                {
-                    speed = options.InletMassFlowRate / (MathF.Max(options.Density, 1e-3f) * inletAreaM2);
-                }
-            }
+            float speed = ResolveEffectiveSpeed(options, inletAreaM2);
 
             Vector3 uVec = inletDirection * speed;
             string uVecStr = $"({F(uVec.X)} {F(uVec.Y)} {F(uVec.Z)})";
@@ -596,9 +768,10 @@ namespace FluidForge.Solvers.OpenFoam
             }
             else
             {
+                string kWallType = options.TargetYPlus <= 5.0f ? "kLowReWallFunction" : "kqRWallFunction";
                 WriteScalarTurbulenceField(
                     caseDir, options, "0/k", "k", "[0 2 -2 0 0 0 0]",
-                    kVal, "kqRWallFunction", $"uniform {F(kVal)}",
+                    kVal, kWallType, $"uniform {F(kVal)}",
                     isExternal, symAxis, patchNames, inletName, outletPrefix);
                 WriteScalarTurbulenceField(
                     caseDir, options, "0/omega", "omega", "[0 0 -1 0 0 0 0]",
@@ -797,7 +970,9 @@ namespace FluidForge.Solvers.OpenFoam
             string inletName,
             string outletPrefix)
         {
-            string wallType = turbulenceModel.Equals("SpalartAllmaras", StringComparison.OrdinalIgnoreCase)
+            string wallType = turbulenceModel.Equals("kOmegaSST", StringComparison.OrdinalIgnoreCase) ||
+                              turbulenceModel.Equals("kOmegaSSTLM", StringComparison.OrdinalIgnoreCase) ||
+                              turbulenceModel.Equals("SpalartAllmaras", StringComparison.OrdinalIgnoreCase)
                 ? "nutUSpaldingWallFunction"
                 : "nutkWallFunction";
 
@@ -905,17 +1080,21 @@ namespace FluidForge.Solvers.OpenFoam
             IReadOnlyList<string> outletPatches,
             string wallName,
             Vector3 locationInMesh,
-            float cellSizeM,
+            Vector3 bodyMin,
+            Vector3 bodyMax,
+            float diagM,
+            OpenFoamMeshPlan plan,
             float referenceAreaM2,
             Vector3 inletDirection)
         {
+            int mpiCores = Math.Max(1, request.Config.MpiCores);
             WriteControlDict(caseDir, request, options, isExternal, inletName, outletPatches, wallName, referenceAreaM2, inletDirection);
             WriteFvSchemes(caseDir, options);
             WriteFvSolution(caseDir, options);
             WriteSurfaceFeatureExtractDict(caseDir, options);
-            WriteSnappyHexMeshDict(caseDir, options, isExternal, symAxis, scaledPatches, inletName, outletPrefix, wallName, locationInMesh);
-            WriteCfMeshDict(caseDir, options, wallName, cellSizeM);
-            WriteDecomposeParDict(caseDir, options, Math.Max(1, request.Config.MpiCores));
+            WriteSnappyHexMeshDict(caseDir, options, isExternal, symAxis, scaledPatches, inletName, outletPrefix, wallName, locationInMesh, bodyMin, bodyMax, diagM, mpiCores, plan);
+            WriteCfMeshDict(caseDir, options, wallName, plan);
+            WriteDecomposeParDict(caseDir, options, mpiCores);
         }
 
         private static void WriteControlDict(
@@ -1058,16 +1237,33 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("{");
             sb.AppendLine("    default         Gauss linear;");
             sb.AppendLine("    grad(U)         cellLimited Gauss linear 1;");
+            if (options.SecondOrderTurbulence)
+            {
+                sb.AppendLine("    grad(k)         cellLimited Gauss linear 1;");
+                sb.AppendLine("    grad(omega)     cellLimited Gauss linear 1;");
+                sb.AppendLine("    grad(epsilon)   cellLimited Gauss linear 1;");
+                sb.AppendLine("    grad(nuTilda)   cellLimited Gauss linear 1;");
+            }
             sb.AppendLine("}");
             sb.AppendLine();
             sb.AppendLine("divSchemes");
             sb.AppendLine("{");
             sb.AppendLine("    default         none;");
             sb.AppendLine("    div(phi,U)      bounded Gauss linearUpwindV grad(U);");
-            sb.AppendLine("    div(phi,k)      bounded Gauss upwind;");
-            sb.AppendLine("    div(phi,omega)  bounded Gauss upwind;");
-            sb.AppendLine("    div(phi,epsilon) bounded Gauss upwind;");
-            sb.AppendLine("    div(phi,nuTilda) bounded Gauss upwind;");
+            if (options.SecondOrderTurbulence)
+            {
+                sb.AppendLine("    div(phi,k)      bounded Gauss linearUpwind grad(k);");
+                sb.AppendLine("    div(phi,omega)  bounded Gauss linearUpwind grad(omega);");
+                sb.AppendLine("    div(phi,epsilon) bounded Gauss linearUpwind grad(epsilon);");
+                sb.AppendLine("    div(phi,nuTilda) bounded Gauss linearUpwind grad(nuTilda);");
+            }
+            else
+            {
+                sb.AppendLine("    div(phi,k)      bounded Gauss upwind;");
+                sb.AppendLine("    div(phi,omega)  bounded Gauss upwind;");
+                sb.AppendLine("    div(phi,epsilon) bounded Gauss upwind;");
+                sb.AppendLine("    div(phi,nuTilda) bounded Gauss upwind;");
+            }
             sb.AppendLine("    div((nuEff*dev2(T(grad(U))))) Gauss linear;");
             sb.AppendLine("}");
             sb.AppendLine();
@@ -1182,12 +1378,44 @@ namespace FluidForge.Solvers.OpenFoam
             string inletName,
             string outletPrefix,
             string wallName,
-            Vector3 locationInMesh)
+            Vector3 locationInMesh,
+            Vector3 bodyMin,
+            Vector3 bodyMax,
+            float diagM,
+            int mpiCores,
+            OpenFoamMeshPlan plan)
         {
-            int levelMin = Math.Max(0, options.SurfaceRefinementLevelMin);
-            int levelMax = Math.Max(levelMin, options.SurfaceRefinementLevelMax);
+            int levelMin = plan.LevelMin;
+            int levelMax = plan.LevelMax;
             string addLayersBool = options.AddLayers ? "true" : "false";
-            string relSizesBool = options.RelativeLayerSizes ? "true" : "false";
+            string relSizesBool = plan.UseRelativeLayerSizes ? "true" : "false";
+            int maxLocalCells = mpiCores <= 1
+                ? Math.Max(1000, Math.Max(options.MaxLocalCells, options.MaxGlobalCells))
+                : Math.Max(1000, options.MaxLocalCells);
+
+            (Vector3 boxMin, Vector3 boxMax) = ComputeBlockMeshBounds(
+                options, isExternal, symAxis, bodyMin, bodyMax, diagM, plan.BaseCellSizeM);
+            Vector3 size = bodyMax - bodyMin;
+            float lenX = MathF.Max(size.X, 1e-3f);
+            float latRef = MathF.Max(MathF.Max(size.Y, size.Z), 0.25f * lenX);
+            float centerY = symAxis == SymmetryAxis.Y0 ? 0f : 0.5f * (bodyMin.Y + bodyMax.Y);
+            float centerZ = symAxis == SymmetryAxis.Z0 ? 0f : 0.5f * (bodyMin.Z + bodyMax.Z);
+
+            Vector3 wakeMin = Vector3.Clamp(
+                new Vector3(bodyMin.X - 0.5f * lenX, centerY - 1.5f * latRef, centerZ - 1.5f * latRef),
+                boxMin, boxMax);
+            Vector3 wakeMax = Vector3.Clamp(
+                new Vector3(bodyMax.X + 3.0f * lenX, centerY + 1.5f * latRef, centerZ + 1.5f * latRef),
+                boxMin, boxMax);
+            Vector3 nearMin = Vector3.Clamp(
+                new Vector3(bodyMin.X - 0.25f * lenX, centerY - 0.6f * latRef, centerZ - 0.6f * latRef),
+                boxMin, boxMax);
+            Vector3 nearMax = Vector3.Clamp(
+                new Vector3(bodyMax.X + 0.75f * lenX, centerY + 0.6f * latRef, centerZ + 0.6f * latRef),
+                boxMin, boxMax);
+
+            int wakeLevel = Math.Max(1, levelMin - 2);
+            int nearLevel = Math.Max(1, levelMin - 1);
 
             var sb = new StringBuilder();
             AppendFoamHeader(sb, "dictionary", "system", "snappyHexMeshDict");
@@ -1209,11 +1437,26 @@ namespace FluidForge.Solvers.OpenFoam
             }
             sb.AppendLine("        }");
             sb.AppendLine("    }");
+            if (plan.HasRefinementRegions)
+            {
+                sb.AppendLine("    wakeBox");
+                sb.AppendLine("    {");
+                sb.AppendLine("        type searchableBox;");
+                sb.AppendLine($"        min ({F(wakeMin.X)} {F(wakeMin.Y)} {F(wakeMin.Z)});");
+                sb.AppendLine($"        max ({F(wakeMax.X)} {F(wakeMax.Y)} {F(wakeMax.Z)});");
+                sb.AppendLine("    }");
+                sb.AppendLine("    nearfieldBox");
+                sb.AppendLine("    {");
+                sb.AppendLine("        type searchableBox;");
+                sb.AppendLine($"        min ({F(nearMin.X)} {F(nearMin.Y)} {F(nearMin.Z)});");
+                sb.AppendLine($"        max ({F(nearMax.X)} {F(nearMax.Y)} {F(nearMax.Z)});");
+                sb.AppendLine("    }");
+            }
             sb.AppendLine("};");
             sb.AppendLine();
             sb.AppendLine("castellatedMeshControls");
             sb.AppendLine("{");
-            sb.AppendLine($"    maxLocalCells   {Math.Max(1000, options.MaxLocalCells)};");
+            sb.AppendLine($"    maxLocalCells   {maxLocalCells};");
             sb.AppendLine($"    maxGlobalCells  {Math.Max(1000, options.MaxGlobalCells)};");
             sb.AppendLine("    minRefinementCells 10;");
             sb.AppendLine("    maxLoadUnbalance 0.10;");
@@ -1259,7 +1502,26 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("    }");
             sb.AppendLine();
             sb.AppendLine($"    resolveFeatureAngle {F(options.FeatureAngleDeg)};");
-            sb.AppendLine("    refinementRegions {}");
+            if (plan.HasRefinementRegions)
+            {
+                sb.AppendLine("    refinementRegions");
+                sb.AppendLine("    {");
+                sb.AppendLine("        wakeBox");
+                sb.AppendLine("        {");
+                sb.AppendLine("            mode inside;");
+                sb.AppendLine($"            levels ((1E15 {wakeLevel}));");
+                sb.AppendLine("        }");
+                sb.AppendLine("        nearfieldBox");
+                sb.AppendLine("        {");
+                sb.AppendLine("            mode inside;");
+                sb.AppendLine($"            levels ((1E15 {nearLevel}));");
+                sb.AppendLine("        }");
+                sb.AppendLine("    }");
+            }
+            else
+            {
+                sb.AppendLine("    refinementRegions {}");
+            }
             sb.AppendLine($"    locationInMesh ({F(locationInMesh.X)} {F(locationInMesh.Y)} {F(locationInMesh.Z)});");
             sb.AppendLine("    allowFreeStandingZoneFaces true;");
             sb.AppendLine("}");
@@ -1283,15 +1545,15 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("    {");
             sb.AppendLine($"        \"{wallName}\"");
             sb.AppendLine("        {");
-            sb.AppendLine($"            nSurfaceLayers {Math.Max(1, options.BoundaryLayerLayers)};");
+            sb.AppendLine($"            nSurfaceLayers {Math.Max(1, plan.EffectiveLayers)};");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
-            sb.AppendLine($"    expansionRatio  {F(MathF.Max(options.BoundaryLayerExpansionRatio, 1.01f))};");
-            if (options.RelativeLayerSizes)
+            sb.AppendLine($"    expansionRatio  {F(plan.EffectiveExpansionRatio)};");
+            if (plan.UseRelativeLayerSizes)
                 sb.AppendLine($"    finalLayerThickness {F(options.FinalLayerThickness)};");
             else
-                sb.AppendLine($"    firstLayerThickness {F(options.FirstLayerThickness)};");
-            sb.AppendLine($"    minThickness    {F(options.MinLayerThickness)};");
+                sb.AppendLine($"    firstLayerThickness {F(plan.FirstLayerThicknessM)};");
+            sb.AppendLine($"    minThickness    {F(plan.MinLayerThicknessM)};");
             sb.AppendLine("    nGrow           0;");
             sb.AppendLine("    featureAngle    60;");
             sb.AppendLine("    nRelaxIter      5;");
@@ -1311,7 +1573,7 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine($"    maxBoundarySkewness {F(options.MaxSkewness)};");
             sb.AppendLine($"    maxInternalSkewness {F(options.MaxSkewness)};");
             sb.AppendLine("    maxConcave      80;");
-            sb.AppendLine("    minVol          1e-13;");
+            sb.AppendLine("    minVol          1e-18;");
             sb.AppendLine("    minTetQuality   -1e30;");
             sb.AppendLine("    minArea         -1;");
             sb.AppendLine("    minTwist        0.02;");
@@ -1326,23 +1588,23 @@ namespace FluidForge.Solvers.OpenFoam
             sb.AppendLine("mergeTolerance 1e-6;");
             AppendFoamFooter(sb);
 
-            _ = symAxis; // Symmetry handled in blockMeshDict & STL clipping for External3D
             WriteDictionaryWithOverrides(caseDir, "system/snappyHexMeshDict", sb.ToString(), options);
         }
 
-        private static void WriteCfMeshDict(string caseDir, OpenFoamOptions options, string wallName, float cellSizeM)
+        private static void WriteCfMeshDict(string caseDir, OpenFoamOptions options, string wallName, OpenFoamMeshPlan plan)
         {
+            float maxCellSizeM = MathF.Min(plan.BaseCellSizeM, plan.TargetSurfaceCellSizeM * 4f);
             var sb = new StringBuilder();
             AppendFoamHeader(sb, "dictionary", "system", "meshDict");
             sb.AppendLine("surfaceFile     \"constant/triSurface/geometry.stl\";");
             sb.AppendLine();
-            sb.AppendLine($"maxCellSize     {F(cellSizeM)};");
-            sb.AppendLine($"boundaryCellSize {F(cellSizeM * 0.5f)};");
+            sb.AppendLine($"maxCellSize     {F(maxCellSizeM)};");
+            sb.AppendLine($"boundaryCellSize {F(plan.TargetSurfaceCellSizeM)};");
             if (options.AddLayers)
             {
-                float firstLayerM = options.RelativeLayerSizes
-                    ? cellSizeM * 0.1f
-                    : MathF.Max(options.FirstLayerThickness, 1e-6f);
+                float firstLayerM = plan.UseRelativeLayerSizes
+                    ? plan.BaseCellSizeM * 0.1f
+                    : MathF.Max(plan.FirstLayerThicknessM, 1e-6f);
                 sb.AppendLine();
                 sb.AppendLine("boundaryLayers");
                 sb.AppendLine("{");
@@ -1350,8 +1612,8 @@ namespace FluidForge.Solvers.OpenFoam
                 sb.AppendLine("    {");
                 sb.AppendLine($"        {wallName}");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            nLayers         {Math.Max(1, options.BoundaryLayerLayers)};");
-                sb.AppendLine($"            thicknessRatio  {F(MathF.Max(options.BoundaryLayerExpansionRatio, 1.01f))};");
+                sb.AppendLine($"            nLayers         {Math.Max(1, plan.EffectiveLayers)};");
+                sb.AppendLine($"            thicknessRatio  {F(plan.EffectiveExpansionRatio)};");
                 sb.AppendLine($"            maxFirstLayerThickness {F(firstLayerM)};");
                 sb.AppendLine("        }");
                 sb.AppendLine("    }");

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using FluidForge.Core;
 
 namespace FluidForge.Solvers.OpenFoam
 {
@@ -17,7 +18,12 @@ namespace FluidForge.Solvers.OpenFoam
         float WorstRelativeDrift,
         int Iterations,
         IReadOnlyDictionary<string, float> FinalResiduals,
-        string Summary);
+        string Summary,
+        bool IsUnsteadyStationary = false,
+        bool HasMonotonicDrift = false,
+        bool SolverStoppedEarly = false,
+        IReadOnlyDictionary<string, float>? MetricUncertainties = null,
+        IReadOnlyList<string>? DriftingMetrics = null);
 
     /// <summary>
     /// Evaluates solver convergence from OpenFOAM solver logs and <see cref="OpenFoamPostProcessResult"/>
@@ -82,9 +88,11 @@ namespace FluidForge.Solvers.OpenFoam
 
             bool solverConvergedEarly = log.Contains("SIMPLE solution converged in", StringComparison.OrdinalIgnoreCase);
 
-            // Mass balance gate
+            // Mass balance gate (hard gate for Internal3D; non-finite values always fail)
+            bool isExternal = string.Equals(options.DomainMode?.Trim(), "External3D", StringComparison.OrdinalIgnoreCase);
             float mbErr = postResult.MassBalanceErrorPercent ?? 0f;
-            bool massBalanceOk = !postResult.MassBalanceErrorPercent.HasValue ||
+            bool massBalanceOk = isExternal ||
+                                 !postResult.MassBalanceErrorPercent.HasValue ||
                                  (float.IsFinite(mbErr) && mbErr <= options.MaxMassBalanceErrorPercent);
             if (postResult.MassBalanceErrorPercent.HasValue && !float.IsFinite(mbErr))
             {
@@ -92,14 +100,51 @@ namespace FluidForge.Solvers.OpenFoam
                 divergedOrNaN = true;
             }
 
-            // Trailing-window drift check across monitored series
+            // Filter monitored series by options.ResultMetrics (fallback to all series when empty)
+            var metricsToJudge = new List<(string TargetKey, string SourceKey)>();
+            bool hasConfiguredMetrics = options.ResultMetrics != null && options.ResultMetrics.Count > 0;
+            if (hasConfiguredMetrics)
+            {
+                foreach (KeyValuePair<string, string> kvp in options.ResultMetrics!)
+                {
+                    string targetKey = (kvp.Key ?? string.Empty).Trim();
+                    string sourceKey = string.IsNullOrWhiteSpace(kvp.Value) ? targetKey : kvp.Value.Trim();
+                    if (targetKey.Length > 0)
+                        metricsToJudge.Add((targetKey, sourceKey));
+                }
+                if (metricsToJudge.Count == 0)
+                    hasConfiguredMetrics = false;
+            }
+            if (!hasConfiguredMetrics)
+            {
+                foreach (string key in postResult.MonitoredSeries.Keys)
+                {
+                    if (isExternal && string.Equals(key, "PressureDrop", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (!isExternal && (string.Equals(key, "Drag", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(key, "Lift", StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    metricsToJudge.Add((key, key));
+                }
+            }
+
+            // Trailing-window drift check across monitored series (MetricTolerance + BatchStatistics)
+            float rtol = options.RelativeDriftTolerance > 0f ? options.RelativeDriftTolerance : 0.005f;
             float worstDrift = 0f;
             bool driftOk = true;
+            bool hasMonotonicDrift = false;
+            bool anyUnsteadyStationary = false;
+            int matchedSeriesCount = 0;
             int window = Math.Max(4, options.TrailingWindowIterations);
+            var metricUncertainties = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            var driftingMetrics = new List<string>();
 
-            foreach (KeyValuePair<string, IReadOnlyList<float>> kvp in postResult.MonitoredSeries)
+            foreach ((string targetKey, string sourceKey) in metricsToJudge)
             {
-                IReadOnlyList<float> values = kvp.Value;
+                if (!TryGetSeries(postResult.MonitoredSeries, sourceKey, out IReadOnlyList<float>? values) || values == null)
+                    continue;
+
+                matchedSeriesCount++;
                 if (values.Count < 4) continue;
 
                 // Use at most the final third of iterations (when N < 3*window) so early
@@ -107,33 +152,93 @@ namespace FluidForge.Solvers.OpenFoam
                 int count = OpenFoamPostProcessor.ResolveEffectiveTailCount(values.Count, window);
                 if (count < 4) continue;
                 int start = values.Count - count;
-                int half = count / 2;
 
-                double firstSum = 0.0;
-                for (int i = start; i < start + half; i++)
-                    firstSum += values[i];
+                var tail = new List<float>(count);
+                bool nonFiniteInTail = false;
+                for (int i = start; i < values.Count; i++)
+                {
+                    float v = values[i];
+                    if (!float.IsFinite(v))
+                    {
+                        nonFiniteInTail = true;
+                        break;
+                    }
+                    tail.Add(v);
+                }
 
-                double secondSum = 0.0;
-                for (int i = values.Count - half; i < values.Count; i++)
-                    secondSum += values[i];
-
-                double mean1 = firstSum / half;
-                double mean2 = secondSum / half;
-                double overallMean = 0.5 * (mean1 + mean2);
-                double denom = Math.Max(Math.Abs(overallMean), 1e-6);
-                float relDrift = (float)(Math.Abs(mean2 - mean1) / denom);
-
-                if (!float.IsFinite(relDrift))
+                if (nonFiniteInTail)
                 {
                     divergedOrNaN = true;
                     driftOk = false;
                     continue;
                 }
 
-                worstDrift = MathF.Max(worstDrift, relDrift);
-                if (relDrift > options.RelativeDriftTolerance)
+                int half = tail.Count / 2;
+                double firstSum = 0.0;
+                for (int i = 0; i < half; i++)
+                    firstSum += tail[i];
+
+                double secondSum = 0.0;
+                for (int i = tail.Count - half; i < tail.Count; i++)
+                    secondSum += tail[i];
+
+                double totalSum = 0.0;
+                for (int i = 0; i < tail.Count; i++)
+                    totalSum += tail[i];
+
+                double mean1 = firstSum / half;
+                double mean2 = secondSum / half;
+                double tailMean = totalSum / tail.Count;
+                double absDrift = Math.Abs(mean2 - mean1);
+
+                float atol = MetricTolerance.AbsoluteFor(targetKey, options.AbsoluteTolerances);
+                if (atol == 0f && !string.Equals(sourceKey, targetKey, StringComparison.OrdinalIgnoreCase))
+                    atol = MetricTolerance.AbsoluteFor(sourceKey, options.AbsoluteTolerances);
+
+                double denom = Math.Max(rtol * Math.Abs(tailMean) + atol, 1e-12);
+                double normalizedDrift = absDrift / denom;
+                float effectiveDrift = (float)(normalizedDrift * rtol);
+
+                if (!double.IsFinite(normalizedDrift) || !float.IsFinite(effectiveDrift))
+                {
+                    divergedOrNaN = true;
                     driftOk = false;
+                    continue;
+                }
+
+                worstDrift = MathF.Max(worstDrift, effectiveDrift);
+
+                double se = double.NaN;
+                bool trendSignificant = false;
+                bool hasBatchStats = tail.Count >= 16 &&
+                                     ConvergenceStatistics.BatchStatistics(tail, out se, out trendSignificant);
+                if (hasBatchStats && double.IsFinite(se))
+                {
+                    metricUncertainties[targetKey] = (float)(se / Math.Max(Math.Abs(tailMean), 1e-7));
+                }
+
+                if (normalizedDrift > 1.0)
+                {
+                    if (hasBatchStats && !trendSignificant)
+                    {
+                        anyUnsteadyStationary = true;
+                    }
+                    else
+                    {
+                        hasMonotonicDrift = true;
+                        driftOk = false;
+                        driftingMetrics.Add(targetKey);
+                    }
+                }
             }
+
+            bool missingConfiguredSeries = hasConfiguredMetrics &&
+                                           postResult.MonitoredSeries.Count > 0 &&
+                                           matchedSeriesCount == 0;
+            if (missingConfiguredSeries)
+                driftOk = false;
+
+            bool isUnsteadyStationary = !divergedOrNaN && !hasMonotonicDrift && anyUnsteadyStationary;
 
             // Residual check: when residuals were logged, allow generous factor if solver stopped via residualControl or drift is stationary.
             bool residualsOk = true;
@@ -141,7 +246,7 @@ namespace FluidForge.Solvers.OpenFoam
             {
                 float target = options.ResidualTarget > 0f ? options.ResidualTarget : 1e-4f;
                 float maxResidual = finalResiduals.Values.Max();
-                if (maxResidual > target * 10f && !driftOk)
+                if (maxResidual > target * 10f && !driftOk && !isUnsteadyStationary)
                     residualsOk = false;
                 else if (maxResidual > MathF.Max(target * 100f, 0.1f))
                     residualsOk = false;
@@ -153,11 +258,15 @@ namespace FluidForge.Solvers.OpenFoam
                 ? "Solver diverged or produced non-finite values."
                 : !massBalanceOk
                     ? $"Mass balance error {mbErr.ToString("0.00", CultureInfo.InvariantCulture)}% exceeds limit {options.MaxMassBalanceErrorPercent.ToString("0.00", CultureInfo.InvariantCulture)}%."
-                    : !driftOk
-                        ? $"Trailing-window drift {(worstDrift * 100f).ToString("0.00", CultureInfo.InvariantCulture)}% exceeds limit {(options.RelativeDriftTolerance * 100f).ToString("0.00", CultureInfo.InvariantCulture)}%."
-                        : !residualsOk
-                            ? "Residuals did not reach target."
-                            : "Converged.";
+                    : missingConfiguredSeries
+                        ? "None of the configured ResultMetrics series were found in postProcessing output."
+                        : !driftOk
+                            ? $"Trailing-window drift {(worstDrift * 100f).ToString("0.00", CultureInfo.InvariantCulture)}% exceeds limit {(rtol * 100f).ToString("0.00", CultureInfo.InvariantCulture)}%."
+                            : !residualsOk
+                                ? "Residuals did not reach target."
+                                : isUnsteadyStationary
+                                    ? "Converged (stationary oscillation, tail-window mean used)."
+                                    : "Converged.";
 
             return new OpenFoamConvergenceVerdict(
                 converged,
@@ -167,7 +276,33 @@ namespace FluidForge.Solvers.OpenFoam
                 worstDrift,
                 iterations,
                 finalResiduals,
-                summary);
+                summary,
+                IsUnsteadyStationary: isUnsteadyStationary,
+                HasMonotonicDrift: hasMonotonicDrift,
+                SolverStoppedEarly: solverConvergedEarly,
+                MetricUncertainties: metricUncertainties,
+                DriftingMetrics: driftingMetrics);
+        }
+
+        private static bool TryGetSeries(
+            IReadOnlyDictionary<string, IReadOnlyList<float>> series,
+            string key,
+            out IReadOnlyList<float>? values)
+        {
+            if (series.TryGetValue(key, out values))
+                return true;
+
+            foreach (KeyValuePair<string, IReadOnlyList<float>> kvp in series)
+            {
+                if (string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    values = kvp.Value;
+                    return true;
+                }
+            }
+
+            values = null;
+            return false;
         }
 
         private static bool ContainsFatalOrCrashLine(string log)

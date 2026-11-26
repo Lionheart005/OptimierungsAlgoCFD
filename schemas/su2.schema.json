@@ -181,6 +181,10 @@
       "type": "string",
       "default": "SA"
     },
+    "VenkatLimiterCoeff": {
+      "type": "number",
+      "default": 0.05
+    },
     "YPlusWarnFactor": {
       "type": "number",
       "default": 3

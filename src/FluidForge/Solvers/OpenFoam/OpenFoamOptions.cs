@@ -113,8 +113,14 @@ namespace FluidForge.Solvers.OpenFoam
 
         // --- Meshing parameters ---
 
-        /// <summary>Base background cell size in mm at refinement factor 1.0 (default 2.0 mm).</summary>
+        /// <summary>Base background cell size in mm at refinement factor 1.0 (default 2.0 mm; 0 = auto-sized from characteristic geometry length).</summary>
         public float BaseCellSizeMm { get; set; } = 2.0f;
+
+        /// <summary>
+        /// Target surface cell count per characteristic length (<c>D_h</c> for Internal3D, <c>L</c> for External3D)
+        /// when <see cref="BaseCellSizeMm"/> &lt;= 0 (0 = domain default: 20 for Internal3D, 120 for External3D).
+        /// </summary>
+        public float CellsPerCharacteristicLength { get; set; } = 0.0f;
 
         /// <summary>Minimum surface refinement level in <c>snappyHexMesh</c>.</summary>
         public int SurfaceRefinementLevelMin { get; set; } = 1;
@@ -131,7 +137,7 @@ namespace FluidForge.Solvers.OpenFoam
         /// <summary>Use relative layer sizing in <c>snappyHexMesh</c> (true = <see cref="FinalLayerThickness"/>, false = <see cref="FirstLayerThickness"/>).</summary>
         public bool RelativeLayerSizes { get; set; } = true;
 
-        /// <summary>Number of wall boundary layers.</summary>
+        /// <summary>Number of wall boundary layers (0 = auto-sized from <see cref="TargetYPlus"/> and surface cell size).</summary>
         public int BoundaryLayerLayers { get; set; } = 5;
 
         /// <summary>Layer-to-layer expansion ratio.</summary>
@@ -147,10 +153,10 @@ namespace FluidForge.Solvers.OpenFoam
         public float MinLayerThickness { get; set; } = 0.1f;
 
         /// <summary>Maximum cells per MPI rank during <c>snappyHexMesh</c>.</summary>
-        public int MaxLocalCells { get; set; } = 2_000_000;
+        public int MaxLocalCells { get; set; } = 4_000_000;
 
         /// <summary>Maximum global cells during <c>snappyHexMesh</c>.</summary>
-        public int MaxGlobalCells { get; set; } = 8_000_000;
+        public int MaxGlobalCells { get; set; } = 15_000_000;
 
         /// <summary>Hard <c>checkMesh</c> quality gate on maximum non-orthogonality in degrees.</summary>
         public float MaxNonOrthogonality { get; set; } = 65.0f;
@@ -172,6 +178,18 @@ namespace FluidForge.Solvers.OpenFoam
         /// <summary>SIMPLE residual control target for pressure and velocity/turbulence fields.</summary>
         public float ResidualTarget { get; set; } = 1e-4f;
 
+        /// <summary>Use second-order bounded linearUpwind schemes for turbulence transport (<c>k</c>, <c>omega</c>, <c>epsilon</c>, <c>nuTilda</c>).</summary>
+        public bool SecondOrderTurbulence { get; set; } = false;
+
+        /// <summary>Automatically restart <c>simpleFoam</c> from <c>latestTime</c> with tightened <c>residualControl</c> when trailing-window drift exceeds tolerance.</summary>
+        public bool AutoRestartOnDrift { get; set; } = true;
+
+        /// <summary>Maximum number of automatic convergence restarts when <see cref="AutoRestartOnDrift"/> is true.</summary>
+        public int MaxConvergenceRestarts { get; set; } = 3;
+
+        /// <summary>Lower floor for automatic <c>residualControl</c> tightening during drift restarts.</summary>
+        public float ResidualTargetFloor { get; set; } = 1e-7f;
+
         /// <summary>Run <c>potentialFoam</c> prior to <c>simpleFoam</c> for velocity initialization.</summary>
         public bool UsePotentialFoamInit { get; set; } = false;
 
@@ -183,6 +201,12 @@ namespace FluidForge.Solvers.OpenFoam
 
         /// <summary>Maximum allowed relative drift across the trailing window.</summary>
         public float RelativeDriftTolerance { get; set; } = 0.005f;
+
+        /// <summary>
+        /// Optional per-metric absolute drift floor overrides (see <see cref="MetricTolerance"/>).
+        /// Empty = use <see cref="MetricTolerance.DefaultAbsolute"/>.
+        /// </summary>
+        public Dictionary<string, float> AbsoluteTolerances { get; set; } = new();
 
         /// <summary>Mark unconverged runs as failed (<see cref="ModelRecord.SimulationFailed"/> = true).</summary>
         public bool TreatUnconvergedAsFailed { get; set; } = true;
@@ -241,6 +265,9 @@ namespace FluidForge.Solvers.OpenFoam
             copy.ResultMetrics = ResultMetrics != null
                 ? new Dictionary<string, string>(ResultMetrics, StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            copy.AbsoluteTolerances = AbsoluteTolerances != null
+                ? new Dictionary<string, float>(AbsoluteTolerances, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
             copy.CustomDictionaryOverrides = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
             if (CustomDictionaryOverrides != null)
             {

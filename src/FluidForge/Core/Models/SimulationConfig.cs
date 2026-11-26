@@ -303,11 +303,11 @@ namespace FluidForge.Core
         /// </summary>
         public System.Collections.Generic.Dictionary<string, float> AbsoluteTolerances { get; set; } = new();
 
-        /// <summary>Upper limit on extrapolated cell count for the finest level in 2D.</summary>
+        /// <summary>Upper limit on extrapolated cell count for the finest level in 2D (0 = unlimited).</summary>
         public long MaxCells2D { get; set; } = 2_000_000;
 
-        /// <summary>Upper limit on extrapolated cell count for the finest level in 3D.</summary>
-        public long MaxCells3D { get; set; } = 3_000_000;
+        /// <summary>Upper limit on extrapolated cell count for the finest level in 3D (0 = unlimited).</summary>
+        public long MaxCells3D { get; set; } = 15_000_000;
     }
 
     /// <summary>

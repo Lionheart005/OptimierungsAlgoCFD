@@ -32,19 +32,33 @@ Use `"Preset": ""` or `"Preset": "Custom"` to disable Layer 1.5 completely.
 |---|---|---|---|---|---|
 | `External2D:FastConcept` | `External2D` | `FastConcept` | `Manual` (`1.5`), 200c farfield | 1500 iters, Cauchy `1e-4`, $y^+=1.5$, AutoStop On (12) | `Off` |
 | `External2D:StandardRans` | `External2D` | `StandardRans` | `Auto` (5% tol), 500c farfield | 3000 iters, Cauchy `5e-5`, $y^+=1.0$, AutoStop On (20) | `FinalTopN` (3, 1 step) |
-| `External2D:VerificationFine` | `External2D` | `VerificationFine` | `Manual` (`0.5`), 500c farfield, BL growth `1.15` | 10000 iters, Cauchy `5e-6` (floor `2e-6`), $y^+=0.8$, `SlopeLimiterFlow: VENKATAKRISHNAN`, `FreestreamNuFactor: 3.0`, AutoStop Off | `Off` |
-| `External3D:FastConcept` | `External3D` | `FastConcept` | `Manual` (`1.5`), Prism, `DetailBox: false` | 2000 iters, Cauchy `1e-4`, $y^+=2.0$, AutoStop On (12) | `Off` |
-| `External3D:StandardRans` | `External3D` | `StandardRans` | `Auto` (5% tol), Prism, `DetailBox: false` | 3000 iters, Cauchy `5e-5`, $y^+=1.5$, AutoStop On (20) | `FinalTopN` (3, 1 step) |
-| `External3D:VerificationFine` | `External3D` | `VerificationFine` | `Manual` (`0.8`), Prism, `DetailBox: true` | 8000 iters, Cauchy `1e-5` (floor `1e-6`), $y^+=1.0$, AutoStop Off | `Off` |
-| `Internal3D:FastConcept` | `Internal3D` | `FastConcept` | `Manual` (`1.5`), `BaseCellSizeMm` 3.0, 3 layers | `EndTime` 500, `ResidualTarget` `5e-4`, $y^+ \approx 30$, `PressureDrop`, AutoStop On (12) | `Off` |
-| `Internal3D:StandardRans` | `Internal3D` | `StandardRans` | `Auto` (5% tol), `BaseCellSizeMm` 2.0, 5 layers | `EndTime` 1000, `ResidualTarget` `1e-4`, $y^+ \approx 5$, `PressureDrop`, AutoStop On (20) | `FinalTopN` (3, 1 step) |
-| `Internal3D:VerificationFine` | `Internal3D` | `VerificationFine` | `Manual` (`1.0`), `BaseCellSizeMm` 1.2, 8 layers | `EndTime` 2000, `ResidualTarget` `5e-5`, $y^+ \approx 1.5$, `PressureDrop`, AutoStop Off | `Off` |
+| `External2D:VerificationFine` | `External2D` | `VerificationFine` | `Manual` (`0.5`), 500c farfield, BL growth `1.15` | 10000 iters, Cauchy `5e-6` (floor `2e-6`), $y^+=0.8$, `SlopeLimiterFlow: VENKATAKRISHNAN`, `VenkatLimiterCoeff: 0.5`, `FreestreamNuFactor: 3.0`, AutoStop Off | `Off` |
+| `External3D:FastConcept` | `External3D` | `FastConcept` | `Manual` (`1.5`), Prism, `DetailBox: false` *(OF: 60 cells/$L$, auto layers)* | 2000 iters, Cauchy `1e-4`, $y^+=2.0$ *(OF: $30$)*, AutoStop On (12) | `Off` |
+| `External3D:StandardRans` | `External3D` | `StandardRans` | `Auto` (5% tol), Prism, `DetailBox: false` *(OF: 120 cells/$L$, auto layers)* | 3000 iters, Cauchy `5e-5`, $y^+=1.5$ *(OF: $5$)*, AutoStop On (20) | `FinalTopN` (3, 1 step) |
+| `External3D:VerificationFine` | `External3D` | `VerificationFine` | `Manual` (`0.8`), Prism, `DetailBox: true` *(OF: 200 cells/$L$, auto layers)* | 8000 iters, Cauchy `1e-5` (floor `1e-6`), $y^+=1.0$, `VenkatLimiterCoeff: 0.05` *(OF: $5$, 2nd-order turb.)*, AutoStop Off | `Off` |
+| `Internal3D:FastConcept` | `Internal3D` | `FastConcept` | `Manual` (`1.5`), `BaseCellSizeMm: 0` (10 cells/$D_h$), auto layers | `EndTime` 500, `ResidualTarget` `5e-4`, $y^+ \approx 30$, `PressureDrop`, AutoStop On (12) | `Off` |
+| `Internal3D:StandardRans` | `Internal3D` | `StandardRans` | `Auto` (5% tol), `BaseCellSizeMm: 0` (20 cells/$D_h$), auto layers | `EndTime` 1000, `ResidualTarget` `1e-4`, $y^+ \approx 5$, `PressureDrop`, AutoStop On (20) | `FinalTopN` (3, 1 step) |
+| `Internal3D:VerificationFine` | `Internal3D` | `VerificationFine` | `Manual` (`1.0`), `BaseCellSizeMm: 0` (32 cells/$D_h$), auto layers | `EndTime` 2000, `ResidualTarget` `5e-5`, $y^+ \approx 5$, 2nd-order turb., `PressureDrop`, AutoStop Off | `Off` |
 
 **Shorthands:** `"External2D"` → `"External2D:StandardRans"`, `"External3D"` → `"External3D:StandardRans"`, `"Internal3D"` → `"Internal3D:StandardRans"`.
 
-> **External3D OpenFOAM Overlay:** All `External3D:*` presets also carry a `solvers/openfoam.json` overlay (`DomainMode: "External3D"`, `Drag`/`Lift` metrics) so projects using `OpenFoamProjectDefinition` in external mode inherit calibrated defaults automatically.
+> **External3D OpenFOAM Overlay:** All `External3D:*` presets also carry a `solvers/openfoam.json` overlay (`DomainMode: "External3D"`, `Drag`/`Lift` metrics, scale-invariant auto-meshing with `CellsPerCharacteristicLength` = 60 / 120 / 200 and automatic `NearfieldBox`/`WakeBox` `refinementRegions`, `TargetYPlus` = 30 / 5 / 5, `SecondOrderTurbulence: true` in `VerificationFine`) so projects using `OpenFoamProjectDefinition` in external mode inherit calibrated defaults automatically.
 >
 > **Single-Fidelity Calibration Remains the Default:** None of the curated presets enables `MultiFidelity`. All `StandardRans` presets remain the automatic calibration default for optimizations (`MeshCalibration.Mode = "Auto"`, `ChampionVerification.Mode = "FinalTopN"`), evaluating every variant at full calibrated fidelity. By contrast, `VerificationFine` represents the manual high-detail reference tier without automatic mesh calibration or post-run verification (`MeshCalibration.Mode = "Manual"`, `ChampionVerification.Mode = "Off"`). See **Section 6** below before enabling `TwoStageFilter`.
+
+### 2.1 Scale-Invariant OpenFOAM Auto-Meshing & 3D Cell Limits
+
+- **Scale-invariant cell sizing (`BaseCellSizeMm = 0`):** All `Internal3D:*` and `External3D:*` OpenFOAM presets set `BaseCellSizeMm = 0` (Auto mode). Instead of a fixed millimeter background grid, cell sizes scale automatically from the characteristic geometry length:
+  - **`Internal3D`:** Scales from hydraulic diameter $D_h$ using `CellsPerCharacteristicLength` (`FastConcept = 10`, `StandardRans = 20`, `VerificationFine = 32`).
+  - **`External3D`:** Scales from body length $L$ using `CellsPerCharacteristicLength` (`FastConcept = 60`, `StandardRans = 120`, `VerificationFine = 200`) and automatically generates `NearfieldBox` and `WakeBox` `refinementRegions`.
+  - **Backward compatibility:** Setting an explicit `BaseCellSizeMm > 0` in `solvers/openfoam.json` bypasses auto-sizing and keeps 100% backward-compatible fixed-mm behavior.
+- **Physics-based boundary layers (`BoundaryLayerLayers = 0` & `TargetYPlus`):** When `BoundaryLayerLayers = 0` (Auto mode in all 6 presets), FluidForge computes the layer count automatically from `TargetYPlus` (`FastConcept = 30.0`, `StandardRans = 5.0`, `VerificationFine = 5.0`) and the local surface cell size, setting `firstLayerThickness = 2 * y_p` with `relativeSizes false`. OpenFOAM uses All-$y^+$ wall treatment (`nutUSpaldingWallFunction` + `kLowReWallFunction`). Setting `BoundaryLayerLayers > 0` keeps explicit manual layer counts.
+- **Second-order turbulence (`SecondOrderTurbulence`):** Enabled (`true`) in `*:VerificationFine` (`bounded Gauss linearUpwind`) and `false` in `FastConcept` / `StandardRans`.
+- **3D cell-count safeguards (`MaxCells3D` / `MaxGlobalCells` / `MaxLocalCells`):**
+  - **Defaults:** `MeshCalibration.MaxCells3D = 15_000_000`, `OpenFoam.MaxGlobalCells = 15_000_000`, and `OpenFoam.MaxLocalCells = 4_000_000` (in serial runs with `MpiCores == 1`, `maxLocalCells` automatically scales up to `MaxGlobalCells`).
+  - **Protection:** Prevents out-of-memory (RAM overflow) crashes and multi-hour miscalculations from accidentally over-refined 3D meshes.
+  - **How to adjust:** Override per project in `src/projects/<Name>/simulation.json` (`MeshCalibration.MaxCells3D`) or `solvers/openfoam.json` (`MaxGlobalCells` / `MaxLocalCells`), or set machine-specific limits (e.g., workstation vs. HPC server) in `config/simulation.local.json` (survives every `sim.ps1 deploy`).
+  - **How to disable:** Set `"MaxCells3D": 0` to disable the upper cell-count limit completely (in both optimization and calibration) when very large, high-detail meshes are required.
 
 ---
 

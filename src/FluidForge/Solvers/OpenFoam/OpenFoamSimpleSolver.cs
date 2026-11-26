@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using FluidForge.Core;
 
 namespace FluidForge.Solvers.OpenFoam
@@ -50,8 +53,8 @@ namespace FluidForge.Solvers.OpenFoam
 
             int mpiCores = Math.Max(1, config.MpiCores);
             string solverName = string.IsNullOrWhiteSpace(_options.Solver) ? "simpleFoam" : _options.Solver.Trim();
+            int endTimeBudget = ReadEndTimeBudget(caseDir, _options.EndTime);
 
-            OpenFoamCommandResult solverResult;
             if (mpiCores > 1)
             {
                 OpenFoamCommandResult decomp = _runner.Run(caseDir, "decomposePar -force", _options, mpiCores: 1);
@@ -68,35 +71,77 @@ namespace FluidForge.Solvers.OpenFoam
                     if (potRes.ExitCode != 0)
                         SimulationLog.Warning($"potentialFoam -parallel exited with code {potRes.ExitCode}; continuing with simpleFoam.");
                 }
-
-                string parallelSolverCmd = OpenFoamProcessRunner.BuildParallelToolCommand(solverName, null, _options, mpiCores);
-                solverResult = _runner.Run(caseDir, parallelSolverCmd, _options, mpiCores);
-
-                if (solverResult.ExitCode == 0)
-                {
-                    OpenFoamCommandResult recon = _runner.Run(caseDir, "reconstructPar -latestTime", _options, mpiCores: 1);
-                    if (recon.ExitCode != 0)
-                    {
-                        SimulationLog.Warning($"reconstructPar exited with code {recon.ExitCode}; postProcessing values may still be valid.");
-                    }
-                }
             }
-            else
+            else if (_options.UsePotentialFoamInit)
             {
-                if (_options.UsePotentialFoamInit)
-                {
-                    OpenFoamCommandResult potRes = _runner.Run(caseDir, "potentialFoam -noFunctionObjects", _options, mpiCores: 1);
-                    if (potRes.ExitCode != 0)
-                        SimulationLog.Warning($"potentialFoam exited with code {potRes.ExitCode}; continuing with simpleFoam.");
-                }
-
-                solverResult = _runner.Run(caseDir, solverName, _options, mpiCores: 1);
+                OpenFoamCommandResult potRes = _runner.Run(caseDir, "potentialFoam -noFunctionObjects", _options, mpiCores: 1);
+                if (potRes.ExitCode != 0)
+                    SimulationLog.Warning($"potentialFoam exited with code {potRes.ExitCode}; continuing with simpleFoam.");
             }
 
-            if (solverResult.ExitCode != 0)
+            string solverCmd = mpiCores > 1
+                ? OpenFoamProcessRunner.BuildParallelToolCommand(solverName, null, _options, mpiCores)
+                : solverName;
+
+            int maxRestarts = Math.Max(0, _options.MaxConvergenceRestarts);
+            float floor = MathF.Max(_options.ResidualTargetFloor, 1e-10f);
+            float currentResidualTarget = _options.ResidualTarget > 0f ? _options.ResidualTarget : 1e-4f;
+            int restartsUsed = 0;
+            float lastRestartTime = 0f;
+
+            OpenFoamCommandResult solverResult = new(1, string.Empty, string.Empty);
+            OpenFoamPostProcessResult? post = null;
+            OpenFoamConvergenceVerdict? verdict = null;
+
+            for (int attempt = 0; attempt <= maxRestarts; attempt++)
             {
-                MarkFailed(record, $"{solverName} exited with code {solverResult.ExitCode}");
-                return;
+                solverResult = _runner.Run(caseDir, solverCmd, _options, mpiCores);
+                if (solverResult.ExitCode != 0)
+                {
+                    MarkFailed(record, $"{solverName} exited with code {solverResult.ExitCode}");
+                    return;
+                }
+
+                post = OpenFoamPostProcessor.Evaluate(caseDir, _options);
+                verdict = OpenFoamConvergenceJudge.Judge(solverResult.CombinedOutput, post, _options);
+
+                float latestTime = 0f;
+                bool canRestart = _options.AutoRestartOnDrift &&
+                                  attempt < maxRestarts &&
+                                  !verdict.DivergedOrNaN &&
+                                  verdict.MassBalanceOk &&
+                                  verdict.HasMonotonicDrift &&
+                                  !verdict.IsUnsteadyStationary &&
+                                  verdict.Iterations < endTimeBudget &&
+                                  currentResidualTarget > floor &&
+                                  TryGetLatestTimeDirectory(caseDir, mpiCores, out latestTime) &&
+                                  latestTime > lastRestartTime;
+
+                if (!canRestart)
+                    break;
+
+                currentResidualTarget = MathF.Max(currentResidualTarget * 0.1f, floor);
+                PatchControlDictStartFromLatestTime(caseDir);
+                PatchFvSolutionResidualControl(caseDir, currentResidualTarget);
+                restartsUsed++;
+                lastRestartTime = latestTime;
+
+                string driftList = verdict.DriftingMetrics is { Count: > 0 }
+                    ? string.Join(", ", verdict.DriftingMetrics)
+                    : "monitored metrics";
+                SimulationLog.Detail(
+                    $"OpenFOAM drift after {verdict.Iterations} iters ({driftList}) " +
+                    $"-> auto-restart #{restartsUsed}/{maxRestarts} from t={latestTime.ToString("G6", CultureInfo.InvariantCulture)}, " +
+                    $"residualControl={currentResidualTarget.ToString("G3", CultureInfo.InvariantCulture)}.");
+            }
+
+            if (mpiCores > 1)
+            {
+                OpenFoamCommandResult recon = _runner.Run(caseDir, "reconstructPar -latestTime", _options, mpiCores: 1);
+                if (recon.ExitCode != 0)
+                {
+                    SimulationLog.Warning($"reconstructPar exited with code {recon.ExitCode}; postProcessing values may still be valid.");
+                }
             }
 
             if (_options.ExportVtk)
@@ -106,7 +151,9 @@ namespace FluidForge.Solvers.OpenFoam
                     SimulationLog.Warning($"foamToVTK exited with code {vtkRes.ExitCode}.");
             }
 
-            OpenFoamPostProcessResult post = OpenFoamPostProcessor.Evaluate(caseDir, _options);
+            post ??= OpenFoamPostProcessor.Evaluate(caseDir, _options);
+            verdict ??= OpenFoamConvergenceJudge.Judge(solverResult.CombinedOutput, post, _options);
+
             foreach (KeyValuePair<string, float> kvp in post.Metrics)
             {
                 if (float.IsFinite(kvp.Value))
@@ -136,9 +183,29 @@ namespace FluidForge.Solvers.OpenFoam
                 record.PassiveParameters["ReynoldsNumber"] = _options.Density * uRef * lRef / _options.DynamicViscosity;
             }
 
-            OpenFoamConvergenceVerdict verdict = OpenFoamConvergenceJudge.Judge(solverResult.CombinedOutput, post, _options);
             record.PassiveParameters["OpenFoam_Iterations"] = verdict.Iterations;
             record.PassiveParameters["OpenFoam_Converged"] = verdict.Converged ? 1.0f : 0.0f;
+            record.PassiveParameters["OpenFoam_Unsteady"] = verdict.IsUnsteadyStationary ? 1.0f : 0.0f;
+            record.PassiveParameters["OpenFoam_Restarts"] = restartsUsed;
+
+            if (verdict.MetricUncertainties != null)
+            {
+                foreach (KeyValuePair<string, float> kvp in verdict.MetricUncertainties)
+                {
+                    if (float.IsFinite(kvp.Value))
+                        record.PassiveParameters[MetricUncertainty.KeyFor(kvp.Key)] = kvp.Value;
+                }
+            }
+
+            if (verdict.IsUnsteadyStationary)
+            {
+                string uncSummary = verdict.MetricUncertainties is { Count: > 0 }
+                    ? string.Join(", ", verdict.MetricUncertainties.Select(
+                        kvp => $"{kvp.Key}: ±{(kvp.Value * 100f).ToString("0.00", CultureInfo.InvariantCulture)}%"))
+                    : "n/a";
+                SimulationLog.Detail(
+                    $"OpenFOAM detected stationary oscillation (vortex shedding); using TailMean over trailing window (relative uncertainty: {uncSummary}).");
+            }
 
             if (post.YPlusP95.HasValue)
             {
@@ -168,6 +235,83 @@ namespace FluidForge.Solvers.OpenFoam
                     ? $", MassErr = {post.MassBalanceErrorPercent.Value.ToString("0.000", CultureInfo.InvariantCulture)}%"
                     : string.Empty)
                 + ").");
+        }
+
+        private static int ReadEndTimeBudget(string caseDir, int configuredEndTime)
+        {
+            int fallback = Math.Max(1, configuredEndTime);
+            string controlDictPath = Path.Combine(caseDir, "system", "controlDict");
+            if (!File.Exists(controlDictPath)) return fallback;
+
+            string content = File.ReadAllText(controlDictPath);
+            Match m = Regex.Match(content, @"^\s*endTime\s+(\d+)\s*;", RegexOptions.Multiline | RegexOptions.CultureInvariant);
+            if (m.Success && int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) && parsed > 0)
+                return parsed;
+
+            return fallback;
+        }
+
+        private static bool TryGetLatestTimeDirectory(string caseDir, int mpiCores, out float latestTime)
+        {
+            latestTime = 0f;
+            string searchRoot = mpiCores > 1 ? Path.Combine(caseDir, "processor0") : caseDir;
+            if (!Directory.Exists(searchRoot)) return false;
+
+            bool found = false;
+            foreach (string dir in Directory.EnumerateDirectories(searchRoot))
+            {
+                string name = Path.GetFileName(dir);
+                if (float.TryParse(name, NumberStyles.Float, CultureInfo.InvariantCulture, out float t) &&
+                    float.IsFinite(t) && t > 0f)
+                {
+                    if (!found || t > latestTime)
+                    {
+                        latestTime = t;
+                        found = true;
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        private static void PatchControlDictStartFromLatestTime(string caseDir)
+        {
+            string controlDictPath = Path.Combine(caseDir, "system", "controlDict");
+            if (!File.Exists(controlDictPath)) return;
+
+            string content = File.ReadAllText(controlDictPath);
+            string updated = Regex.Replace(
+                content,
+                @"(?m)^([ \t]*startFrom[ \t]+)[^;\r\n]*;",
+                "$1latestTime;",
+                RegexOptions.CultureInvariant);
+            File.WriteAllText(controlDictPath, updated, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+
+        private static void PatchFvSolutionResidualControl(string caseDir, float newTarget)
+        {
+            string fvSolutionPath = Path.Combine(caseDir, "system", "fvSolution");
+            if (!File.Exists(fvSolutionPath)) return;
+
+            string content = File.ReadAllText(fvSolutionPath);
+            string targetStr = newTarget.ToString("G6", CultureInfo.InvariantCulture);
+
+            string updated = Regex.Replace(
+                content,
+                @"(residualControl\s*\{)([^}]*)(\})",
+                match =>
+                {
+                    string body = Regex.Replace(
+                        match.Groups[2].Value,
+                        @"(?m)^([ \t]*(?:""[^""]+""|[A-Za-z_][A-Za-z0-9_.*|()]*)[ \t]+)[^;\r\n]*(;)",
+                        inner => inner.Groups[1].Value + targetStr + inner.Groups[2].Value,
+                        RegexOptions.CultureInvariant);
+                    return match.Groups[1].Value + body + match.Groups[3].Value;
+                },
+                RegexOptions.CultureInvariant);
+
+            File.WriteAllText(fvSolutionPath, updated, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
 
         private static void MarkFailed(ModelRecord record, string reason)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using FluidForge.Core;
 
 namespace FluidForge.Solvers.Cfd
 {
@@ -99,7 +100,7 @@ namespace FluidForge.Solvers.Cfd
     public static class Su2HistoryAnalyzer
     {
         /// <summary>Number of batches for batch-mean statistics (trend test and uncertainty).</summary>
-        public const int Batches = 8;
+        public const int Batches = ConvergenceStatistics.Batches;
 
         /// <summary>
         /// Evaluates the convergence history of an SU2 simulation (<c>history.csv</c>).
@@ -299,74 +300,11 @@ namespace FluidForge.Solvers.Cfd
         /// error of the window mean from batch scatter around the trend line.
         /// </summary>
         public static bool BatchStatistics(IReadOnlyList<float> values, out double standardError, out bool significant)
-        {
-            standardError = double.NaN;
-            significant = false;
-
-            int size = values.Count / Batches;
-            if (size < 2) return false;
-
-            var means = new double[Batches];
-            int offset = values.Count - size * Batches;   // Drop leading remainder (startup)
-            for (int b = 0; b < Batches; b++)
-            {
-                double sum = 0;
-                for (int i = 0; i < size; i++) sum += values[offset + b * size + i];
-                means[b] = sum / size;
-            }
-
-            double meanX = (Batches - 1) / 2.0, meanY = means.Average();
-            double sxy = 0, sxx = 0;
-            for (int b = 0; b < Batches; b++)
-            {
-                sxy += (b - meanX) * (means[b] - meanY);
-                sxx += (b - meanX) * (b - meanX);
-            }
-            double slope = sxy / sxx;
-
-            double ss = 0;
-            for (int b = 0; b < Batches; b++)
-            {
-                double r = means[b] - (meanY + slope * (b - meanX));
-                ss += r * r;
-            }
-            double residualSd = Math.Sqrt(ss / (Batches - 2));
-
-            // Floor against division by zero on exact linear or constant histories
-            double floor = 1e-9 * Math.Max(Math.Abs(meanY), 1e-12);
-            double slopeError = Math.Max(residualSd, floor) / Math.Sqrt(sxx);
-
-            significant = Math.Abs(slope) > 3.0 * slopeError && Math.Abs(slope) * (Batches - 1) > floor * 10;
-            standardError = residualSd / Math.Sqrt(Batches);
-            return true;
-        }
+            => ConvergenceStatistics.BatchStatistics(values, out standardError, out significant);
 
         /// <summary>Peak-to-peak range of residuals from the least-squares trend line.</summary>
         private static float DetrendedPeakToPeak(IReadOnlyList<float> values)
-        {
-            int n = values.Count;
-            double meanX = (n - 1) / 2.0;
-            double meanY = 0;
-            for (int i = 0; i < n; i++) meanY += values[i];
-            meanY /= n;
-
-            double sxy = 0, sxx = 0;
-            for (int i = 0; i < n; i++)
-            {
-                sxy += (i - meanX) * (values[i] - meanY);
-                sxx += (i - meanX) * (i - meanX);
-            }
-            double slope = sxx > 0 ? sxy / sxx : 0.0;
-
-            double min = double.MaxValue, max = double.MinValue;
-            for (int i = 0; i < n; i++)
-            {
-                double residual = values[i] - (meanY + slope * (i - meanX));
-                if (residual < min) min = residual;
-                if (residual > max) max = residual;
-            }
-            return (float)(max - min);
-        }
+            => ConvergenceStatistics.DetrendedPeakToPeak(values);
 
         /// <summary>
         /// Simulates SU2's Cauchy convergence criterion offline on <paramref name="lines"/> by comparing

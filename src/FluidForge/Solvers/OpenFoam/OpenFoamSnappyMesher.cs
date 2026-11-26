@@ -32,7 +32,7 @@ namespace FluidForge.Solvers.OpenFoam
         public IReadOnlyDictionary<string, float> LastMeshMetrics => _lastMetrics;
 
         /// <inheritdoc />
-        public float TargetSurfaceCellSizeMm => _options.BaseCellSizeMm > 0f ? _options.BaseCellSizeMm : 2.0f;
+        public float TargetSurfaceCellSizeMm => _options.BaseCellSizeMm > 0f ? _options.BaseCellSizeMm : 0f;
 
         /// <inheritdoc />
         public string GenerateMesh(MeshRequest request)
@@ -44,7 +44,7 @@ namespace FluidForge.Solvers.OpenFoam
             string caseDir = Path.Combine(request.WorkingDirectory, $"OpenFoamCase_{request.BaseSuffix}");
             CleanPreviousMeshArtifacts(caseDir);
 
-            OpenFoamCaseGenerator.Generate(caseDir, request, _options);
+            OpenFoamCaseInfo caseInfo = OpenFoamCaseGenerator.Generate(caseDir, request, _options);
 
             if (!_versionReported)
             {
@@ -101,7 +101,7 @@ namespace FluidForge.Solvers.OpenFoam
                     $"OpenFOAM mesh failed quality checks: {string.Join(" ", gate.Violations)}");
             }
 
-            PopulateMetrics(report, usedFallback);
+            PopulateMetrics(report, usedFallback, caseInfo.MeshPlan);
             File.WriteAllText(Path.Combine(caseDir, "case.foam"), string.Empty);
 
             SimulationLog.Detail(
@@ -222,7 +222,7 @@ namespace FluidForge.Solvers.OpenFoam
             return (report, gate);
         }
 
-        private void PopulateMetrics(OpenFoamMeshQualityReport report, bool usedFallback)
+        private void PopulateMetrics(OpenFoamMeshQualityReport report, bool usedFallback, OpenFoamMeshPlan? meshPlan)
         {
             _lastMetrics["MeshCells"] = report.Cells;
             _lastMetrics["MeshCells_Hexa"] = report.Hexahedra;
@@ -237,7 +237,7 @@ namespace FluidForge.Solvers.OpenFoam
 
             if (_options.AddLayers)
             {
-                _lastMetrics["BoundaryLayerLayers"] = _options.BoundaryLayerLayers;
+                _lastMetrics["BoundaryLayerLayers"] = meshPlan?.EffectiveLayers ?? _options.BoundaryLayerLayers;
                 if (float.IsFinite(report.LayerCoveragePercent))
                     _lastMetrics["BoundaryLayerCoveragePct"] = report.LayerCoveragePercent;
                 if (float.IsFinite(report.AvgLayerThicknessM))

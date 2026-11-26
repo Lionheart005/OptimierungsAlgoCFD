@@ -1,85 +1,84 @@
-# Phase 4: Validierung, Literatur-Benchmarks, Feinschliff & Community-Release
+# Phase 4: Validierung, Physik-Benchmarks, Showcase, Vascular-Kern & Community-Release
 
-> **Status:** Geplant (strikter Feature-Freeze nach Abschluss von Phase 3!)  
-> **Ziel:** Das fertige System ohne neue Features rund, stabil, nachweisbar genau und so einfach bedienbar machen, dass externe Ingenieure & CFD-Communities es sofort ausprobieren und fachlich bewerten können.
-
----
-
-## 1. Ziel & Kontext
-
-Bis hierhin stehen:
-- ein sauberer, entschlackter, englischsprachiger Kern (Phase 1),
-- intuitive Presets, getrennte Objectives/Constraints und saubere Physik (Phase 2),
-- `LEAP71_ShapeKernel`, OpenFOAM (`Internal3D`) und die Hybrid-Optimierer-Bridge für Pareto/Multi-Fidelity (Phase 3).
-
-**Phase 4 hat ein klares Verbot: keine neuen Großfeatures!** Stattdessen zählen vier Dinge, die aus einem guten Projekt ein *wissenschaftlich glaubwürdiges, nutzbares Open-Source-Tool* machen:
-1. **Objektive Verifikation an Literatur-Benchmarks** (2D extern, 3D intern, 3D extern).
-2. **Ein starkes, problemunabhängiges Showcase-Projekt** (Auswahl bewusst flexibel — wird erst am Start von Phase 4 final festgelegt), das alle Stärken des Frameworks voll ausspielt.
-3. **Ergonomie & „First-15-Minutes-Experience“** für fremde Nutzer.
-4. **Veröffentlichung & ehrliches Feedback aus der CFD-/Computational-Engineering-Community** (inkl. hochwertigem technischen Dokument / LaTeX-Bericht auf Basis echter, validierter Daten).
+> **Status (26.11.2026):** Aktiv — **`4.1` (Server-/Ergonomie-Audit) und `4.2a` (`Naca2D` 3-Seed-Vergleich) sind abgeschlossen.**  
+> **Aktueller Fokus:** `4.2b` — Allgemeine OpenFOAM-/SU2-Preset- & Konvergenz-Reife + sauberer Re-Run der 4 Physik-Benchmarks (B1–B3) auf `BIC_12` ([`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)).  
+> **Ziel:** Das System physikalisch nachweisbar genau, skaleninvariant und nutzerfreundlich machen, das große Showcase (`StatorCoolingRing`) rechnen, die vaskuläre Engine sauber ins Hauptprogramm übernehmen, alles auswerten (LaTeX-Bericht + Plots/ParaView) und als Open-Source-Release mit der CFD-Community teilen.
 
 ---
 
-## 2. Dauerhafte Literatur-Benchmark-Suite (Objektiver Genauigkeitsbeweis)
+## 1. Überblick: Was ist fertig — was steht noch an?
 
-Jeder externe CFD-Ingenieur fragt als Erstes: *„Woher weiß ich, dass deine automatische Pipeline keine hübschen bunten Bilder mit 40 % Fehler rechnet?“* Diese **3 Standard-Benchmarks** beantworten das schwarz auf weiß:
+| Block | Thema | Status | Detailplan |
+| :--- | :--- | :--- | :--- |
+| **AP 4.1** | Stabilitäts-, Ergonomie- & „Zero-to-First-Run“-Audit (`BIC_09`) | **✔ fertig** | archiviert in [`.old/phase4_ap41_und_b1_naca0012.md`](.old/phase4_ap41_und_b1_naca0012.md) |
+| **AP 4.2a** | 3-Seed-Optimierer-Vergleich `Naca2D` (`Bayes`, `BoTorch`, `IdwBaseline`) & Calibration-Suffix-Bugfix | **✔ fertig** | `results/Naca2D_Benchmark/summary.md` (`9/9` Läufe `rc=0`) |
+| **AP 4.2b** | **Physik-Benchmarks (B1–B3) & allgemeine Solver-/Preset-Reife** (Naca0012 0°-Diagnose, OpenFOAM-Konvergenz/AutoRestart/Auto-Meshing/$y^+$, `MaxCells3D = 15M`, Re-Run auf `BIC_12`) | **▶ JETZT** | **[`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)** |
+| **AP 4.3a** | **Vaskulären Algorithmus (`StatorCoolingRing v3`) nochmals kritisch prüfen & ggf. verbessern** | **offen** *(v3-Basis ✔)* | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) |
+| **AP 4.3b** | **Showcase `StatorCoolingRing` vollständig rechnen** (Kalibrierung, `BoTorch qNEHVI` Pareto-Front, Feinprüfung auf `BIC_12`) | **offen** | [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md) |
+| **AP 4.4** | **Vaskuläre Routing-Engine als Kernmodul & Preset (`_TemplateVascular3D`) ins Hauptprogramm übernehmen** | **offen** | [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md) |
+| **AP 4.5** | **Gesamtauswertung, Visualisierungen, Prof-/Literatur-Preset-Abgleich, LaTeX-Bericht & Community-Release** | **offen** | *(in diesem Masterplan unten)* |
 
-| # | Benchmark | Projekt(e) | Domäne / Solver | Literatur-Referenz | Was er beweist |
+---
+
+## 2. Dauerhafte Literatur-Benchmark-Suite (AP 4.2)
+
+| # | Benchmark | Projekt(e) | Domäne / Solver | Literatur-Referenz | Stand 26.11.2026 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **B1** | **NASA TMR NACA 0012** ($Re = 6\cdot 10^6$, $\alpha = 0^\circ, 10^\circ$) | `BenchmarkNaca0012` | `External2D` / **SU2** | NASA Turbulence Modeling Resource (`CL`, `CD`, `Cp`) | 2D-RANS-Genauigkeit innerhalb 2–3 %, GCI-Konvergenz, `y+ ~ 1` |
-| **B2** | **90°-Rohrkrümmer / Diffusor** (intern, turbulent) | `BenchmarkPipeBend90` | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ (ggf. + Literatur-CFD) | Korrekte interne `PicoGK`/`ShapeKernel` → `snappyHexMesh` → `simpleFoam`-Kette, Massenbilanz `< 1 %`, realer Druckverlust in Minuten! |
-| **B3** | **DARPA SUBOFF (Bare Hull)** | `BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` (Zwillingsprojekte) | `External3D` / **OpenFOAM** vs. **SU2** (jeweils mit Symmetrieebene!) | Publizierter Schleppkanal-Widerstand $C_D$ & Druckverteilung | Korrekte 3D-Außenumströmung inkl. Symmetrieebene, GCI und Freigabe von **OpenFOAM als neuem 3D-Standard** (direkter Solver-Quervergleich!) |
+| **B1** | **NASA TMR NACA 0012** ($Re = 6\cdot 10^6$, $\alpha = 0^\circ, 10^\circ$) | `BenchmarkNaca0012` | `External2D` / **SU2** | NASA TMR (`CL`, `CD`, `Cp`, `Cf`) | 1. Lauf fertig: $\alpha=10^\circ$ **0,11 %** $C_D$ / **0,85 %** $C_L$; $\alpha=0^\circ$ `CD_v` −1,5 %, aber `CD_p` fehlt (~−15,4 % gesamt) → A/B-Diagnose in `AP 4.2b` |
+| **B2** | **90°-Rohrkrümmer** (intern, turbulent, $D = 30\text{ mm}$) | `BenchmarkPipeBend90` | `Internal3D` / **OpenFOAM** + `ShapeKernel` | Idelchik / Miller Druckverlustbeiwert $\zeta$ | 1. Lauf brach bei `6,27 Mio. > MaxCells3D (3M)` ab → skaleninvariantes Auto-Meshing + `MaxCells3D = 15M` in `AP 4.2b` |
+| **B3** | **DARPA SUBOFF (Bare Hull AFF-1)** ($Re = 1.2\cdot 10^7$, Symmetrieebene) | `BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` | `External3D` / **OpenFOAM** vs. **SU2** | Liu & Huang (1998) $C_T \approx 0{,}00314\text{–}0{,}0033$ | SU2: `4,53 Mio. > MaxCells3D (3M)`. OpenFOAM: Fehlalarm durch `Cl ≈ 0`-Drift-Bug (`37,49 %`) + zu grobes Netz (`y+ = 143`, `Cd = 0.00414`) → Core-Fix & Auto-Meshing in `AP 4.2b` |
 
-*Zusätzlich (offener v1-Punkt):* Sauberer **3-Seed-Benchmarkvergleich** auf dem aktualisierten `Naca2D` (Multi-Point) zwischen eingebautem C#-`Bayes`, `IdwBaseline` und optionalem `BoTorch`-Backend.
-
----
-
-## 3. Ausgewähltes Showcase-Projekt (vorbereitet für Phase 4)
-
-Für den Bericht & Community-Post wurde als primäres Showcase-Projekt **`StatorCoolingRing`** vorbereitet (ergänzt um optionales 2D-Multi-Point-Profil):
-
-1. **Primär-Showcase (`StatorCoolingRing`):** **3D-druckbarer 1-zu-12 E-Motor-Stator-Kühlmittel-Ringverteiler mit `ShapeKernel` + `OpenFOAM` + `BoTorch` `qNEHVI` Pareto & druckbarer Solid-STL**
-   - *Ziele (Multi-Objective):* (1) Minimiere Druckverlust $\Delta p$, (2) Minimiere Massenstrom-Ungleichverteilung zwischen den 12 Auslässen.
-   - *Pre-CFD-Constraints & Fertigung:* Bauraum, Mindestwandstärke für 3D-Druck, maximales Materialvolumen, Export einer druckbaren Solid-STL.
-   - *Warum stark:* Zeigt exakt, wo `PicoGK`/`ShapeKernel` + `OpenFOAM` + `BoTorch` (`qNEHVI` Pareto-Front) glänzen — und liefert ein real 3D-druckbares Industrie-nahes Bauteil!
-2. **Ergänzung 2D:** **Multi-Point-Profiloptimierung (`Naca2D` oder CST/Spline-Profil)** mit SU2 — zeigt in Minuten den kompletten Workflow von Startprofil über Konvergenz bis zur GCI-verifizierten Feinprüfung.
-3. **Optional 3D extern:** Repariertes `MantaAuv` (oder sauberer Myring-AUV-Rumpf) mit volumetrischem $C_{D,V}$, Pre-CFD-Volumen-Constraint und Symmetrieebene — als direkter Vorher/Nachher-Beleg gegenüber dem archivierten 2026-11-21-Lauf.
+*Zusätzlich (abgeschlossen):* **3-Seed-Optimierer-Vergleich** auf `Naca2D` (`9/9` Läufe `rc=0`, `results/Naca2D_Benchmark/summary.md`: `Bayes` `53.23 ± 0.08` / Verified `66.92 ± 0.33`, `BoTorch` `53.32 ± 0.14` / Verified `66.97 ± 0.25`, `IdwBaseline` `50.04 ± 1.15` / Verified `59.80 ± 0.60`).
 
 ---
 
-## 4. Arbeitspakete (Checkliste)
+## 3. Detaillierte Checkliste Phase 4 (in exakter Arbeitsreihenfolge)
 
-### AP 4.1: Stabilitäts-, Ergonomie- & „Fremdnutzer“-Audit
-- [x] **Fresh-Clone-Test („Zero-to-First-Run“):** Auf sauberem Ubuntu-Server `BIC_09` vollständig rootless via `setup_server.sh` (Miniforge3 `-p ~/miniconda`, `PicoGKRuntime` Pin `1713d29` + RPATH, SU2, Gmsh, MPICH, OpenFOAM 2506, `opt-py`, .NET 9) + `sim.ps1 doctor` + 2D (`Naca2D`) & 3D (`MantaAuv --smoke-test`, `PipeBend90`) erfolgreich durchgeführt; alle gefundenen Hürden sofort behoben (`891347d`, `b85091c`, `75e9355`, Details siehe [`phase4_ap41_und_b1_naca0012.md`](phase4_ap41_und_b1_naca0012.md)).
-- [x] **Fehlermeldungen & Diagnostics polieren:** Handlungsorientierte `[ERROR]`-Meldungen in `OptimizeCommand.Report` (`DllNotFoundException`, PicoGK, `Win32Exception`, fehlende Dateien/Ordner), SSH-`BatchMode=yes` & `tmux`-FD-Hänger-Fix sowie vollständiger `sim.ps1 doctor`-Check (SU2, Gmsh, OpenFOAM, PicoGK + `ldd`, MPICH, `opt-py`, Auto-Build bei Erstkontakt).
+### AP 4.1: Stabilitäts-, Ergonomie- & „Fremdnutzer“-Audit — ✔ Abgeschlossen
+- [x] **Fresh-Clone-Test („Zero-to-First-Run“)** auf sauberem Ubuntu-Server `BIC_09` vollständig rootless via `setup_server.sh` + `sim.ps1 doctor` + 2D (`Naca2D`) & 3D (`MantaAuv`, `PipeBend90`) verifiziert (`891347d`, `b85091c`, `75e9355`).
+- [x] **Fehlermeldungen & Diagnostics** (`OptimizeCommand.Report`, SSH `BatchMode=yes`, `tmux`-FD-Fix, vollständiger `sim.ps1 doctor`-Check).
+- [x] **Methodik-Schärfung & Calibration-Bugfix:** `*:VerificationFine` auf manuell höchste Detailstufe umgestellt; Non-Monotonic / False-Coarse-Match-Bug in `CalibrationEvaluator` & `MeshCalibration` behoben (`1074/1074` Tests grün).
 
-> *Hinweis:* Das optionale Docker-/Apptainer-Container-Setup wurde auf Phase 5 verschoben (siehe [`phase5_docker_container.md`](phase5_docker_container.md)); in Phase 4 bleibt `setup_server.sh` der einzige unterstützte Server-Setup-Pfad.
+> *Hinweis:* Optionales Docker-/Apptainer-Container-Setup ist nach Phase 5 verschoben ([`phase5_docker_container.md`](phase5_docker_container.md)).
 
-### AP 4.2: Benchmark-Suite durchrechnen & dokumentieren
-- [x] **Methodik-Schärfung (`*:VerificationFine` manuell) & Non-Monotonic-Calibration-Bugfix (25.11.2026):** Alle 3 `*:VerificationFine`-Presets auf höchste manuelle Detailstufe ohne automatische Kalibrierung und ohne abschließende Verifikation umgestellt (`External2D: 0.5x` / `CauchyFloor 2e-6`, `External3D: 0.8x` / `CauchyFloor 1e-6`, `Internal3D: 1.0x`, `MeshCalibration.Mode = "Manual"`, `ChampionVerification.Mode = "Off"`); alle 4 Benchmark-`simulation.json`s bereinigt. Zudem wurde der auf `BIC_12` entdeckte **Non-Monotonic / False-Coarse-Match-Bug** in `CalibrationEvaluator` & `MeshCalibration` per strikter Fein→Grob-Suffix-Prüfung behoben und mit Regressionstests abgesichert (`1074/1074` Tests grün). Bericht-Notizen unter [`docs/report/report_notes.md`](../docs/report/report_notes.md) und vollständiger Handover unter [`phase4_presets_benchmarks_und_calibration_fix.md`](phase4_presets_benchmarks_und_calibration_fix.md).
-- [ ] **B1 (`BenchmarkNaca0012` / NASA TMR)** inkl. 3-Seed-Optimierer-Vergleich (`Naca2D`): 3-Seed-Vergleich (`Naca2D`, `9/9` Läufe `rc=0`) abgeschlossen, nach `results/Naca2D_Benchmark/` geladen und knapp in `results/Naca2D_Benchmark/summary.md` ausgewertet (`Bayes` `53.23 ± 0.08`, `BoTorch` `53.32 ± 0.14`, `IdwBaseline` `50.04 ± 1.15`). Aktueller `*:VerificationFine`-Stand (`e0738467fe29e1f6`) ist auf `BIC_12` deployed; alle 4 Physik-Benchmarks laufen sequentiell in `tmux physics_benchmarks` (`scripts/run_physics_benchmarks_on_server.sh`, Details & Fetch-Befehle: [`phase4_presets_benchmarks_und_calibration_fix.md`](phase4_presets_benchmarks_und_calibration_fix.md)).
-- [ ] **B2 (`BenchmarkPipeBend90` / `Internal3D:VerificationFine` OpenFOAM)** läuft automatisch als Schritt 2 in `tmux physics_benchmarks` auf `BIC_12`; danach Druckverlustbeiwert $\zeta$ + Massenbilanz gegen Literaturwerte dokumentieren.
-- [ ] **B3 (`BenchmarkSuboffOpenFoam` + `BenchmarkSuboffSu2` / `External3D:VerificationFine` Zwillingsprojekte mit Symmetrie)** laufen automatisch als Schritte 3 & 4 in `tmux physics_benchmarks` auf `BIC_12`; danach $C_D$ im Solver-Quervergleich gegen Literaturwerte dokumentieren.
+### AP 4.2: Physik-Benchmarks (B1–B3) & allgemeine Solver-/Preset-Reife — ▶ JETZT AKTIV
+- [x] **4.2a:** 3-Seed-Optimierer-Vergleich `Naca2D` abgeschlossen, heruntergeladen (`results/Naca2D_Benchmark/`) und in `summary.md` zusammengefasst.
+- [ ] **4.2b (Detailplan: [`phase4_openfoam_su2_presets_und_benchmarks.md`](phase4_openfoam_su2_presets_und_benchmarks.md)):**
+  - [x] Kurze `BenchmarkNaca0012` ($\alpha = 0^\circ$) A/B-Diagnose auf `BIC_12` → `VENKAT_LIMITER_COEFF = 0.05` eindeutig isoliert (`0.5` trifft NASA TMR auf `+0,45 %`); `VenkatLimiterCoeff` in `Su2SolverOptions` & `External2D:VerificationFine = 0.5` umgesetzt.
+  - [x] **OpenFOAM-Konvergenz auf SU2-Niveau:** `ResultMetrics`-Filter, `MetricTolerance`, Stationaritäts-/Wirbelerkennung (`OpenFoam_Unsteady` + `TailMean`) und `AutoRestartOnDrift` (echte Prüfung, ob Zielgröße noch driftet) umgesetzt.
+  - [x] **`MaxCells3D = 15.000.000`** (inkl. `OpenFoam.MaxGlobalCells = 15.000.000`) + klare Doku zum Anpassen/Abschalten (`0`) umgesetzt.
+  - [x] **Skaleninvariantes OpenFOAM-Auto-Meshing** (`Internal3D` nach $D_h$, `External3D` nach $L$ + Wake-Box) + physikbasiertes `TargetYPlus`-`firstLayerThickness` + `nutUSpaldingWallFunction` + 2nd-Order-Turbulenz in `VerificationFine` umgesetzt.
+  - [ ] Alle **4 Physik-Benchmarks (B1, B2, B3a, B3b)** auf `BIC_12` fertig rechnen *(läuft aktuell in `tmux physics_benchmarks`)*, herunterladen und gegen Literaturwerte verifizieren — **Augenmerk bei der Auswertung:** falls `BenchmarkSuboffSu2` (`External3D`) ähnlich starke Abweichungen / zu geringen Druckwiderstand zeigt, liegt das sehr wahrscheinlich an `VenkatLimiterCoeff = 0.05` (noch nicht in `External3D:VerificationFine` angehoben → dann gezielt auf `0.3`–`0.5` A/B-testen und anpassen).
 
-### AP 4.3: Showcase-Projekt wählen, rechnen & visualisieren
-- [x] **Showcase-Mechanik-Basis (`StatorCoolingRing v2`, 25.11.2026, archiviert unter [`.old/phase4_stator_cooling_ring_v2.md`](.old/phase4_stator_cooling_ring_v2.md)):** Vollständige mechanische Solid-Engine (4× M5-DIN-912-Dome `R_bolt = 84 mm` inkl. durchgängigem Werkzeug-Keepout, G3/8"-Boss + SW-24-Sechskant + `Z = 0`-Stützkonsole, 2× O-Ring-Nuten, 2× Passstifte, asymmetrische HV-/Sensor-Störkontur + `*_context_environment.stl`) verifiziert.
-- [x] **Showcase-Topologie-Evolution (`StatorCoolingRing v3`, abgeschlossen am 25.11.2026 in [`phase4_stator_cooling_ring_v3_emergent_vascular.md`](phase4_stator_cooling_ring_v3_emergent_vascular.md)):** Umstellung auf das **völlig freie, emergente 12-Pfad-Gefäßnetz** (`14D`-DNA, Force-Directed Edge Bundling + 3D-SDF-Hindernis-Lernen + Murray’s Law + maskierte 1D-Vorbalancierung `HydraulicBalanceGain` & `ResidualThroatTilt` + organische Inter-Tube-Rippenmatrix + Post-Fillet-SW-24-Sechskant). Verifiziert mit `0W/0E` lokal & auf `BIC_09`, `1077/1077` Release-Tests (`17/17` `StatorCoolingRingTests`), `BIC_09` `--smoke-test` (`6/6`, `14/14 EFFECTIVE`), `87 %` 14D-Box-Feasibility, 4 kontrastierenden Showcase-STLs (`results/StatorCoolingRing_v3_preview/`, `0` Kollisionen) und Base-`snappyHexMesh Level (2,3)` auf `BIC_09` (`69 s`, `1,39 Mio.` Zellen, `77,9 %` Layer-Abdeckung).
-- [ ] Vollständigen Optimierungslauf (inkl. Kalibrierung, Pre-/Post-Constraints, `BoTorch qNEHVI` Pareto-Front `16×6` / Feinprüfung) auf `BIC_12` durchführen und alle Daten sauber archivieren.
-- [ ] Hochwertige Visualisierungen erzeugen: Konvergenz-, GCI-, Pareto- und ARD-Sensitivitätsplots (`scripts/*.py`) + ParaView-Renderings (Stromlinien, Druckfelder, $y^+$, Schnittansichten).
-- [ ] *(Bonus, falls Lust & Zeit)*: Gewinner-STL real 3D-drucken (und ggf. einfachen Durchfluss-/Drucktest dokumentieren).
+### AP 4.3: Showcase-Projekt `StatorCoolingRing` (Review + Optimierungslauf)
+- [x] **Mechanik-Basis (`v2`) & Topologie-Evolution (`v3`) implementiert & verifiziert:** Emergentes 12-Pfad-Gefäßnetz (`14D`-DNA, Force-Directed Edge Bundling, 3D-SDF-Hindernis-Lernen, Murray’s Law, maskierte 1D-Vorbalancierung, Rippenmatrix, Post-Fillet-SW-24-Sechskant; `1077/1077` Tests, `BIC_09` `--smoke-test` `6/6`, `14/14 EFFECTIVE`, `87 %` Feasibility, `69 s` `snappyHexMesh`).
+- [ ] **4.3a — Vaskulären Algorithmus nochmals prüfen & ggf. verbessern:** Geometrie-Qualität, Verzweigungs-/Rippen-Übergänge, hydraulische Balance, 3D-Druckbarkeit und Zusammenspiel mit dem neuen skaleninvarianten OpenFOAM-Auto-Meshing prüfen und bei Bedarf nachschärfen.
+- [ ] **4.3b — Vollständigen Optimierungslauf auf `BIC_12` rechnen:** `StandardRans` + automatische Netzkalibrierung + Pre-/Post-Constraints + `BoTorch qNEHVI` Pareto-Front (`PressureDrop` vs. `FlowImbalance`) + `FinalTopN`-Feinprüfung durchführen und alle Daten + Gewinner-STLs sauber archivieren.
 
-### AP 4.4: Technisches Dokument (LaTeX) & Community-Release
-- [ ] **Englisches technisches Dokument / Showcase-Bericht (LaTeX):** Erst jetzt schreiben — kompakt, wissenschaftlich sauber, mit Architekturüberblick, Benchmark-Validierung (B1–B3), Showcase-Ergebnissen, ehrlicher Diskussion der Grenzen (Low-$Re$/Transition, RANS) und Ausblick auf Phase 5 (LLM) & FEM.
+### AP 4.4: Vaskuläre Routing-Engine als Kernmodul & Preset ins Hauptprogramm
+- [ ] Umsetzung nach Detailplan [`phase4_5_vascular_routing_core_engine.md`](phase4_5_vascular_routing_core_engine.md):
+  - Pure-C#-Modul `src/FluidForge/Kernels/Vascular/` (`M×N`-Ports, SDF-KeepIn/KeepOut, DNA-Profile, `Core/` bleibt 100 % physik-/geometrieneutral!).
+  - PicoGK-Brücke `VascularVoxelBuilder` unter `src/FluidForge/Kernels/PicoGk/InternalFlow/`.
+  - Projektvorlage `_TemplateVascular3D` + `scripts/new-project.ps1 -Template Vascular3D` + englische Doku `docs/vascular-routing.md`.
+  - Dogfooding-Refaktorierung von `StatorCoolingRing` (Zero-Regression auf alle Tests & Morphologien).
+
+### AP 4.5: Gesamtauswertung, Technischer LaTeX-Bericht & Community-Release
+- [ ] **Auswertung & Visualisierungen:**
+  - Benchmarks B1–B3 (`BenchmarkNaca0012`, `BenchmarkPipeBend90`, `BenchmarkSuboffOpenFoam` vs. `BenchmarkSuboffSu2`) und 3-Seed-`Naca2D`-Vergleich vollständig auswerten.
+  - Konvergenz-, GCI-, Pareto- und ARD-Sensitivitätsplots (`scripts/*.py`) + ParaView-Renderings (Stromlinien, Druckfelder, $y^+$, Schnittansichten inkl. `StatorCoolingRing` + `*_context_environment.stl`).
+  - *(Bonus, falls Lust & Zeit):* Gewinner-STL von `StatorCoolingRing` real 3D-drucken.
+- [ ] **Fachlicher Preset-Abgleich vor Veröffentlichung:** Preset-Einstellungen aller Physik-Vorlagen gemeinsam mit Professor / aktueller Literatur nochmals gegenprüfen, damit Nutzer „out of the box“ wissenschaftlich fundierte Vorgaben erhalten.
+- [ ] **Englisches technisches Dokument / Showcase-Bericht (LaTeX):** Kompakt, wissenschaftlich sauber, mit Architekturüberblick, Benchmark-Validierung (B1–B3 + 3-Seed-Optimierer), Showcase-Ergebnissen (`StatorCoolingRing` + Vascular-Engine), ehrlicher Diskussion der Grenzen (Low-$Re$/Transition, RANS) und Ausblick auf Phase 5 (LLM) & FEM (Notizen: `docs/report/report_notes.md`).
 - [ ] **GitHub-Release-Reife prüfen:**
   - `LICENSE` (MIT) & vollständige `THIRD_PARTY_NOTICES.md` (PicoGK, LEAP71_ShapeKernel, Clipper2, SU2, Gmsh, OpenFOAM, MPICH, optional BoTorch/pymoo).
   - Starke englische `README.md` mit klarem Wertversprechen, Titelbild/ParaView-Visualisierung, Benchmark-Tabelle und 5-Minuten-Quickstart.
-- [ ] **Community-Feedback einholen:** Gezielt vorstellen und ehrliche Kritik einsammeln in z. B. **CFD-Online**, **r/CFD**, **LEAP 71 PicoGK GitHub Discussions**, **SU2 / OpenFOAM Community** — Feedback strukturiert sammeln, bevor Phase 5 startet! 
+- [ ] **Community-Feedback einholen:** Gezielt vorstellen und ehrliche Kritik einsammeln (z. B. **CFD-Online**, **r/CFD**, **LEAP 71 PicoGK GitHub Discussions**, **SU2 / OpenFOAM Community**) und in Phase 5 spiegeln.
 
 ---
 
-## 5. Verifikations- & Abnahmekriterien
+## 4. Abnahmekriterien für Phase 4
 
-1. Alle drei Literatur-Benchmarks (B1, B2, B3) sind vollständig gerechnet, reproduzierbar dokumentiert und liegen innerhalb physikalisch plausibler RANS-Toleranzen (mit ausgewiesenem GCI und `y+`).
-2. Ein Außenstehender kann ohne Vorwissen anhand der englischen `README.md` in < 15 Minuten einen ersten Lauf starten und verstehen.
-3. (Notiz von Leonardo: Bevor ich das veröffentliche, will ich auch noch einmal mit meinem Professor bzw mit echter Literatur und Recherche vernüfntige Preset-Einstellungen für die verschiedenen Physik Vorlagen sprechen, sodass man auch wirklich out of the box mit den Vorgaben gute und basierte Ergebnisse bekommt.)
-4. Community-Feedback ist eingesammelt und in offene Verbesserungen für Phase 5 gespiegelt.
+1. Alle drei Literatur-Benchmarks (B1, B2, B3) sind mit den allgemeinen `*:VerificationFine`-Presets vollständig gerechnet, reproduzierbar dokumentiert und liegen innerhalb physikalisch plausibler RANS-Toleranzen (mit ausgewiesenem `y+` und Konvergenzstatus).
+2. `StatorCoolingRing` ist vollständig optimiert (Pareto-Front + Feinprüfung) und der vaskuläre Algorithmus ist als allgemeines Modul + `_TemplateVascular3D`-Vorlage im Hauptprogramm verankert.
+3. Ein Außenstehender kann ohne Vorwissen anhand der englischen `README.md` in `< 15` Minuten einen ersten Lauf starten und verstehen.
+4. Preset-Vorgaben sind mit Literatur/Professor abgeglichen und Community-Feedback ist eingesammelt.
